@@ -43,3 +43,6 @@ mobile/build/
 
 # Descargas temporales de la entrada por URL (ADR-0005)
 audio-library/staging/
+
+# Worktrees y estado de sesión de Claude Code (nunca se versionan)
+.claude/
