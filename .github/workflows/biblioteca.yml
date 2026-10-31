@@ -1,0 +1,130 @@
+name: biblioteca
+
+# Escrituras al catálogo de la biblioteca (ADR-0008). Entrada única: una incidencia del propietario
+# con la etiqueta 'biblioteca' (cuerpo con líneas 'clave: valor') o el formulario manual.
+# Ningún texto de la incidencia ni de los campos se interpola en un script: todo pasa por variables de entorno.
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Qué hacer"
+        required: true
+        type: choice
+        options: [import, organize]
+      url:
+        description: "URL de la fuente (import)"
+        required: false
+        default: ""
+      license:
+        description: "Licencia (obligatoria en ficheros directos; opcional en Internet Archive)"
+        required: false
+        default: ""
+      title:
+        description: "Título (import, opcional)"
+        required: false
+        default: ""
+      payload:
+        description: "Operación de organize: un objeto JSON en una sola línea"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  issues: write
+
+# Una escritura cada vez: dos cambios simultáneos al catálogo se pisarían.
+concurrency:
+  group: library-catalog
+  cancel-in-progress: false
+
+jobs:
+  biblioteca:
+    # Incidencias: solo las del propietario del repositorio con la etiqueta 'biblioteca'. Manual: siempre.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.user.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'biblioteca'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+
+      - name: Instalar el backend
+        run: pip install -q -e backend
+
+      - name: Preparar la petición
+        id: preparar
+        env:
+          EVENTO: ${{ github.event_name }}
+          BODY: ${{ github.event.issue.body }}
+          ACTION: ${{ inputs.action }}
+          URL: ${{ inputs.url }}
+          LICENSE: ${{ inputs.license }}
+          TITLE: ${{ inputs.title }}
+          PAYLOAD: ${{ inputs.payload }}
+        run: |
+          if [ "$EVENTO" = "issues" ]; then
+            MODO=incidencia
+          else
+            MODO=manual
+          fi
+          python scripts/issue_request.py --modo "$MODO" | tee "$RUNNER_TEMP/peticion.json"
+
+      - name: Aplicar
+        id: aplicar
+        if: success()
+        run: |
+          estado=0
+          python scripts/ci_library.py | tee "$RUNNER_TEMP/resultado.json" || estado=$?
+          {
+            echo "## Resultado"
+            echo '```json'
+            cat "$RUNNER_TEMP/resultado.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$estado"
+
+      - name: Guardar cambios
+        id: guardar
+        if: success()
+        run: |
+          git add -A audio-library frontend/web
+          if git diff --cached --quiet; then
+            echo "Sin cambios que guardar."
+            exit 0
+          fi
+          python scripts/check_repo_limits.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "biblioteca: $ACTION"
+          git push -q origin HEAD:main
+
+      - name: Responder
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMERO: ${{ github.event.issue.number }}
+          ESTADO_PREPARAR: ${{ steps.preparar.outcome }}
+          ESTADO_APLICAR: ${{ steps.aplicar.outcome }}
+          ESTADO_GUARDAR: ${{ steps.guardar.outcome }}
+        run: |
+          RESULTADO=$(python scripts/responder_incidencia.py --peticion "$RUNNER_TEMP/peticion.json" --resultado "$RUNNER_TEMP/resultado.json" --cuerpo "$RUNNER_TEMP/comentario.md")
+          gh issue comment "$NUMERO" --body-file "$RUNNER_TEMP/comentario.md"
+          if [ "$RESULTADO" = "ok" ]; then
+            gh issue close "$NUMERO"
+          else
+            gh label create error --force --color B60205 --description "La petición de biblioteca no se pudo procesar" > /dev/null
+            gh issue edit "$NUMERO" --add-label error
+          fi

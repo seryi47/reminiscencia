@@ -3,6 +3,7 @@
 - Estado: aceptada
 - Fecha: 2026-10-31
 - Modifica: ADR-0002 (la regla general se mantiene; se añade una vía controlada)
+- Nota de estado (2026-10-31): **administración retirada.** La entrada por URL ya no pasa por `/admin/` en Vercel, sino por una petición en una incidencia del repositorio, procesada por el workflow `biblioteca.yml` (ADR-0008). Las reglas de esta decisión (plataformas bloqueadas, licencia obligatoria en ficheros directos, límite de 200 MB) siguen vigentes; la validación vive en `backend/sonidos/sources.py` y en `backend/sonidos/issue_request.py`. La sección «Actualización» de abajo queda superada: la lista de bloqueo ya no se duplica en la web.
 
 ## Contexto
 

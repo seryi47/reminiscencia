@@ -10,7 +10,14 @@ import json
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from sonidos.sources import ResolvedSource, SourceError, classify, resolve_direct_file, resolve_internet_archive
+from sonidos.sources import (
+    ResolvedSource,
+    SourceError,
+    classify,
+    ia_identifier,
+    resolve_direct_file,
+    resolve_internet_archive,
+)
 
 MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
 USER_AGENT = "reminiscencia-backend/0.2 (importacion con licencia)"
@@ -44,7 +51,7 @@ def download(url: str, destination: Path) -> Path:
 def resolve_url(url: str, *, license: str | None = None) -> ResolvedSource:
     kind = classify(url)
     if kind == "internet-archive":
-        identifier = url.rstrip("/").split("/")[-1]
+        identifier = ia_identifier(url)
         metadata = fetch_json(f"https://archive.org/metadata/{identifier}")
         return resolve_internet_archive(url, metadata)
     return resolve_direct_file(url, license)

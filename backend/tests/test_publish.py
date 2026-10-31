@@ -47,3 +47,20 @@ def test_unpublishing_removes_the_public_audio(tmp_path):
 
     assert list((web / "audio").glob("*.opus")) == []
     assert json.loads((web / "data" / "songs.json").read_text(encoding="utf-8")) == []
+
+
+def test_catalog_json_lists_every_song_and_folder_without_audio_paths_or_hashes(tmp_path):
+    path, audio = _catalog_with(tmp_path, [True, False])
+    web = tmp_path / "web"
+
+    result = sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
+
+    view = json.loads((web / "data" / "catalog.json").read_text(encoding="utf-8"))
+    assert result["catalog_songs"] == 2
+    assert sorted(song["public"] for song in view["songs"]) == [False, True]
+    for song in view["songs"]:
+        assert set(song) == {"id", "title", "artist", "year", "tags", "folder_id", "license", "source", "duration_s", "public"}
+    assert [folder["name"] for folder in view["folders"]] == ["Jazz"]
+    assert view["folders"] == json.loads((web / "data" / "folders.json").read_text(encoding="utf-8"))
+    text = (web / "data" / "catalog.json").read_text(encoding="utf-8")
+    assert "sha256" not in text and "audio/" not in text

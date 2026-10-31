@@ -1,6 +1,34 @@
 import pytest
 
-from sonidos.sources import SourceError, classify, resolve_direct_file, resolve_internet_archive
+from sonidos.sources import SourceError, classify, ia_identifier, resolve_direct_file, resolve_internet_archive
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://archive.org/details/tema-item",
+        "https://archive.org/download/tema-item/",
+        "https://www.archive.org/details/tema-item?tab=about",
+    ],
+)
+def test_ia_identifier_accepts_details_and_download_forms(url):
+    assert ia_identifier(url) == "tema-item"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://archive.org/details/",
+        "https://archive.org/details/a/b",
+        "https://archive.org/stream/a",
+        "https://archive.org/details/..",
+        "https://archive.org/details/.oculto",
+        "https://archive.org/details/a%20b/../c",
+    ],
+)
+def test_ia_identifier_refuses_other_shapes_and_unsafe_identifiers(url):
+    with pytest.raises(SourceError, match="forma archive.org"):
+        ia_identifier(url)
 
 
 @pytest.mark.parametrize(
