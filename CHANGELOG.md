@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## En curso (plan v2)
+
+- Auditoría del brief contra el repositorio y la web publicada.
+- Panel de diseño para la nueva interfaz de escucha y del cuidador.
+- Administración en Vercel sin usar por decisión del investigador (sin `ADMIN_PASSWORD`).
+
 ## Administración en Vercel, catálogo versionado y app 1.1.0
 
 ### Añadido

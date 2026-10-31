@@ -23,6 +23,24 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 - [ ] Detección de silencios, picos y calidad de señal.
 - **Cierre:** tabla de resultados medidos y script de publicación probado.
 
+## Plan v2 (en curso desde 2026-10-31)
+
+Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` por fases. La administración en Vercel queda **sin usar** por decisión del investigador hasta nuevo aviso (no se configura `ADMIN_PASSWORD`).
+
+| Frente | Qué entrega | Estado |
+|---|---|---|
+| Auditoría del brief | Matriz de requisitos con evidencia y verificación adversarial de lo marcado como hecho | En curso |
+| Panel de diseño | Especificación de diseño (docs/user-experience/DESIGN.md) por tres propuestas, jurado y síntesis | En curso |
+| Web de escucha (modo paciente) | Interfaz nueva según el diseño, fotos y recuerdos del perfil activo, uso sin conexión (PWA) | Pendiente |
+| Datos locales del cuidador | Perfiles, fotos, recuerdos, listas, observaciones e historial en IndexedDB; copia cifrada con contraseña | Pendiente |
+| Panel del cuidador (`/cuidar/`) | Interfaz para gestionar todo lo anterior, con PIN local de ajustes | Pendiente |
+| App Android | Listas, modo paciente con botones grandes, icono propio, tableta, ajustes persistentes, pruebas | Pendiente |
+| Compresión | Experimento reproducible con ffmpeg y métricas objetivas (sin pruebas perceptuales con personas) | Pendiente |
+| Investigación | Referencias verificadas por DOI y estado del arte; metodología del piloto; seguridad y RGPD | Pendiente |
+| Documentación técnica | ARCHITECTURE, DATABASE (modelo entidad-relación), PLAYER, AUDIO_ENGINE, GITHUB_STORAGE | Pendiente |
+| Pruebas de extremo a extremo | Navegador: escucha, cuidador, copia cifrada, uso sin conexión | Pendiente |
+| Compilación de APK en GitHub Actions | Artefactos de depuración y producción, carpetas releases/android/debug y production | Pendiente |
+
 ## Fase 3: servicio y administración
 - [x] Catálogo versionado en el repositorio como fuente de verdad (ADR-0007).
 - [x] Importación por URL en GitHub Actions, probada con ítems reales de Internet Archive.
