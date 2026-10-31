@@ -51,7 +51,7 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | Web de paciente y cuidador (Next.js, Vercel) | **No iniciado** | — |
 | App Android (APK) | **No iniciado** | — |
 | Perfiles de pacientes y datos personales | **No iniciado** | — |
-| Integración continua (GitHub Actions) | Escrito, verificación remota pendiente | — |
+| Integración continua (GitHub Actions) | Verificada: verde en Python 3.12 y 3.13 (commit 891149c) | 11 pruebas |
 
 ## Problemas pendientes
 
