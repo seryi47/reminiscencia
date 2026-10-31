@@ -42,3 +42,6 @@ mobile/build/
 
 # Vercel: configuración local del proyecto enlazado
 .vercel/
+
+# Descargas temporales de la entrada por URL (ADR-0005)
+audio-library/staging/

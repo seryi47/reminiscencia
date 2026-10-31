@@ -12,7 +12,7 @@ Proyecto doctoral sobre música, memoria y Alzheimer, con una plataforma que sir
 - Verificar cada referencia científica antes de citarla. Lo no verificado va como pendiente en [BIBLIOGRAPHY.md](BIBLIOGRAPHY.md).
 
 ## Restricciones (no negociables)
-- **Sin descarga de plataformas.** No implementar adaptadores que descarguen desde YouTube ni servicios de streaming (ADR-0002).
+- **Sin descarga de plataformas.** Nunca descargar desde YouTube ni servicios de streaming ni de vídeo (ADR-0002, reafirmado en ADR-0005). La entrada por URL sólo acepta Internet Archive con licencia en los metadatos o ficheros directos con licencia declarada (`backend/sonidos/sources.py`).
 - **Sin audio en el repositorio.** El audio de reproducción va como assets de GitHub Releases (ADR-0003). `audio-library/audio/` está en `.gitignore`.
 - **Sin datos personales de pacientes en el repositorio.** Nombres, fotografías y recuerdos reales nunca se versionan. Las personas se identifican con alias o identificadores.
 - **Sin filtros destructivos** sobre el audio por defecto. Cualquier normalización o limpieza debe medirse antes de activarse.
@@ -20,7 +20,8 @@ Proyecto doctoral sobre música, memoria y Alzheimer, con una plataforma que sir
 - **Sin secretos en el repositorio.** Las credenciales van en variables de entorno o en GitHub Secrets.
 
 ## Arquitectura (resumen)
-- `backend/sonidos/`: probe (ffprobe), hashing, compression (ffmpeg), library (SQLite), importer, cli.
+- `backend/sonidos/`: probe (ffprobe), hashing, compression (ffmpeg), library (SQLite), importer, sources (URL con licencia), intake, api (FastAPI local), web_build, release, limits, cli.
+- `frontend/admin/`: panel local de administración (solo en este equipo). `frontend/web/`: reproductor público (Vercel). `mobile/`: app Flutter.
 - `backend/tests/`: pruebas con audio sintético.
 - `audio-library/`: índices (versionados) y audio (ignorado).
 - `docs/`: decisiones, arquitectura, procesado de audio.

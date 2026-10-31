@@ -43,7 +43,9 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | Perfiles de transcodificación | Implementado | Prueba de variante Opus |
 | Biblioteca SQLite con duplicados y licencia obligatoria | Implementado | 5 pruebas |
 | Importación de archivo local | Implementado | Cubierto |
-| CLI (`import`, `list`, `stats`, `export-index`) | Implementado | 3 pruebas |
+| CLI (`import`, `list`, `stats`, `export-index`, `build-web`, `serve`) | Implementado | 3 pruebas |
+| Entrada por URL con licencia (Internet Archive y ficheros directos) | Implementado; plataformas bloqueadas por código (ADR-0005) | 14 pruebas de fuentes y de importación |
+| API local (FastAPI) y panel de administración en `frontend/admin` | Implementado y probado en navegador; sólo en este equipo | 6 pruebas de API + prueba en Chrome |
 | Índice JSON sin rutas locales | Implementado | 1 prueba |
 | Biblioteca publicada: 8 pistas de dominio público, release `audio-2026-10-31-01` | Implementado; SHA-256 verificado tras descarga | — |
 | Experimento de compresión perceptual | **No iniciado** | — |

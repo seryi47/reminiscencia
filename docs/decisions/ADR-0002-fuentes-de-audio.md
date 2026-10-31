@@ -1,6 +1,6 @@
 # ADR-0002: Fuentes de audio y barrera legal
 
-- Estado: aceptada
+- Estado: aceptada (ampliada por ADR-0005: entrada por URL sólo con licencia verificable)
 - Fecha: 2026-10-31
 
 ## Contexto

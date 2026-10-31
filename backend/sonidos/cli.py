@@ -45,11 +45,18 @@ def build_parser() -> argparse.ArgumentParser:
     web = commands.add_parser("build-web", help="copia el audio de reproducción y el índice a la web")
     web.add_argument("--web-dir", type=Path, default=Path("frontend/web"))
 
+    serve = commands.add_parser("serve", help="arranca el panel de administración en este equipo")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8787)
+    serve.add_argument("--staging-dir", type=Path, default=Path("audio-library/staging"))
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "serve":
+        return serve(args)
     library = Library(args.db)
     try:
         if args.command == "import":
@@ -83,4 +90,21 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     finally:
         library.close()
+    return 0
+
+
+def serve(args) -> int:
+    import uvicorn
+
+    from sonidos.api import create_app
+
+    app = create_app(
+        db_path=args.db,
+        audio_dir=DEFAULT_AUDIO,
+        staging_dir=args.staging_dir,
+        web_dir=Path("frontend/web"),
+        index_path=DEFAULT_INDEX,
+    )
+    print(f"Panel local en http://{args.host}:{args.port}  (solo este equipo)")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
