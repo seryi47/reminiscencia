@@ -2,25 +2,23 @@ import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
 
+import 'library_store.dart';
 import 'song.dart';
 
-/// Reproductor en segundo plano con controles multimedia del sistema.
-///
-/// Usa un ConcatenatingAudioSource para que just_audio gestione el paso a la
-/// siguiente pista y el orden de la lista. audio_session gestiona interrupciones
-/// (llamadas, otras apps con audio) y la desconexión de auriculares.
+/// Reproductor en segundo plano con controles del sistema.
+/// Si la canción está guardada se reproduce desde el fichero local; si no, se transmite
+/// y se guarda mientras suena (LockCachingAudioSource), así la siguiente vez funciona sin conexión.
 class SonidosAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
-  SonidosAudioHandler() {
+  SonidosAudioHandler(this._store) {
     _player.playbackEventStream.listen((_) => _broadcastState());
     _player.currentIndexStream.listen((index) {
       final items = queue.value;
-      if (index != null && index >= 0 && index < items.length) {
-        mediaItem.add(items[index]);
-      }
+      if (index != null && index >= 0 && index < items.length) mediaItem.add(items[index]);
     });
     _configureSession();
   }
 
+  final LibraryStore _store;
   final AudioPlayer _player = AudioPlayer();
 
   Future<void> _configureSession() async {
@@ -28,26 +26,31 @@ class SonidosAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     await session.configure(const AudioSessionConfiguration.music());
   }
 
-  /// Carga la biblioteca completa. La reproducción empieza en pausa.
   Future<void> loadSongs(List<Song> songs) async {
     final items = songs
-        .map(
-          (song) => MediaItem(
-            id: song.assetPath,
-            title: song.title,
-            album: 'Reminiscencia',
-            duration: Duration(milliseconds: (song.durationS * 1000).round()),
-          ),
-        )
+        .map((song) => MediaItem(
+              id: song.id,
+              title: song.title,
+              artist: song.artist.isEmpty ? null : song.artist,
+              album: 'Reminiscencia',
+              duration: Duration(milliseconds: (song.durationS * 1000).round()),
+            ))
         .toList();
     queue.add(items);
 
-    await _player.setAudioSources(
-      songs.map((song) => AudioSource.asset(song.assetPath)).toList(),
-    );
-    if (items.isNotEmpty) {
-      mediaItem.add(items.first);
+    final sources = <AudioSource>[];
+    for (final song in songs) {
+      final file = await _store.audioFile(song);
+      if (await file.exists()) {
+        sources.add(AudioSource.file(file.path, tag: song.id));
+      } else {
+        // LockCachingAudioSource (experimental en just_audio 0.10) transmite y guarda a la vez.
+        // ignore: experimental_member_use
+        sources.add(LockCachingAudioSource(_store.audioUri(song), cacheFile: file, tag: song.id));
+      }
     }
+    await _player.setAudioSources(sources);
+    if (items.isNotEmpty) mediaItem.add(items.first);
   }
 
   @override

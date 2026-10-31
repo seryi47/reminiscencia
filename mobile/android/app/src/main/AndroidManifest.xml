@@ -3,12 +3,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <!-- La biblioteca va empaquetada en la APK: no se necesita INTERNET. -->
+    <!-- audio_service mantiene un bloqueo de CPU mientras suena con la pantalla apagada. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- La biblioteca se lee de reminiscencia.vercel.app y se guarda en el dispositivo. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
         android:label="Reminiscencia"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"
