@@ -2,7 +2,7 @@
 
 Proyecto doctoral y plataforma tecnológica para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado:** fase 1 (base del proyecto). Núcleo de biblioteca musical implementado y probado. Web, Android y estudios con personas, pendientes.
+**Estado:** fases 1 a 5 en marcha. Biblioteca con 8 pistas de dominio público; web de reproducción desplegada en Vercel (pendiente de hacerla pública); app Android probada en emulador (firma de producción pendiente). Estudios con personas, pendientes.
 
 ## Documentación
 - [CLAUDE.md](CLAUDE.md): reglas de trabajo y restricciones.

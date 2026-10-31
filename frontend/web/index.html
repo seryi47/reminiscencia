@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canciones para recordar</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <h1>Canciones para recordar</h1>
+      <p class="status" id="status" role="status">Cargando la biblioteca…</p>
+    </header>
+
+    <section class="player" aria-labelledby="now-title">
+      <p class="eyebrow" id="now-count">&nbsp;</p>
+      <h2 id="now-title">Elige una canción</h2>
+      <p class="meta" id="now-meta">&nbsp;</p>
+
+      <div class="controls">
+        <button type="button" class="btn btn-side" id="prev" aria-label="Canción anterior">
+          <span aria-hidden="true">&#9664;&#9664;</span>
+          <span class="btn-label">Anterior</span>
+        </button>
+        <button type="button" class="btn btn-main" id="toggle" aria-label="Reproducir" aria-pressed="false">
+          <span aria-hidden="true" id="toggle-icon">&#9654;</span>
+          <span class="btn-label" id="toggle-label">Reproducir</span>
+        </button>
+        <button type="button" class="btn btn-side" id="next" aria-label="Canción siguiente">
+          <span aria-hidden="true">&#9654;&#9654;</span>
+          <span class="btn-label">Siguiente</span>
+        </button>
+      </div>
+
+      <label class="volume">
+        <span>Volumen</span>
+        <input type="range" id="volume" min="0" max="1" step="0.05" value="0.8">
+      </label>
+
+      <audio id="player" preload="metadata"></audio>
+    </section>
+
+    <section aria-labelledby="list-title">
+      <h2 id="list-title">Biblioteca</h2>
+      <ol class="list" id="list"></ol>
+    </section>
+
+    <footer>
+      <p>Todas las grabaciones son de dominio público según la declaración de su publicador en Internet Archive. Ver <a href="data/songs.json">índice de canciones</a>.</p>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

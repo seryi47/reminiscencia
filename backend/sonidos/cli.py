@@ -10,6 +10,7 @@ from sonidos.compression import PROFILES
 from sonidos.importer import import_local_file
 from sonidos.library import LicenseRequiredError, Library
 from sonidos.probe import ProbeError
+from sonidos.web_build import build_web
 
 DEFAULT_DB = Path("audio-library/indexes/library.sqlite")
 DEFAULT_AUDIO = Path("audio-library/audio")
@@ -41,6 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
     export = commands.add_parser("export-index", help="exporta el índice JSON")
     export.add_argument("--output", type=Path, default=DEFAULT_INDEX)
 
+    web = commands.add_parser("build-web", help="copia el audio de reproducción y el índice a la web")
+    web.add_argument("--web-dir", type=Path, default=Path("frontend/web"))
+
     return parser
 
 
@@ -71,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "export-index":
             library.export_index(args.output)
             print(f"índice escrito en {args.output}")
+        elif args.command == "build-web":
+            entries = build_web(library, args.web_dir)
+            print(f"{len(entries)} canciones preparadas en {args.web_dir}")
     except (LicenseRequiredError, ProbeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

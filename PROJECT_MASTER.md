@@ -45,12 +45,14 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | Importación de archivo local | Implementado | Cubierto |
 | CLI (`import`, `list`, `stats`, `export-index`) | Implementado | 3 pruebas |
 | Índice JSON sin rutas locales | Implementado | 1 prueba |
+| Biblioteca publicada: 8 pistas de dominio público, release `audio-2026-10-31-01` | Implementado; SHA-256 verificado tras descarga | — |
 | Experimento de compresión perceptual | **No iniciado** | — |
 | Límites de GitHub (asset < 2 GiB, 1000 assets, Git 100 MiB) | Implementado y comprobado en CI (`scripts/check_repo_limits.py`) | 6 pruebas |
 | Preparación de publicación en Releases (lotes, manifiesto SHA-256, comandos gh) | Implementado en modo simulación; **subida real no ejecutada** | 4 pruebas |
 | API web (FastAPI) | **No iniciado** | — |
-| Web de paciente y cuidador (Next.js, Vercel) | **No iniciado** | — |
-| App Android (APK) | **No iniciado** | — |
+| Web de paciente (HTML estático, Vercel `sonidos-alzheimer`) | Desplegada; **privada por SSO de Vercel** hasta que se desactive la protección | Probada en Chrome |
+| Web de cuidador | **No iniciado** | — |
+| App Android (Flutter, `mobile/`) | APK de publicación probada en emulador Android 15; firma de producción pendiente | 2 pruebas unitarias + prueba en emulador |
 | Perfiles de pacientes y datos personales | **No iniciado** | — |
 | Integración continua (GitHub Actions) | Verificada: verde en Python 3.12 y 3.13 (commit 891149c) | 11 pruebas |
 
@@ -60,7 +62,9 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 - **Almacenamiento:** confirmar que Releases admite audio y revisar las políticas de uso aceptable de GitHub.
 - **Vercel:** el plan Hobby es sólo para uso no comercial. Válido mientras el proyecto sea académico; si se convierte en producto o se desarrolla para un cliente, hace falta Pro.
 - **Datos de salud:** antes de tratar datos de pacientes, RGPD (artículo 9), LOPDGDD y aprobación ética.
-- **Vercel y APK:** requieren que conectes tus cuentas; no están desplegados ni probados.
+- **Vercel público:** la web está desplegada, pero la protección SSO bloquea el acceso externo. Desactivarla debilita una protección de tu cuenta; lo decides tú. Hasta entonces, la URL responde con redirección a inicio de sesión.
+- **Firma de la APK:** la APK de publicación está firmada con la clave de depuración. Para distribuirla hace falta una clave de producción propia.
+- **Licencias de las pistas:** las grabaciones son de dominio público según la declaración del depositante en Internet Archive. Esto no lo ha verificado un abogado. Las pistas de 1920 son repertorio de jazz, poco representativo de la memoria de las personas que van a usar la app.
 
 ## Presupuesto
 

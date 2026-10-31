@@ -7,6 +7,7 @@ nada hasta que se pide de forma explícita con execute=True.
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,12 +34,35 @@ def build_manifest(files: list[Path], destination: Path) -> Path:
     return destination
 
 
+def stage_name(path: Path) -> str:
+    """Nombre único para el asset: el padre (ID de canción) más el nombre original.
+
+    GitHub guarda los assets por nombre de fichero, así que dos variantes con
+    el mismo nombre (opus-64k.opus) se pisarían entre sí.
+    """
+    return f"{path.parent.name}_{path.name}"
+
+
+def stage_files(files: list[Path], staging_dir: Path) -> list[Path]:
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    staged = []
+    for path in files:
+        target = staging_dir / stage_name(path)
+        shutil.copyfile(path, target)
+        staged.append(target)
+    names = [item.name for item in staged]
+    if len(set(names)) != len(names):
+        raise ValueError("nombres de asset duplicados tras el staging")
+    return staged
+
+
 def plan_batches(files: list[Path], *, tag_prefix: str, work_dir: Path) -> list[ReleaseBatch]:
     batches = []
     for index, group in enumerate(plan_release_batches(files), start=1):
         tag = f"{tag_prefix}-{index:02d}"
-        manifest = build_manifest(group, work_dir / tag / MANIFEST_NAME)
-        batches.append(ReleaseBatch(tag=tag, files=group, manifest=manifest))
+        staged = stage_files(group, work_dir / tag / "assets")
+        manifest = build_manifest(staged, work_dir / tag / MANIFEST_NAME)
+        batches.append(ReleaseBatch(tag=tag, files=staged, manifest=manifest))
     return batches
 
 

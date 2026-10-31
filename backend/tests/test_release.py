@@ -37,7 +37,22 @@ def test_gh_commands_create_then_upload_with_manifest(tmp_path):
     assert create[:4] == ["gh", "release", "create", "audio-test-01"]
     assert upload[:4] == ["gh", "release", "upload", "audio-test-01"]
     assert str(batch.manifest) in upload
-    assert str(path) in upload
+    assert str(batch.files[0]) in upload
+
+
+def test_same_variant_name_in_two_songs_gets_unique_assets(tmp_path):
+    # Dos canciones con la misma variante: el nombre original es idéntico.
+    first = tmp_path / "audio" / "S111" / "opus-64k.opus"
+    second = tmp_path / "audio" / "S222" / "opus-64k.opus"
+    for path, content in ((first, b"uno"), (second, b"dos")):
+        path.parent.mkdir(parents=True)
+        path.write_bytes(content)
+
+    batch = plan_batches([first, second], tag_prefix="audio-test", work_dir=tmp_path / "work")[0]
+
+    names = sorted(path.name for path in batch.files)
+    assert names == ["S111_opus-64k.opus", "S222_opus-64k.opus"]
+    assert batch.files[0].read_bytes() in (b"uno", b"dos")
 
 
 def test_publish_without_execute_runs_nothing(tmp_path, monkeypatch):

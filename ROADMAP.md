@@ -29,16 +29,19 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 - **Cierre:** endpoints con pruebas de integración.
 
 ## Fase 4: web (paciente y cuidador)
-- [ ] Next.js con reproductor accesible.
+- [x] Reproductor accesible en HTML estático (frontend/web), probado en Chrome a 390 px y 1024 px.
+- [x] Desplegado en Vercel (`sonidos-alzheimer`, equipo huelladigital).
+- [ ] **Hacer pública la URL:** la protección SSO de Vercel está activa y bloquea el acceso. Requiere que la desactives tú en los ajustes del proyecto.
 - [ ] Panel de cuidador: perfiles, listas, fotografías y recuerdos.
-- [ ] Despliegue en Vercel (requiere tu cuenta conectada).
 - **Cierre:** URL pública verificada desde Internet.
 
 ## Fase 5: Android
-- [ ] ADR de tecnología (propuesta: Flutter).
-- [ ] Reproducción en segundo plano y controles del sistema.
-- [ ] APK instalable probado en dispositivo o emulador.
-- **Cierre:** APK instalado y reproduciendo, verificado.
+- [x] ADR-0004 (Flutter).
+- [x] Reproducción en segundo plano, notificación y controles de auriculares, probados en emulador Android 15.
+- [x] APK de publicación compilada y probada en emulador.
+- [ ] Llamadas, desconexión de auriculares y pruebas en dispositivo físico.
+- [ ] Firma de producción (clave propia, fuera del repositorio).
+- **Cierre:** APK firmada para producción y probada en dispositivo real.
 
 ## Fase 6: investigación de campo
 - [ ] Protocolo y aprobación ética.

@@ -15,6 +15,13 @@
 - `scripts/check_repo_limits.py` y job de GitHub Actions que falla si el repositorio incumple los límites.
 - 11 pruebas nuevas (22 en total).
 
+### Añadido (biblioteca, web y Android)
+- Ocho grabaciones de dominio público de Internet Archive (declaradas en el ítem original), importadas con su licencia y con variante Opus 64 kbps. Verificadas por SHA-256 tras descargarlas de la release.
+- Publicación del lote de audio como release privada `audio-2026-10-31-01` en GitHub, con manifiesto SHA-256. Corregido un fallo: las variantes tenían el mismo nombre y se pisaban.
+- Web de reproducción en HTML estático, desplegada en Vercel. Probada en Chrome: carga, reproducción, siguiente y pausa.
+- App Flutter (`mobile/`) con reproducción en segundo plano, controles multimedia y auriculares. Probada en emulador Android 15.
+- `sonidos build-web` y `scripts/sync_mobile_assets.sh`.
+
 ### Decidido
 - Sin descarga desde YouTube ni otras plataformas (ADR-0002).
 - Audio de reproducción en GitHub Releases; el repositorio contiene índice, código y documentación (ADR-0003).

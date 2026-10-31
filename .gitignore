@@ -28,3 +28,16 @@ research-data/**/raw/
 
 # Sistema
 .DS_Store
+
+# Web: audio de reproducción (se despliega, no se versiona; ADR-0003)
+frontend/web/audio/
+
+# Móvil: audio empaquetado en la APK (no se versiona; ADR-0003)
+mobile/assets/audio/
+
+# APK y compilaciones: se publican como assets de GitHub Releases, nunca en Git (límite de 100 MiB)
+releases/
+mobile/build/
+
+# Vercel: configuración local del proyecto enlazado
+.vercel/

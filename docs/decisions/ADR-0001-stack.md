@@ -18,8 +18,10 @@ Hay que empezar a construir sin cerrar antes toda la investigación. Las decisio
 3. **Procesado de audio: ffmpeg/ffprobe como procesos externos**, invocados con listas de argumentos (sin shell).
    - Justificación: estándar de facto, cubre todos los códecs que se quieren comparar, y evita dependencias de Python con mantenimiento incierto.
 4. **Pruebas: pytest** con audio sintético generado por ffmpeg. No se usa música real en las pruebas.
-5. **Frontend web: Next.js desplegado en Vercel.** Pendiente; no se ha implementado.
-6. **Android: Flutter** (propuesta), por reutilizar la toolchain ya instalada. Pendiente de ADR propio antes de empezar.
+5. **Frontend web: HTML, CSS y JavaScript estáticos, desplegados en Vercel.** Se cambia la propuesta inicial de Next.js (ver nota). Implementado en `frontend/web` y desplegado.
+6. **Android: Flutter** (ver ADR-0004). Implementado en `mobile/`.
+
+Nota sobre el punto 5: la primera versión sólo necesita leer un índice y reproducir audio. Next.js añadiría un framework sin función real. Se reconsiderará cuando exista una API con datos personales (fase 3).
 7. **Integración continua: GitHub Actions** con ffmpeg en el runner y pytest en Python 3.12 y 3.13.
 
 ## Alternativas descartadas por ahora
