@@ -46,7 +46,8 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | CLI (`import`, `list`, `stats`, `export-index`) | Implementado | 3 pruebas |
 | Índice JSON sin rutas locales | Implementado | 1 prueba |
 | Experimento de compresión perceptual | **No iniciado** | — |
-| Publicación de audio en GitHub Releases | **No implementado** (ADR-0003) | — |
+| Límites de GitHub (asset < 2 GiB, 1000 assets, Git 100 MiB) | Implementado y comprobado en CI (`scripts/check_repo_limits.py`) | 6 pruebas |
+| Preparación de publicación en Releases (lotes, manifiesto SHA-256, comandos gh) | Implementado en modo simulación; **subida real no ejecutada** | 4 pruebas |
 | API web (FastAPI) | **No iniciado** | — |
 | Web de paciente y cuidador (Next.js, Vercel) | **No iniciado** | — |
 | App Android (APK) | **No iniciado** | — |

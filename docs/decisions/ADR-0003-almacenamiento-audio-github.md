@@ -1,6 +1,6 @@
 # ADR-0003: Almacenamiento del audio dentro del ecosistema GitHub
 
-- Estado: aceptada (fase 1), con implementación pendiente
+- Estado: aceptada (fase 1). Límites y preparación de publicación implementados; subida real pendiente de tu confirmación.
 - Fecha: 2026-10-31
 
 ## Contexto
