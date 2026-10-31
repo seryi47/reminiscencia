@@ -1,5 +1,4 @@
-// Reminiscencia · interfaz de escucha. Sin dependencias.
-// Lee data/songs.json y data/folders.json, y reproduce audio/<id>.opus.
+// Reminiscencia · escucha. Sin dependencias: lee data/songs.json y data/folders.json.
 
 const $ = (id) => document.getElementById(id);
 const app = document.querySelector(".app");
@@ -7,372 +6,245 @@ const audio = $("audio");
 
 let songs = [];
 let folders = [];
-let view = [];              // canciones visibles (carpeta + búsqueda), ordenadas
-let folder = "all";         // "all" | "none" | id de carpeta
-let currentId = null;      // canción en reproducción
-let tab = "library";
+let view = [];          // canciones visibles, en orden
+let folder = "all";     // "all" | "none" | id
+let currentId = null;
+let query = "";
 
-// ---------- utilidades ----------
-
-const fmt = (seconds) => {
-  const total = Math.max(0, Math.round(seconds || 0));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+const fmt = (s) => {
+  const t = Math.max(0, Math.round(s || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 };
+const hue = (text) => {
+  let h = 0x811c9dc5;
+  for (const c of text) { h ^= c.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h % 360;
+};
+const artStyle = (seed) => {
+  const h = hue(seed);
+  return `background: linear-gradient(135deg, hsl(${h} 46% 52%), hsl(${(h + 40) % 360} 40% 30%));`;
+};
+const norm = (text) => String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5.5h3.5v13H7zM13.5 5.5H17v13h-3.5z"/></svg>';
 
-// Color estable por canción o carpeta, para que el arte sea siempre el mismo.
-function hueOf(text) {
-  // FNV-1a: dispersa bien incluso ids parecidos, para que cada portada tenga su color.
-  let hash = 0x811c9dc5;
-  for (const char of text) {
-    hash ^= char.charCodeAt(0);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash % 360;
-}
+const inFolder = (s) => folder === "all" || (folder === "none" ? !s.folder_id : s.folder_id === folder);
+const folderLabel = () => (folder === "all" ? "Todas las canciones" : folder === "none" ? "Sin carpeta" : (folders.find((f) => f.id === folder) || {}).name || "Carpeta");
 
-function artStyle(seed) {
-  const hue = hueOf(seed);
-  const next = (hue + 46) % 360;
-  return `background: linear-gradient(135deg, hsl(${hue} 78% 58%), hsl(${next} 62% 34%));`;
-}
-
-const PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
-const PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z"/></svg>';
-
-function folderName(id) {
-  if (id === "all") return "Todas las canciones";
-  if (id === "none") return "Sin carpeta";
-  const found = folders.find((item) => item.id === id);
-  return found ? found.name : "Carpeta";
-}
-
-function inFolder(song) {
-  if (folder === "all") return true;
-  if (folder === "none") return !song.folder_id;
-  return song.folder_id === folder;
-}
-
-// Búsqueda por título, artista, año y etiquetas; sin distinguir mayúsculas ni tildes.
-const normalize = (text) => String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-
-function matches(song, query) {
+function matches(s) {
   if (!query) return true;
-  const haystack = normalize([song.title, song.artist, song.year, (song.tags || []).join(" ")].join(" "));
-  return query.split(/\s+/).every((word) => haystack.includes(word));
+  const text = norm([s.title, s.artist, s.year, (s.tags || []).join(" ")].join(" "));
+  return query.split(/\s+/).every((w) => text.includes(w));
 }
 
-// ---------- vista ----------
+// ---------- carpetas ----------
 
-function applyView() {
-  const query = normalize($("search").value.trim());
-  view = songs
-    .filter((song) => inFolder(song) && matches(song, query))
-    .sort((a, b) => a.title.localeCompare(b.title, "es"));
+const children = (parent) => folders.filter((f) => (f.parent_id || null) === parent).sort((a, b) => a.name.localeCompare(b.name, "es"));
 
-  renderHero();
-  renderGrid();
-  renderNow();
-  $("empty").hidden = view.length > 0;
-}
-
-function renderHero() {
-  const isFolder = folder !== "all" && folder !== "none";
-  $("hero-kind").textContent = isFolder ? "Carpeta" : "Biblioteca";
-  $("hero-title").textContent = folderName(folder);
-  $("hero-meta").textContent = `${view.length} ${view.length === 1 ? "canción" : "canciones"}`;
-  const art = $("hero-art");
-  art.setAttribute("style", artStyle(folder === "all" ? "biblioteca" : folder));
-}
-
-function renderGrid() {
-  const grid = $("grid");
-  grid.innerHTML = "";
-  view.forEach((song) => {
-    const li = document.createElement("li");
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "card";
-    card.setAttribute("aria-current", String(song.id === currentId));
-    card.setAttribute("aria-label", `Reproducir ${song.title}`);
-    if (song.id === currentId) card.classList.add("is-playing");
-
-    const art = document.createElement("span");
-    art.className = "card-art";
-    art.setAttribute("style", artStyle(song.id));
-    art.setAttribute("aria-hidden", "true");
-    const play = document.createElement("span");
-    play.className = "card-play";
-    play.innerHTML = PLAY_ICON;
-    art.appendChild(play);
-
-    const title = document.createElement("span");
-    title.className = "card-title";
-    title.textContent = song.title;
-    const meta = document.createElement("span");
-    meta.className = "card-meta";
-    meta.textContent = [song.artist, song.year].filter(Boolean).join(" · ") || fmt(song.duration_s);
-
-    card.append(art, title, meta);
-    card.addEventListener("click", () => playById(song.id));
-    li.appendChild(card);
-    grid.appendChild(li);
-  });
-}
-
-// ---------- carpetas (barra lateral y chips) ----------
-
-const children = (parentId) =>
-  folders
-    .filter((item) => (item.parent_id || null) === parentId)
-    .sort((a, b) => a.name.localeCompare(b.name, "es"));
-
-const countIn = (id) => songs.filter((song) => song.folder_id === id).length;
-
-function folderRow(id, label, count, depth) {
-  const row = document.createElement("div");
-  row.className = "folder-row";
-  row.style.paddingLeft = `${depth * 14}px`;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "nav-item";
-  button.dataset.folder = id;
-  button.setAttribute("aria-current", String(id === folder));
-  button.innerHTML = '<span class="nav-icon" aria-hidden="true">&#9645;</span><span class="nav-text"></span><span class="badge"></span>';
-  button.querySelector(".nav-text").textContent = label;
-  button.querySelector(".badge").textContent = String(count);
-  button.addEventListener("click", () => selectFolder(id));
-  row.appendChild(button);
-  return row;
-}
-
-function renderFolders() {
-  const tree = $("folder-tree");
+function renderTree() {
+  const tree = $("tree");
   tree.innerHTML = "";
-  const walk = (parentId, depth) => {
-    children(parentId).forEach((item) => {
-      tree.appendChild(folderRow(item.id, item.name, countIn(item.id), depth));
-      walk(item.id, depth + 1);
-    });
-  };
+  const walk = (parent, depth) => children(parent).forEach((f) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "tree-item";
+    b.dataset.folder = f.id;
+    b.style.paddingLeft = `${8 + depth * 12}px`;
+    b.innerHTML = '<span class="nav-text"></span><span class="count"></span>';
+    b.querySelector(".nav-text").textContent = f.name;
+    b.querySelector(".count").textContent = String(songs.filter((s) => s.folder_id === f.id).length);
+    tree.appendChild(b);
+    walk(f.id, depth + 1);
+  });
   walk(null, 0);
-  $("folders-empty").hidden = folders.length > 0;
-
-  document.querySelectorAll("[data-count]").forEach((badge) => {
-    const key = badge.dataset.count;
-    badge.textContent = String(key === "all" ? songs.length : songs.filter((s) => !s.folder_id).length);
+  $("tree-empty").hidden = folders.length > 0;
+  document.querySelectorAll("[data-count]").forEach((el) => {
+    el.textContent = String(el.dataset.count === "all" ? songs.length : songs.filter((s) => !s.folder_id).length);
   });
-  document.querySelectorAll(".nav > .nav-item[data-folder]").forEach((button) => {
-    button.setAttribute("aria-current", String(button.dataset.folder === folder));
-  });
+  document.querySelectorAll("[data-folder]").forEach((b) => b.setAttribute("aria-current", String(b.dataset.folder === folder)));
+}
 
+function renderChips() {
   const chips = $("chips");
   chips.innerHTML = "";
-  const addChip = (id, label) => {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "chip";
-    chip.setAttribute("role", "listitem");
-    chip.setAttribute("aria-current", String(id === folder));
-    chip.textContent = label;
-    chip.addEventListener("click", () => selectFolder(id));
-    chips.appendChild(chip);
+  const add = (id, label) => {
+    const c = document.createElement("button");
+    c.type = "button";
+    c.className = "chip";
+    c.dataset.folder = id;
+    c.setAttribute("aria-current", String(id === folder));
+    c.textContent = label;
+    chips.appendChild(c);
   };
-  addChip("all", "Todas");
-  addChip("none", "Sin carpeta");
-  children(null).forEach((item) => addChip(item.id, item.name));
+  add("all", "Todas");
+  add("none", "Sin carpeta");
+  children(null).forEach((f) => add(f.id, f.name));
 }
 
 function selectFolder(id) {
   folder = id;
-  renderFolders();
-  applyView();
-  if (tab === "folders") setTab("library");
+  setTab("library");
+  $("scrim").hidden = true;
+  renderTree();
+  renderChips();
+  renderList();
 }
 
-document.querySelectorAll(".nav > .nav-item[data-folder]").forEach((button) => {
-  button.addEventListener("click", () => selectFolder(button.dataset.folder));
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-folder]");
+  if (b) selectFolder(b.dataset.folder);
 });
 
-// ---------- pestañas (móvil) ----------
+// ---------- lista ----------
 
-function setTab(name) {
-  tab = name;
-  app.dataset.tab = name;
-  document.querySelectorAll(".tab").forEach((button) => {
-    button.setAttribute("aria-current", String(button.dataset.tab === name));
+function renderList() {
+  view = songs.filter((s) => inFolder(s) && matches(s)).sort((a, b) => a.title.localeCompare(b.title, "es"));
+  $("title").textContent = folderLabel();
+  $("subtitle").textContent = `${view.length} ${view.length === 1 ? "canción" : "canciones"}`;
+  $("empty").hidden = view.length > 0;
+  const list = $("list");
+  list.innerHTML = "";
+  view.forEach((s, index) => {
+    const li = document.createElement("li");
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "row";
+    row.dataset.id = s.id;
+    row.setAttribute("aria-current", String(s.id === currentId));
+    row.setAttribute("aria-label", `Reproducir ${s.title}`);
+    row.innerHTML = `
+      <span class="row-num"><span>${index + 1}</span>${PLAY}</span>
+      <span class="row-title"><b></b><small></small></span>
+      <span class="row-dur"></span>`;
+    row.querySelector("b").textContent = s.title;
+    row.querySelector("small").textContent = [s.artist, s.year].filter(Boolean).join(" · ");
+    row.querySelector(".row-dur").textContent = fmt(s.duration_s);
+    row.addEventListener("click", () => play(s.id));
+    li.appendChild(row);
+    list.appendChild(li);
   });
-  if (name === "search") $("search").focus();
 }
-
-document.querySelectorAll(".tab").forEach((button) => {
-  button.addEventListener("click", () => setTab(button.dataset.tab));
-});
 
 // ---------- reproducción ----------
 
-const indexOfCurrent = () => view.findIndex((song) => song.id === currentId);
+const index = () => view.findIndex((s) => s.id === currentId);
+const current = () => songs.find((s) => s.id === currentId) || null;
 
-function currentSong() {
-  return songs.find((song) => song.id === currentId) || null;
-}
-
-function playById(id) {
-  const song = songs.find((item) => item.id === id);
-  if (!song) return;
+function play(id) {
+  const s = songs.find((x) => x.id === id);
+  if (!s) return;
   currentId = id;
-  audio.src = song.audio;
-  audio.play().catch(() => {
-    $("mini-meta").textContent = "Pulsa play para empezar";
-  });
-  paintNowPlaying();
-  renderGrid();
+  audio.src = s.audio;
+  audio.play().catch(() => {});
+  paint();
+  renderList();
 }
 
 function step(delta) {
   if (!view.length) return;
-  const index = indexOfCurrent();
-  const next = index === -1 ? 0 : Math.min(Math.max(index + delta, 0), view.length - 1);
-  playById(view[next].id);
-}
-
-function paintNowPlaying() {
-  const song = currentSong();
-  const title = song ? song.title : "Elige una canción";
-  const meta = song ? [song.artist, song.year].filter(Boolean).join(" · ") || " " : " ";
-  const position = song ? `${indexOfCurrent() + 1} de ${view.length}` : " ";
-
-  $("mini-title").textContent = title;
-  $("mini-meta").textContent = meta;
-  $("mini-art").setAttribute("style", song ? artStyle(song.id) : "");
-  $("now-title").textContent = title;
-  $("now-meta").textContent = meta;
-  $("now-count").textContent = position;
-  $("now-art").setAttribute("style", song ? artStyle(song.id) : "");
-  $("time-total").textContent = song ? fmt(song.duration_s) : "0:00";
-  paintToggle();
-}
-
-function renderNow() {
-  paintNowPlaying();
-}
-
-function isPlaying() {
-  return !audio.paused && !audio.ended;
-}
-
-function paintToggle() {
-  const playing = isPlaying();
-  const label = playing ? "Pausar" : "Reproducir";
-  const icon = playing ? PAUSE_ICON : PLAY_ICON;
-  ["toggle", "now-toggle"].forEach((id) => {
-    const button = $(id);
-    button.setAttribute("aria-label", label);
-    button.setAttribute("aria-pressed", String(playing));
-  });
-  $("toggle-icon").outerHTML = icon.replace("<svg", '<svg id="toggle-icon"');
-  $("now-toggle-icon").outerHTML = icon.replace("<svg", '<svg id="now-toggle-icon"');
-  renderGrid();
+  const i = index();
+  const next = i === -1 ? 0 : Math.min(Math.max(i + delta, 0), view.length - 1);
+  play(view[next].id);
 }
 
 function togglePlayback() {
-  if (!currentId) {
-    if (view.length) playById(view[0].id);
-    return;
+  if (!currentId) { if (view.length) play(view[0].id); return; }
+  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+}
+
+function paint() {
+  const s = current();
+  const title = s ? s.title : "Elige una canción";
+  const sub = s ? [s.artist, s.year].filter(Boolean).join(" · ") || " " : " ";
+  const pos = s ? `${index() + 1} de ${view.length}` : " ";
+  $("mini-title").textContent = title;
+  $("mini-sub").textContent = sub;
+  $("mini-art").setAttribute("style", s ? artStyle(s.id) : "");
+  $("now-title").textContent = title;
+  $("now-sub").textContent = sub;
+  $("now-count").textContent = pos;
+  $("now-art").setAttribute("style", s ? artStyle(s.id) : "");
+  $("time-total").textContent = s ? fmt(s.duration_s) : "0:00";
+  const playing = !audio.paused && !audio.ended;
+  for (const [btn, icon] of [["toggle", "toggle-icon"], ["now-toggle", "now-toggle-icon"]]) {
+    $(btn).setAttribute("aria-label", playing ? "Pausar" : "Reproducir");
+    $(btn).setAttribute("aria-pressed", String(playing));
+    $(icon).outerHTML = (playing ? PAUSE : PLAY).replace("<svg", `<svg id="${icon}"`);
   }
-  if (audio.paused) audio.play().catch(() => {});
-  else audio.pause();
 }
 
 ["toggle", "now-toggle"].forEach((id) => $(id).addEventListener("click", togglePlayback));
 ["prev", "now-prev"].forEach((id) => $(id).addEventListener("click", () => step(-1)));
 ["next", "now-next"].forEach((id) => $(id).addEventListener("click", () => step(1)));
 
-audio.addEventListener("play", paintToggle);
-audio.addEventListener("pause", paintToggle);
-audio.addEventListener("ended", () => {
-  const index = indexOfCurrent();
-  if (index >= 0 && index < view.length - 1) step(1);
-  else paintToggle();
-});
-audio.addEventListener("loadedmetadata", () => {
-  $("seek").max = String(Math.floor(audio.duration || 0));
-  paintFill($("seek"));
-});
+audio.addEventListener("play", paint);
+audio.addEventListener("pause", paint);
+audio.addEventListener("ended", () => (index() < view.length - 1 ? step(1) : paint()));
+audio.addEventListener("loadedmetadata", () => { $("seek").max = String(Math.floor(audio.duration || 0)); fill($("seek")); });
 audio.addEventListener("timeupdate", () => {
   $("seek").value = String(Math.floor(audio.currentTime));
   $("time-now").textContent = fmt(audio.currentTime);
-  paintFill($("seek"));
+  fill($("seek"));
 });
-$("seek").addEventListener("input", () => {
-  audio.currentTime = Number($("seek").value);
-});
+$("seek").addEventListener("input", () => { audio.currentTime = Number($("seek").value); });
 
-// Relleno visual de las barras de rango (progreso y volumen).
-function paintFill(input) {
+function fill(input) {
   const max = Number(input.max) || 1;
-  const percent = (Number(input.value) / max) * 100;
-  input.style.setProperty("--fill", `${Math.min(100, Math.max(0, percent))}%`);
+  input.style.setProperty("--fill", `${Math.min(100, (Number(input.value) / max) * 100)}%`);
 }
-
-$("volume").addEventListener("input", () => {
-  audio.volume = Number($("volume").value);
-  paintFill($("volume"));
-});
+$("volume").addEventListener("input", () => { audio.volume = Number($("volume").value); fill($("volume")); });
 audio.volume = Number($("volume").value);
-paintFill($("volume"));
+fill($("volume"));
 
-// Vista de pantalla completa (móvil).
-function openNow() {
+// ---------- pestañas y vista completa (móvil) ----------
+
+function setTab(name) {
+  app.dataset.tab = name;
+  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-current", String(t.dataset.tab === name)));
+  if (name === "folders") $("scrim").hidden = false;
+  else $("scrim").hidden = true;
+  if (name === "search") $("search").focus();
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
+$("scrim").addEventListener("click", () => setTab("library"));
+
+const isPhone = () => window.matchMedia("(max-width: 860px)").matches;
+$("open-now").addEventListener("click", () => {
+  if (!isPhone()) return togglePlayback();
   $("now").hidden = false;
-  $("now").dataset.open = "true";
   $("now-close").focus();
-}
-function closeNow() {
-  $("now").dataset.open = "false";
-  $("now").hidden = true;
-  $("track").focus();
-}
-$("track").addEventListener("click", () => {
-  if (window.matchMedia("(max-width: 900px)").matches) openNow();
-  else togglePlayback();
 });
-$("now-close").addEventListener("click", closeNow);
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && $("now").dataset.open === "true") closeNow();
-  if (event.target.matches("input, textarea, select")) return;
-  if (event.code === "Space") {
-    event.preventDefault();
-    togglePlayback();
-  } else if (event.code === "ArrowRight") {
-    step(1);
-  } else if (event.code === "ArrowLeft") {
-    step(-1);
-  } else if (event.key === "/") {
-    event.preventDefault();
-    $("search").focus();
-  }
+$("now-close").addEventListener("click", () => { $("now").hidden = true; $("open-now").focus(); });
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { if (!$("now").hidden) $("now").hidden = true; if (app.dataset.tab === "folders") setTab("library"); }
+  if (e.target.matches("input, textarea, select")) return;
+  if (e.code === "Space") { e.preventDefault(); togglePlayback(); }
+  else if (e.code === "ArrowRight") step(1);
+  else if (e.code === "ArrowLeft") step(-1);
+  else if (e.key === "/") { e.preventDefault(); $("search").focus(); }
 });
 
-$("search").addEventListener("input", applyView);
+$("search").addEventListener("input", () => { query = norm($("search").value.trim()); renderList(); });
 
 // ---------- carga ----------
 
 async function load() {
   try {
-    const [songsResponse, foldersResponse] = await Promise.all([
+    const [s, f] = await Promise.all([
       fetch("data/songs.json", { cache: "no-cache" }),
       fetch("data/folders.json", { cache: "no-cache" }).catch(() => null),
     ]);
-    if (!songsResponse.ok) throw new Error(`HTTP ${songsResponse.status}`);
-    songs = await songsResponse.json();
-    folders = foldersResponse && foldersResponse.ok ? await foldersResponse.json() : [];
+    if (!s.ok) throw new Error(String(s.status));
+    songs = await s.json();
+    folders = f && f.ok ? await f.json() : [];
     $("status").textContent = `${songs.length} canciones · ${folders.length} carpetas`;
-    setTab("library");
-    renderFolders();
-    applyView();
-  } catch (error) {
+    renderTree();
+    renderChips();
+    renderList();
+    paint();
+  } catch (e) {
     $("status").textContent = "No se pudo cargar la biblioteca. Recarga la página.";
   }
 }
-
 load();

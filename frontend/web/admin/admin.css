@@ -1,0 +1,145 @@
+/* Administración: estructura y componentes propios (el sistema visual viene de ../styles.css). */
+
+[hidden] { display: none !important; }
+
+.brand-mark, .brand-name { font-weight: 700; letter-spacing: -0.01em; }
+.small { font-size: 12px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.row-end { display: flex; justify-content: flex-end; gap: 8px; }
+.grow { flex: 1 1 260px; }
+
+/* Acceso */
+.gate {
+  min-height: 100dvh; display: grid; place-items: center; padding: 24px;
+  background: radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%), var(--bg);
+}
+.gate-card {
+  width: min(360px, 100%); display: grid; gap: 14px;
+  padding: 26px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel);
+}
+.gate-card h1 { margin: 0; font-size: 20px; font-weight: 650; }
+.gate-card .btn { justify-content: center; height: 36px; }
+.brand-mark { margin: 0; color: var(--accent); font-size: 13px; }
+
+/* Cabecera */
+.admin { min-height: 100dvh; display: flex; flex-direction: column; }
+.admin-top {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: 52px; padding: 0 16px; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--side) 92%, transparent); backdrop-filter: blur(10px);
+}
+.admin-brand, .admin-top-right { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-name { font-size: 15px; }
+#job-pill { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+
+/* Cuerpo: carpetas a la izquierda, trabajo a la derecha */
+.admin-body { flex: 1; display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 0; }
+.admin-side {
+  border-right: 1px solid var(--line); background: var(--side);
+  padding: 12px 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto;
+}
+.side-head { display: flex; align-items: center; justify-content: space-between; padding: 0 6px 4px; }
+.tree, .tree-item { list-style: none; }
+.tree { margin: 0; padding: 0; display: grid; gap: 1px; }
+.tree-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; min-height: 30px; padding: 5px 8px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--muted); text-align: left; cursor: pointer;
+}
+.tree-item:hover { background: var(--raised); color: var(--text); }
+.tree-item[aria-current="true"] { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.tree .tree-row { display: flex; align-items: center; gap: 2px; }
+.tree .tree-row .tree-item { flex: 1; min-width: 0; }
+.tree .tree-row .tree-item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-row .more { opacity: 0; }
+.tree-row:hover .more, .tree-row:focus-within .more { opacity: 1; }
+.count { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.tree-all { margin-top: 6px; }
+.new-folder { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); }
+
+/* Principal */
+.admin-main { min-width: 0; padding: 16px 18px 40px; display: grid; gap: 14px; align-content: start; }
+.panel { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); padding: 16px; }
+.panel-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.panel-head p { margin: 2px 0 0; font-size: 13px; }
+.panel-head { margin-bottom: 12px; }
+
+/* Añadir */
+.add { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.add-form { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.add-form .field { min-width: 0; }
+.add-form #license-field, .add-form .field:nth-child(3) { flex: 0 1 200px; }
+.add-btn { height: 34px; min-width: 96px; justify-content: center; }
+.hint { min-height: 20px; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+.hint.ok { color: var(--ok); }
+.hint.bad { color: var(--danger); }
+
+/* Biblioteca */
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.toolbar input[type="search"] { width: 220px; height: 32px; }
+.toolbar select { width: auto; height: 32px; }
+.table-wrap { overflow-x: auto; margin: 0 -4px; }
+table.songs { width: 100%; border-collapse: collapse; min-width: 720px; }
+table.songs th {
+  text-align: left; font-size: 12px; font-weight: 600; color: var(--faint);
+  padding: 6px 8px; border-bottom: 1px solid var(--line);
+}
+table.songs td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.songs tr:last-child td { border-bottom: 0; }
+table.songs tbody tr:hover { background: color-mix(in srgb, var(--raised) 60%, transparent); }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.title-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.title-cell .art { width: 30px; height: 30px; }
+.title-cell .meta { min-width: 0; }
+.title-cell .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+.title-cell .sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+.lic { font-size: 12px; color: var(--muted); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+td .btn { height: 28px; padding: 0 10px; }
+.empty { color: var(--muted); text-align: center; padding: 24px 0; margin: 0; }
+
+/* Trabajos */
+.jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.jobs li {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--raised);
+}
+.jobs .msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jobs time { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+/* Edición */
+.drawer-scrim { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.45); }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 31; width: min(420px, 100%);
+  display: flex; flex-direction: column;
+  background: var(--panel); border-left: 1px solid var(--line); box-shadow: -20px 0 50px -30px rgba(0, 0, 0, 0.6);
+  animation: slide 0.22s var(--ease) both;
+}
+@keyframes slide { from { transform: translateX(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.drawer-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.drawer-body { padding: 16px; display: grid; gap: 12px; overflow-y: auto; flex: 1; align-content: start; }
+.switch-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.facts { margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; color: var(--muted); }
+.facts dt { color: var(--faint); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.drawer-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; }
+
+/* Aviso */
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50;
+  padding: 9px 14px; border-radius: var(--r-sm); background: var(--raised); border: 1px solid var(--line-2);
+  box-shadow: 0 16px 40px -20px rgba(0, 0, 0, 0.7); font-size: 13px; max-width: min(520px, 92vw);
+}
+.toast.ok { border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+.toast.bad { border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+
+/* Móvil */
+@media (max-width: 860px) {
+  .admin-body { grid-template-columns: 1fr; }
+  .admin-side { border-right: 0; border-bottom: 1px solid var(--line); max-height: 220px; }
+  .admin-main { padding: 12px 12px 40px; }
+  .toolbar input[type="search"] { width: 100%; }
+  .admin-top-right .btn-ghost:first-child { display: none; }
+  #job-pill { display: none; }
+}

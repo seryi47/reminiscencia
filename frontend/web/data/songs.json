@@ -1,14 +1,80 @@
 [
   {
+    "id": "S65bfe90013b5e118",
+    "title": "2 to 2",
+    "artist": "",
+    "year": null,
+    "tags": [],
+    "folder_id": null,
+    "duration_s": 177.685,
+    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+    "audio": "audio/S65bfe90013b5e118.opus"
+  },
+  {
     "id": "S5aac103b6eb2ecf4",
     "title": "Charleston (Fox Trot)",
     "artist": "",
     "year": null,
     "tags": [],
     "folder_id": null,
-    "duration_s": 242.416327,
+    "duration_s": 242.416,
     "license": "Dominio público según Internet Archive (item charleston1925; Public Domain Mark / CC0 declarada por el depositante)",
     "audio": "audio/S5aac103b6eb2ecf4.opus"
+  },
+  {
+    "id": "S63dd0f83182c55e7",
+    "title": "Charleston Rag",
+    "artist": "",
+    "year": null,
+    "tags": [],
+    "folder_id": null,
+    "duration_s": 175.868,
+    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+    "audio": "audio/S63dd0f83182c55e7.opus"
+  },
+  {
+    "id": "S5bf3b26b83582a89",
+    "title": "Christmas Bells",
+    "artist": "",
+    "year": null,
+    "tags": [],
+    "folder_id": null,
+    "duration_s": 180.661,
+    "license": "Dominio público (Creative Commons) (Internet Archive: christmasbells1919)",
+    "audio": "audio/S5bf3b26b83582a89.opus"
+  },
+  {
+    "id": "S4b8e59026c17c3f0",
+    "title": "Henpecked Blues",
+    "artist": "",
+    "year": null,
+    "tags": [],
+    "folder_id": null,
+    "duration_s": 189.857,
+    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+    "audio": "audio/S4b8e59026c17c3f0.opus"
+  },
+  {
+    "id": "S32f9cc74e4842795",
+    "title": "Hold Me",
+    "artist": "",
+    "year": null,
+    "tags": [],
+    "folder_id": null,
+    "duration_s": 156.508,
+    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+    "audio": "audio/S32f9cc74e4842795.opus"
+  },
+  {
+    "id": "S3558a2f1ac2678f5",
+    "title": "Kater St. Rag",
+    "artist": "",
+    "year": null,
+    "tags": [],
+    "folder_id": null,
+    "duration_s": 151.284,
+    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+    "audio": "audio/S3558a2f1ac2678f5.opus"
   },
   {
     "id": "Sc561a4ba1ae57521",
@@ -22,80 +88,14 @@
     "audio": "audio/Sc561a4ba1ae57521.opus"
   },
   {
-    "id": "S65bfe90013b5e118",
-    "title": "2 to 2",
-    "artist": "",
-    "year": null,
-    "tags": [],
-    "folder_id": null,
-    "duration_s": 177.684898,
-    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
-    "audio": "audio/S65bfe90013b5e118.opus"
-  },
-  {
-    "id": "S3558a2f1ac2678f5",
-    "title": "Kater St. Rag",
-    "artist": "",
-    "year": null,
-    "tags": [],
-    "folder_id": null,
-    "duration_s": 151.28381,
-    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
-    "audio": "audio/S3558a2f1ac2678f5.opus"
-  },
-  {
-    "id": "S63dd0f83182c55e7",
-    "title": "Charleston Rag",
-    "artist": "",
-    "year": null,
-    "tags": [],
-    "folder_id": null,
-    "duration_s": 175.867937,
-    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
-    "audio": "audio/S63dd0f83182c55e7.opus"
-  },
-  {
     "id": "Sf749859f9e2e7ec1",
     "title": "Whispering",
     "artist": "",
     "year": null,
     "tags": [],
     "folder_id": null,
-    "duration_s": 197.508934,
+    "duration_s": 197.509,
     "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
     "audio": "audio/Sf749859f9e2e7ec1.opus"
-  },
-  {
-    "id": "S4b8e59026c17c3f0",
-    "title": "Henpecked Blues",
-    "artist": "",
-    "year": null,
-    "tags": [],
-    "folder_id": null,
-    "duration_s": 189.856508,
-    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
-    "audio": "audio/S4b8e59026c17c3f0.opus"
-  },
-  {
-    "id": "S32f9cc74e4842795",
-    "title": "Hold Me",
-    "artist": "",
-    "year": null,
-    "tags": [],
-    "folder_id": null,
-    "duration_s": 156.508299,
-    "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
-    "audio": "audio/S32f9cc74e4842795.opus"
-  },
-  {
-    "id": "S5bf3b26b83582a89",
-    "title": "Christmas Bells",
-    "artist": "",
-    "year": null,
-    "tags": [],
-    "folder_id": null,
-    "duration_s": 180.661406,
-    "license": "Dominio público (Creative Commons) (Internet Archive: christmasbells1919)",
-    "audio": "audio/S5bf3b26b83582a89.opus"
   }
 ]

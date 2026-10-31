@@ -1,0 +1,99 @@
+name: library
+
+# Escrituras al catálogo de la biblioteca (ADR-0007). Lo lanza la web de administración en Vercel
+# (funciones /api/dispatch) o este mismo botón desde GitHub.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Qué hacer"
+        required: true
+        type: choice
+        options: [import, publish, organize]
+      url:
+        description: "URL (import)"
+        required: false
+        default: ""
+      license:
+        description: "Licencia (solo ficheros directos)"
+        required: false
+        default: ""
+      title:
+        description: "Título (import, opcional)"
+        required: false
+        default: ""
+      song_id:
+        description: "ID de canción (publish)"
+        required: false
+        default: ""
+      public:
+        description: "Publicar (publish)"
+        required: false
+        type: choice
+        options: ["true", "false"]
+        default: "false"
+      payload:
+        description: "JSON de la operación (organize)"
+        required: false
+        default: "{}"
+
+permissions:
+  contents: write
+
+# Una escritura cada vez: dos cambios simultáneos al catálogo se pisarían.
+concurrency:
+  group: library-catalog
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+
+      - name: Instalar el backend
+        run: pip install -q -e backend
+
+      - name: Aplicar la acción
+        env:
+          ACTION: ${{ inputs.action }}
+          URL: ${{ inputs.url }}
+          LICENSE: ${{ inputs.license }}
+          TITLE: ${{ inputs.title }}
+          SONG_ID: ${{ inputs.song_id }}
+          PUBLIC: ${{ inputs.public }}
+          PAYLOAD: ${{ inputs.payload }}
+        run: |
+          set -o pipefail
+          python scripts/ci_library.py | tee result.json
+          echo "## Resultado" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat result.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          rm -f result.json
+
+      - name: Comprobar límites y guardar cambios
+        env:
+          ACTION: ${{ inputs.action }}
+          SONG_ID: ${{ inputs.song_id }}
+          URL: ${{ inputs.url }}
+        run: |
+          git add -A audio-library frontend/web
+          if git diff --cached --quiet; then
+            echo "Sin cambios que guardar."
+            exit 0
+          fi
+          python scripts/check_repo_limits.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          MESSAGE="library: ${ACTION} ${SONG_ID:-$URL}"
+          git commit -q -m "$MESSAGE"
+          git push -q origin HEAD:main
