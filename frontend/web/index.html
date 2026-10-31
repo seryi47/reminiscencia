@@ -2,80 +2,155 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0d10">
   <title>Reminiscencia</title>
   <meta name="description" content="Música para recordar, organizada por carpetas. Reproductor sencillo y accesible.">
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23e8a15c'/%3E%3Cpath d='M12 9v11.2a3.2 3.2 0 1 0 1.6 2.8V13.5l7-1.8v7.5a3.2 3.2 0 1 0 1.6 2.8V7z' fill='%230c0d10'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <a class="skip" href="#player">Ir al reproductor</a>
+  <a class="skip" href="#main">Saltar al contenido</a>
 
-  <header class="top">
-    <div class="brand">
-      <h1>Reminiscencia</h1>
-      <p class="status" id="status" role="status">Cargando la biblioteca…</p>
+  <div class="app">
+    <!-- Barra lateral (escritorio) -->
+    <aside class="sidebar" aria-label="Navegación">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 17.5a2.5 2.5 0 1 1-2-2.45V6.2l10-2.3v10.6a2.5 2.5 0 1 1-2-2.45V7.5L9 9.3z"/></svg>
+        </span>
+        <span class="brand-name">Reminiscencia</span>
+      </div>
+
+      <nav class="nav">
+        <p class="nav-label">Biblioteca</p>
+        <button class="nav-item" type="button" data-folder="all" aria-current="true">
+          <span class="nav-icon" aria-hidden="true">&#9836;</span>
+          <span class="nav-text">Todas las canciones</span>
+          <span class="badge" data-count="all">0</span>
+        </button>
+        <button class="nav-item" type="button" data-folder="none">
+          <span class="nav-icon" aria-hidden="true">&#9675;</span>
+          <span class="nav-text">Sin carpeta</span>
+          <span class="badge" data-count="none">0</span>
+        </button>
+
+        <p class="nav-label">Carpetas</p>
+        <div id="folder-tree" class="folder-tree"></div>
+        <p class="nav-empty" id="folders-empty">Aún no hay carpetas. Se crean desde el panel de organización.</p>
+      </nav>
+
+      <p class="sidebar-foot">Grabaciones de dominio público.<br>Ver <a href="data/songs.json">el índice</a>.</p>
+    </aside>
+
+    <!-- Contenido principal -->
+    <div class="content">
+      <header class="topbar">
+        <label class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span class="visually-hidden">Buscar canciones</span>
+          <input id="search" type="search" placeholder="Buscar por título, artista o etiqueta" autocomplete="off">
+        </label>
+        <p class="status" id="status" role="status">Cargando la biblioteca…</p>
+      </header>
+
+      <main id="main" tabindex="-1">
+        <section class="hero" id="hero" aria-labelledby="hero-title">
+          <div class="hero-art" id="hero-art" aria-hidden="true"></div>
+          <div class="hero-text">
+            <p class="eyebrow" id="hero-kind">Biblioteca</p>
+            <h1 id="hero-title">Todas las canciones</h1>
+            <p class="hero-meta" id="hero-meta"></p>
+          </div>
+        </section>
+
+        <div class="chips" id="chips" role="list" aria-label="Carpetas"></div>
+
+        <section aria-label="Canciones">
+          <ul class="grid" id="grid"></ul>
+          <p class="empty" id="empty" hidden>No hay canciones que coincidan.</p>
+        </section>
+      </main>
     </div>
-    <label class="search">
-      <span class="visually-hidden">Buscar canciones</span>
-      <input id="search" type="search" placeholder="Buscar por título o etiqueta" autocomplete="off">
-    </label>
-  </header>
 
-  <div class="layout">
-    <nav class="folders" aria-label="Carpetas">
-      <h2>Carpetas</h2>
-      <ul id="folder-list" class="folder-list"></ul>
-    </nav>
+    <!-- Reproductor -->
+    <section class="player" aria-label="Reproductor">
+      <button class="player-track" id="track" type="button" aria-label="Abrir la vista de reproducción">
+        <span class="mini-art" id="mini-art" aria-hidden="true"></span>
+        <span class="mini-text">
+          <span class="mini-title" id="mini-title">Elige una canción</span>
+          <span class="mini-meta" id="mini-meta">&nbsp;</span>
+        </span>
+      </button>
 
-    <main>
-      <section class="player" id="player" aria-labelledby="now-title">
-        <p class="eyebrow" id="now-count">&nbsp;</p>
-        <h2 id="now-title">Elige una canción</h2>
-        <p class="meta" id="now-meta">&nbsp;</p>
-
+      <div class="player-center">
         <div class="controls">
-          <button type="button" class="btn btn-side" id="prev" aria-label="Canción anterior">
-            <span aria-hidden="true">&#9664;&#9664;</span>
-            <span class="btn-label">Anterior</span>
+          <button type="button" class="ctrl" id="prev" aria-label="Canción anterior">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM20 5.5v13L9.5 12z"/></svg>
           </button>
-          <button type="button" class="btn btn-main" id="toggle" aria-label="Reproducir" aria-pressed="false">
-            <span aria-hidden="true" id="toggle-icon">&#9654;</span>
-            <span class="btn-label" id="toggle-label">Reproducir</span>
+          <button type="button" class="ctrl ctrl-play" id="toggle" aria-label="Reproducir" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" id="toggle-icon"><path d="M8 5.5v13l11-6.5z"/></svg>
           </button>
-          <button type="button" class="btn btn-side" id="next" aria-label="Canción siguiente">
-            <span aria-hidden="true">&#9654;&#9654;</span>
-            <span class="btn-label">Siguiente</span>
+          <button type="button" class="ctrl" id="next" aria-label="Canción siguiente">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5.5v13L14.5 12z"/></svg>
           </button>
         </div>
-
         <div class="progress">
+          <span class="time" id="time-now">0:00</span>
           <input type="range" id="seek" min="0" max="0" step="1" value="0" aria-label="Posición de la canción">
-          <p class="times"><span id="time-now">0:00</span><span id="time-total">0:00</span></p>
+          <span class="time" id="time-total">0:00</span>
         </div>
+      </div>
 
+      <div class="player-right">
         <label class="volume">
-          <span>Volumen</span>
+          <span class="visually-hidden">Volumen</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
           <input type="range" id="volume" min="0" max="1" step="0.05" value="0.8">
         </label>
+      </div>
+      <audio id="audio" preload="metadata"></audio>
+    </section>
 
-        <audio id="audio" preload="metadata"></audio>
-      </section>
+    <!-- Vista de reproducción a pantalla completa (móvil y accesibilidad) -->
+    <section class="now" id="now" aria-labelledby="now-title" hidden>
+      <button class="now-close" type="button" id="now-close" aria-label="Cerrar la vista de reproducción">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="now-art" id="now-art" aria-hidden="true"></div>
+      <p class="eyebrow" id="now-count">&nbsp;</p>
+      <h2 id="now-title">Elige una canción</h2>
+      <p class="now-meta" id="now-meta">&nbsp;</p>
+      <div class="now-controls">
+        <button type="button" class="ctrl ctrl-lg" id="now-prev" aria-label="Canción anterior">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM20 5.5v13L9.5 12z"/></svg>
+        </button>
+        <button type="button" class="ctrl ctrl-play ctrl-xl" id="now-toggle" aria-label="Reproducir">
+          <svg viewBox="0 0 24 24" aria-hidden="true" id="now-toggle-icon"><path d="M8 5.5v13l11-6.5z"/></svg>
+        </button>
+        <button type="button" class="ctrl ctrl-lg" id="now-next" aria-label="Canción siguiente">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5.5v13L14.5 12z"/></svg>
+        </button>
+      </div>
+    </section>
 
-      <section aria-labelledby="list-title" class="library">
-        <div class="list-head">
-          <h2 id="list-title">Canciones</h2>
-          <p class="help" id="list-help"></p>
-        </div>
-        <ol class="song-list" id="song-list"></ol>
-        <p class="help" id="empty" hidden>No hay canciones en esta carpeta.</p>
-      </section>
-    </main>
+    <!-- Navegación inferior (móvil) -->
+    <nav class="tabbar" aria-label="Navegación móvil">
+      <button type="button" class="tab" data-tab="library" aria-current="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5a2.5 2.5 0 1 1-2-2.45V6.2l10-2.3v10.6a2.5 2.5 0 1 1-2-2.45V7.5L9 9.3z"/></svg>
+        <span>Biblioteca</span>
+      </button>
+      <button type="button" class="tab" data-tab="folders">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>
+        <span>Carpetas</span>
+      </button>
+      <button type="button" class="tab" data-tab="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span>Buscar</span>
+      </button>
+    </nav>
+
   </div>
-
-  <footer>
-    <p>Grabaciones de dominio público según la declaración de quien las publicó en Internet Archive. Los datos de la biblioteca están en <a href="data/songs.json">songs.json</a> y <a href="data/folders.json">folders.json</a>.</p>
-  </footer>
 
   <script src="app.js"></script>
 </body>
