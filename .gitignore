@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+backend/.venv/
+backend/*.egg-info/
+.pytest_cache/
+
+# Audio: nunca se versiona. El audio de reproducción se publica como release asset (ADR-0003).
+audio-library/audio/
+audio-library/**/*.opus
+audio-library/**/*.m4a
+audio-library/**/*.mp3
+audio-library/**/*.wav
+audio-library/**/*.flac
+
+# Base de datos local
+*.sqlite
+*.sqlite-journal
+
+# Datos personales de pacientes: nunca en el repositorio
+research-data/personal/
+research-data/**/raw/
+
+# Secretos
+.env
+.env.*
+!.env.example
+
+# Sistema
+.DS_Store
