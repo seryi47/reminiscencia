@@ -33,7 +33,8 @@ research-data/**/raw/
 frontend/web/audio/
 
 # Móvil: audio empaquetado en la APK (no se versiona; ADR-0003)
-mobile/assets/audio/
+mobile/assets/audio/*
+!mobile/assets/audio/.gitkeep
 
 # APK y compilaciones: se publican como assets de GitHub Releases, nunca en Git (límite de 100 MiB)
 releases/
