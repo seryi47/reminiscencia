@@ -19,7 +19,7 @@ El proyecto quiere que GitHub sea el centro de control. Pero una biblioteca musi
 
 1. **Repositorio:** contiene código, documentación, índices JSON, metadatos y pruebas. Nunca audio.
 2. **Audio de reproducción:** se publica como assets de GitHub Releases, agrupados por lote de importación. Cada asset va acompañado de su SHA-256.
-3. **Índice:** `audio-library/indexes/songs.json` (versionado) relaciona cada `song_id` con su hash y con su asset de release.
+3. **Índice:** `audio-library/indexes/catalog.json` (versionado, ADR-0007) relaciona cada `song_id` con su hash. El índice `songs.json` de la primera versión ya no existe.
 4. **Originales:** no se suben. Sólo se conserva la huella y la licencia.
 5. **Condición:** sólo se publica audio cuya licencia esté registrada (ver ADR-0002).
 

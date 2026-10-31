@@ -19,4 +19,4 @@ Límites que se vigilan (docs.github.com, verificados): fichero < 100 MiB (el av
 ## Cuándo cambiar
 
 - Si el audio publicado se acerca a 1 GB, pasar el audio a un almacenamiento externo (Vercel Blob o similar) y dejar en Git solo el índice. Eso requiere decisión y coste explícitos.
-- Los audios no publicados siguen fuera de Git (`audio-library/audio/`).
+- Los audios no publicados también están en Git, en `audio-library/audio/`: el catálogo los necesita para publicarlos después. Lo que se sirve al público es solo `frontend/web/audio/` (lo publicado), según ADR-0007.

@@ -28,9 +28,9 @@ research-data/**/raw/
 # Sistema
 .DS_Store
 
-# Web: el audio publicado se versiona (ADR-0006); el resto de audio sigue fuera de Git
+# Web: el audio publicado y el de la biblioteca se versionan (ADR-0006, ADR-0007)
 
-# Móvil: audio empaquetado en la APK (no se versiona; ADR-0003)
+# Móvil: la app no lleva audio empaquetado; lee la biblioteca de la web (ADR-0004)
 mobile/assets/audio/*
 !mobile/assets/audio/.gitkeep
 
