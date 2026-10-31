@@ -37,6 +37,10 @@ def build_web(library: Library, web_dir: Path) -> list[dict]:
             {
                 "id": song["id"],
                 "title": song["title"],
+                "artist": song["artist"],
+                "year": song["year"],
+                "tags": song["tags"],
+                "folder_id": song["folder_id"],
                 "duration_s": song["duration_s"],
                 "license": song["license"],
                 "audio": f"audio/{target_name}",
@@ -45,6 +49,14 @@ def build_web(library: Library, web_dir: Path) -> list[dict]:
 
     (data_dir / "songs.json").write_text(
         json.dumps(entries, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    folders = [
+        {"id": item["id"], "name": item["name"], "parent_id": item["parent_id"]}
+        for item in library.list_folders()
+    ]
+    (data_dir / "folders.json").write_text(
+        json.dumps(folders, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     return entries
