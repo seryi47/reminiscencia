@@ -1,8 +1,7 @@
 import 'dart:convert';
-
-import 'package:flutter/foundation.dart';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
@@ -12,14 +11,30 @@ import 'song.dart';
 const String kLibraryBase = 'https://reminiscencia.vercel.app/';
 
 class LibraryData {
-  const LibraryData({required this.songs, required this.folders, required this.fromNetwork});
+  const LibraryData({
+    required this.songs,
+    required this.folders,
+    required this.fromNetwork,
+  });
 
   final List<Song> songs;
   final List<Folder> folders;
   final bool fromNetwork;
 }
 
-class LibraryStore {
+/// Acceso a la biblioteca. La implementación real usa la web y la copia local; en pruebas se usa una falsa.
+abstract interface class LibrarySource {
+  /// Lee la biblioteca. Si no hay red, usa la copia guardada; si tampoco hay copia, lanza excepción.
+  Future<LibraryData> load();
+
+  /// Descarga las canciones que falten para escucharlas sin conexión. Devuelve cuántas se han descargado.
+  Future<int> downloadAll(
+    List<Song> songs,
+    void Function(int done, int total) onProgress,
+  );
+}
+
+class LibraryStore implements LibrarySource {
   Directory? _root;
 
   Future<Directory> _dir() async {
@@ -31,6 +46,7 @@ class LibraryStore {
   }
 
   /// Lee la biblioteca de Vercel; si no hay conexión, usa la última copia guardada.
+  @override
   Future<LibraryData> load() async {
     final dir = await _dir();
     try {
@@ -44,20 +60,42 @@ class LibraryStore {
       final songsFile = File('${dir.path}/songs.json');
       final foldersFile = File('${dir.path}/folders.json');
       if (!await songsFile.exists()) rethrow;
-      final foldersBody = await foldersFile.exists() ? await foldersFile.readAsString() : '[]';
-      return _parse(await songsFile.readAsString(), foldersBody, fromNetwork: false);
+      final foldersBody = await foldersFile.exists()
+          ? await foldersFile.readAsString()
+          : '[]';
+      return _parse(
+        await songsFile.readAsString(),
+        foldersBody,
+        fromNetwork: false,
+      );
     }
   }
 
-  LibraryData _parse(String songsBody, String foldersBody, {required bool fromNetwork}) {
-    final songs = (jsonDecode(songsBody) as List).map((e) => Song.fromJson(e as Map<String, dynamic>)).toList();
-    final folders = (jsonDecode(foldersBody) as List).map((e) => Folder.fromJson(e as Map<String, dynamic>)).toList();
-    return LibraryData(songs: songs, folders: folders, fromNetwork: fromNetwork);
+  LibraryData _parse(
+    String songsBody,
+    String foldersBody, {
+    required bool fromNetwork,
+  }) {
+    final songs = (jsonDecode(songsBody) as List)
+        .map((e) => Song.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final folders = (jsonDecode(foldersBody) as List)
+        .map((e) => Folder.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return LibraryData(
+      songs: songs,
+      folders: folders,
+      fromNetwork: fromNetwork,
+    );
   }
 
   Future<String> _get(String path) async {
-    final response = await http.get(Uri.parse('$kLibraryBase$path')).timeout(const Duration(seconds: 20));
-    if (response.statusCode != 200) throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(path));
+    final response = await http
+        .get(Uri.parse('$kLibraryBase$path'))
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(path));
+    }
     return response.body;
   }
 
@@ -73,8 +111,11 @@ class LibraryStore {
 
   Future<bool> isCached(Song song) async => (await audioFile(song)).exists();
 
-  /// Descarga las canciones que faltan para escucharlas sin conexión.
-  Future<int> downloadAll(List<Song> songs, void Function(int done, int total) onProgress) async {
+  @override
+  Future<int> downloadAll(
+    List<Song> songs,
+    void Function(int done, int total) onProgress,
+  ) async {
     var done = 0;
     final missing = <Song>[];
     for (final song in songs) {
@@ -82,8 +123,12 @@ class LibraryStore {
     }
     for (final song in missing) {
       final file = await audioFile(song);
-      final response = await http.get(audioUri(song)).timeout(const Duration(minutes: 3));
-      if (response.statusCode != 200) throw HttpException('No se pudo descargar ${song.title}');
+      final response = await http
+          .get(audioUri(song))
+          .timeout(const Duration(minutes: 3));
+      if (response.statusCode != 200) {
+        throw HttpException('No se pudo descargar ${song.title}');
+      }
       await file.writeAsBytes(response.bodyBytes, flush: true);
       done += 1;
       onProgress(done, missing.length);
