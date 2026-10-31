@@ -29,8 +29,7 @@ research-data/**/raw/
 # Sistema
 .DS_Store
 
-# Web: audio de reproducción (se despliega, no se versiona; ADR-0003)
-frontend/web/audio/
+# Web: el audio publicado se versiona (ADR-0006); el resto de audio sigue fuera de Git
 
 # Móvil: audio empaquetado en la APK (no se versiona; ADR-0003)
 mobile/assets/audio/*
