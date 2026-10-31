@@ -1,4 +1,4 @@
-package es.orbitalabs.sonidos_recordar
+package es.orbitalabs.reminiscencia
 
 import com.ryanheise.audioservice.AudioServiceActivity
 

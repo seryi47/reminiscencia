@@ -23,7 +23,7 @@
 - `sonidos build-web` y `scripts/sync_mobile_assets.sh`.
 - APK firmada para producción (release `apk-2026-10-31-produccion`), verificada con apksigner y probada otra vez en emulador tras reinstalar.
 - Job de Flutter en GitHub Actions (versión 3.44.9): análisis y pruebas.
-- Web pública en https://sonidos-alzheimer.vercel.app, con `vercel.json` que sirve los `.opus` como `audio/ogg; codecs=opus`.
+- Web pública en https://reminiscencia.vercel.app, con `vercel.json` que sirve los `.opus` como `audio/ogg; codecs=opus`.
 
 ### Decidido
 - Sin descarga desde YouTube ni otras plataformas (ADR-0002).

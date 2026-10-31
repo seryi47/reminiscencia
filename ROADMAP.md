@@ -13,7 +13,7 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 - [x] Estructura de carpetas y control de versiones.
 - [x] Decisiones de stack documentadas (ADR-0001 a 0003).
 - [x] Núcleo de biblioteca, importación y transcodificación con pruebas.
-- [x] Repositorio privado en GitHub y primer push (github.com/seryi47/doctorado-sonidos-alzheimer, privado).
+- [x] Repositorio privado en GitHub y primer push (github.com/seryi47/doctorado-reminiscencia, privado).
 - [x] Verificación de la integración continua en GitHub Actions (Python 3.12 y 3.13, verde en el commit 891149c).
 - **Cierre:** pruebas en verde en local y en GitHub Actions.
 
@@ -30,8 +30,8 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 
 ## Fase 4: web (paciente y cuidador)
 - [x] Reproductor accesible en HTML estático (frontend/web), probado en Chrome a 390 px y 1024 px.
-- [x] Desplegado en Vercel (`sonidos-alzheimer`, equipo huelladigital).
-- [x] URL pública: https://sonidos-alzheimer.vercel.app (protección de despliegue desactivada desde el panel de Vercel por el usuario).
+- [x] Desplegado en Vercel (`reminiscencia`, equipo huelladigital).
+- [x] URL pública: https://reminiscencia.vercel.app (protección de despliegue desactivada desde el panel de Vercel por el usuario).
 - [ ] Panel de cuidador: perfiles, listas, fotografías y recuerdos.
 - **Cierre:** URL pública verificada desde Internet.
 

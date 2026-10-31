@@ -2,7 +2,7 @@
 
 Proyecto doctoral y plataforma tecnológica para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado:** fases 1 a 5 en marcha. Biblioteca con 8 pistas de dominio público; web de reproducción pública en https://sonidos-alzheimer.vercel.app; app Android firmada para producción y probada en emulador. Estudios con personas, pendientes.
+**Estado:** fases 1 a 5 en marcha. Biblioteca con 8 pistas de dominio público; web de reproducción pública en https://reminiscencia.vercel.app; app Android firmada para producción y probada en emulador. Estudios con personas, pendientes.
 
 ## Documentación
 - [CLAUDE.md](CLAUDE.md): reglas de trabajo y restricciones.

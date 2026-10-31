@@ -35,7 +35,7 @@ class SonidosAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
           (song) => MediaItem(
             id: song.assetPath,
             title: song.title,
-            album: 'Canciones para recordar',
+            album: 'Reminiscencia',
             duration: Duration(milliseconds: (song.durationS * 1000).round()),
           ),
         )

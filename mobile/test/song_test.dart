@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sonidos_recordar/song.dart';
+import 'package:reminiscencia/song.dart';
 
 void main() {
   test('Song lee el índice generado por build-web', () {

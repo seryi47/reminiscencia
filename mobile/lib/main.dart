@@ -14,7 +14,7 @@ Future<void> main() async {
   audioHandler = await AudioService.init(
     builder: SonidosAudioHandler.new,
     config: const AudioServiceConfig(
-      androidNotificationChannelId: 'es.orbitalabs.sonidos_recordar.audio',
+      androidNotificationChannelId: 'es.orbitalabs.reminiscencia.audio',
       androidNotificationChannelName: 'Reproducción',
       androidNotificationOngoing: true,
     ),
@@ -28,7 +28,7 @@ class SonidosApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Canciones para recordar',
+      title: 'Reminiscencia',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7A3E12)),
@@ -77,7 +77,7 @@ class _LibraryPageState extends State<LibraryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Canciones para recordar')),
+      appBar: AppBar(title: const Text('Reminiscencia')),
       body: SafeArea(
         child: CustomScrollView(
           slivers: [

@@ -6,7 +6,7 @@
     <!-- La biblioteca va empaquetada en la APK: no se necesita INTERNET. -->
 
     <application
-        android:label="Canciones para recordar"
+        android:label="Reminiscencia"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -38,5 +38,5 @@ Alternativa descartada por ahora: Kotlin con Jetpack Compose y Media3. Dar√≠a m√
 
 ## Decisiones pendientes del usuario
 
-- Identificador de paquete `es.orbitalabs.sonidos_recordar`: confirmar o cambiar antes de publicar en Google Play.
+- Identificador de paquete `es.orbitalabs.reminiscencia`: confirmar o cambiar antes de publicar en Google Play.
 - Copia de seguridad de la clave de firma: si se pierde, no se pueden publicar actualizaciones. Guardar `~/.android-keys/` en un lugar seguro fuera de este equipo.
