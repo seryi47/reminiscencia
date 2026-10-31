@@ -1,0 +1,6 @@
+source_id,source_sample_rate_hz,source_channels,control_path,control_lag_samples,control_alignment_corr,control_snr_db,control_lsd_db,ref_rms,ref_mean,ref_low_share_lt20hz
+1922-symphony-6-all-mvts-tschaikowsky-col-l-1489-a-b-henry-wood-new-queen-orch,44100,1,44100 Hz -> 48000 Hz -> 44100 Hz,0,0.999999957,70.616138,2.149816,0.109480021,0.000031804,0.782282173
+georg-hann-bass-dgg-lpe-17108,44100,2,44100 Hz -> 48000 Hz -> 44100 Hz,0,0.999999977,71.761558,2.180873,0.096398927,0.000000248,0.000000016
+DukeEllington19431127BuffaloNYFM,44100,2,44100 Hz -> 48000 Hz -> 44100 Hz,0,0.999999919,67.586272,2.237751,0.056583631,-0.000017153,0.000733317
+maurice-elwin-collection-1925-1936-vocal-recordings,96000,2,96000 Hz -> 48000 Hz -> 96000 Hz,0,0.999954940,36.785923,31.879740,0.021738035,-0.000001164,0.136307243
+fiddlin-charlie-waer-interview-1963,44100,2,44100 Hz -> 48000 Hz -> 44100 Hz,0,0.999999806,63.925611,2.151844,0.040749284,-0.000000092,0.000019316
