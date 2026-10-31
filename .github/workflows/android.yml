@@ -1,0 +1,260 @@
+name: android
+
+# Analiza, prueba, compila y publica la app Android (mobile/). Procedimiento: docs/android/RELEASE.md.
+#   - Ejecución manual (workflow_dispatch): análisis, pruebas y APK de depuración. Si están los secretos
+#     de firma, también el APK de producción. No publica nada.
+#   - Etiqueta android-vX.Y.Z: lo anterior y, además, la release de GitHub con los dos APK y SHA256SUMS.txt.
+# Secretos de firma (nombres exactos; los valores nunca van al repositorio):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "android-v*"
+
+# Permisos mínimos: solo el job de publicación puede escribir en el repositorio.
+permissions:
+  contents: read
+
+# Una ejecución cada vez por ref: evita dos publicaciones simultáneas de la misma etiqueta.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Huella SHA-256 del certificado de firma de producción. Es un dato público (va en cada APK firmado),
+  # no un secreto. Si la clave cambia, actualizar este valor, docs/android/RELEASE.md y
+  # releases/android/production/README.md en el mismo cambio.
+  HUELLA_CERTIFICADO_PRODUCCION: "8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c"
+
+jobs:
+  depurar:
+    name: Depuración
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      nombre: ${{ steps.version.outputs.nombre }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versión de la app
+        id: version
+        env:
+          REF_TIPO: ${{ github.ref_type }}
+          REF_NOMBRE: ${{ github.ref_name }}
+        run: |
+          version="$(sed -n 's/^version:[[:space:]]*//p' mobile/pubspec.yaml | tr -d '\r')"
+          if ! [[ "$version" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)$ ]]; then
+            echo "::error::mobile/pubspec.yaml debe declarar la versión como X.Y.Z+B (encontrado: '$version')."
+            exit 1
+          fi
+          nombre="${BASH_REMATCH[1]}"
+          if [ "$REF_TIPO" = "tag" ] && [ "$REF_NOMBRE" != "android-v$nombre" ]; then
+            echo "::error::La etiqueta $REF_NOMBRE no coincide con la versión $nombre de mobile/pubspec.yaml."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "nombre=$nombre"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Flutter 3.44.9
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.9"
+          channel: stable
+          cache: true
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Dependencias
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Análisis estático
+        working-directory: mobile
+        run: flutter analyze
+
+      - name: Pruebas
+        working-directory: mobile
+        run: flutter test
+
+      - name: Compilar APK de depuración
+        working-directory: mobile
+        run: flutter build apk --debug
+
+      - name: Verificar APK de depuración
+        run: scripts/android/verify_apk.sh mobile/build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Preparar artefacto de depuración
+        env:
+          NOMBRE: ${{ steps.version.outputs.nombre }}
+        run: |
+          mkdir -p dist
+          cp mobile/build/app/outputs/flutter-apk/app-debug.apk "dist/reminiscencia-${NOMBRE}-debug.apk"
+          (cd dist && sha256sum "reminiscencia-${NOMBRE}-debug.apk" > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Subir artefacto apk-depuracion
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-depuracion
+          path: dist/
+          if-no-files-found: error
+
+  produccion:
+    name: Producción
+    needs: depurar
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Comprobar secretos de firma
+        id: secretos
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          REF_TIPO: ${{ github.ref_type }}
+          REF_NOMBRE: ${{ github.ref_name }}
+        run: |
+          faltan=""
+          [ -n "$ANDROID_KEYSTORE_BASE64" ] || faltan="$faltan ANDROID_KEYSTORE_BASE64"
+          [ -n "$ANDROID_KEYSTORE_PASSWORD" ] || faltan="$faltan ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$ANDROID_KEY_ALIAS" ] || faltan="$faltan ANDROID_KEY_ALIAS"
+          [ -n "$ANDROID_KEY_PASSWORD" ] || faltan="$faltan ANDROID_KEY_PASSWORD"
+          if [ -z "$faltan" ]; then
+            echo "listo=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$REF_TIPO" = "tag" ]; then
+            echo "::error title=Faltan secretos de firma::Faltan:${faltan}. No se puede publicar ${REF_NOMBRE} sin ellos. Configúralos como indica docs/android/RELEASE.md."
+            exit 1
+          fi
+          echo "::warning title=APK de producción omitido::Faltan secretos de firma:${faltan}. Esta ejecución no genera el APK de producción."
+          echo "listo=false" >> "$GITHUB_OUTPUT"
+
+      - name: Flutter 3.44.9
+        if: steps.secretos.outputs.listo == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.9"
+          channel: stable
+          cache: true
+
+      - name: Java 17
+        if: steps.secretos.outputs.listo == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Instalar la clave de firma
+        if: steps.secretos.outputs.listo == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > mobile/android/app/upload.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=upload.jks\n' \
+            "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" \
+            > mobile/android/key.properties
+
+      - name: Comprobar el almacén de firma
+        if: steps.secretos.outputs.listo == 'true'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: keytool -list -keystore mobile/android/app/upload.jks -alias "$ANDROID_KEY_ALIAS" -storepass:env ANDROID_KEYSTORE_PASSWORD > /dev/null
+
+      - name: Dependencias
+        if: steps.secretos.outputs.listo == 'true'
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Compilar APK de producción
+        if: steps.secretos.outputs.listo == 'true'
+        working-directory: mobile
+        run: flutter build apk --release
+
+      - name: Verificar firma del APK de producción
+        if: steps.secretos.outputs.listo == 'true'
+        run: scripts/android/verify_apk.sh mobile/build/app/outputs/flutter-apk/app-release.apk "$HUELLA_CERTIFICADO_PRODUCCION"
+
+      - name: Preparar artefacto de producción
+        if: steps.secretos.outputs.listo == 'true'
+        env:
+          NOMBRE: ${{ needs.depurar.outputs.nombre }}
+        run: |
+          mkdir -p dist
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "dist/reminiscencia-${NOMBRE}.apk"
+          (cd dist && sha256sum "reminiscencia-${NOMBRE}.apk" > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Subir artefacto apk-produccion
+        if: steps.secretos.outputs.listo == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-produccion
+          path: dist/
+          if-no-files-found: error
+
+      - name: Borrar material de firma
+        if: always() && steps.secretos.outputs.listo == 'true'
+        run: rm -f mobile/android/app/upload.jks mobile/android/key.properties
+
+  publicar:
+    name: Publicar release
+    needs: [depurar, produccion]
+    if: startsWith(github.ref, 'refs/tags/android-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Descargar apk-depuracion
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-depuracion
+          path: entrega/depuracion
+
+      - name: Descargar apk-produccion
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-produccion
+          path: entrega/produccion
+
+      - name: Reunir ficheros y comprobar sumas
+        run: |
+          mkdir -p entrega/ficheros
+          find entrega/depuracion entrega/produccion -name '*.apk' -exec cp {} entrega/ficheros/ \;
+          if [ "$(find entrega/ficheros -name '*.apk' | wc -l)" -ne 2 ]; then
+            echo "::error::Se esperaban exactamente dos APK."
+            exit 1
+          fi
+          (cd entrega/ficheros && sha256sum -c ../depuracion/SHA256SUMS.txt ../produccion/SHA256SUMS.txt)
+          (cd entrega/ficheros && sha256sum -- *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Crear la release de GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            entrega/ficheros/*.apk entrega/ficheros/SHA256SUMS.txt \
+            --verify-tag \
+            --title "Reminiscencia Android ${TAG#android-v}" \
+            --notes "APK de producción firmado y APK de depuración de la app Android. Verifica la descarga con SHA256SUMS.txt. Procedimiento: docs/android/RELEASE.md."

@@ -8,12 +8,35 @@ App Flutter que escucha la biblioteca publicada en https://reminiscencia.vercel.
 
 ## Compilar
 
+Requisitos: Flutter 3.44.9 (la misma versión que usa la CI), JDK 17 y el SDK de Android.
+
 ```
 cd mobile
 flutter pub get
 flutter analyze
 flutter test
+```
+
+### APK de depuración
+
+```
+flutter build apk --debug
+```
+
+Resultado: `build/app/outputs/flutter-apk/app-debug.apk`. Va firmado con la clave de depuración: sirve para probar, no para distribuir.
+
+### APK de producción
+
+```
 flutter build apk --release
 ```
 
-La firma de publicación usa `android/key.properties` (no versionado). Sin ese fichero, la compilación usa la clave de depuración y no sirve para distribuir.
+Resultado: `build/app/outputs/flutter-apk/app-release.apk`. Necesita dos ficheros locales que nunca se versionan: `android/key.properties` y `android/app/upload.jks`. Si faltan, Gradle firma con la clave de depuración y el APK no sirve para distribuir.
+
+Comprueba la firma antes de publicar:
+
+```
+../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-release.apk <huella-de-produccion>
+```
+
+La huella de producción y el resto del procedimiento de publicación (versión, etiqueta, secretos y copia de la clave) están en [docs/android/RELEASE.md](../docs/android/RELEASE.md).
