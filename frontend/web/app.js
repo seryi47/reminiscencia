@@ -21,8 +21,12 @@ const fmt = (seconds) => {
 
 // Color estable por canción o carpeta, para que el arte sea siempre el mismo.
 function hueOf(text) {
-  let hash = 0;
-  for (const char of text) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  // FNV-1a: dispersa bien incluso ids parecidos, para que cada portada tenga su color.
+  let hash = 0x811c9dc5;
+  for (const char of text) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
   return hash % 360;
 }
 
