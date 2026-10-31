@@ -119,6 +119,7 @@ def test_publish_web_writes_playback_index(tmp_path, tone_wav):
         variant_profiles=("opus-64k",),
         audio_dir=tmp_path / "audio",
     )
+    library.update_song(library.list_songs()[0]["id"], public=True)
     library.close()
     client = _client(tmp_path)
 

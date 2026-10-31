@@ -16,6 +16,7 @@ def test_build_web_copies_playback_audio_and_writes_index(tone_wav, tmp_path):
         audio_dir=tmp_path / "audio",
     )
     web_dir = tmp_path / "web"
+    library.update_song(library.list_songs()[0]["id"], public=True)
 
     entries = build_web(library, web_dir)
     library.close()
@@ -57,3 +58,16 @@ def test_song_without_playback_variant_is_skipped(tone_wav, tmp_path):
     library.close()
 
     assert entries == []
+
+
+def test_private_song_is_not_exported_until_published(tone_wav, tmp_path):
+    library = Library(tmp_path / "library.sqlite")
+    import_local_file(library, tone_wav, license="propia", variant_profiles=("opus-64k",), audio_dir=tmp_path / "audio")
+    web_dir = tmp_path / "web"
+
+    assert build_web(library, web_dir) == []
+
+    song_id = library.list_songs()[0]["id"]
+    library.update_song(song_id, public=True)
+    assert len(build_web(library, web_dir)) == 1
+    library.close()

@@ -4,53 +4,79 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reminiscencia</title>
+  <meta name="description" content="Música para recordar, organizada por carpetas. Reproductor sencillo y accesible.">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="shell">
-    <header>
+  <a class="skip" href="#player">Ir al reproductor</a>
+
+  <header class="top">
+    <div class="brand">
       <h1>Reminiscencia</h1>
       <p class="status" id="status" role="status">Cargando la biblioteca…</p>
-    </header>
+    </div>
+    <label class="search">
+      <span class="visually-hidden">Buscar canciones</span>
+      <input id="search" type="search" placeholder="Buscar por título o etiqueta" autocomplete="off">
+    </label>
+  </header>
 
-    <section class="player" aria-labelledby="now-title">
-      <p class="eyebrow" id="now-count">&nbsp;</p>
-      <h2 id="now-title">Elige una canción</h2>
-      <p class="meta" id="now-meta">&nbsp;</p>
+  <div class="layout">
+    <nav class="folders" aria-label="Carpetas">
+      <h2>Carpetas</h2>
+      <ul id="folder-list" class="folder-list"></ul>
+    </nav>
 
-      <div class="controls">
-        <button type="button" class="btn btn-side" id="prev" aria-label="Canción anterior">
-          <span aria-hidden="true">&#9664;&#9664;</span>
-          <span class="btn-label">Anterior</span>
-        </button>
-        <button type="button" class="btn btn-main" id="toggle" aria-label="Reproducir" aria-pressed="false">
-          <span aria-hidden="true" id="toggle-icon">&#9654;</span>
-          <span class="btn-label" id="toggle-label">Reproducir</span>
-        </button>
-        <button type="button" class="btn btn-side" id="next" aria-label="Canción siguiente">
-          <span aria-hidden="true">&#9654;&#9654;</span>
-          <span class="btn-label">Siguiente</span>
-        </button>
-      </div>
+    <main>
+      <section class="player" id="player" aria-labelledby="now-title">
+        <p class="eyebrow" id="now-count">&nbsp;</p>
+        <h2 id="now-title">Elige una canción</h2>
+        <p class="meta" id="now-meta">&nbsp;</p>
 
-      <label class="volume">
-        <span>Volumen</span>
-        <input type="range" id="volume" min="0" max="1" step="0.05" value="0.8">
-      </label>
+        <div class="controls">
+          <button type="button" class="btn btn-side" id="prev" aria-label="Canción anterior">
+            <span aria-hidden="true">&#9664;&#9664;</span>
+            <span class="btn-label">Anterior</span>
+          </button>
+          <button type="button" class="btn btn-main" id="toggle" aria-label="Reproducir" aria-pressed="false">
+            <span aria-hidden="true" id="toggle-icon">&#9654;</span>
+            <span class="btn-label" id="toggle-label">Reproducir</span>
+          </button>
+          <button type="button" class="btn btn-side" id="next" aria-label="Canción siguiente">
+            <span aria-hidden="true">&#9654;&#9654;</span>
+            <span class="btn-label">Siguiente</span>
+          </button>
+        </div>
 
-      <audio id="player" preload="metadata"></audio>
-    </section>
+        <div class="progress">
+          <input type="range" id="seek" min="0" max="0" step="1" value="0" aria-label="Posición de la canción">
+          <p class="times"><span id="time-now">0:00</span><span id="time-total">0:00</span></p>
+        </div>
 
-    <section aria-labelledby="list-title">
-      <h2 id="list-title">Biblioteca</h2>
-      <ol class="list" id="list"></ol>
-    </section>
+        <label class="volume">
+          <span>Volumen</span>
+          <input type="range" id="volume" min="0" max="1" step="0.05" value="0.8">
+        </label>
 
-    <footer>
-      <p>Todas las grabaciones son de dominio público según la declaración de su publicador en Internet Archive. Ver <a href="data/songs.json">índice de canciones</a>.</p>
-    </footer>
-  </main>
+        <audio id="audio" preload="metadata"></audio>
+      </section>
+
+      <section aria-labelledby="list-title" class="library">
+        <div class="list-head">
+          <h2 id="list-title">Canciones</h2>
+          <p class="help" id="list-help"></p>
+        </div>
+        <ol class="song-list" id="song-list"></ol>
+        <p class="help" id="empty" hidden>No hay canciones en esta carpeta.</p>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <p>Grabaciones de dominio público según la declaración de quien las publicó en Internet Archive. Los datos de la biblioteca están en <a href="data/songs.json">songs.json</a> y <a href="data/folders.json">folders.json</a>.</p>
+  </footer>
+
   <script src="app.js"></script>
 </body>
 </html>

@@ -56,10 +56,13 @@ MIGRATIONS = {
         "year": "INTEGER",
         "tags": "TEXT NOT NULL DEFAULT ''",
         "folder_id": "TEXT REFERENCES folders(id)",
+        # Las canciones anteriores a este campo ya estaban publicadas (DEFAULT 1).
+        # Las nuevas nacen privadas (ver add_song).
+        "public": "INTEGER NOT NULL DEFAULT 1",
     }
 }
 
-EDITABLE_SONG_FIELDS = ("title", "artist", "year", "tags", "folder_id")
+EDITABLE_SONG_FIELDS = ("title", "artist", "year", "tags", "folder_id", "public")
 
 
 class LicenseRequiredError(ValueError):
@@ -132,8 +135,8 @@ class Library:
             """
             INSERT INTO songs (
                 id, sha256, title, source, license, codec, sample_rate,
-                channels, duration_s, bitrate, size_bytes, added_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                channels, duration_s, bitrate, size_bytes, added_at, public
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 song_id, sha256, title, source, license.strip(), codec, sample_rate,
@@ -165,6 +168,8 @@ class Library:
             fields["tags"] = _normalize_tags(fields["tags"])
         if "year" in fields and fields["year"] is not None:
             fields["year"] = int(fields["year"])
+        if "public" in fields:
+            fields["public"] = 1 if fields["public"] else 0
         if fields:
             assignments = ", ".join(f"{name} = ?" for name in fields)
             self.connection.execute(
@@ -178,9 +183,11 @@ class Library:
         row = self.connection.execute("SELECT * FROM songs WHERE id = ?", (song_id,)).fetchone()
         return _song_dict(row) if row else None
 
-    def list_songs(self, *, folder: str | None = None, query: str | None = None) -> list[dict]:
+    def list_songs(self, *, folder: str | None = None, query: str | None = None, only_public: bool = False) -> list[dict]:
         """folder: None = todas; '' = sin carpeta; otro valor = id de carpeta."""
         clauses, params = [], []
+        if only_public:
+            clauses.append("public = 1")
         if folder == "":
             clauses.append("folder_id IS NULL")
         elif folder is not None:

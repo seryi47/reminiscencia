@@ -23,7 +23,7 @@ def build_web(library: Library, web_dir: Path) -> list[dict]:
     data_dir.mkdir(parents=True, exist_ok=True)
 
     entries = []
-    for song in library.list_songs():
+    for song in library.list_songs(only_public=True):
         variant = next(
             (item for item in library.variants_for(song["id"]) if item["profile"] == PLAYBACK_PROFILE),
             None,
