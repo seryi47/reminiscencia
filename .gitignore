@@ -35,7 +35,9 @@ mobile/assets/audio/*
 !mobile/assets/audio/.gitkeep
 
 # APK y compilaciones: se publican como assets de GitHub Releases, nunca en Git (límite de 100 MiB)
-releases/
+# El resto de releases/ sí se versiona (READMEs, .gitkeep y la documentación de cada carpeta).
+releases/**/*.apk
+releases/**/SHA256SUMS.txt
 mobile/build/
 
 # Vercel: configuración local del proyecto enlazado
