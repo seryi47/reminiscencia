@@ -1,6 +1,12 @@
 {
   "version": 1,
-  "folders": [],
+  "folders": [
+    {
+      "id": "ceb98740ea",
+      "name": "Prueba CI",
+      "parent_id": null
+    }
+  ],
   "songs": [
     {
       "id": "S5aac103b6eb2ecf4",
