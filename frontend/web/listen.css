@@ -187,3 +187,46 @@ input[type="range"]::-moz-range-thumb { width: 11px; height: 11px; border-radius
   .scrim { display: none !important; }
   .player .now-mini { min-width: 0; }
 }
+
+/* Gestión de la biblioteca: sección colapsada al final del contenido (js/gestion.js). Tokens en ../styles.css. */
+.side-foot p { margin: 0 0 6px; }
+.side-manage { font-size: 12px; }
+
+.gestion { margin-top: 26px; border-top: 1px solid var(--line); scroll-margin-top: 72px; }
+.gestion summary {
+  display: flex; align-items: center; gap: 8px; min-height: 40px; padding-top: 10px;
+  cursor: pointer; list-style: none; scroll-margin-top: 72px;
+}
+.gestion summary::-webkit-details-marker { display: none; }
+.gestion summary::before {
+  content: ""; flex: none; width: 6px; height: 6px; margin-left: 4px;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg); transition: transform 0.2s var(--ease);
+}
+.gestion[open] summary::before { transform: rotate(45deg); }
+.gestion-title { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.01em; }
+.gestion-body { padding: 6px 0 8px; }
+.gestion [hidden] { display: none !important; }
+.g-intro { margin: 0 0 12px; max-width: 72ch; font-size: 13px; }
+.g-help { margin: 0; font-size: 12px; color: var(--muted); }
+.g-msg { margin: 0; font-size: 13px; color: var(--muted); }
+.g-msg-ok { color: var(--ok); }
+.g-msg-bad { color: var(--danger); }
+.g-msg a { text-decoration: underline; text-underline-offset: 3px; }
+
+.g-grid { display: grid; gap: 12px; }
+@media (min-width: 1100px) { .g-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.g-card {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 0; padding: 14px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--panel);
+}
+.g-card h3 { margin: 0; font-size: 14px; font-weight: 650; }
+.g-sub { display: flex; flex-direction: column; gap: 8px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.g-sub h4 { margin: 0; font-size: 13px; font-weight: 600; }
+.g-fields { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.g-fields:disabled { opacity: 0.5; }
+.g-actions { display: flex; }
+.g-license { min-width: 0; }
+.check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.check input { flex: none; width: 16px; height: 16px; margin: 3px 0 0; accent-color: var(--accent); }
+.gestion [aria-invalid="true"] { border-color: var(--danger); }
