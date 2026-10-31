@@ -30,7 +30,8 @@ Alternativa descartada por ahora: Kotlin con Jetpack Compose y Media3. Daría m�
 
 ## Qué NO está verificado
 
-- Llamadas entrantes y otras interrupciones de audio.
+- Reanudación tras colgar una llamada: en el emulador no quedó claro si vuelve a reproducir o no (lecturas contradictorias). Verificado sólo que la llamada pausa la reproducción. Para una app de uso con personas mayores, lo prudente es que no se reanude sola; decisión pendiente.
+- Interrupciones distintas de una llamada.
 - Desconexión de auriculares con cable o Bluetooth en un dispositivo real.
 - Pantallas de otros tamaños y tabletas.
 - Accesibilidad con lector de pantalla (TalkBack).

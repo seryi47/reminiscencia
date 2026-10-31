@@ -31,7 +31,7 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 ## Fase 4: web (paciente y cuidador)
 - [x] Reproductor accesible en HTML estático (frontend/web), probado en Chrome a 390 px y 1024 px.
 - [x] Desplegado en Vercel (`sonidos-alzheimer`, equipo huelladigital).
-- [ ] **Hacer pública la URL:** la protección SSO de Vercel está activa y bloquea el acceso. Desactivarla lo ha bloqueado el sistema de permisos dos veces, incluso con tu autorización; hay que hacerlo desde el panel de Vercel o añadir una regla de permiso para ello.
+- [x] URL pública: https://sonidos-alzheimer.vercel.app (protección de despliegue desactivada desde el panel de Vercel por el usuario).
 - [ ] Panel de cuidador: perfiles, listas, fotografías y recuerdos.
 - **Cierre:** URL pública verificada desde Internet.
 

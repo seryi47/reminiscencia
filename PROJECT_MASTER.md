@@ -50,7 +50,7 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | Límites de GitHub (asset < 2 GiB, 1000 assets, Git 100 MiB) | Implementado y comprobado en CI (`scripts/check_repo_limits.py`) | 6 pruebas |
 | Preparación de publicación en Releases (lotes, manifiesto SHA-256, comandos gh) | Implementado en modo simulación; **subida real no ejecutada** | 4 pruebas |
 | API web (FastAPI) | **No iniciado** | — |
-| Web de paciente (HTML estático, Vercel `sonidos-alzheimer`) | Desplegada; **privada por SSO de Vercel** hasta que se desactive la protección | Probada en Chrome |
+| Web de paciente (HTML estático, Vercel `sonidos-alzheimer`) | **Pública**: https://sonidos-alzheimer.vercel.app | Probada en Chrome contra la URL pública |
 | Web de cuidador | **No iniciado** | — |
 | App Android (Flutter, `mobile/`) | APK firmada para producción (verificada con apksigner) y probada en emulador Android 15; falta dispositivo físico | 2 pruebas unitarias + prueba en emulador + job de CI |
 | Perfiles de pacientes y datos personales | **No iniciado** | — |
@@ -62,7 +62,6 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 - **Almacenamiento:** confirmar que Releases admite audio y revisar las políticas de uso aceptable de GitHub.
 - **Vercel:** el plan Hobby es sólo para uso no comercial. Válido mientras el proyecto sea académico; si se convierte en producto o se desarrolla para un cliente, hace falta Pro.
 - **Datos de salud:** antes de tratar datos de pacientes, RGPD (artículo 9), LOPDGDD y aprobación ética.
-- **Vercel público:** la web está desplegada, pero la protección SSO bloquea el acceso externo. Desactivarla debilita una protección de tu cuenta; lo decides tú. Hasta entonces, la URL responde con redirección a inicio de sesión.
 - **Clave de firma:** la APK está firmada con la clave de subida de OrbitaLabs, guardada en `~/.android-keys/`. Si se pierde, no se pueden publicar actualizaciones. Hace falta una copia de seguridad.
 - **Licencias de las pistas:** las grabaciones son de dominio público según la declaración del depositante en Internet Archive. Esto no lo ha verificado un abogado. Las pistas de 1920 son repertorio de jazz, poco representativo de la memoria de las personas que van a usar la app.
 
