@@ -21,6 +21,8 @@
 - Web de reproducción en HTML estático, desplegada en Vercel. Probada en Chrome: carga, reproducción, siguiente y pausa.
 - App Flutter (`mobile/`) con reproducción en segundo plano, controles multimedia y auriculares. Probada en emulador Android 15.
 - `sonidos build-web` y `scripts/sync_mobile_assets.sh`.
+- APK firmada para producción (release `apk-2026-10-31-produccion`), verificada con apksigner y probada otra vez en emulador tras reinstalar.
+- Job de Flutter en GitHub Actions (versión 3.44.9): análisis y pruebas.
 
 ### Decidido
 - Sin descarga desde YouTube ni otras plataformas (ADR-0002).

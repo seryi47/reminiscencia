@@ -52,7 +52,7 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | API web (FastAPI) | **No iniciado** | — |
 | Web de paciente (HTML estático, Vercel `sonidos-alzheimer`) | Desplegada; **privada por SSO de Vercel** hasta que se desactive la protección | Probada en Chrome |
 | Web de cuidador | **No iniciado** | — |
-| App Android (Flutter, `mobile/`) | APK de publicación probada en emulador Android 15; firma de producción pendiente | 2 pruebas unitarias + prueba en emulador |
+| App Android (Flutter, `mobile/`) | APK firmada para producción (verificada con apksigner) y probada en emulador Android 15; falta dispositivo físico | 2 pruebas unitarias + prueba en emulador + job de CI |
 | Perfiles de pacientes y datos personales | **No iniciado** | — |
 | Integración continua (GitHub Actions) | Verificada: verde en Python 3.12 y 3.13 (commit 891149c) | 11 pruebas |
 
@@ -63,7 +63,7 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 - **Vercel:** el plan Hobby es sólo para uso no comercial. Válido mientras el proyecto sea académico; si se convierte en producto o se desarrolla para un cliente, hace falta Pro.
 - **Datos de salud:** antes de tratar datos de pacientes, RGPD (artículo 9), LOPDGDD y aprobación ética.
 - **Vercel público:** la web está desplegada, pero la protección SSO bloquea el acceso externo. Desactivarla debilita una protección de tu cuenta; lo decides tú. Hasta entonces, la URL responde con redirección a inicio de sesión.
-- **Firma de la APK:** la APK de publicación está firmada con la clave de depuración. Para distribuirla hace falta una clave de producción propia.
+- **Clave de firma:** la APK está firmada con la clave de subida de OrbitaLabs, guardada en `~/.android-keys/`. Si se pierde, no se pueden publicar actualizaciones. Hace falta una copia de seguridad.
 - **Licencias de las pistas:** las grabaciones son de dominio público según la declaración del depositante en Internet Archive. Esto no lo ha verificado un abogado. Las pistas de 1920 son repertorio de jazz, poco representativo de la memoria de las personas que van a usar la app.
 
 ## Presupuesto

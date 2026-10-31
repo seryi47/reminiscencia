@@ -21,7 +21,7 @@ Alternativa descartada por ahora: Kotlin con Jetpack Compose y Media3. Daría m�
 ## Qué está verificado
 
 - Análisis estático sin incidencias y 2 pruebas unitarias del modelo de canción.
-- APK de publicación compilada (60 MB). Está firmada con la clave de depuración de la plantilla de Flutter, no con una clave de producción.
+- APK de publicación compilada (60 MB) y firmada con la clave de subida de OrbitaLabs (`CN=Sonidos para recordar`). La clave está en `~/.android-keys/`, fuera del repositorio. Sin `key.properties`, Gradle cae a la clave de depuración.
 - Instalación y arranque en un emulador Android 15 (arm64).
 - Reproducción iniciada, con estado `PLAYING` y posición avanzando.
 - Tras pasar a segundo plano: notificación presente y foco de audio `USAGE_MEDIA` activo.
@@ -34,9 +34,8 @@ Alternativa descartada por ahora: Kotlin con Jetpack Compose y Media3. Daría m�
 - Desconexión de auriculares con cable o Bluetooth en un dispositivo real.
 - Pantallas de otros tamaños y tabletas.
 - Accesibilidad con lector de pantalla (TalkBack).
-- Firma de producción: falta una clave de firma propia.
 
 ## Decisiones pendientes del usuario
 
-- Identificador de paquete `es.orbitalabs.sonidos_recordar`: confirmar o cambiar antes de publicar.
-- Clave de firma de producción: hay que generarla y guardarla fuera del repositorio.
+- Identificador de paquete `es.orbitalabs.sonidos_recordar`: confirmar o cambiar antes de publicar en Google Play.
+- Copia de seguridad de la clave de firma: si se pierde, no se pueden publicar actualizaciones. Guardar `~/.android-keys/` en un lugar seguro fuera de este equipo.

@@ -30,6 +30,24 @@ jobs:
       - name: Ejecutar pruebas
         run: python -m pytest -q
 
+  app-flutter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.9"
+          channel: stable
+      - name: Dependencias
+        run: flutter pub get
+      - name: Análisis estático
+        run: flutter analyze
+      - name: Pruebas
+        run: flutter test
+
   limites-repositorio:
     runs-on: ubuntu-latest
     steps:
