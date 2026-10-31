@@ -1,10 +1,26 @@
 # CHANGELOG
 
+## Integrado: app Android y entrega de APK (2026-10-31)
+
+### Añadido
+- App Android: listas de reproducción locales (crear, renombrar, borrar, añadir y quitar canciones), favoritos, ajustes persistentes (tamaño de texto de 1.0 a 1.6, modo paciente, alto contraste, reducir animaciones), diseño de tableta a partir de 720 dp con navegación lateral, gestión de errores con reintento e icono propio generado con `scripts/android/make_icon.py`.
+- 48 pruebas Flutter en verde; análisis estático sin avisos.
+- Workflow `android.yml`: compilación de depuración y de producción por etiquetas `android-v*`, verificación de la firma con la huella del certificado de producción y publicación en GitHub Releases.
+- Carpetas `releases/android/debug/` y `releases/android/production/` (los APK no se versionan) y `docs/android/RELEASE.md` con el procedimiento para una versión nueva.
+- `scripts/android/verify_apk.sh` para comprobar paquete, versión y firma de un APK.
+
+### Pendiente de comprobar
+- El workflow `android.yml` todavía no se ha ejecutado en GitHub Actions: se probará con la primera etiqueta.
+- Los secretos de firma (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) hay que crearlos en el repositorio; no están configurados.
+
 ## En curso (plan v2)
 
-- Auditoría del brief contra el repositorio y la web publicada.
-- Panel de diseño para la nueva interfaz de escucha y del cuidador.
-- Administración en Vercel sin usar por decisión del investigador (sin `ADMIN_PASSWORD`).
+- Auditoría del brief: hecha. Resultado estricto: 0 requisitos completamente cumplidos, 40 parciales, 8 pendientes y 1 descartado (plataformas de vídeo, por motivos legales).
+- Gestión pública sin administración: peticiones como incidencias de GitHub, solo del propietario (backend y web en ramas separadas, con revisión de seguridad).
+- Investigación, metodología del piloto, seguridad y RGPD, y experimento reproducible de compresión (ramas con verificación independiente de las referencias).
+- Datos locales del cuidador (perfiles, fotos, recuerdos, listas, observaciones, historial, copia cifrada y PIN local) y uso sin conexión (service worker, manifiesto e iconos).
+- Diseño de la interfaz: panel de tres propuestas, jurado y síntesis.
+- La administración en Vercel queda sin uso; se retira junto con `ADMIN_PASSWORD` y `GITHUB_TOKEN`, que ya no hacen falta.
 
 ## Administración en Vercel, catálogo versionado y app 1.1.0
 

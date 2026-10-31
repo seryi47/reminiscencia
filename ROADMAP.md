@@ -60,6 +60,8 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 
 ## Fase 5: Android
 - [x] ADR-0004 (Flutter), app que lee la biblioteca de la web.
+- [x] Listas, favoritos, ajustes persistentes, modo paciente, diseño de tableta e icono propio (integrado el 2026-10-31).
+- [x] Compilación de APK automatizada por etiquetas y carpetas de releases (pendiente de primera ejecución en GitHub Actions).
 - [x] Reproducción en streaming y en segundo plano, notificación y auriculares (emulador Android 15).
 - [x] Copia para escuchar sin conexión, probada con la red apagada.
 - [x] APK 1.1.0 firmada para producción (clave de subida propia).
