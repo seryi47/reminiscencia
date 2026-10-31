@@ -20,7 +20,7 @@ Proyecto doctoral sobre música, memoria y Alzheimer, con una plataforma que sir
 - **Sin secretos en el repositorio.** Las credenciales van en variables de entorno o en GitHub Secrets.
 
 ## Arquitectura (resumen)
-- `backend/sonidos/`: probe (ffprobe), hashing, compression (ffmpeg), library (SQLite), importer, sources (URL con licencia), intake, api (FastAPI local), web_build, release, limits, cli.
+- `backend/sonidos/`: probe (ffprobe), hashing, compression (ffmpeg), library (SQLite), importer, sources (URL con licencia), intake, jobs (cola en segundo plano), api (FastAPI local), web_build, release, limits, cli.
 - `frontend/admin/`: panel local de administración (solo en este equipo). `frontend/web/`: reproductor público (Vercel). `mobile/`: app Flutter.
 - `backend/tests/`: pruebas con audio sintético.
 - `audio-library/`: índices (versionados) y audio (ignorado).

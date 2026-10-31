@@ -32,6 +32,12 @@
 - Pista nueva importada y publicada: Christmas Bells (Internet Archive, dominio público declarado). Web pública con 9 pistas.
 - Corregido: las rutas guardadas en la base de datos apuntaban a la carpeta antigua tras renombrar el proyecto.
 
+### Añadido (procesado en segundo plano)
+- `sonidos/jobs.py`: cola de importaciones con un único hilo trabajador. `POST /api/intake` responde 202 al instante y `GET /api/jobs/{id}` da el estado. Una URL no admitida se rechaza antes de encolar.
+- El panel muestra el progreso de cada importación.
+- Pruebas en vivo: respuesta en 39 ms; importación de `DvorakSymphonyNo.9fromTheNewWorld` (dominio público declarado) completada en segundo plano, con audio Opus de 8 min 26 s.
+- Limitación: el estado de los trabajos vive en memoria.
+
 ### Decidido
 - Sin descarga desde YouTube ni otras plataformas (ADR-0002).
 - Audio de reproducción en GitHub Releases; el repositorio contiene índice, código y documentación (ADR-0003).

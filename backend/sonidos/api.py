@@ -1,7 +1,8 @@
 """API local del panel de administración (sólo para uso en el equipo del cuidador).
 
 Cada petición abre su propia conexión a SQLite: FastAPI atiende peticiones en
-hilos distintos y una conexión SQLite no debe compartirse entre ellos.
+hilos distintos y una conexión SQLite no debe compartirse entre ellos. Lo mismo
+vale para el hilo trabajador de las importaciones.
 """
 
 from __future__ import annotations
@@ -14,10 +15,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from sonidos.library import Library
-from sonidos.sources import SourceError
-from sonidos.web_build import build_web
 from sonidos.intake import intake_url
+from sonidos.jobs import Job, JobQueue
+from sonidos.library import Library
+from sonidos.sources import SourceError, classify
+from sonidos.web_build import build_web
 
 ADMIN_DIR = Path(__file__).resolve().parents[2] / "frontend" / "admin"
 
@@ -37,6 +39,8 @@ def create_app(
     index_path: Path,
 ) -> FastAPI:
     app = FastAPI(title="Reminiscencia: panel local", version="0.1.0")
+    queue = JobQueue()
+    app.state.jobs = queue
 
     @contextmanager
     def library():
@@ -45,6 +49,27 @@ def create_app(
             yield lib
         finally:
             lib.close()
+
+    def run_import(request: IntakeRequest):
+        def work(job: Job) -> None:
+            with library() as lib:
+                report, resolved = intake_url(
+                    lib,
+                    request.url,
+                    staging_dir=staging_dir,
+                    audio_dir=audio_dir,
+                    license=request.license,
+                    title=request.title,
+                )
+            queue.set_result(
+                job,
+                song_id=report.result.song_id,
+                created_new=report.result.created,
+                source=resolved.source,
+                license=resolved.license,
+            )
+
+        return work
 
     @app.get("/api/health")
     def health() -> dict:
@@ -63,28 +88,26 @@ def create_app(
                 row["variants"] = [item["profile"] for item in lib.variants_for(row["id"])]
             return rows
 
-    @app.post("/api/intake", status_code=201)
+    @app.post("/api/intake", status_code=202)
     def intake(request: IntakeRequest) -> dict:
-        with library() as lib:
-            try:
-                report, resolved = intake_url(
-                    lib,
-                    request.url,
-                    staging_dir=staging_dir,
-                    audio_dir=audio_dir,
-                    license=request.license,
-                    title=request.title,
-                )
-            except SourceError as error:
-                raise HTTPException(status_code=422, detail=str(error)) from error
-            except (OSError, ValueError) as error:
-                raise HTTPException(status_code=502, detail=f"No se pudo obtener el audio: {error}") from error
-            return {
-                "song_id": report.result.song_id,
-                "created": report.result.created,
-                "source": resolved.source,
-                "license": resolved.license,
-            }
+        # Validación inmediata: una URL no admitida responde al instante, sin encolar.
+        try:
+            classify(request.url)
+        except SourceError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        job = queue.submit(request.url, run_import(request))
+        return {"job_id": job.id, "status": job.status}
+
+    @app.get("/api/jobs")
+    def jobs() -> list[dict]:
+        return [job.public() for job in queue.list()]
+
+    @app.get("/api/jobs/{job_id}")
+    def job(job_id: str) -> dict:
+        found = queue.get(job_id)
+        if found is None:
+            raise HTTPException(status_code=404, detail="No existe ese trabajo")
+        return found.public()
 
     @app.post("/api/publish-web")
     def publish_web() -> dict:

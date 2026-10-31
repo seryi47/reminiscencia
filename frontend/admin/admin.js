@@ -93,11 +93,10 @@ $("intake-form").addEventListener("submit", async (event) => {
   if (title) payload.title = title;
 
   submit.disabled = true;
-  setMessage(message, "Descargando e importando… puede tardar unos segundos.", "");
+  setMessage(message, "En cola. La importación se hace en segundo plano…", "");
   try {
-    const result = await api("/api/intake", { method: "POST", body: JSON.stringify(payload) });
-    const state = result.created ? "importada" : "ya estaba en la biblioteca";
-    setMessage(message, `Canción ${state} (${result.song_id}). Licencia: ${result.license}`, "ok");
+    const { job_id } = await api("/api/intake", { method: "POST", body: JSON.stringify(payload) });
+    await followJob(job_id, message);
     $("url").value = "";
     await refresh();
   } catch (error) {
@@ -106,6 +105,26 @@ $("intake-form").addEventListener("submit", async (event) => {
     submit.disabled = false;
   }
 });
+
+const JOB_LABELS = { queued: "En cola", running: "Descargando e importando" };
+
+// Consulta el estado de un trabajo hasta que termina (done o failed).
+async function followJob(jobId, messageEl) {
+  for (;;) {
+    const job = await api(`/api/jobs/${jobId}`);
+    if (job.status === "done") {
+      const state = job.created_new ? "importada" : "ya estaba en la biblioteca";
+      setMessage(messageEl, `Canción ${state} (${job.song_id}). Licencia: ${job.license}`, "ok");
+      return job;
+    }
+    if (job.status === "failed") {
+      setMessage(messageEl, `No se pudo importar: ${job.error}`, "error");
+      return job;
+    }
+    setMessage(messageEl, `${JOB_LABELS[job.status] || job.status}…`, "");
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+}
 
 $("publish").addEventListener("click", async () => {
   const message = $("publish-message");
