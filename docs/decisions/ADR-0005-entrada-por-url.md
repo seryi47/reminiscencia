@@ -25,3 +25,7 @@ El usuario quiere pegar una URL y que el sistema obtenga el audio. Una URL de Yo
 ## Pendiente de dictamen legal
 
 - Si la licencia declarada por el depositante en Internet Archive es suficiente para publicar la grabación en Europa. Para grabaciones antiguas puede depender de la fecha de fijación y del país.
+
+## Actualización (2026-10-31)
+
+El panel local con API se retiró. La entrada por URL ahora pasa por `/admin/` (Vercel), que valida la dirección, y la importación real corre en el workflow `library` de GitHub Actions (`backend/sonidos/pipeline.py`). La lista de plataformas bloqueadas está duplicada a propósito en `backend/sonidos/sources.py` y en `frontend/web/lib/validate.js`; si se cambia una, hay que cambiar la otra.

@@ -7,6 +7,8 @@
 
 Hay que empezar a construir sin cerrar antes toda la investigación. Las decisiones deben ser reversibles y estar justificadas.
 
+> **Nota (2026-10-31):** SQLite dejó de ser la fuente de verdad (ADR-0007). El frontend web es HTML estático en Vercel, no Next.js (ver punto 5). Flutter se mantiene para Android (ADR-0004). FastAPI se retiró en favor de funciones de Vercel con GitHub Actions.
+
 ## Decisión
 
 1. **Backend y motor de audio: Python 3.11 o superior.**

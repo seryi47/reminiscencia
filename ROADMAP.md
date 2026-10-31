@@ -23,28 +23,31 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 - [ ] Detección de silencios, picos y calidad de señal.
 - **Cierre:** tabla de resultados medidos y script de publicación probado.
 
-## Fase 3: API y servicio
-- [x] API FastAPI local sobre la biblioteca, con panel de administración (`python -m sonidos serve`).
-- [x] Entrada por URL con licencia verificable (ADR-0005).
-- [x] Cola de importaciones en segundo plano: un trabajador, estado por `/api/jobs/{id}`, el panel muestra el progreso. Probado en vivo: respuesta en 39 ms, descarga y conversión en otro hilo.
-- [ ] Estado de los trabajos persistido en base de datos (hoy vive en memoria y se pierde al reiniciar).
-- **Cierre:** endpoints con pruebas de integración.
+## Fase 3: servicio y administración
+- [x] Catálogo versionado en el repositorio como fuente de verdad (ADR-0007).
+- [x] Importación por URL en GitHub Actions, probada con ítems reales de Internet Archive.
+- [x] Publicar, despublicar, carpetas y edición de metadatos vía workflow, probados en GitHub.
+- [x] Funciones de Vercel con contraseña, validación y falla cerrada.
+- [ ] **Configurar `ADMIN_PASSWORD` en Vercel** (Production). Sin ella, `/admin/` no funciona.
+- [ ] Probar el panel de administración de extremo a extremo con la contraseña configurada.
+- [ ] Borrado de canciones (hoy solo se despublican).
+- **Cierre:** panel probado en la web de Vercel con la contraseña real.
 
-## Fase 4: web (paciente y cuidador)
-- [x] Reproductor accesible en HTML estático (frontend/web), probado en Chrome a 390 px y 1024 px.
-- [x] Desplegado en Vercel (`reminiscencia`, equipo huelladigital).
-- [x] URL pública: https://reminiscencia.vercel.app (protección de despliegue desactivada desde el panel de Vercel por el usuario).
-- [ ] Panel de cuidador: perfiles, listas, fotografías y recuerdos.
-- **Cierre:** URL pública verificada desde Internet.
+## Fase 4: web pública
+- [x] Escucha por carpetas, búsqueda, reproductor y vista a pantalla completa en el teléfono.
+- [x] Desplegada en https://reminiscencia.vercel.app (Git integration, Root Directory `frontend/web`).
+- [x] Probada en escritorio y teléfono contra la URL pública.
+- [ ] Panel de cuidador: perfiles, fotos y recuerdos (depende de la fase 6).
+- **Cierre:** panel de cuidador con perfiles.
 
 ## Fase 5: Android
-- [x] ADR-0004 (Flutter).
-- [x] Reproducción en segundo plano, notificación y controles de auriculares, probados en emulador Android 15.
-- [x] APK de publicación compilada y probada en emulador.
-- [ ] Llamadas, desconexión de auriculares y pruebas en dispositivo físico.
-- [x] Firma de producción con clave de subida propia (fuera del repositorio); verificada con apksigner.
+- [x] ADR-0004 (Flutter), app que lee la biblioteca de la web.
+- [x] Reproducción en streaming y en segundo plano, notificación y auriculares (emulador Android 15).
+- [x] Copia para escuchar sin conexión, probada con la red apagada.
+- [x] APK 1.1.0 firmada para producción (clave de subida propia).
+- [ ] Pruebas en dispositivo físico: llamadas, Bluetooth, TalkBack, tabletas.
 - [ ] Copia de seguridad de la clave de firma fuera de este equipo.
-- **Cierre:** APK firmada para producción y probada en dispositivo real.
+- **Cierre:** probada en dispositivo real.
 
 ## Fase 6: investigación de campo
 - [ ] Protocolo y aprobación ética.

@@ -3,6 +3,8 @@
 - Estado: aceptada (fase 1). Límites y preparación de publicación implementados; subida real pendiente de tu confirmación.
 - Fecha: 2026-10-31
 
+> **Nota (2026-10-31):** para la biblioteca, el audio se versiona en `audio-library/audio/` y se publica en `frontend/web/audio/` (ADR-0006, ADR-0007). Las releases de GitHub siguen sirviendo para lotes de descarga, pero no como origen para el navegador, porque sus assets requieren autenticación.
+
 ## Contexto
 
 El proyecto quiere que GitHub sea el centro de control. Pero una biblioteca musical no cabe bien en git:

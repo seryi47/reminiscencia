@@ -1,42 +1,41 @@
-# Doctorado: Sonidos, memoria y Alzheimer
+# Reminiscencia · doctorado sobre música, memoria y Alzheimer
 
-Proyecto doctoral y plataforma tecnológica para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
+Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado:** fases 1 a 5 en marcha. Biblioteca con 9 pistas de dominio público; web de reproducción pública en https://reminiscencia.vercel.app; app Android firmada para producción y probada en emulador. Estudios con personas, pendientes.
+**Estado:** la plataforma funciona en la web y en la app Android. La biblioteca se gestiona desde Vercel. Estudios con personas, pendientes.
+
+| Qué | Dónde |
+|---|---|
+| Escuchar (público) | https://reminiscencia.vercel.app |
+| Administrar (contraseña) | https://reminiscencia.vercel.app/admin/ |
+| App Android | `mobile/` (lee la biblioteca de la web) |
+| Trabajos de importación y edición | GitHub Actions: workflow `library` |
+
+## Cómo se usa
+
+1. Entra en **/admin/** con la contraseña de administración.
+2. **Añadir audio:** pega una dirección de Internet Archive (`archive.org/details/…`) o un enlace directo a un fichero de audio con su licencia. YouTube y las plataformas de streaming no se admiten.
+3. El trabajo se ejecuta en GitHub (descarga, conversión y guardado en el repositorio). Tarda 1-3 minutos y la web se actualiza sola.
+4. Organiza en carpetas, edita título, artista, año y etiquetas, y **publica** las canciones que quieras en la web.
+
+Las canciones nuevas quedan **privadas** hasta que las publicas.
 
 ## Documentación
-- [CLAUDE.md](CLAUDE.md): reglas de trabajo y restricciones.
+
+- [CLAUDE.md](CLAUDE.md): reglas de trabajo y arquitectura.
 - [PROJECT_MASTER.md](PROJECT_MASTER.md): estado completo del proyecto.
 - [RESEARCH.md](RESEARCH.md) y [BIBLIOGRAPHY.md](BIBLIOGRAPHY.md): investigación y referencias verificadas.
 - [ROADMAP.md](ROADMAP.md) y [CHANGELOG.md](CHANGELOG.md).
-- [docs/decisions/](docs/decisions/): decisiones de arquitectura.
+- [docs/decisions/](docs/decisions/): decisiones de arquitectura (ADR).
 
-## Uso rápido del backend
+## Pruebas
 
 ```
 cd backend
 python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python -m pytest -q
-
-# Importar un archivo con licencia declarada
-./.venv/bin/python -m sonidos import ruta/al/archivo.wav --license "CC-BY-4.0" --variant opus-64k --audio-dir ../audio-library/audio
-./.venv/bin/python -m sonidos list
-./.venv/bin/python -m sonidos export-index --output ../audio-library/indexes/songs.json
 ```
-
-Requiere ffmpeg y ffprobe.
-
-## Panel local (solo en este equipo)
-
-```
-cd ~/Desktop/OrbitaLabs/reminiscencia
-backend/.venv/bin/python -m sonidos serve
-# abre http://127.0.0.1:8787
-```
-
-Desde el panel puedes pegar una URL de Internet Archive o de un fichero de audio con licencia. Las plataformas de vídeo y streaming se rechazan (ADR-0005).
 
 ## Aviso
-Este proyecto no descarga música de plataformas de vídeo ni de streaming. Sólo importa archivos cuya licencia se declara. Ver [ADR-0002](docs/decisions/ADR-0002-fuentes-de-audio.md).
 
-Los resultados clínicos no están demostrados. Ver [RESEARCH.md](RESEARCH.md).
+No se descarga música de plataformas de vídeo ni de streaming. Solo se importan grabaciones cuya licencia se declara o se lee de su ítem original (ADR-0002, ADR-0005). Los resultados clínicos no están demostrados (RESEARCH.md).

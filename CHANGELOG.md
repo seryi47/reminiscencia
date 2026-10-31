@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## Administración en Vercel, catálogo versionado y app 1.1.0
+
+### Añadido
+- Catálogo `audio-library/indexes/catalog.json` como fuente de verdad (ADR-0007): carpetas, metadatos, licencia, hash y estado público.
+- Workflow `library` en GitHub Actions: importar por URL, publicar/despublicar, crear/renombrar/borrar carpetas y editar metadatos. Probado en GitHub con ítems reales de Internet Archive.
+- Administración en `/admin/` de la web de Vercel, con contraseña (`ADMIN_PASSWORD`) y falla cerrada. Funciones `api/catalog`, `api/dispatch` y `api/runs`, con validación de entradas y permisos mínimos.
+- Web de escucha rediseñada: lista densa, carpetas, búsqueda, reproductor fijo y vista a pantalla completa en el teléfono.
+- App Android 1.1.0: biblioteca desde Vercel, copia para escuchar sin conexión y reproducción probada con la red apagada.
+- ADR-0005 (entrada por URL con licencia), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo desde Vercel).
+
+### Corregido
+- La web daba 404 en el audio porque estaba fuera de Git (ADR-0006).
+- Reproducción bloqueada en la APK de publicación: caché de audio en 127.0.0.1 con HTTP sin cifrar (solo se permite ese destino).
+- La app se bloqueaba al arrancar el servicio de audio: faltaba el permiso `WAKE_LOCK`.
+- La biblioteca no cargaba si fallaba el audio: ahora la lista se muestra aunque el reproductor falle.
+- El directorio raíz de Vercel estaba vacío: cada despliegue habría publicado el repositorio entero. Fijado a `frontend/web`.
+
+### Retirado
+- Panel local (`python -m sonidos serve`), API de FastAPI, cola en memoria y `frontend/admin` local.
+- Base de datos SQLite como fuente de verdad (migrada al catálogo y eliminada en local).
+- Audio empaquetado dentro de la APK.
+
+### Pendiente
+- Configurar `ADMIN_PASSWORD` en Vercel (Production) y probar el panel de extremo a extremo.
+- Pruebas de la app en dispositivo físico (llamadas, Bluetooth, TalkBack).
+- Copia de seguridad de la clave de firma de Android fuera de este equipo.
+
 ## [Sin publicar]
 
 ### Añadido

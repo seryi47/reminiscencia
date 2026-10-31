@@ -1,17 +1,19 @@
-# reminiscencia
+# Reminiscencia · app Android
 
-A new Flutter project.
+App Flutter que escucha la biblioteca publicada en https://reminiscencia.vercel.app.
 
-## Getting Started
+- Lee el catálogo de la web y guarda una copia para usarla sin conexión.
+- Reproducción en segundo plano, con notificación y controles de auriculares (`audio_service`).
+- Decisiones y pruebas: ver [ADR-0004](../docs/decisions/ADR-0004-app-android-flutter.md).
 
-This project is a starting point for a Flutter application.
+## Compilar
 
-A few resources to get you started if this is your first Flutter project:
+```
+cd mobile
+flutter pub get
+flutter analyze
+flutter test
+flutter build apk --release
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+La firma de publicación usa `android/key.properties` (no versionado). Sin ese fichero, la compilación usa la clave de depuración y no sirve para distribuir.

@@ -1,42 +1,41 @@
 # ADR-0004: App Android con Flutter
 
-- Estado: aceptada
-- Fecha: 2026-10-31
-
-## Contexto
-
-La app Android debe reproducir en segundo plano, mostrar los controles del sistema y funcionar con la biblioteca empaquetada, sin depender de la red.
+- Estado: aceptada (actualizada el 2026-10-31)
 
 ## Decisión
 
-Flutter (Dart), con `just_audio` para la reproducción, `audio_service` para la sesión multimedia y el servicio en primer plano, y `audio_session` para interrupciones y auriculares.
+Flutter (Dart), con `just_audio` para la reproducción, `audio_service` para la sesión multimedia y el servicio en primer plano, `audio_session` para interrupciones y auriculares, `http` para leer la biblioteca y `path_provider` para la copia local.
 
-Motivos:
-- La toolchain de Flutter, el JDK y el SDK de Android ya estaban instalados en este equipo.
-- Permite compartir el modelo de datos y la lógica de la biblioteca con otras plataformas, sin duplicar la interfaz.
-- Los paquetes elegidos son los de referencia para reproducción en segundo plano en Flutter.
+- La biblioteca se lee de `https://reminiscencia.vercel.app/data/songs.json` y `folders.json` (la misma web que escucha el público).
+- Las canciones se guardan en el dispositivo cuando se escuchan (caché) o con el botón «Guardar para escuchar sin conexión».
+- La APK **no lleva audios dentro**: pesa unos 50 MB y se actualiza sin recompilar cuando cambia la biblioteca.
 
-Alternativa descartada por ahora: Kotlin con Jetpack Compose y Media3. Daría más control nativo, pero duplicaría la interfaz. Se reconsiderará si `audio_service` presenta problemas en dispositivos reales.
+Motivos de Flutter: la toolchain ya estaba instalada, y es la opción con paquetes de reproducción en segundo plano maduros. Alternativa descartada por ahora: Kotlin con Media3, que daría más control nativo a costa de duplicar la interfaz.
 
-## Qué está verificado
+## Qué está verificado (emulador Android 15, arm64)
 
-- Análisis estático sin incidencias y 2 pruebas unitarias del modelo de canción.
-- APK de publicación compilada (60 MB) y firmada con la clave de subida de OrbitaLabs (`CN=Sonidos para recordar`). La clave está en `~/.android-keys/`, fuera del repositorio. Sin `key.properties`, Gradle cae a la clave de depuración.
-- Instalación y arranque en un emulador Android 15 (arm64).
-- Reproducción iniciada, con estado `PLAYING` y posición avanzando.
-- Tras pasar a segundo plano: notificación presente y foco de audio `USAGE_MEDIA` activo.
-- Tecla de pausa y de reproducción de auriculares: cambian el estado a `PAUSED` y `PLAYING`.
-- Tecla siguiente: avanza a la pista 2.
+- Análisis estático sin incidencias; pruebas unitarias del modelo y del árbol de carpetas en verde.
+- APK de publicación firmada con la clave de subida de OrbitaLabs (`CN=Sonidos para recordar`), verificada con `apksigner`. Versión 1.1.0 (código 2).
+- Carga de la biblioteca desde Vercel: 9 canciones, estado «en línea».
+- Reproducción en streaming: `PLAYING`, con foco de audio, sin errores.
+- Descarga para escuchar sin conexión: la interfaz sigue respondiendo durante la descarga.
+- Con la red apagada: la app abre con «sin conexión (copia guardada)» y reproduce desde el fichero guardado.
+- Pausa y reproducción desde la notificación y las teclas de auriculares.
 
-## Qué NO está verificado
+## Problemas encontrados y corregidos
 
-- Reanudación tras colgar una llamada: en el emulador no quedó claro si vuelve a reproducir o no (lecturas contradictorias). Verificado sólo que la llamada pausa la reproducción. Para una app de uso con personas mayores, lo prudente es que no se reanude sola; decisión pendiente.
-- Interrupciones distintas de una llamada.
-- Desconexión de auriculares con cable o Bluetooth en un dispositivo real.
-- Pantallas de otros tamaños y tabletas.
-- Accesibilidad con lector de pantalla (TalkBack).
+1. **Reproducción bloqueada en la APK de publicación.** La caché de audio de `just_audio` usa un servidor local en `127.0.0.1` con HTTP sin cifrar, y Android lo bloquea en compilaciones de publicación. Solución: una configuración de red que permite HTTP solo hacia `127.0.0.1` y `localhost`. El resto de la red exige HTTPS.
+2. **Bloqueo de la interfaz («isn't responding») al arrancar el servicio de audio.** El servicio pide un bloqueo de CPU (`WAKE_LOCK`) que el manifiesto no declaraba; el sistema lo mató por no llegar a `startForeground`. Solución: declarar `WAKE_LOCK`.
+3. **La biblioteca no cargaba aunque la red funcionaba.** El error venía de preparar el audio, no del catálogo. Solución: separar la carga de la lista y la preparación del reproductor; si el audio falla, la lista sigue visible.
 
-## Decisiones pendientes del usuario
+## Qué no está verificado
 
-- Identificador de paquete `es.orbitalabs.reminiscencia`: confirmar o cambiar antes de publicar en Google Play.
-- Copia de seguridad de la clave de firma: si se pierde, no se pueden publicar actualizaciones. Guardar `~/.android-keys/` en un lugar seguro fuera de este equipo.
+- Llamadas entrantes y otras interrupciones de audio. En el emulador, una llamada pausa la reproducción; no quedó claro si debe reanudarse sola al colgar. Para uso con personas mayores lo prudente es que no se reanude sin que alguien la pulse. Decisión pendiente.
+- Auriculares Bluetooth y desconexiones reales: solo en un dispositivo físico.
+- TalkBack y pantallas de tableta.
+- Publicación en Google Play: no está previsto por ahora.
+
+## Decisiones pendientes
+
+- Identificador de paquete `es.orbitalabs.reminiscencia`: se confirma antes de cualquier publicación en tienda.
+- Copia de seguridad de la clave de firma (`~/.android-keys/`), fuera de este equipo: si se pierde, no se pueden publicar actualizaciones de la app.
