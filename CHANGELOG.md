@@ -25,6 +25,13 @@
 - Job de Flutter en GitHub Actions (versión 3.44.9): análisis y pruebas.
 - Web pública en https://reminiscencia.vercel.app, con `vercel.json` que sirve los `.opus` como `audio/ogg; codecs=opus`.
 
+### Añadido (entrada por URL y panel)
+- ADR-0005: entrada por URL restringida. Internet Archive con licencia en los metadatos y ficheros directos con licencia declarada. Plataformas de vídeo y streaming bloqueadas por código.
+- `sonidos/sources.py`, `sonidos/intake.py`, `sonidos/api.py`: resolución, descarga con límite de 200 MB e importación.
+- Panel local `frontend/admin` (importar, buscar, estadísticas, preparar la web) servido por `python -m sonidos serve`.
+- Pista nueva importada y publicada: Christmas Bells (Internet Archive, dominio público declarado). Web pública con 9 pistas.
+- Corregido: las rutas guardadas en la base de datos apuntaban a la carpeta antigua tras renombrar el proyecto.
+
 ### Decidido
 - Sin descarga desde YouTube ni otras plataformas (ADR-0002).
 - Audio de reproducción en GitHub Releases; el repositorio contiene índice, código y documentación (ADR-0003).

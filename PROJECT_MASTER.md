@@ -52,7 +52,7 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | Límites de GitHub (asset < 2 GiB, 1000 assets, Git 100 MiB) | Implementado y comprobado en CI (`scripts/check_repo_limits.py`) | 6 pruebas |
 | Preparación de publicación en Releases (lotes, manifiesto SHA-256, comandos gh) | Implementado en modo simulación; **subida real no ejecutada** | 4 pruebas |
 | API web (FastAPI) | **No iniciado** | — |
-| Web de paciente (HTML estático, Vercel `reminiscencia`) | **Pública**: https://reminiscencia.vercel.app | Probada en Chrome contra la URL pública |
+| Web de paciente (HTML estático, Vercel `reminiscencia`) | **Pública**: https://reminiscencia.vercel.app (9 pistas) | Probada en Chrome contra la URL pública |
 | Web de cuidador | **No iniciado** | — |
 | App Android (Flutter, `mobile/`) | APK firmada para producción (verificada con apksigner) y probada en emulador Android 15; falta dispositivo físico | 2 pruebas unitarias + prueba en emulador + job de CI |
 | Perfiles de pacientes y datos personales | **No iniciado** | — |

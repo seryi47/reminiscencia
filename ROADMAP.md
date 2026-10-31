@@ -24,8 +24,9 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 - **Cierre:** tabla de resultados medidos y script de publicación probado.
 
 ## Fase 3: API y servicio
-- [ ] API FastAPI sobre la biblioteca.
-- [ ] Cola de trabajos para procesado pesado.
+- [x] API FastAPI local sobre la biblioteca, con panel de administración (`python -m sonidos serve`).
+- [x] Entrada por URL con licencia verificable (ADR-0005).
+- [ ] Cola de trabajos para procesado pesado (hoy la importación es síncrona).
 - **Cierre:** endpoints con pruebas de integración.
 
 ## Fase 4: web (paciente y cuidador)

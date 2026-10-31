@@ -26,6 +26,16 @@ python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 
 Requiere ffmpeg y ffprobe.
 
+## Panel local (solo en este equipo)
+
+```
+cd ~/Desktop/OrbitaLabs/reminiscencia
+backend/.venv/bin/python -m sonidos serve
+# abre http://127.0.0.1:8787
+```
+
+Desde el panel puedes pegar una URL de Internet Archive o de un fichero de audio con licencia. Las plataformas de vídeo y streaming se rechazan (ADR-0005).
+
 ## Aviso
 Este proyecto no descarga música de plataformas de vídeo ni de streaming. Sólo importa archivos cuya licencia se declara. Ver [ADR-0002](docs/decisions/ADR-0002-fuentes-de-audio.md).
 
