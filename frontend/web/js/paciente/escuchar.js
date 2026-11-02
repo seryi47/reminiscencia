@@ -908,6 +908,9 @@ export function mount(root, services, params = {}) {
   }
 
   services.setTitle?.('Escuchar');
+  // Estado inicial de la tarjeta de recuerdo (P-10): sin pista, «Sin recuerdo guardado» y sin etiqueta ni botones.
+  // Sin esta llamada, la tarjeta conserva su marcado inicial hasta que suene una pista.
+  renderRecuerdo();
   timer = setInterval(tick, TICK_MS);
   init();
   return { unmount };

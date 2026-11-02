@@ -9,6 +9,7 @@ import {
   countChildren,
   countInteractive,
   expectSize,
+  findVisibleTestid,
   focusRingWidth,
   focusWithKeyboardMode,
   isVisible,
@@ -425,19 +426,42 @@ describe("Salida al modo cuidador (P5) y aviso de apagado (P6)", () => {
     }),
   );
 
-  // Requiere el gancho de prueba ?e2e=1 (pendiente en app.js): el temporizador de apagado debe medirse en segundos.
-  // Sin él, la prueba espera 45 s y falla con un mensaje claro.
-  prueba("P6: el aviso de apagado tiene «Seguir 15 minutos más» y «Parar ahora» de 64 px", () =>
-    withPage(browser, VIEWPORTS.telefono, async (page) => {
-      await openPatientMode(page, `${server.url}?e2e=1`, { sleepLabels: ["60 minutos", "60 min", "60"] });
-      await waitVisible(page, "p6-dialog", {
-        ms: 45000,
-        context: "aviso de apagado (P6) 30 s antes del apagado; requiere el gancho ?e2e=1 pendiente",
-      });
-      const extender = await measure(page, "p6-extend", "botón Seguir 15 minutos más (P6)");
-      const parar = await measure(page, "p6-stop", "botón Parar ahora (P6)");
-      expectSize("Seguir 15 minutos más (alto)", extender.height, 64);
-      expectSize("Parar ahora (alto)", parar.height, 64);
-    }),
+  // El aviso sale a los 14 min 30 s de reproducción. Puppeteer corta cualquier llamada al navegador a los 180 s
+  // (protocolTimeout por defecto), así que la espera se reparte en tramos de 60 s. Si la pantalla Escuchar deja de
+  // verse mientras tanto, falla con ese motivo.
+  async function esperarAvisoP6(page, ms) {
+    const limite = Date.now() + ms;
+    while (Date.now() < limite) {
+      const inicio = Date.now();
+      const aviso = await findVisibleTestid(page, "p6-dialog", Math.min(60_000, limite - inicio));
+      if (aviso) return aviso;
+      if (!(await isVisible(page, "p1-root", 1000))) {
+        throw new Error("La pantalla Escuchar (P1) dejó de verse mientras se esperaba el aviso de apagado (P6).");
+      }
+      if (Date.now() - inicio < 1000) await pausa(1000);
+    }
+    throw new Error(
+      `Falta data-testid="p6-dialog" (aviso de apagado, 30 s antes de los 15 minutos de reproducción): no aparece en ${ms} ms.`,
+    );
+  }
+
+  // P6 con el temporizador real, sin gancho de prueba. El apagado más corto de C4 son 15 minutos (DESIGN 3.2 y D33)
+  // y el temporizador solo cuenta mientras suena: la prueba inicia una carpeta y espera el aviso, que sale 30 s
+  // antes del apagado, es decir, a los 14 min 30 s de reproducción. Por eso esta prueba tarda unos 15 minutos.
+  it(
+    "P6: el aviso de apagado tiene «Seguir 15 minutos más» y «Parar ahora» de 64 px",
+    { timeout: 17 * 60 * 1000 },
+    () =>
+      withPage(browser, VIEWPORTS.telefono, async (page) => {
+        await openPatientMode(page, server.url, { sleepLabels: ["15 minutos"] });
+        await openPatientFolder(page);
+        await clickTestid(page, "p3b-play", "botón Reproducir carpeta (P3b), que inicia la reproducción");
+        await goPatientSection(page, "escuchar");
+        await esperarAvisoP6(page, 16 * 60 * 1000);
+        const extender = await measure(page, "p6-extend", "botón Seguir 15 minutos más (P6)");
+        const parar = await measure(page, "p6-stop", "botón Parar ahora (P6)");
+        expectSize("Seguir 15 minutos más (alto)", extender.height, 64);
+        expectSize("Parar ahora (alto)", parar.height, 64);
+      }),
   );
 });

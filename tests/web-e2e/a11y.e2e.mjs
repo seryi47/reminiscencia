@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestCatalogOverrides } from "./helpers/catalogo-prueba.mjs";
-import { clickTestid, TEST_TIMEOUT_MS, waitVisible, wcagViolations } from "./helpers/elementos.mjs";
+import { clickTestid, findVisibleTestid, isVisible, TEST_TIMEOUT_MS, waitVisible, wcagViolations } from "./helpers/elementos.mjs";
 import {
   goCaregiverSection,
   goPatientSection,
@@ -39,6 +39,7 @@ after(async () => {
 const prueba = (nombre, fn) => it(nombre, { timeout: TEST_TIMEOUT_MS }, fn);
 
 // Pantallas del modo paciente. Cada `preparar` deja la pantalla lista para auditarla.
+// P6 (aviso de apagado) no está aquí: necesita el temporizador real y se prueba aparte, más abajo.
 const PANTALLAS_PACIENTE = [
   { nombre: "P1 Escuchar", preparar: (page, url) => openPatientMode(page, url) },
   { nombre: "P2 Listas", preparar: async (page, url) => { await openPatientMode(page, url); await goPatientSection(page, "listas"); } },
@@ -59,14 +60,6 @@ const PANTALLAS_PACIENTE = [
       await openPatientMode(page, url, { pin: true });
       await clickTestid(page, "p-caregiver", "botón Cuidador de la cabecera del paciente");
       await waitVisible(page, "p5-keypad", { context: "teclado de PIN (P5)" });
-    },
-  },
-  {
-    // Requiere el gancho ?e2e=1 pendiente en app.js (ver paciente.e2e.mjs, P6).
-    nombre: "P6 Aviso de apagado (diálogo)",
-    preparar: async (page, url) => {
-      await openPatientMode(page, `${url}?e2e=1`, { sleepLabels: ["60 minutos", "60 min", "60"] });
-      await waitVisible(page, "p6-dialog", { ms: 45000, context: "aviso de apagado (P6); requiere el gancho ?e2e=1" });
     },
   },
 ];
@@ -115,6 +108,81 @@ function describeScreens(titulo, pantallas, viewport) {
 describeScreens("Accesibilidad del modo paciente a 390 × 844 px", PANTALLAS_PACIENTE, VIEWPORTS.telefono);
 describeScreens("Accesibilidad del modo cuidador a 1440 × 900 px", PANTALLAS_CUIDADOR, VIEWPORTS.escritorio);
 
+// P6 (aviso de apagado) con el temporizador real, sin ganchos de prueba (DESIGN 8.1). El temporizador cuenta solo el
+// tiempo de reproducción: la prueba reproduce la carpeta y espera el aviso, 30 s antes de los 15 minutos. Es la única
+// espera lenta de este fichero (unos 14 minutos y medio); una sola espera sirve para todas las comprobaciones.
+const ESPERA_P6_MS = 15 * 60 * 1000 + 60_000;
+
+// Espera el aviso en tramos de 60 s: una sola llamada de 15 minutos superaría el protocolTimeout de Puppeteer (180 s
+// por defecto) y la prueba fallaría antes de tiempo. Si la pantalla Escuchar deja de verse mientras tanto, falla con ese motivo.
+async function esperarAvisoP6(page, ms) {
+  const limite = Date.now() + ms;
+  while (Date.now() < limite) {
+    const inicio = Date.now();
+    const aviso = await findVisibleTestid(page, "p6-dialog", Math.min(60_000, limite - inicio));
+    if (aviso) return aviso;
+    if (!(await isVisible(page, "p1-root", 1000))) {
+      throw new Error("La pantalla Escuchar (P1) dejó de verse mientras se esperaba el aviso de apagado (P6).");
+    }
+    // Si la espera ha fallado antes de tiempo, no se repite sin pausa.
+    if (Date.now() - inicio < 1000) await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(
+    `Falta data-testid="p6-dialog" (aviso de apagado, 30 s antes de los 15 minutos de reproducción): no aparece en ${ms} ms.`,
+  );
+}
+
+describe("Accesibilidad del aviso de apagado (P6) con el temporizador real", () => {
+  it(
+    'P6 Aviso de apagado (diálogo): sin fallos WCAG 2.2 AA graves, con lang="es" y un único H1 visible',
+    { timeout: ESPERA_P6_MS + TEST_TIMEOUT_MS },
+    () =>
+      withPage(browser, VIEWPORTS.telefono, async (page) => {
+        await openPatientMode(page, server.url, { sleepLabels: ["15 minutos", "15 min", "15"] });
+        await openPatientFolder(page);
+        await clickTestid(page, "p3b-play", "Reproducir carpeta (P3b): arranca la reproducción que cuenta el temporizador");
+        await goPatientSection(page, "escuchar");
+        await esperarAvisoP6(page, ESPERA_P6_MS);
+        const violaciones = await wcagViolations(page);
+        const graves = violaciones.filter((violacion) => violacion.impacto === "serious" || violacion.impacto === "critical");
+        const { lang, h1 } = await page.evaluate(() => ({
+          lang: document.documentElement.getAttribute("lang"),
+          h1: [...document.querySelectorAll("h1")].filter((el) => window.__e2eIsShown(el)).length,
+        }));
+        assert.deepEqual(graves, [], "P6: fallos de axe-core de gravedad serious o critical:");
+        assert.equal(lang, "es", 'El elemento html debe tener lang="es".');
+        assert.equal(h1, 1, `La pantalla debe tener un único H1 visible y tiene ${h1}.`);
+      }),
+  );
+});
+
+// El H1 de cada pantalla es el título de la cabecera (DESIGN 3.1, P-1 y C-1), no un elemento dentro de la zona de la
+// pantalla. Al cambiar de pantalla, el foco pasa a ese H1 (tabindex=-1, DESIGN 7.1) y su texto es el de la nueva pantalla.
+function esperarFocoEnTitulo(page, cabeceraTestid, titulo) {
+  return page
+    .waitForFunction(
+      (cabecera, texto) => {
+        const el = document.activeElement;
+        const zona = document.querySelector(`[data-testid="${cabecera}"]`);
+        return Boolean(
+          el &&
+            el.tagName === "H1" &&
+            el.getAttribute("tabindex") === "-1" &&
+            zona &&
+            zona.contains(el) &&
+            el.textContent.trim() === texto,
+        );
+      },
+      { timeout: 3000 },
+      cabeceraTestid,
+      titulo,
+    )
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
 describe("Enlace de salto y foco", () => {
   prueba("Paciente: el primer Tab enfoca el enlace de salto (skip-link)", () =>
     withPage(browser, VIEWPORTS.telefono, async (page) => {
@@ -143,20 +211,8 @@ describe("Enlace de salto y foco", () => {
     withPage(browser, VIEWPORTS.telefono, async (page) => {
       await openPatientMode(page, server.url);
       await goPatientSection(page, "listas");
-      const enH1 = await page
-        .waitForFunction(
-          () => {
-            const el = document.activeElement;
-            const root = document.querySelector('[data-testid="p2-root"]');
-            return Boolean(el && el.tagName === "H1" && root && root.contains(el));
-          },
-          { timeout: 3000 },
-        )
-        .then(
-          () => true,
-          () => false,
-        );
-      assert.ok(enH1, "Al cambiar de pantalla, el foco debe pasar al H1 de la nueva pantalla (tabindex=-1, DESIGN 7.1).");
+      const enH1 = await esperarFocoEnTitulo(page, "p-header", "Listas");
+      assert.ok(enH1, "Al cambiar de pantalla, el foco debe pasar al H1 de cabecera con el título «Listas» (tabindex=-1, DESIGN 3.1, P-1 y 7.1).");
     }),
   );
 
@@ -164,20 +220,8 @@ describe("Enlace de salto y foco", () => {
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      const enH1 = await page
-        .waitForFunction(
-          () => {
-            const el = document.activeElement;
-            const root = document.querySelector('[data-testid="c-biblioteca"]');
-            return Boolean(el && el.tagName === "H1" && root && root.contains(el));
-          },
-          { timeout: 3000 },
-        )
-        .then(
-          () => true,
-          () => false,
-        );
-      assert.ok(enH1, "Al cambiar de pantalla, el foco debe pasar al H1 de la nueva pantalla (tabindex=-1, DESIGN 7.1).");
+      const enH1 = await esperarFocoEnTitulo(page, "c-header", "Biblioteca");
+      assert.ok(enH1, "Al cambiar de pantalla, el foco debe pasar al H1 de cabecera con el título «Biblioteca» (tabindex=-1, DESIGN C-1 y 7.1).");
     }),
   );
 });

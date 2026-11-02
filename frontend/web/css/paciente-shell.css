@@ -7,6 +7,9 @@
    Teléfono: cabecera, banda, contenido, mini reproductor y barra inferior en columna.
    Desde 768 px: el raíl ocupa la columna izquierda (112 px) y la cabecera, el contenido y el mini van a la derecha. */
 .p-shell {
+  /* Contiene los elementos absolutos (por ejemplo, el aviso del volumen para lectores de pantalla): sin esto, su
+     bloque de contención es el documento y el marco no los recorta, y la página gana un desplazamiento vertical. */
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--alto-cabecera, 64px) auto minmax(0, 1fr) auto auto;

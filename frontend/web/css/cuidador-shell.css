@@ -48,7 +48,8 @@
 .c-header-slot {
   flex: 1 1 240px;
   min-width: 0;
-  max-width: 320px;
+  /* Cabe la búsqueda de 320 px con «Vista previa» (110 px) en una línea dentro de la cabecera de 56 px (DESIGN C-1). */
+  max-width: 480px;
   display: flex;
 }
 
@@ -817,10 +818,11 @@
 
 /* Panel persistente desde 1440 px: ocupa la tercera columna cuando está abierto. */
 @media (min-width: 1440px) {
+  /* El panel ocupa la franja entre la cabecera y la barra de reproducción: 772 px a 1440 × 900 (DESIGN C-20). */
   .c-shell.is-panel-open {
     grid-template-columns: 232px minmax(0, 1fr) 320px;
     grid-template-areas:
-      "side head panel"
+      "side head head"
       "side main panel"
       "now now now";
   }
@@ -832,6 +834,12 @@
     bottom: auto;
     box-shadow: inset 1px 0 0 var(--borde-suave);
     min-height: 0;
+  }
+
+  /* El contenido del panel llena la franja: su altura es la de la columna, no la de su texto. */
+  .c-shell.is-panel-open .c-panel-host,
+  .c-shell.is-panel-open .c-panel {
+    height: 100%;
   }
 
   .c-shell.is-panel-open .c-main {

@@ -258,7 +258,6 @@
 
 .c-biblioteca-tabla-caja {
   min-width: 0;
-  max-height: max(320px, calc(100dvh - 260px));
   overflow: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--borde-suave);
@@ -288,7 +287,8 @@
   z-index: 1;
   height: 32px;
   background: var(--superficie-2);
-  border-bottom: 1px solid var(--borde-suave);
+  /* La línea de separación es una sombra interior: no suma altura, así la cabecera mide 32 px (DESIGN C-4). */
+  box-shadow: inset 0 -1px 0 var(--borde-suave);
   font: var(--tipo-cabecera-tabla);
   color: var(--texto-2);
   text-align: left;
@@ -297,7 +297,8 @@
 
 .c-biblioteca-tabla tbody td {
   height: 40px;
-  border-bottom: 1px solid var(--borde-suave);
+  /* Igual que la cabecera: la línea de la fila no suma altura, así cada fila mide 40 px (DESIGN C-4). */
+  box-shadow: inset 0 -1px 0 var(--borde-suave);
   font: var(--tipo-fila);
   color: var(--texto);
   overflow: hidden;
@@ -894,6 +895,7 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
     min-width: 0;
     padding: 0;
     border: 0;
+    box-shadow: none;
     white-space: normal;
   }
 
@@ -902,26 +904,41 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
     grid-row: 1 / span 2;
   }
 
+  /* Título en la primera línea; artista y estado juntos en la segunda (22 + 18 px) y la familiaridad debajo (22 px).
+     Con el relleno y el borde, la tarjeta mide 72 px (DESIGN C-4). */
   .c-biblioteca-tabla .c-biblioteca-fila > .col-titulo {
     grid-column: 2;
     grid-row: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--espacio-2, 8px);
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
+    line-height: 22px;
+  }
+
+  .c-biblioteca-tabla .c-biblioteca-fila > .col-titulo > .c-biblioteca-titulo-texto {
+    flex: 0 0 100%;
+    min-width: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .c-biblioteca-tabla .c-biblioteca-fila .c-biblioteca-artista {
     display: block;
+    flex: 0 1 auto;
+    min-width: 0;
     margin: 0;
-  }
-
-  .c-biblioteca-tabla .c-biblioteca-fila > .col-titulo {
-    line-height: 22px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 18px;
   }
 
   .c-biblioteca-tabla .c-biblioteca-fila .c-biblioteca-estado {
     display: block;
+    flex: none;
     margin-left: 0;
     line-height: 18px;
   }
@@ -1024,5 +1041,47 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   .c-biblioteca-ficha,
   .c-biblioteca-tabla .col-ficha {
     display: none;
+  }
+
+  /* Escritorio y tableta: la tabla ocupa el alto que deja la barra de filtros, sin márgenes verticales. Así caben
+     17 filas de 40 px a 1440 × 900 y 14 a 1024 × 768 (DESIGN 15). Los avisos que aparecen encima (selección y
+     texto de ayuda) llevan su propio margen. */
+  .c-main:has(> .c-biblioteca) {
+    padding-block: 0;
+  }
+
+  .c-biblioteca {
+    height: 100%;
+    gap: 0;
+  }
+
+  /* Solo la tabla se encoge: la barra de filtros, la de selección (que tiene mínimo de 56 px) y el texto de ayuda
+     conservan su altura natural. */
+  .c-biblioteca > .c-biblioteca-barra-superior,
+  .c-biblioteca > .c-biblioteca-seleccion,
+  .c-biblioteca > .c-biblioteca-ayuda {
+    flex: none;
+  }
+
+  .c-biblioteca > .c-biblioteca-seleccion,
+  .c-biblioteca > .c-biblioteca-ayuda {
+    margin-block: var(--espacio-2, 8px);
+  }
+
+  .c-biblioteca-tabla-caja {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+
+  /* Búsqueda y «Vista previa» en una sola línea de la cabecera: la búsqueda se encoge si el hueco es estrecho. */
+  .c-biblioteca-cabecera-acciones {
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+
+  .c-biblioteca-busqueda {
+    flex: 0 1 320px;
+    width: auto;
   }
 }

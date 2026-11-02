@@ -42,7 +42,11 @@ export async function startFirstRun(page) {
   await waitVisible(page, "c-wizard", { context: "asistente de primer perfil (C3e)", ms: 10000 });
 }
 
-/** Crea el primer perfil con el asistente. Con `pin`, define el PIN de prueba; sin él, pulsa «Ahora no». */
+/**
+ * Crea el primer perfil con el asistente y deja el Inicio del cuidador (C1). Con `pin`, define el PIN de prueba;
+ * sin él, pulsa «Ahora no» (DESIGN C3e). «Ahora no» solo muestra el aviso: el perfil se crea con el último paso,
+ * que el asistente llama «Crear perfil».
+ */
 export async function createFirstProfile(page, { pin = false } = {}) {
   await startFirstRun(page);
   await typeInto(page, "c-wizard", TEST_PROFILE.alias, { context: "paso 1 del asistente: alias" });
@@ -54,11 +58,13 @@ export async function createFirstProfile(page, { pin = false } = {}) {
       all: true,
       context: "paso 3 del asistente: PIN",
     });
-    await clickTestid(page, "c-wizard-next", "paso 3 del asistente (PIN)");
   } else {
     await clickTestid(page, "c-wizard-skip-pin", "paso 3 del asistente («Ahora no»)");
   }
-  await waitVisible(page, "c-inicio", { context: "Inicio del cuidador tras crear el perfil", ms: 10000 });
+  await clickTestid(page, "c-wizard-next", "paso 3 del asistente: crear perfil");
+  // Tras crear el perfil, la app abre su ficha (C3a, pestaña Canciones), no el Inicio: se vuelve desde la navegación.
+  await waitVisible(page, "c-profile-alias", { context: "ficha del perfil tras crear el perfil (C3a)", ms: 10000 });
+  await goCaregiverSection(page, "inicio");
 }
 
 /** Abre la app, crea el perfil de prueba y deja el Inicio del cuidador (C1). */
@@ -68,12 +74,20 @@ export async function openCaregiverHome(page, url, { pin = false } = {}) {
 }
 
 /**
+ * Pulsa «Abrir modo paciente» en el Inicio (C1). Se usa el botón del propio Inicio, que existe en todos los anchos:
+ * el de la barra lateral (c-open-patient) está oculto en teléfono. Ambos abren la misma hoja «Empezar sesión» (C4).
+ */
+async function clickOpenPatientFromHome(page) {
+  await clickTestid(page, "c-inicio-open-patient", "botón Abrir modo paciente (C1)");
+}
+
+/**
  * Abre la app, crea el perfil y entra en el modo paciente (C1 → C4 → P1) sin reproducir nada.
  * `sleepLabels` fija el apagado automático en C4 (P6). `pin` define el PIN de prueba.
  */
 export async function openPatientMode(page, url, { pin = false, sleepLabels = null } = {}) {
   await openCaregiverHome(page, url, { pin });
-  await clickTestid(page, "c-open-patient", "botón Abrir modo paciente (C1)");
+  await clickOpenPatientFromHome(page);
   await waitVisible(page, "c-session-sheet", { context: "hoja Empezar sesión (C4)" });
   if (sleepLabels) {
     await clickText(page, sleepLabels, { within: "c-session-sheet", context: "apagado automático (C4)" });
@@ -102,10 +116,13 @@ export async function leavePatientWithoutPin(page) {
   await waitVisible(page, "c-inicio", { context: "Inicio del cuidador tras salir del paciente" });
 }
 
-/** Abre la ficha de perfil (C3a) del primer perfil. */
+/**
+ * Abre la ficha de perfil (C3a) del primer perfil. La tarjeta no es un botón entero (DESIGN C-15): la ficha se abre
+ * con «Abrir perfil» (c-profile-open), que es el primero visible con ese identificador.
+ */
 export async function openFirstProfile(page) {
   await goCaregiverSection(page, "perfiles");
-  await clickTestid(page, "c-profile-card", "primera tarjeta de perfil (C3)");
+  await clickTestid(page, "c-profile-open", "botón Abrir perfil de la primera tarjeta (C3)");
   await waitVisible(page, "c-profile-alias", { context: "ficha del perfil (C3a)" });
 }
 
@@ -136,7 +153,7 @@ export async function openProfileOptionsSheet(page) {
 
 /** Desde el Inicio del cuidador, abre la hoja Empezar sesión (C4) sin empezar. */
 export async function openSessionSheet(page) {
-  await clickTestid(page, "c-open-patient", "botón Abrir modo paciente (C1)");
+  await clickOpenPatientFromHome(page);
   await waitVisible(page, "c-session-sheet", { context: "hoja Empezar sesión (C4)" });
 }
 

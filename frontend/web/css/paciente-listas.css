@@ -11,7 +11,9 @@
   width: 100%;
   max-width: 1120px;
   margin: 0 auto;
-  padding: var(--margen-pagina, 16px) var(--margen-pagina, 16px) var(--espacio-7, 48px);
+  /* El margen lateral (16 px en teléfono, 24 px desde 768 px) ya lo pone .p-main. Repetirlo aquí lo duplicaba y
+     estrechaba los mosaicos de carpetas y listas (DESIGN 5.4 y 15). */
+  padding: var(--margen-pagina, 16px) 0 var(--espacio-7, 48px);
 }
 
 .section {
@@ -164,8 +166,10 @@
   align-items: center;
   gap: var(--espacio-4, 16px);
   box-sizing: border-box;
+  /* Alto de P-12 sin relleno vertical: un título de dos líneas (2 × 30 px), 2 px de separación y la segunda línea
+     (26 px) suman 88 px. Con relleno vertical de 12 px, esas filas medían 112 px. */
   min-height: calc(88px * var(--escala, 1));
-  padding: var(--espacio-3, 12px) var(--espacio-4, 16px);
+  padding: 0 var(--espacio-4, 16px);
   border-radius: var(--radio-miniatura, 12px);
   background: var(--superficie-2);
 }
