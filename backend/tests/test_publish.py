@@ -77,3 +77,16 @@ def test_unpublished_song_metadata_never_reaches_the_web(tmp_path):
     view = json.loads((web / "data" / "catalog.json").read_text(encoding="utf-8"))
     assert view["songs"] == []
     assert "Tema" not in (web / "data" / "catalog.json").read_text(encoding="utf-8")
+
+
+def test_public_flag_must_be_a_json_boolean(tmp_path):
+    path, audio = _catalog_with(tmp_path, [True])
+    data = catalog.load(path)
+    data["songs"][0]["public"] = "false"  # texto, no booleano: no se publica
+    catalog.save(path, data)
+    web = tmp_path / "web"
+
+    result = sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
+
+    assert result["public"] == 0
+    assert list((web / "audio").glob("*.opus")) == []

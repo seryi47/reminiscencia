@@ -66,12 +66,66 @@ def test_library_workflow_is_gone():
     assert not (ROOT / ".github" / "workflows" / "library.yml").exists()
 
 
+GITHUB_CALLS = ("git push", "gh issue ", "gh label ")
+
+
+def _steps(text: str) -> list[str]:
+    """Bloques de los pasos: cada paso empieza con '      - ' bajo 'steps:'."""
+    return text.split("\n      - ")[1:]
+
+
+def _token_violations(text: str) -> list[str]:
+    """Pasos que reciben el token sin llamar a GitHub, y el checkout si lo recibe."""
+    violations = []
+    for step in _steps(text):
+        if "GH_TOKEN: ${{ github.token }}" not in step:
+            continue
+        if "actions/checkout" in step or not any(call in step for call in GITHUB_CALLS):
+            violations.append(step.splitlines()[0])
+    return violations
+
+
 def test_checkout_does_not_keep_the_token_on_disk_and_push_receives_it_only_in_its_step():
     text = _workflow_text()
 
     assert "persist-credentials: false" in text
-    assert "GH_TOKEN: ${{ github.token }}" in text
     assert "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" in text
+    assert _token_violations(text) == []
+    assert sum("git push" in step for step in _steps(text)) == 1
+
+
+def test_token_guard_flags_a_token_in_a_step_that_does_not_call_github():
+    text = _workflow_text().replace(
+        "      - name: Aplicar\n",
+        "      - name: Aplicar\n        env:\n          GH_TOKEN: ${{ github.token }}\n",
+    )
+
+    assert _token_violations(text) != []
+
+
+def test_only_main_writes_to_the_catalog():
+    push_steps = [step for step in _steps(_workflow_text()) if "git push" in step]
+
+    assert len(push_steps) == 1
+    guard = push_steps[0].find('"$GITHUB_REF_NAME" != "main"')
+    assert guard != -1 and guard < push_steps[0].index("git push")
+
+
+def test_waiting_requests_are_queued_and_not_cancelled_without_a_comment():
+    # Sin queue, GitHub cancela una petición en espera cuando llega otra: no se responde y la incidencia queda abierta.
+    text = _workflow_text()
+    block = text[text.index("\nconcurrency:"): text.index("\njobs:")]
+
+    assert "\n  group: library-catalog\n" in block
+    assert "\n  cancel-in-progress: false\n" in block
+    assert "\n  queue: max\n" in block
+
+
+def test_permissions_are_declared_on_the_job_not_on_the_whole_workflow():
+    header, _, jobs = _workflow_text().partition("\njobs:")
+
+    assert "permissions:" not in header
+    assert "permissions:" in jobs
 
 
 def test_web_has_no_administration_code():

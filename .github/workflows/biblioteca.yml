@@ -31,14 +31,12 @@ on:
         required: false
         default: ""
 
-permissions:
-  contents: write
-  issues: write
-
-# Una escritura cada vez: dos cambios simultáneos al catálogo se pisarían.
+# Una escritura cada vez: dos cambios simultáneos al catálogo se pisarían. Con queue: max, una petición en
+# espera no se cancela cuando llega otra (sin queue se cancela sin comentario ni etiqueta).
 concurrency:
   group: library-catalog
   cancel-in-progress: false
+  queue: max
 
 jobs:
   biblioteca:
@@ -48,6 +46,9 @@ jobs:
       (github.event.issue.user.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'biblioteca'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
     defaults:
       run:
         shell: bash
@@ -105,6 +106,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Solo main escribe en el catálogo: un lanzamiento manual desde otra rama no empuja su código a main.
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "El catálogo solo se escribe desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
           git add -A audio-library frontend/web
           if git diff --cached --quiet; then
             echo "Sin cambios que guardar."

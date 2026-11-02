@@ -32,7 +32,7 @@ El investigador decide que no habrá administración de momento: todo lo de gest
 | Repositorio | Solo el propietario y los colaboradores pueden etiquetar incidencias o lanzar el workflow. |
 | Workflow | Se ejecuta con `workflow_dispatch`, o con una incidencia cuyo autor es `github.repository_owner` y tiene la etiqueta `biblioteca`. |
 | Entrada | Máximo 8000 caracteres por petición; claves y operaciones en lista blanca; ids con formato fijo; booleanos JSON estrictos; límites de longitud por campo. |
-| Ejecución | Ningún texto de la incidencia se interpola en un script: pasa por variables de entorno. Concurrencia `library-catalog` sin cancelación, para que dos escrituras no se pisen. El checkout no guarda el token (`persist-credentials: false`) y el push lo recibe solo en su paso. |
+| Ejecución | Ningún texto de la incidencia se interpola en un script: pasa por variables de entorno. Concurrencia `library-catalog` sin cancelación y con cola (`queue: max`): una petición en espera no se cancela sin respuesta. Solo `main` escribe en el catálogo (guarda de rama en el paso de guardado). El checkout no guarda el token (`persist-credentials: false`) y el push lo recibe solo en su paso. Los permisos se declaran en el job. |
 | Salida | Commit solo si hay cambios. `scripts/check_repo_limits.py` se ejecuta antes de subir. |
 
 ## Riesgos
@@ -81,7 +81,7 @@ Reglas: una clave por línea; una clave desconocida o repetida es un error; una 
 
 ## Qué se verificó
 
-- `python -m pytest -q` en `backend/`: 212 pruebas en verde (164 de la entrega original y 48 añadidas en la corrección de 2026-11-02). Se ejecutó con Python 3.14 y con Python 3.11.14.
+- `python -m pytest -q` en `backend/`: 261 pruebas en verde (164 de la entrega original, 48 añadidas en la corrección de 2026-11-02 y 49 de la ronda de corrección posterior: guardas de plataformas y CDN, redes privadas, títulos de Internet Archive, descargas cortadas, rama `main` y cola del workflow). La corrección de 2026-11-02 se ejecutó con Python 3.14 y con Python 3.11.14; la ronda posterior, con Python 3.14.6.
 - Subproceso de `scripts/issue_request.py` con `BODY` y `GITHUB_ENV` temporales: éxito en modo incidencia, error con código 1 sin escribir nada, modo manual y ausencia de `GITHUB_ENV`.
 - Simulación del flujo del workflow con ficheros temporales: petición válida, petición con plataforma bloqueada, edición con etiquetas normalizadas y respuesta de éxito y de error.
 - `python3 scripts/check_repo_limits.py`: correcto.

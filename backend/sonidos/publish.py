@@ -30,7 +30,7 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path) -> dict:
     web_audio.mkdir(parents=True, exist_ok=True)
     web_data.mkdir(parents=True, exist_ok=True)
 
-    public = [song for song in data["songs"] if song.get("public")]
+    public = [song for song in data["songs"] if song.get("public") is True]
     public_names = {f"{song['id']}.opus" for song in public}
 
     for name in public_names:

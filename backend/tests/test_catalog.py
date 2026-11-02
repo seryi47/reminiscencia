@@ -68,3 +68,24 @@ def test_save_and_load_roundtrip(tmp_path):
     catalog.save(path, data)
     assert catalog.load(path)["songs"][0]["title"] == "Tema"
     assert catalog.load(tmp_path / "missing.json") == catalog.empty()
+
+
+def test_creating_a_folder_twice_under_the_same_parent_does_not_duplicate_it():
+    data = catalog.empty()
+    first = catalog.create_folder(data, "Jazz")
+
+    again = catalog.create_folder(data, " Jazz ")
+
+    assert again["id"] == first["id"]
+    assert len(data["folders"]) == 1
+
+
+def test_same_folder_name_under_another_parent_is_another_folder():
+    data = catalog.empty()
+    parent = catalog.create_folder(data, "Años 20")
+    catalog.create_folder(data, "Jazz")
+
+    child = catalog.create_folder(data, "Jazz", parent["id"])
+
+    assert child["parent_id"] == parent["id"]
+    assert len(data["folders"]) == 3

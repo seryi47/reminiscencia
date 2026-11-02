@@ -1,8 +1,10 @@
 import pytest
 
+from sonidos import sources
 from sonidos.sources import (
     SourceError,
     canonical_host,
+    check_download_url,
     classify,
     ia_identifier,
     ia_license_name,
@@ -240,3 +242,134 @@ def test_direct_file_keeps_declared_license():
     assert resolved.source == "direct-url"
     assert resolved.license == "CC BY 4.0"
     assert resolved.file_name == "tema.opus"
+
+
+# --- Revisión de seguridad 2026-11-02 (corrector de ronda 1) -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.deezer.com/track/1.mp3",
+        "https://cdns-preview-e.dzcdn.net/stream/c-1.mp3",
+        "https://tidal.com/browse/track/1.flac",
+        "https://www.mixcloud.com/artista/mezcla.mp3",
+        "https://www.dailymotion.com/tema.mp3",
+        "https://www.twitch.tv/videos/1.mp3",
+        "https://cf-media.sndcdn.com/x.mp3",
+        "https://audio-ssl.itunes.apple.com/itunes-assets/x/preview.m4a",
+        "https://t4.bcbits.com/stream/abc123.mp3",
+        "https://p.scdn.co/mp3-preview/abc.mp3",
+    ],
+)
+def test_streaming_hosts_and_their_cdns_are_refused_like_their_platform(url):
+    with pytest.raises(SourceError, match="no se puede importar"):
+        classify(url)
+
+
+def test_host_with_percent_escapes_is_refused_because_the_connection_would_decode_it():
+    # urllib desescapa el host al conectar: you%74ube.com llega a youtube.com.
+    for url in (
+        "https://you%74ube.com/x.mp3",
+        "https://youtube%2ecom/x.mp3",
+        "https://%79outube.com/x.mp3",
+        "https://arch%69ve.org/details/tema-item",
+    ):
+        with pytest.raises(SourceError, match="host"):
+            canonical_host(url)
+        with pytest.raises(SourceError, match="host"):
+            classify(url)
+
+
+def test_host_whose_normalization_leaves_an_empty_label_is_refused():
+    # U+2025 se normaliza a '..' y el codec IDNA no revisa las etiquetas después de NFKC.
+    url = "https://youtu‥be.com/a.mp3"
+
+    with pytest.raises(SourceError, match="host"):
+        canonical_host(url)
+    with pytest.raises(SourceError, match="host"):
+        classify(url)
+
+
+@pytest.mark.parametrize(
+    "license_url",
+    [
+        "https://creativecommons.org/publicdomain/",
+        "https://creativecommons.org/publicdomain/inventada/9.9/",
+        "https://creativecommons.org/publicdomain/zero/2.0/",
+        "https://creativecommons.org/publicdomain/mark/2.0/",
+    ],
+)
+def test_public_domain_root_and_invented_paths_are_not_licenses(license_url):
+    assert ia_license_name(license_url) is None
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://ia800100.us.archive.org/12/items/tema-item/tema.mp3",
+        "http://ia600200.us.archive.org/5/items/tema-item/tema.flac",
+    ],
+)
+def test_internet_archive_file_servers_are_not_direct_sources(url):
+    # La licencia se lee del ítem (ADR-0005): el CDN no permite declararla a mano.
+    with pytest.raises(SourceError, match="archive.org/details"):
+        classify(url)
+    with pytest.raises(SourceError, match="archive.org/details"):
+        resolve_direct_file(url, license="CC0 1.0")
+
+
+@pytest.mark.parametrize(
+    "title",
+    [["Tell me", "pretty maiden"], "x" * 5000, "Tema\n<b>falso</b>", "Tema extra", 42],
+)
+def test_internet_archive_title_that_is_not_plain_short_text_is_not_used(title):
+    metadata = _ia_metadata(
+        "http://creativecommons.org/publicdomain/mark/1.0/",
+        [{"name": "tema.mp3", "format": "VBR MP3"}],
+    )
+    metadata["metadata"]["title"] = title
+
+    resolved = resolve_internet_archive("https://archive.org/details/tema-item", metadata)
+
+    assert resolved.title is None
+    assert resolved.file_name == "tema.mp3"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://169.254.169.254/latest/meta-data/x.mp3",
+        "http://127.0.0.1:8080/x.mp3",
+        "http://10.0.0.5/x.mp3",
+        "http://192.168.1.10/x.mp3",
+        "http://[::1]/x.mp3",
+        "http://[::ffff:127.0.0.1]/x.mp3",
+        "http://0.0.0.0/x.mp3",
+        "http://localhost:8080/x.mp3",
+    ],
+)
+def test_download_refuses_loopback_private_and_link_local_addresses(url):
+    with pytest.raises(SourceError, match="red privada"):
+        check_download_url(url)
+
+
+def test_private_network_is_allowed_only_when_the_caller_says_so():
+    check_download_url("http://127.0.0.1:8080/x.mp3", allow_private_network=True)
+
+
+def test_public_address_literal_is_allowed():
+    check_download_url("http://93.184.216.34/x.mp3")
+
+
+def test_host_name_resolving_to_a_private_address_is_refused(monkeypatch):
+    monkeypatch.setattr(sources.socket, "getaddrinfo", lambda *args, **kwargs: [(0, 0, 0, "", ("10.0.0.5", 0))])
+
+    with pytest.raises(SourceError, match="red privada"):
+        check_download_url("https://cdn.ejemplo.com/tema.mp3")
+
+
+def test_host_name_resolving_only_to_public_addresses_is_allowed(monkeypatch):
+    monkeypatch.setattr(sources.socket, "getaddrinfo", lambda *args, **kwargs: [(0, 0, 0, "", ("93.184.216.34", 0))])
+
+    check_download_url("https://ejemplo.com/tema.mp3")
