@@ -1,9 +1,22 @@
 // Pantalla Escuchar del modo paciente (P1; DESIGN 3.1, 6.1 P-4 a P-10, 8.1 a 8.3; contrato 2.2 a 2.4 y 5).
-// Portada, título, progreso, transporte, volumen, fotografía y recuerdo. Además, los dos diálogos que cuelgan
+// Portada, título, progreso, transporte, volumen, fotografía y recuerdo. Debajo, los estantes «Seguir escuchando»
+// y «Mis listas» (portadas de las listas del perfil, como en Listas). Además, los dos diálogos que cuelgan
 // de esta pantalla: el recuerdo ampliado (P1b) y el aviso de apagado (P6).
 // Las funciones de formato y de presentación son puras (exportadas para las pruebas); el resto toca el DOM
 // y pide la reproducción al reproductor de services. Nada se reproduce al abrir la pantalla (DESIGN 8.1).
 import { createTapGuard, element, icon, nextId, openModal } from './shell.js';
+import {
+  createElement,
+  HOME_TILE_LIMIT,
+  hasMoreThan,
+  isLargeText,
+  latestLists,
+  makeGrid,
+  makeListTile,
+  sectionHead,
+  SHOW_ALL_TEXT,
+  visibleLists,
+} from './listas.js';
 
 export const ZOOM_LEVELS = Object.freeze([1, 1.5, 2, 3]);
 export const PRESENTATIONS = Object.freeze(['C0', 'C1', 'C2']);
@@ -488,7 +501,9 @@ export function mount(root, services, params = {}) {
     ]),
   ]);
   const recuerdo = element('div', { class: 'p1-recuerdo' }, [photoZone, memoryCard]);
-  const screen = element('div', { class: 'p1-root', 'data-testid': 'p1-root' }, [principal, recuerdo]);
+  // Estantes de Escuchar: se rellenan con las listas del perfil al terminar de cargar (renderShelves).
+  const shelvesNode = element('div', { class: 'p1-estantes', 'data-testid': 'p1-shelves', hidden: true });
+  const screen = element('div', { class: 'p1-root', 'data-testid': 'p1-root' }, [principal, recuerdo, shelvesNode]);
   screen.classList.toggle('escala-grande', currentTextScale() >= 1.5);
   root.replaceChildren(screen);
 
@@ -502,6 +517,7 @@ export function mount(root, services, params = {}) {
     trackId: null,
     track: null,
     link: null,
+    lists: [],
     songMemories: [],
     memoryIndex: 0,
     photoIndex: 0,
@@ -864,6 +880,58 @@ export function mount(root, services, params = {}) {
     renderRecuerdo();
   }
 
+  // ---- Estantes (P1): «Seguir escuchando» (las seis listas más recientes) y «Mis listas» (las seis primeras, con
+  // «Ver todas», que lleva a Listas). Las portadas son las de Listas (makeListTile). Sin listas, no hay estantes.
+  // Un fallo al leer las listas solo oculta los estantes: no afecta al reproductor.
+  async function loadShelves() {
+    try {
+      state.lists = state.profileId ? await store.listPlaylists(state.profileId) : [];
+    } catch (error) {
+      console.error('Reminiscencia: no se pudieron cargar las listas de Escuchar.', error);
+      state.lists = [];
+    }
+    if (!disposed) renderShelves();
+  }
+
+  function renderShelves() {
+    const doc = root.ownerDocument;
+    const lists = state.lists;
+    shelvesNode.replaceChildren();
+    shelvesNode.hidden = lists.length === 0;
+    if (lists.length === 0) return;
+    const large = isLargeText(services);
+    const seeAll = hasMoreThan(lists, HOME_TILE_LIMIT)
+      ? createElement(doc, 'button', {
+        type: 'button',
+        class: 'action action-secondary',
+        'data-testid': 'p1-see-all',
+      }, [SHOW_ALL_TEXT])
+      : null;
+    seeAll?.addEventListener('click', (event) => goTo('listas', event.currentTarget));
+    shelvesNode.append(
+      createElement(doc, 'section', {
+        class: 'section',
+        'data-testid': 'p1-continue',
+        'aria-labelledby': 'p1-continue-title',
+      }, [
+        sectionHead(doc, 'p1-continue-title', 'Seguir escuchando'),
+        makeGrid(doc, latestLists(lists).map((list) => makeListTile(doc, services, list)), { large }),
+      ]),
+      createElement(doc, 'section', {
+        class: 'section',
+        'data-testid': 'p1-lists',
+        'aria-labelledby': 'p1-lists-title',
+      }, [
+        sectionHead(doc, 'p1-lists-title', 'Mis listas', seeAll),
+        makeGrid(
+          doc,
+          visibleLists(lists).map((list, index) => makeListTile(doc, services, list, { 'data-list-index': index })),
+          { large },
+        ),
+      ]),
+    );
+  }
+
   // ---- Arranque: perfil, opciones, datos del almacén y última pista (contrato 2.3 y DESIGN 8.1).
   async function init() {
     try {
@@ -897,6 +965,7 @@ export function mount(root, services, params = {}) {
     }
     state.ready = true;
     tick();
+    await loadShelves();
   }
 
   function unmount() {

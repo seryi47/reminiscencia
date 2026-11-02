@@ -1,4 +1,6 @@
-/* Listas, carpetas y búsqueda del modo paciente (DESIGN 3.1, 4, 6.1: P-11 a P-15, y 5.4).
+/* Listas, carpetas, búsqueda y estantes del modo paciente (DESIGN 3.1, 4, 6.1: P-11 a P-15, y 5.4), con la
+   estructura de una app de música: cabecera de sección con «Ver todas», cuadrículas de portadas, cabecera de lista
+   o carpeta con su botón principal, filas de canción y búsqueda en forma de pastilla.
    Solo usa tokens de tokens.css y tipos de base.css. Las alturas de los controles crecen con --escala.
    El anillo de foco lo pone base.css (:focus-visible); aquí no se quita ningún contorno. */
 
@@ -11,15 +13,34 @@
   width: 100%;
   max-width: 1120px;
   margin: 0 auto;
-  /* El margen lateral (16 px en teléfono, 24 px desde 768 px) ya lo pone .p-main. Repetirlo aquí lo duplicaba y
-     estrechaba los mosaicos de carpetas y listas (DESIGN 5.4 y 15). */
-  padding: var(--margen-pagina, 16px) 0 var(--espacio-7, 48px);
+  /* El margen lateral (16 px en teléfono, 24 px desde 768 px) ya lo pone .p-main. */
+  padding: var(--espacio-4, 16px) 0 var(--espacio-7, 48px);
 }
 
 .section {
   display: grid;
   gap: var(--espacio-4, 16px);
   min-width: 0;
+}
+
+/* Cabecera de sección: el título a la izquierda y, a la derecha, «Ver todas» (botón de 56 px).
+   Si no cabe en una línea, el botón baja debajo del título. */
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espacio-3, 12px) var(--espacio-4, 16px);
+  min-width: 0;
+}
+
+.section-head h2 {
+  min-width: 0;
+  margin: 0;
+}
+
+.section-head .action {
+  flex: 0 0 auto;
 }
 
 .meta-text {
@@ -56,9 +77,10 @@
   height: 100%;
 }
 
-/* ---------- Mosaicos de listas y carpetas (P-11) ---------- */
+/* ---------- Cuadrículas de portadas (estantes, listas y carpetas; P-11) ----------
+   Teléfono: dos columnas. Desde 768 px, mosaicos que caben según el ancho (unos 160 a 204 px), de modo que un
+   estante de seis portadas cabe en una sola fila en escritorio. */
 
-/* Dos columnas por debajo de 768 px, tres entre 768 y 1023 px y cuatro desde 1024 px. */
 .tiles {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -70,14 +92,8 @@
 
 @media (min-width: 768px) {
   .tiles {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: var(--espacio-5, 24px);
-  }
-}
-
-@media (min-width: 1024px) {
-  .tiles {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -95,32 +111,39 @@
   margin: 0;
 }
 
+/* El mosaico no tiene caja propia: la portada es la tarjeta. Toda la superficie es el botón. */
 .tile {
   display: grid;
-  gap: var(--espacio-2, 8px);
+  gap: var(--espacio-3, 12px);
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   margin: 0;
-  padding: var(--espacio-3, 12px);
+  padding: 0;
   border: 0;
   border-radius: var(--radio-tarjeta, 20px);
-  background: var(--superficie-2);
+  background: transparent;
   color: var(--texto);
   font: inherit;
   text-align: start;
   cursor: pointer;
 }
 
-.tile:active {
+/* Pulsado (P-11): la portada se tiñe de acento-suave. */
+.tile:active .tile-cover {
   background: var(--acento-suave);
 }
 
-/* «Vacía»: no se abre y no cambia al pulsar. */
-.tile.is-empty,
-.tile.is-empty:active {
-  background: var(--superficie-2);
+/* «Vacía»: no se abre y no cambia al pulsar. La palabra «Vacía» lo dice; el color no es lo único. */
+.tile.is-empty {
   cursor: default;
+}
+
+.tile.is-empty .tile-cover,
+.tile.is-empty:active .tile-cover {
+  background: var(--superficie-2);
+  box-shadow: inset 0 0 0 2px var(--borde-suave);
+  color: var(--texto-3);
 }
 
 .tile-cover {
@@ -149,11 +172,63 @@
   color: var(--texto-3);
 }
 
-/* ---------- Filas de canción (P-12) ---------- */
+/* ---------- Cabecera de lista y de carpeta (P2b y P3b) ----------
+   Portada con la inicial, número de canciones y «Reproducir» (64 px). Teléfono: todo centrado. Desde 768 px: la
+   portada a la izquierda y los datos a su derecha, alineados abajo. */
+
+.detalle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: var(--espacio-4, 16px);
+  text-align: center;
+}
+
+.detalle-portada {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: min(200px, 56vw);
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radio-portada, 24px);
+  background: var(--superficie-3);
+  color: var(--texto-2);
+  font: 700 calc(96px * var(--escala, 1)) / 1 var(--familia-base);
+}
+
+.detalle-info {
+  display: grid;
+  justify-items: center;
+  gap: var(--espacio-3, 12px);
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .detalle {
+    grid-template-columns: 200px minmax(0, 1fr);
+    justify-items: start;
+    align-items: end;
+    gap: var(--espacio-5, 24px);
+    text-align: start;
+  }
+
+  .detalle-portada {
+    width: 200px;
+  }
+
+  .detalle-info {
+    justify-items: start;
+  }
+}
+
+/* ---------- Filas de canción (P-12) ----------
+   Alto de 88 px sin relleno vertical: un título de dos líneas (2 × 30 px), 2 px de separación y la segunda línea
+   (26 px) suman 88 px. Sin fondo propio: un separador fino entre filas y, si suena, fondo de acento-suave. */
 
 .song-rows {
   display: grid;
-  gap: var(--espacio-2, 8px);
+  gap: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -166,21 +241,21 @@
   align-items: center;
   gap: var(--espacio-4, 16px);
   box-sizing: border-box;
-  /* Alto de P-12 sin relleno vertical: un título de dos líneas (2 × 30 px), 2 px de separación y la segunda línea
-     (26 px) suman 88 px. Con relleno vertical de 12 px, esas filas medían 112 px. */
   min-height: calc(88px * var(--escala, 1));
-  padding: 0 var(--espacio-4, 16px);
+  padding: 0 var(--espacio-3, 12px);
   border-radius: var(--radio-miniatura, 12px);
-  background: var(--superficie-2);
+  background: transparent;
+  /* Separador fino entre filas. Es decorativo: no transmite información (DESIGN 5.1). */
+  box-shadow: inset 0 -1px 0 var(--borde-suave);
 }
 
 @media (min-width: 768px) {
   .song-row {
-    padding-inline: var(--espacio-5, 24px);
+    padding-inline: var(--espacio-4, 16px);
   }
 }
 
-/* Barra izquierda de 6 px de la fila activa. Sin overflow: el anillo de foco de los botones no debe recortarse. */
+/* Barra izquierda de 6 px de la fila que suena. Sin overflow: el anillo de foco de los botones no debe recortarse. */
 .song-row::before {
   content: "";
   position: absolute;
@@ -340,7 +415,7 @@
   min-height: calc(56px * var(--escala, 1));
 }
 
-/* Ancho completo en teléfono; en tableta, ancho de contenido con un mínimo de 280 px. */
+/* Ancho completo en teléfono; en tableta y escritorio, ancho del contenido con un mínimo de 280 px. */
 .action-wide {
   width: 100%;
 }
@@ -352,7 +427,8 @@
   }
 }
 
-/* ---------- Búsqueda (P4, P-14 y P-15) ---------- */
+/* ---------- Búsqueda (P4, P-14 y P-15) ----------
+   El campo es una pastilla de 64 px con la lupa decorativa dentro. La etiqueta visible «Buscar» va encima. */
 
 .search-form {
   display: grid;
@@ -373,7 +449,7 @@
 /* Campo y «Buscar»: uno debajo de otro en teléfono y a la derecha desde 768 px. */
 .search-row {
   display: grid;
-  gap: var(--espacio-4, 16px);
+  gap: var(--espacio-3, 12px);
 }
 
 @media (min-width: 768px) {
@@ -383,15 +459,32 @@
   }
 }
 
+.search-campo {
+  position: relative;
+  min-width: 0;
+}
+
+.search-campo .icon {
+  position: absolute;
+  top: 50%;
+  left: 20px;
+  width: 28px;
+  height: 28px;
+  transform: translateY(-50%);
+  color: var(--texto-2);
+  pointer-events: none;
+}
+
 .search-field {
   box-sizing: border-box;
+  display: block;
   width: 100%;
   min-width: 0;
   min-height: calc(64px * var(--escala, 1));
   margin: 0;
-  padding: 0 var(--espacio-4, 16px);
+  padding: 0 var(--espacio-5, 24px) 0 56px;
   border: 2px solid var(--borde-control);
-  border-radius: var(--radio-control, 16px);
+  border-radius: 999px;
   background: var(--superficie-2);
   color: var(--texto);
   font: var(--tipo-busqueda);

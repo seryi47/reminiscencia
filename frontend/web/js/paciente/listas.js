@@ -268,6 +268,7 @@ const ICON_PATHS = Object.freeze({
   play: '<path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/>',
   offline: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/>',
 });
 
 /** Icono decorativo (aria-hidden) con los trazados propios. */
@@ -307,6 +308,43 @@ export function makeGrid(doc, items, { testid = null, large = false } = {}) {
     class: large ? 'tiles escala-grande' : 'tiles',
     'data-testid': testid,
   }, items);
+}
+
+/**
+ * Mosaico de una lista (P-11) para cualquier pantalla del modo paciente: abre la lista (P2b) o, si está vacía,
+ * queda como «Vacía» y no se abre. Lo usan Listas (P2) y el estante de Escuchar (P1).
+ */
+export function makeListTile(doc, services, list, attributes = {}) {
+  const songs = services.catalog?.songs ?? [];
+  const count = songsOfList(list, songs).length;
+  const empty = count === 0;
+  return makeTile(doc, {
+    title: listName(list),
+    meta: empty ? EMPTY_TILE_TEXT : songCountText(count),
+    initial: initialOf(listName(list)),
+    empty,
+    onOpen: () => services.navigate('lista', { listId: list.id }),
+    attributes: { 'data-list-id': list.id, ...attributes },
+  });
+}
+
+/** Cabecera de sección (DESIGN 6.1): el título a la izquierda y, si hace falta, un botón («Ver todas») a la derecha. */
+export function sectionHead(doc, headingId, title, action = null) {
+  return createElement(doc, 'div', { class: 'section-head' }, [
+    createElement(doc, 'h2', { id: headingId }, [title]),
+    action,
+  ]);
+}
+
+/**
+ * Cabecera de una lista o de una carpeta (P2b y P3b): portada con la inicial, número de canciones y el botón
+ * principal. La portada es decorativa: el nombre de la pantalla lo da el H1 del marco.
+ */
+export function makeDetailHeader(doc, { initial, meta, action }) {
+  return createElement(doc, 'div', { class: 'detalle' }, [
+    createElement(doc, 'span', { class: 'detalle-portada', 'aria-hidden': 'true' }, [initial]),
+    createElement(doc, 'div', { class: 'detalle-info' }, [meta, action]),
+  ]);
 }
 
 // ---------- Reproducción y filas de canción ----------
@@ -448,7 +486,6 @@ export function mountLists(root, services) {
     const liked = view.profile ? likedSongs(view.links, songs) : [];
     const presentation = createPresentationResolver(view.links);
     appendAll(container, [
-      view.lists.length > 0 ? homeSection() : null,
       listsSection(),
       liked.length > 0 ? likedSection(liked, presentation) : null,
     ]);
@@ -456,49 +493,29 @@ export function mountLists(root, services) {
     if (focusSelector) container.querySelector(focusSelector)?.focus();
   }
 
-  // Mosaico de una lista. Vacía (sin canciones del catálogo) no se abre.
+  // Mosaico de una lista (P-11). Vacía (sin canciones del catálogo) no se abre.
   function listTile(list, attributes = {}) {
-    const count = songsOfList(list, songs).length;
-    const empty = count === 0;
-    return makeTile(doc, {
-      title: listName(list),
-      meta: empty ? EMPTY_TILE_TEXT : songCountText(count),
-      initial: initialOf(listName(list)),
-      empty,
-      onOpen: () => services.navigate('lista', { listId: list.id }),
-      attributes: { 'data-list-id': list.id, ...attributes },
-    });
+    return makeListTile(doc, services, list, attributes);
   }
 
-  function homeSection() {
-    return createElement(doc, 'section', {
-      class: 'section',
-      'data-testid': 'p2-continue',
-      'aria-labelledby': 'p2-continue-title',
-    }, [
-      createElement(doc, 'h2', { id: 'p2-continue-title' }, ['Seguir escuchando']),
-      makeGrid(doc, latestLists(view.lists).map((list) => listTile(list)), { large: isLargeText(services) }),
-    ]);
-  }
-
+  // «Mis listas»: seis mosaicos, o todos tras «Ver todas» (en la cabecera de la sección). «Seguir escuchando»
+  // está en Escuchar (P1).
   function listsSection() {
-    const section = createElement(doc, 'section', {
-      class: 'section',
-      'data-testid': 'p2-lists',
-      'aria-labelledby': 'p2-lists-title',
-    }, [createElement(doc, 'h2', { id: 'p2-lists-title' }, ['Mis listas'])]);
+    const headingId = 'p2-lists-title';
     if (view.lists.length === 0) {
-      section.append(createParagraph(doc, 'empty-text', NO_LISTS_TEXT));
-      return section;
+      return createElement(doc, 'section', {
+        class: 'section',
+        'data-testid': 'p2-lists',
+        'aria-labelledby': headingId,
+      }, [
+        createElement(doc, 'h2', { id: headingId }, ['Mis listas']),
+        createParagraph(doc, 'empty-text', NO_LISTS_TEXT),
+      ]);
     }
     const visible = visibleLists(view.lists, view.showAllLists);
-    section.append(makeGrid(
-      doc,
-      visible.map((list, index) => listTile(list, { 'data-list-index': index })),
-      { large: isLargeText(services) },
-    ));
+    let seeAll = null;
     if (hasMoreThan(view.lists, HOME_TILE_LIMIT) && !view.showAllLists) {
-      const seeAll = createElement(doc, 'button', {
+      seeAll = createElement(doc, 'button', {
         type: 'button',
         class: 'action action-secondary',
         'data-testid': 'p2-see-all',
@@ -508,19 +525,39 @@ export function mountLists(root, services) {
         announce(services, 'Se muestran todas las listas.');
         render(`[data-list-index="${HOME_TILE_LIMIT}"]`);
       });
-      section.append(seeAll);
     }
-    return section;
+    return createElement(doc, 'section', {
+      class: 'section',
+      'data-testid': 'p2-lists',
+      'aria-labelledby': headingId,
+    }, [
+      sectionHead(doc, headingId, 'Mis listas', seeAll),
+      makeGrid(
+        doc,
+        visible.map((list, index) => listTile(list, { 'data-list-index': index })),
+        { large: isLargeText(services) },
+      ),
+    ]);
   }
 
   function likedSection(liked, presentation) {
     const shown = view.showAllLiked ? liked : liked.slice(0, LIKED_ROW_LIMIT);
-    const section = createElement(doc, 'section', {
+    const headingId = 'p2-alias-title';
+    let seeAll = null;
+    if (hasMoreThan(liked, LIKED_ROW_LIMIT) && !view.showAllLiked) {
+      seeAll = createElement(doc, 'button', { type: 'button', class: 'action action-secondary' }, [SHOW_ALL_TEXT]);
+      seeAll.addEventListener('click', () => {
+        view.showAllLiked = true;
+        announce(services, 'Se muestran todas las canciones.');
+        render(`[data-index="${LIKED_ROW_LIMIT}"]`);
+      });
+    }
+    return createElement(doc, 'section', {
       class: 'section',
       'data-testid': 'p2-for-alias',
-      'aria-labelledby': 'p2-alias-title',
+      'aria-labelledby': headingId,
     }, [
-      createElement(doc, 'h2', { id: 'p2-alias-title' }, [aliasTitle(view.profile.alias)]),
+      sectionHead(doc, headingId, aliasTitle(view.profile.alias), seeAll),
       createElement(doc, 'ol', { class: 'song-rows' }, shown.map((song, index) => makeRow(doc, context, {
         song,
         index,
@@ -529,16 +566,6 @@ export function mountLists(root, services) {
         presentation,
       }))),
     ]);
-    if (hasMoreThan(liked, LIKED_ROW_LIMIT) && !view.showAllLiked) {
-      const seeAll = createElement(doc, 'button', { type: 'button', class: 'action action-secondary' }, [SHOW_ALL_TEXT]);
-      seeAll.addEventListener('click', () => {
-        view.showAllLiked = true;
-        announce(services, 'Se muestran todas las canciones.');
-        render(`[data-index="${LIKED_ROW_LIMIT}"]`);
-      });
-      section.append(seeAll);
-    }
-    return section;
   }
 
   return {
@@ -608,8 +635,11 @@ export function mountList(root, services, params = {}) {
       presentation,
     }));
     appendAll(container, [
-      createParagraph(doc, 'meta-text', songCountText(queue.length)),
-      playButton,
+      makeDetailHeader(doc, {
+        initial: initialOf(listName(list)),
+        meta: createParagraph(doc, 'meta-text', songCountText(queue.length)),
+        action: playButton,
+      }),
       createElement(doc, 'h2', { class: 'visually-hidden' }, ['Canciones']),
       queue.length === 0 ? createParagraph(doc, 'empty-text', LIST_EMPTY_TEXT) : null,
       createElement(doc, 'ol', { class: 'song-rows', 'data-testid': 'p2b-rows' }, rows),

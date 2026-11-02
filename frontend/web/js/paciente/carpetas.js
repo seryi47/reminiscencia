@@ -14,6 +14,7 @@ import {
   initialOf,
   isLargeText,
   loadAvailability,
+  makeDetailHeader,
   makeGrid,
   makeRow,
   makeTile,
@@ -159,8 +160,11 @@ export function mountFolder(root, services, params = {}) {
       presentation,
     }));
     appendAll(container, [
-      createParagraph(doc, 'meta-text', songCountText(queue.length)),
-      playButton,
+      makeDetailHeader(doc, {
+        initial: initialOf(folderName(folder)),
+        meta: createParagraph(doc, 'meta-text', songCountText(queue.length)),
+        action: playButton,
+      }),
       createElement(doc, 'h2', { class: 'visually-hidden' }, ['Canciones']),
       queue.length === 0
         ? createParagraph(doc, 'empty-text', FOLDER_EMPTY_TEXT, { 'data-testid': 'p3b-empty' })
