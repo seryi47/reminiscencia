@@ -1,5 +1,7 @@
 """Empaqueta lo que el procesado cambió en el repositorio, para que el job de publicación lo valide y lo aplique
-(ADR-0008). No escribe en git ni en la web: solo deja el paquete en la carpeta indicada.
+(ADR-0008). Solo empaqueta el catálogo y el audio: la parte pública (datos de la web y audio publicado) la regenera
+la publicación desde el catálogo (ADR-0010). No escribe en git ni en la web: solo deja el paquete en la carpeta
+indicada.
 
 Uso dentro del workflow biblioteca.yml (job 'procesar', después de ejecutar la petición):
   python scripts/empaquetar_cambios.py --salida "$RUNNER_TEMP/paquete"
@@ -18,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from sonidos.paquete import PaqueteError, package_changes  # noqa: E402
+from sonidos.paquete import PaqueteError, package_processing_changes  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--salida", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
-        result = package_changes(ROOT, args.salida, action=os.environ.get("ACTION", ""))
+        result = package_processing_changes(ROOT, args.salida, action=os.environ.get("ACTION", ""))
     except (PaqueteError, OSError, ValueError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False))
         return 1
