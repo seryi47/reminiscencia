@@ -208,7 +208,7 @@
       "codec": "mp3",
       "size_bytes": 3629138,
       "added_at": "2026-11-02T17:24:47+00:00",
-      "public": false
+      "public": true
     }
   ]
 }
