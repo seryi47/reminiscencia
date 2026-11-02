@@ -1,6 +1,6 @@
 # Base de datos de Reminiscencia
 
-Estado: describe la rama feat/ui-publica pendiente de fusión. En `main` (8a19a09) el almacén del navegador está en la versión 1 y no tiene el registro del estudio. El catálogo con `catalog.json` y el workflow `biblioteca.yml` describen la rama feat/gestion-backend (cabeza 22b444a), también pendiente de fusión. Los ficheros `songs.json` y `folders.json` ya están en `main`.
+Estado: describe la rama feat/ui-publica pendiente de fusión. En `main` (8a19a09) el almacén del navegador está en la versión 1 y no tiene el registro del estudio. El catálogo (`catalog.json`) y el workflow `biblioteca.yml` ya están en `main` (ADR-0008 y ADR-0010). Los ficheros `songs.json` y `folders.json` ya están en `main`.
 
 Revisado: 2026-11-02, a partir del código de las ramas citadas y de `docs/user-experience/DESIGN.md`. Lo que el código no permite comprobar, o que contradice el diseño, está en la sección 7 («Pendiente»).
 
@@ -289,7 +289,7 @@ Están en `frontend/web/data/`. Vercel sirve solo `frontend/web` (`CLAUDE.md`). 
 
 - `songs.json` (en `main`): solo las canciones públicas, ordenadas por título en minúsculas. Campos: `id`, `title`, `artist`, `year`, `tags` (lista), `folder_id`, `duration_s`, `license` y `audio` (ruta relativa `audio/<id>.opus`).
 - `folders.json` (en `main`): todas las carpetas. Campos: `id`, `name` y `parent_id` (null en el nivel superior).
-- `catalog.json` (solo en feat/gestion-backend, pendiente de fusión): un objeto con `songs` y `folders`. Las canciones son las públicas, con `id`, `title`, `artist`, `year`, `tags`, `folder_id`, `license`, `source`, `duration_s` y `public`. No incluye `audio` ni `sha256`. Orden: título en minúsculas y después `id`.
+- `catalog.json` (en `main`, desde ADR-0008): un objeto con `songs` y `folders`. Las canciones son las públicas, con `id`, `title`, `artist`, `year`, `tags`, `folder_id`, `license`, `source`, `duration_s` y `public`. No incluye `audio` ni `sha256`. Orden: título en minúsculas y después `id`.
 
 ### 6.2 Catálogo privado de origen
 
@@ -300,21 +300,21 @@ Están en `frontend/web/data/`. Vercel sirve solo `frontend/web` (`CLAUDE.md`). 
 - La licencia es obligatoria para importar. Las canciones nuevas nacen con `public: false`.
 - Al importar, un título vacío se sustituye por «Sin título». Al editar, no puede quedar vacío. Al editar, `tags` se normaliza a minúsculas y sin duplicados. `year` es un entero o null.
 - `added_at`: ISO 8601 en UTC, con precisión de segundos.
-- `source`: `<fuente>:<identificador>` (`pipeline.py`). En los ficheros directos (`sources.py`, en `main` y en feat/gestion-backend), el identificador es el host seguido del nombre del fichero, no la URL completa.
+- `source`: `<fuente>:<identificador>` (`pipeline.py`). En los ficheros directos (`sources.py`), el identificador es el host seguido del nombre del fichero, no la URL completa.
 - `codec`, `size_bytes` y `duration_s` salen de `probe.py`, sobre el fichero original descargado. `duration_s` se redondea a 3 decimales.
 - Audio: `audio-library/audio/<id>.opus`, codificado con el perfil `opus-64k`. Al publicar se copia a `frontend/web/audio/<id>.opus`, solo para las canciones públicas.
 
 ### 6.3 Quién escribe
 
-- En `main`: `.github/workflows/library.yml` (solo `workflow_dispatch`) ejecuta `scripts/ci_library.py`. Ese script actualiza `catalog.json` y regenera `songs.json` y `folders.json` con `sync_public`; el commit y el push los hace el propio workflow. Usa el grupo de concurrencia `library-catalog`.
-- En feat/gestion-backend (pendiente): `.github/workflows/biblioteca.yml` se dispara al abrir una incidencia (`issues`, `opened`) o a mano; el trabajo solo corre si la incidencia es del propietario y tiene la etiqueta `biblioteca`. Sustituye a `library.yml` y además regenera `frontend/web/data/catalog.json`. Según el mensaje del commit 679b11c, retira también la administración web.
+- En `main`: `.github/workflows/biblioteca.yml` ejecuta `scripts/ci_library.py` en el job `procesar` (sin token), que actualiza `audio-library/indexes/catalog.json` y el audio de la biblioteca. En el job `publicar`, `scripts/aplicar_paquete.py` aplica el paquete y regenera `songs.json`, `folders.json` y `catalog.json` con `sync_public` (ADR-0010 y ADR-0011); el commit y el push los hace `publicar`, con el grupo de concurrencia `library-catalog`. `library.yml` está retirado (ADR-0008).
+- `.github/workflows/biblioteca.yml` (ADR-0008) se dispara al abrir una incidencia (`issues`, `opened`) o a mano. Con incidencia, el job `autorizar` exige permiso de escritura en el autor y la etiqueta `biblioteca`. Sustituye a `library.yml`, retirado con la administración web (commit `0fa6ed3`). La parte pública de `frontend/web/data/`, incluido `catalog.json`, la regenera `publicar` (ADR-0011).
 
 ### 6.4 Quién lee
 
 - `frontend/web/app.js` (la web, en `main` y en feat/ui-publica): `fetch("data/songs.json")` y `fetch("data/folders.json")`. Este último es opcional.
 - `mobile/lib/library_store.dart` (la app Android): descarga `https://reminiscencia.vercel.app/data/songs.json` y `data/folders.json`, guarda copias en `<documentos>/biblioteca/` y, si no hay red, usa esas copias. Los audios van a `<documentos>/biblioteca/audio/<id>.opus`.
 - `mobile/lib/song.dart`: `id`, `title`, `duration_s` y `audio` son obligatorios; `artist`, `year`, `tags`, `folder_id` y `license` son opcionales. En las carpetas, `id` y `name` son obligatorios y `parent_id` es opcional.
-- `catalog.json`: en el código revisado no lo lee ni la web ni la app. Solo lo leen las pruebas del backend (`backend/tests/test_publish.py` y `test_ci_library.py`, en feat/gestion-backend).
+- `catalog.json`: en el código revisado no lo lee ni la web ni la app. Solo lo leen las pruebas del backend (`backend/tests/test_publish.py` y `test_ci_library.py`).
 
 ## 7. Pendiente
 
@@ -336,5 +336,5 @@ Lo que el código no permite comprobar, o lo que contradice el diseño. Cada pun
 14. Copia y DESIGN: DESIGN (9) no menciona el registro del estudio entre el contenido de la copia. El código lo incluye desde `payloadVersion` 2. Conviene alinear el texto.
 15. Almacén `history`: `addHistory` y `listHistory` no tienen llamadas ni pruebas en la rama. La pantalla de historial de DESIGN se apoya en `studyEvents`. Falta decidir si `history` se elimina o se mantiene como legado.
 16. Lector de `catalog.json`: no hay lector en la web ni en la app. Falta decidir si se usa y quién lo usaría.
-17. Campo `source` publicado: `catalog.json` (feat/gestion-backend) publica `source` de las canciones públicas. En las importaciones directas incluye el host y el nombre del fichero. Falta revisar si eso debe ser público.
+17. Campo `source` publicado: `catalog.json` publica `source` de las canciones públicas. En las importaciones directas incluye el host y el nombre del fichero. Falta revisar si eso debe ser público.
 18. Listas de la app Android: `mobile/lib/collections_store.dart` no está documentado en este fichero.

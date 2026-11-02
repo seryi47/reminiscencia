@@ -25,7 +25,7 @@ Si dos identificadores describen la misma obra, la entrada los reúne y muestra 
 
 ### Documentos de uso
 
-ALZHEIMER_RESEARCH.md, METHODOLOGY.md y SECURITY.md existen en el worktree (sin commit). En «Uso» de cada entrada constan el documento y la sección donde aparece el identificador, según la comprobación del 2 de noviembre de 2026. El uso en docs/audio-processing/COMPRESSION.md, fuera de esta revisión, se indica con su línea.
+ALZHEIMER_RESEARCH.md, METHODOLOGY.md y SECURITY.md existen en `main` (commit 0d8b004). En «Uso» de cada entrada constan el documento y la sección donde aparece el identificador, según la comprobación del 2 de noviembre de 2026. El uso en docs/audio-processing/COMPRESSION.md, fuera de esta revisión, se indica con su línea.
 
 ## Clínica
 
@@ -419,7 +419,7 @@ Lista de afirmaciones no verificadas o parciales, y de datos que faltan para cit
 - **B4:** se mantiene como verificada según verificadas-existentes. La discrepancia con [clinica-03] queda abierta en Pendientes y no se ha resuelto.
 - **Pistas:** las referencias verificadas sin identificador propio se describen dentro de la entrada que las menciona. No tienen entrada propia ni alias.
 - **Autores:** cuando el registro de verificación no transcribe todos los autores, la entrada usa «et al.» y el caso va a Pendientes. No se han tomado autores ni datos de los ficheros brutos del scratchpad; solo se usan los cinco registros de verificación.
-- **Documentos:** ALZHEIMER_RESEARCH.md, METHODOLOGY.md y SECURITY.md existen en el worktree (sin commit). El uso de cada identificador consta por documento y sección en su entrada; el de docs/audio-processing/COMPRESSION.md, fuera de esta revisión, con su línea.
+- **Documentos:** ALZHEIMER_RESEARCH.md, METHODOLOGY.md y SECURITY.md existen en `main` (commit 0d8b004). El uso de cada identificador consta por documento y sección en su entrada; el de docs/audio-processing/COMPRESSION.md, fuera de esta revisión, con su línea.
 - **Eliminado de la versión anterior:** la «nota de prensa» de B2 (no figura en el registro de verificación); el DOI pendiente de B6 (resuelto); la nota de «tamaño indirecto» de B5 (resuelta con el resumen de PubMed).
 - **Cambios en otros documentos:** RESEARCH.md está corregido (ver «Cambios aplicados en RESEARCH.md» más arriba). docs/audio-processing/COMPRESSION.md: línea 264 (BS.1534 sin versión), línea 265 (RFC 6716 como «Proposed Standard», cuando consta Standards Track) y línea 274 (la nota sobre Gray y Markel dice que el registro no está confirmado, y ya lo está). CHANGELOG.md y ROADMAP.md mencionan el RGPD de forma genérica.
 - **Legal-05:** la disposición transitoria vigésima primera, apartado 3, procede de la corrección del registro; en la comprobación consta como omitida y no como texto verificado en el BOE.

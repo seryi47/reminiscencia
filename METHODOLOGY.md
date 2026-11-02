@@ -440,7 +440,7 @@ Este documento no modifica estos ficheros. Cada punto necesita corrección o una
 - **DESIGN.md**, §9 y P-16, frente a **SECURITY.md** §3.3: el bloqueo del PIN es de 60 s en §9 y de 45 s en P-16, y el código acepta de 4 a 12 dígitos. SECURITY.md §2.1 señala además que DESIGN fija 10 MB en C-22 y el código 8 MB.
 - **ROADMAP.md**, línea 38 (Plan v2: «sin pruebas perceptuales con personas» en compresión), frente a **docs/audio-processing/COMPRESSION.md**, «Próximos pasos» (prueba MUSHRA).
 - **docs/audio-processing/COMPRESSION.md**, líneas 264, 265 y 274: ya coinciden con la bibliografía (BS.1534-3, RFC 6716 en Standards Track y Gray y Markel registrado en Crossref). No queda discrepancia en esas líneas.
-- **[BIBLIOGRAPHY.md](BIBLIOGRAPHY.md)**, apartado «Documentos de uso»: dice que ALZHEIMER_RESEARCH, METHODOLOGY y SECURITY existen «en el worktree (sin commit)». Ya están en `main` desde el commit 0d8b004; esa nota de BIBLIOGRAPHY.md queda por actualizar.
+- **[BIBLIOGRAPHY.md](BIBLIOGRAPHY.md)**, apartado «Documentos de uso»: dice que ALZHEIMER_RESEARCH, METHODOLOGY y SECURITY existían «en el worktree (sin commit)». Corregido: están en `main` desde el commit 0d8b004.
 - **[ALZHEIMER_RESEARCH.md](ALZHEIMER_RESEARCH.md)** (borrador): agrupa las mismas referencias en categorías sin numerar, coherentes con los niveles de RESEARCH.md. Si cambia la numeración de RESEARCH.md, hay que revisar también ese documento.
 
 ## 9. Identificadores usados
