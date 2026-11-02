@@ -605,13 +605,46 @@ html[data-escala="1.75"] .p1-root {
 }
 
 /* ---------- Estantes de Escuchar: «Seguir escuchando» y «Mis listas» ----------
-   Ocupan todo el ancho debajo del reproductor, la fotografía y el recuerdo, en cualquier columnas del punto de
-   ruptura. Las cuadrículas de portadas y las cabeceras de sección vienen de paciente-listas.css. */
+   Carrusel horizontal de portadas de 176 px con «Ver todo» a la derecha del título (pedido del propietario, como en
+   Apple Music). Ocupan todo el ancho debajo del reproductor, la fotografía y el recuerdo. El desplazamiento es
+   propio de cada estante; la caja deja holgura para el anillo de foco de 4 px. Sin scroll-behavior animado. */
 .p1-estantes {
   grid-column: 1 / -1;
   display: grid;
   gap: var(--separacion-bloque, 32px);
   min-width: 0;
+}
+
+/* «Ver todo» siempre a la derecha: el título puede partirse en dos líneas, el botón no baja. */
+.p1-estantes .section-head {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.p1-estantes .section-head h2 {
+  flex: 1 1 auto;
+}
+
+.p1-estantes .estante {
+  display: grid;
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: 176px;
+  gap: var(--espacio-4, 16px);
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--espacio-2, 8px) var(--espacio-1, 4px) var(--espacio-3, 12px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+
+.p1-estantes .estante > .tile-item {
+  width: 176px;
+  scroll-snap-align: start;
 }
 
 /* ---------- Puntos de ruptura de Escuchar (DESIGN 4) ---------- */

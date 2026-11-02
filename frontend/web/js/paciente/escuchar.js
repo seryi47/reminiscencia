@@ -7,14 +7,10 @@
 import { createTapGuard, element, icon, nextId, openModal } from './shell.js';
 import {
   createElement,
-  HOME_TILE_LIMIT,
-  hasMoreThan,
-  isLargeText,
   latestLists,
   makeGrid,
   makeListTile,
   sectionHead,
-  SHOW_ALL_TEXT,
   visibleLists,
 } from './listas.js';
 
@@ -899,35 +895,38 @@ export function mount(root, services, params = {}) {
     shelvesNode.replaceChildren();
     shelvesNode.hidden = lists.length === 0;
     if (lists.length === 0) return;
-    const large = isLargeText(services);
-    const seeAll = hasMoreThan(lists, HOME_TILE_LIMIT)
-      ? createElement(doc, 'button', {
+    // «Ver todo» de cada estante (como en Apple Music): lleva a Listas (P2), con todas las listas.
+    const seeAll = (testid) => {
+      const button = createElement(doc, 'button', {
         type: 'button',
         class: 'action action-secondary',
-        'data-testid': 'p1-see-all',
-      }, [SHOW_ALL_TEXT])
-      : null;
-    seeAll?.addEventListener('click', (event) => goTo('listas', event.currentTarget));
+        'data-testid': testid,
+      }, ['Ver todo']);
+      button.addEventListener('click', (event) => goTo('listas', event.currentTarget));
+      return button;
+    };
+    // Carrusel horizontal de portadas de 176 px (clase estante): se desplaza dentro de su caja.
+    const carousel = (items) => {
+      const grid = makeGrid(doc, items, { large: false });
+      grid.classList.add('estante');
+      return grid;
+    };
     shelvesNode.append(
       createElement(doc, 'section', {
         class: 'section',
         'data-testid': 'p1-continue',
         'aria-labelledby': 'p1-continue-title',
       }, [
-        sectionHead(doc, 'p1-continue-title', 'Seguir escuchando'),
-        makeGrid(doc, latestLists(lists).map((list) => makeListTile(doc, services, list)), { large }),
+        sectionHead(doc, 'p1-continue-title', 'Seguir escuchando', seeAll('p1-continue-see-all')),
+        carousel(latestLists(lists).map((list) => makeListTile(doc, services, list))),
       ]),
       createElement(doc, 'section', {
         class: 'section',
         'data-testid': 'p1-lists',
         'aria-labelledby': 'p1-lists-title',
       }, [
-        sectionHead(doc, 'p1-lists-title', 'Mis listas', seeAll),
-        makeGrid(
-          doc,
-          visibleLists(lists).map((list, index) => makeListTile(doc, services, list, { 'data-list-index': index })),
-          { large },
-        ),
+        sectionHead(doc, 'p1-lists-title', 'Mis listas', seeAll('p1-see-all')),
+        carousel(visibleLists(lists).map((list, index) => makeListTile(doc, services, list, { 'data-list-index': index }))),
       ]),
     );
   }
