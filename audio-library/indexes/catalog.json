@@ -177,6 +177,22 @@
       "size_bytes": 1633175,
       "added_at": "2026-10-31T12:33:14+00:00",
       "public": false
+    },
+    {
+      "id": "Sa05a120c1192e9c3",
+      "title": "Tell me pretty maiden",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público (Creative Commons) (Internet Archive: tellmaiden)",
+      "source": "internet-archive:tellmaiden",
+      "sha256": "a05a120c1192e9c3b89ffdc51088714a77169f4e7bfb51e4e596f9575cd5f455",
+      "duration_s": 129.959,
+      "codec": "mp3",
+      "size_bytes": 1305712,
+      "added_at": "2026-11-02T16:20:17+00:00",
+      "public": false
     }
   ]
 }
