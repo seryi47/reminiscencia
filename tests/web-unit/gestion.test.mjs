@@ -37,3 +37,16 @@ describe("gestion.js: fuentes de datos", () => {
     assert.ok(existsSync(new URL("data/catalog.json", WEB)), "falta data/catalog.json (lo genera sonidos.publish)");
   });
 });
+
+describe("gestion.js: valida con intake.js, sin reglas propias", () => {
+  it("usa validateImport y buildImportBody de intake.js para añadir un audio", () => {
+    const script = read("js/gestion.js");
+    assert.match(script, /import \{[^}]*\bvalidateImport\b[^}]*\} from "\.\/intake\.js";/);
+    assert.match(script, /import \{[^}]*\bbuildImportBody\b[^}]*\} from "\.\/intake\.js";/);
+  });
+
+  it("no repite la lista de plataformas ni las reglas de Internet Archive", () => {
+    const script = read("js/gestion.js");
+    assert.equal(/archive\.org|BLOCKED_HOSTS|youtube/i.test(script), false);
+  });
+});

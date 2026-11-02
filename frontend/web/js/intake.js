@@ -54,7 +54,6 @@ const HTTP_URL = /^https?:\/\//;
 // Igual que IA_IDENTIFIER en sources.py: sin barras, y sin punto ni guion al principio.
 const IA_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 const IA_HOST = "archive.org";
-const IA_KINDS = Object.freeze(["details", "download"]);
 // Host en ASCII con puerto opcional. Lo que no encaja (IPv6, usuario, caracteres codificados) se rechaza.
 const AUTHORITY = /^([A-Za-z0-9.-]+)(?::[0-9]*)?$/;
 // Espacios Unicode (los que Python llama isspace) y caracteres de control: no pueden estar en una dirección.
@@ -67,9 +66,9 @@ const LINE_BREAK = /[\n\r\v\f\u001c-\u001e\u0085\u2028\u2029]/;
 const REPO_NAME = /^(?!\.\.?\/)[A-Za-z0-9_.-]+\/(?!\.\.?$)[A-Za-z0-9_.-]+$/;
 
 const BLOCKED_MESSAGE = "Esta plataforma no se puede importar: sus condiciones de uso no permiten descargar el contenido. Usa un fichero de audio con licencia o un ítem de Internet Archive.";
-const IA_FORM_MESSAGE = "En Internet Archive usa archive.org/details/<identificador> o archive.org/download/<identificador>.";
+const IA_FORM_MESSAGE = "En Internet Archive usa archive.org/details/<identificador>, archive.org/download/<identificador> o archive.org/download/<identificador>/<fichero>.";
 // Igual que el backend (sources.py, IA_FILE_SERVER_MESSAGE): un fichero de ia800100.us.archive.org no es un fichero directo.
-const IA_FILE_SERVER_MESSAGE = "Un fichero de Internet Archive se importa desde la página de su ítem (archive.org/details/<identificador>), donde figura la licencia.";
+const IA_FILE_SERVER_MESSAGE = "Un fichero de Internet Archive se importa desde su ítem (archive.org/details/<identificador> o archive.org/download/<identificador>), donde figura la licencia.";
 const HOST_MESSAGE = "La dirección no es válida: revisa el dominio (solo letras ASCII, cifras, puntos y guiones).";
 const PRIVATE_MESSAGE = "No se descarga desde una dirección de red privada, de bucle local o de enlace local.";
 
@@ -152,11 +151,37 @@ function canonicalHost(authority) {
 
 const isBlockedHost = (host) => BLOCKED_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`));
 
-// Ruta de un ítem de Internet Archive: exactamente /details/<identificador> o /download/<identificador>.
-// Las barras al principio y al final no cuentan, como strip("/") en el backend.
+// Ruta de un ítem de Internet Archive, como ia_identifier en sources.py (ADR-0005, ADR-0008). La ruta completa se parte
+// por "/" y solo se quita una barra final. Quedan un tipo, un identificador y, solo en download, un fichero que no se
+// usa: el ítem y su licencia salen de sus metadatos. Una barra inicial de más da un segmento vacío y la forma no vale.
 function isIaItemPath(path) {
-  const parts = path.replace(/^\/+|\/+$/g, "").split("/");
-  return parts.length === 2 && IA_KINDS.includes(parts[0]) && IA_IDENTIFIER.test(parts[1]);
+  const segments = path.split("/");
+  if (segments.length > 1 && segments[segments.length - 1] === "") segments.pop();
+  if (segments[0] !== "" || segments.length < 3 || segments.length > 4) return false;
+  const [, kind, identifier, ...fileParts] = segments;
+  const shapeOk = kind === "details"
+    ? fileParts.length === 0
+    : kind === "download" && (fileParts.length === 0 || isPlainFileName(fileParts[0]));
+  return shapeOk && isPlainIdentifier(identifier);
+}
+
+// Identificador que puede ir en una URL de descarga (_is_plain_identifier en sources.py): el patrón de IA_IDENTIFIER y sin "..".
+const isPlainIdentifier = (identifier) => IA_IDENTIFIER.test(identifier) && !identifier.includes("..");
+
+// Como urllib.parse.unquote de Python: decodifica las secuencias %XX como UTF-8 (con U+FFFD si no son válidas) y deja el
+// resto tal cual. ignoreBOM: el BOM (U+FEFF) decodificado cuenta como carácter de formato, como en Python.
+function unquote(text) {
+  return text.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
+    const bytes = Uint8Array.from(run.match(/%[0-9A-Fa-f]{2}/g), (hex) => parseInt(hex.slice(1), 16));
+    return new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+  });
+}
+
+// Segmento de fichero de una ruta de Internet Archive (_is_plain_file_name en sources.py). No se usa para nada, pero tras
+// decodificarlo no puede estar vacío ni ser "." o "..", ni tener barras, barras invertidas o caracteres de control o de formato.
+function isPlainFileName(segment) {
+  const name = unquote(segment);
+  return name !== "" && name !== "." && name !== ".." && !name.includes("/") && !name.includes("\\") && !CONTROL.test(name);
 }
 
 // Rangos IPv4 que Python (ipaddress, is_global) no considera globales: privados, de bucle local, de enlace local, de
@@ -194,8 +219,8 @@ function hostKind(host) {
 }
 
 // "blocked", "archive", "archive-path", "archive-file", "direct", "private", "other" o "invalid". Sigue el orden de
-// sources.classify: primero las plataformas, después Internet Archive (un ítem no admite parámetros en la ruta, aunque el
-// backend los ignore), después la extensión de audio, leída sin los parámetros de la ruta, y por último el host.
+// sources.classify: primero las plataformas, después Internet Archive (la ruta de un ítem se lee entera, con el ';' incluido,
+// como en ia_identifier), después la extensión de audio, leída sin los parámetros de la ruta, y por último el host.
 function classify(url) {
   const { authority, path } = splitUrl(url);
   const host = canonicalHost(authority);
@@ -236,7 +261,7 @@ export function validateImport({ url, license, title } = {}) {
   if (kind === "archive-file") return IA_FILE_SERVER_MESSAGE;
   if (kind === "private") return PRIVATE_MESSAGE;
   if (kind === "other") {
-    return "Admite un ítem de Internet Archive (archive.org/details/…) o un enlace directo a un fichero de audio (mp3, flac, ogg, opus, m4a o wav).";
+    return "Admite un ítem de Internet Archive (archive.org/details/… o archive.org/download/…) o un enlace directo a un fichero de audio (mp3, flac, ogg, opus, m4a o wav).";
   }
   if (license !== undefined && license !== null) {
     const problem = checkText(license, { name: "La licencia", max: LIMITS.license });

@@ -60,6 +60,36 @@ def test_import_archive_download_is_accepted():
     assert request["url"] == "https://archive.org/download/charleston1925/"
 
 
+def test_import_archive_download_with_a_file_is_accepted_without_license():
+    url = "https://archive.org/download/charleston1925/charleston.mp3"
+
+    request = parse_request(body("action: import", f"url: {url}"))
+
+    assert request == {"action": "import", "url": url, "license": None, "title": None, "payload": None}
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://archive.org/download/charleston1925/a/b.mp3",
+        "https://archive.org/download/../charleston.mp3",
+        "https://archive.org/download/charleston1925/..",
+        "https://archive.org/download/charleston..1925/charleston.mp3",
+        "https://archive.org/details/charleston1925/charleston.mp3",
+    ],
+)
+def test_archive_forms_outside_the_contract_are_refused_in_a_request(url):
+    with pytest.raises(RequestError, match="forma archive.org"):
+        parse_request(body("action: import", f"url: {url}"))
+
+
+def test_internet_archive_file_server_is_refused_in_a_request():
+    with pytest.raises(RequestError, match="archive.org/details"):
+        parse_request(
+            body("action: import", "url: https://ia800100.us.archive.org/download/charleston1925/charleston.mp3")
+        )
+
+
 def test_import_direct_audio_with_license_keeps_license_and_title():
     request = parse_request(body("action: import", f"url: {MP3_URL}", "license: CC0 1.0", "title: Un tema"))
 

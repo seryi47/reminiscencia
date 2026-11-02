@@ -1,11 +1,12 @@
 name: biblioteca
 
-# Escrituras al catálogo de la biblioteca (ADR-0008). Entrada única: una incidencia del propietario con la
-# etiqueta 'biblioteca' (cuerpo con líneas 'clave: valor') o el formulario manual.
-# Dos jobs con distintos permisos. 'procesar' descarga y convierte sin token ni permisos de escritura, y deja
-# en un artefacto solo los ficheros que cambió. 'publicar' valida ese artefacto (rutas de la biblioteca, sin
-# enlaces simbólicos, base igual a main), lo aplica, confirma, sube a main y responde a la incidencia. Publicar
-# no ejecuta ffmpeg ni código del árbol de trabajo del procesado.
+# Escrituras al catálogo de la biblioteca (ADR-0008). Entrada única: una incidencia con la etiqueta 'biblioteca'
+# (cuerpo con líneas 'clave: valor') o el formulario manual. Solo envían incidencias las personas con permiso de
+# escritura en el repositorio (admin, maintain o write); a las demás, 'autorizar' solo les responde en la incidencia.
+# Tres jobs con distintos permisos. 'autorizar' comprueba el permiso del autor. 'procesar' descarga y convierte sin
+# token ni permisos de escritura, y deja en un artefacto solo los ficheros que cambió. 'publicar' valida ese
+# artefacto (rutas de la biblioteca, sin enlaces simbólicos, base igual a main), lo aplica, confirma, sube a main y
+# responde a la incidencia. Publicar no ejecuta ffmpeg ni código del árbol de trabajo del procesado.
 # Ningún texto de la incidencia ni de los campos se interpola en un script: todo pasa por variables de entorno.
 
 on:
@@ -44,11 +45,54 @@ concurrency:
   queue: max
 
 jobs:
-  procesar:
-    # Incidencias: solo las del propietario del repositorio con la etiqueta 'biblioteca'. Manual: siempre.
+  autorizar:
+    # Solo incidencias nuevas con la etiqueta 'biblioteca'. El autor debe tener permiso de escritura en el repositorio
+    # (admin, maintain o write). Sin permiso, solo comenta la incidencia y no hace nada más.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.issue.user.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'biblioteca'))
+      github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name, 'biblioteca')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      permitido: ${{ steps.permiso.outputs.permitido }}
+    steps:
+      # Sin checkout: este job no ejecuta código del repositorio. Solo consulta el permiso del autor y, si falta, comenta.
+      - name: Comprobar el permiso del autor
+        id: permiso
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTOR: ${{ github.event.issue.user.login }}
+        run: |
+          # Si la consulta falla (por ejemplo, el autor no es colaborador), cuenta como sin permiso.
+          if ! PERMISO=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$AUTOR/permission" --jq .permission); then
+            PERMISO=none
+          fi
+          echo "Permiso de $AUTOR: $PERMISO"
+          case "$PERMISO" in
+            admin|maintain|write) echo "permitido=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "permitido=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Avisar si no tiene permiso
+        if: steps.permiso.outputs.permitido != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMERO: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$NUMERO" --repo "$GITHUB_REPOSITORY" --body "Solo colaboradores con permiso de escritura pueden enviar peticiones a la biblioteca."
+
+  procesar:
+    # Incidencias: solo si 'autorizar' ha dado permiso al autor. Manual: siempre. always() permite que el manual
+    # corra aunque 'autorizar' se haya omitido.
+    needs: autorizar
+    if: >-
+      always() && !cancelled() &&
+      (github.event_name == 'workflow_dispatch' || needs.autorizar.outputs.permitido == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -130,13 +174,12 @@ jobs:
           if-no-files-found: warn
 
   publicar:
-    needs: procesar
+    needs: [autorizar, procesar]
     # Las mismas condiciones que el procesado. always(): la respuesta a la incidencia sale también si el
     # procesado falló. Sin cancelación: una ejecución cancelada no escribe nada.
     if: >-
       always() && !cancelled() &&
-      (github.event_name == 'workflow_dispatch' ||
-      (github.event.issue.user.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'biblioteca')))
+      (github.event_name == 'workflow_dispatch' || needs.autorizar.outputs.permitido == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

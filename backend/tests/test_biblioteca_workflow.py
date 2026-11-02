@@ -46,12 +46,15 @@ def test_issue_text_reaches_the_scripts_only_through_environment_variables():
     assert not any("github.event.issue" in block for block in _run_blocks(text))
 
 
-def test_only_the_owner_with_the_biblioteca_label_can_trigger_an_issue_run():
+def test_only_collaborators_with_write_permission_can_trigger_an_issue_run():
     text = _workflow_text()
 
-    assert "github.event.issue.user.login == github.repository_owner" in text
+    assert "github.event.issue.user.login == github.repository_owner" not in text
     assert "contains(github.event.issue.labels.*.name, 'biblioteca')" in text
     assert "github.event_name == 'workflow_dispatch'" in text
+    assert "repos/$GITHUB_REPOSITORY/collaborators/$AUTOR/permission" in text
+    assert "admin|maintain|write)" in text
+    assert "needs.autorizar.outputs.permitido == 'true'" in text
 
 
 def test_permissions_and_concurrency_match_the_contract():
@@ -67,7 +70,7 @@ def test_library_workflow_is_gone():
     assert not (ROOT / ".github" / "workflows" / "library.yml").exists()
 
 
-GITHUB_CALLS = ("git push", "gh issue ", "gh label ")
+GITHUB_CALLS = ("git push", "gh api ", "gh issue ", "gh label ")
 
 
 def _steps(text: str) -> list[str]:
@@ -137,20 +140,19 @@ def test_web_has_no_administration_code():
 # --- Corrección de la ronda 2 (2026-11-02): procesado separado de la publicación -----------------
 
 
-def _jobs(text: str) -> tuple[str, str]:
-    """Bloques de los dos jobs: 'procesar' (sin escritura ni token) y 'publicar' (último job)."""
+def _jobs(text: str) -> tuple[str, str, str]:
+    """Bloques de los tres jobs, en orden: 'autorizar', 'procesar' y 'publicar'."""
     _, _, jobs = text.partition("\njobs:\n")
-    procesar, marker, publicar = jobs.partition("\n  publicar:\n")
-    assert marker and procesar.startswith("  procesar:\n")
-    return procesar, publicar
+    blocks = [part for part in re.split(r"^(?=  \w+:\n)", jobs, flags=re.MULTILINE) if part.strip()]
+    assert [block.split(":", 1)[0].strip() for block in blocks] == ["autorizar", "procesar", "publicar"]
+    return blocks[0], blocks[1], blocks[2]
 
 
-OWNER_CONDITION = "github.event.issue.user.login == github.repository_owner"
 LABEL_CONDITION = "contains(github.event.issue.labels.*.name, 'biblioteca')"
 
 
 def test_processing_job_only_reads_and_never_receives_the_token():
-    procesar, _ = _jobs(_workflow_text())
+    _, procesar, _ = _jobs(_workflow_text())
 
     assert "contents: read" in procesar
     assert "contents: write" not in procesar and "issues: write" not in procesar
@@ -159,9 +161,9 @@ def test_processing_job_only_reads_and_never_receives_the_token():
 
 
 def test_publishing_job_depends_on_processing_and_runs_no_processing_tool():
-    _, publicar = _jobs(_workflow_text())
+    _, _, publicar = _jobs(_workflow_text())
 
-    assert "needs: procesar" in publicar
+    assert "needs: [autorizar, procesar]" in publicar
     for processing_tool in ("ffmpeg", "ci_library.py", "issue_request.py", "sonidos.pipeline", "pip install"):
         assert processing_tool not in publicar
     assert "scripts/aplicar_paquete.py" in publicar
@@ -169,22 +171,75 @@ def test_publishing_job_depends_on_processing_and_runs_no_processing_tool():
 
 
 def test_processing_passes_its_changes_on_as_an_artifact_that_publishing_downloads():
-    procesar, publicar = _jobs(_workflow_text())
+    _, procesar, publicar = _jobs(_workflow_text())
 
     assert "actions/upload-artifact" in procesar and "scripts/empaquetar_cambios.py" in procesar
     assert "actions/download-artifact" in publicar
 
 
-def test_both_jobs_keep_the_owner_and_label_condition():
-    procesar, publicar = _jobs(_workflow_text())
+def test_authorization_runs_only_for_issues_opened_with_the_label():
+    autorizar, _, _ = _jobs(_workflow_text())
 
+    assert "github.event_name == 'issues'" in autorizar
+    assert LABEL_CONDITION in autorizar
+    assert "workflow_dispatch" not in autorizar
+    assert "types: [opened]" in _workflow_text()
+
+
+def test_authorization_job_has_only_issue_write_and_runs_no_code_of_the_repository():
+    autorizar, _, _ = _jobs(_workflow_text())
+
+    assert "permissions:\n      issues: write\n" in autorizar
+    assert "contents:" not in autorizar
+    assert "actions/checkout" not in autorizar
+    assert "upload-artifact" not in autorizar and "download-artifact" not in autorizar
+
+
+def test_permission_is_read_from_the_collaborator_endpoint_and_only_write_levels_pass():
+    autorizar, _, _ = _jobs(_workflow_text())
+    comprobar, _ = _steps(autorizar)
+
+    assert 'gh api "repos/$GITHUB_REPOSITORY/collaborators/$AUTOR/permission" --jq .permission' in comprobar
+    assert "PERMISO=none" in comprobar
+    assert 'admin|maintain|write) echo "permitido=true" >> "$GITHUB_OUTPUT" ;;' in comprobar
+    assert 'echo "permitido=false" >> "$GITHUB_OUTPUT"' in comprobar
+    assert "permitido: ${{ steps.permiso.outputs.permitido }}" in autorizar
+
+
+def test_the_author_reaches_the_permission_check_only_through_an_environment_variable():
+    autorizar, _, _ = _jobs(_workflow_text())
+    comprobar, avisar = _steps(autorizar)
+
+    assert "AUTOR: ${{ github.event.issue.user.login }}" in comprobar
+    assert "$AUTOR" in comprobar and "$AUTOR" not in avisar
+    assert "github.event.issue" not in "\n".join(_run_blocks(autorizar))
+
+
+def test_unauthorized_authors_get_only_the_spanish_comment_and_nothing_else():
+    autorizar, _, _ = _jobs(_workflow_text())
+    _, avisar = _steps(autorizar)
+
+    assert "steps.permiso.outputs.permitido != 'true'" in avisar
+    assert (
+        'gh issue comment "$NUMERO" --repo "$GITHUB_REPOSITORY" '
+        '--body "Solo colaboradores con permiso de escritura pueden enviar peticiones a la biblioteca."'
+    ) in avisar
+    for action in ("gh issue close", "gh issue edit", "gh label", "git push", "actions/checkout"):
+        assert action not in autorizar
+
+
+def test_processing_and_publishing_wait_for_the_authorization_or_run_by_hand():
+    _, procesar, publicar = _jobs(_workflow_text())
+
+    assert "needs: autorizar" in procesar
     for block in (procesar, publicar):
-        assert OWNER_CONDITION in block and LABEL_CONDITION in block
+        assert "always() && !cancelled()" in block
         assert "github.event_name == 'workflow_dispatch'" in block
+        assert "needs.autorizar.outputs.permitido == 'true'" in block
 
 
 def test_branch_guard_runs_before_any_code_of_the_tree_is_installed_or_run():
-    procesar, _ = _jobs(_workflow_text())
+    _, procesar, _ = _jobs(_workflow_text())
 
     assert procesar.index('"$GITHUB_REF_NAME" != "main"') < procesar.index("pip install")
 
@@ -206,6 +261,7 @@ def test_step_summary_does_not_wrap_untrusted_json_in_a_code_fence():
 
 
 def test_backend_workflow_checkouts_do_not_persist_credentials():
+    # Tres checkouts: el job web-unit, duplicado con web.yml, sale de backend.yml.
     text = (ROOT / ".github" / "workflows" / "backend.yml").read_text(encoding="utf-8")
 
-    assert text.count("uses: actions/checkout") == text.count("persist-credentials: false") == 4
+    assert text.count("uses: actions/checkout") == text.count("persist-credentials: false") == 3

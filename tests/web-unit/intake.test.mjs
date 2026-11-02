@@ -62,21 +62,41 @@ describe("validateImport: esquema y tipo de fuente", () => {
     assert.notEqual(validateImport({ url: "javascript:alert(1)" }), null);
   });
 
-  it("solo admite el ítem de Internet Archive, no un fichero dentro de archive.org/download", () => {
+  it("acepta archive.org/download/<id> y archive.org/download/<id>/<fichero>: los dos son el ítem <id>", () => {
     assert.equal(validateImport({ url: "https://archive.org/download/charleston1925" }), null);
-    assert.match(validateImport({ url: "https://archive.org/download/charleston1925/charleston.mp3" }), /archive\.org\/details/);
+    assert.equal(validateImport({ url: "https://archive.org/download/charleston1925/charleston.mp3" }), null);
+    assert.equal(validateImport({ url: "https://archive.org/download/charleston1925/" }), null);
+    assert.equal(validateImport({ url: "https://archive.org/download/charleston1925/Carta%20a%20Juan.flac?x=1" }), null);
+  });
+
+  it("un enlace de archive.org/download no pide licencia: el ítem y su licencia salen de sus metadatos", () => {
+    assert.equal(needsLicense("https://archive.org/download/charleston1925/charleston.mp3"), false);
+    assert.equal(
+      buildImportBody({ url: "https://archive.org/download/charleston1925/charleston.mp3" }),
+      "action: import\nurl: https://archive.org/download/charleston1925/charleston.mp3",
+    );
   });
 
   it("exige exactamente un tipo y un identificador en la ruta de Internet Archive, como el backend", () => {
     assert.notEqual(validateImport({ url: "https://archive.org/details/abc/extra" }), null);
     assert.notEqual(validateImport({ url: "https://archive.org/details/a//b" }), null);
     assert.equal(validateImport({ url: "https://archive.org/details/abc/" }), null);
-    assert.equal(validateImport({ url: "https://archive.org//details/abc" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org/details/abc//" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org//details/abc" }), null);
   });
 
   it("rechaza archive.org sin identificador o con otra ruta", () => {
     assert.notEqual(validateImport({ url: "https://archive.org/details/" }), null);
     assert.notEqual(validateImport({ url: "https://archive.org/search?query=jazz" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org/download" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org/download/" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org/download//charleston.mp3" }), null);
+  });
+
+  it("con download admite como mucho un fichero detrás del identificador; details no admite ninguno", () => {
+    assert.notEqual(validateImport({ url: "https://archive.org/download/charleston1925/charleston.mp3/extra" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org/download/charleston1925//charleston.mp3" }), null);
+    assert.match(validateImport({ url: "https://archive.org/details/charleston1925/charleston.mp3" }), /archive\.org\/details/);
   });
 
   it("exige licencia en un fichero directo", () => {
@@ -129,6 +149,16 @@ describe("validateImport: paridad con backend/sonidos/sources.py", () => {
     assert.notEqual(validateImport({ url: `https://archive.org/details/${"a".repeat(201)}` }), null);
     for (const id of ["ab$c", ".oculto", "-abc", "ñandu", "a%20b"]) {
       assert.notEqual(validateImport({ url: `https://archive.org/details/${id}` }), null, id);
+    }
+  });
+
+  it("el identificador de archive.org/download se valida igual, con o sin fichero", () => {
+    assert.equal(validateImport({ url: `https://archive.org/download/${"a".repeat(200)}/charleston.mp3` }), null);
+    assert.notEqual(validateImport({ url: `https://archive.org/download/${"a".repeat(201)}/charleston.mp3` }), null);
+    assert.notEqual(validateImport({ url: `https://archive.org/download/${"a".repeat(201)}` }), null);
+    for (const id of ["ab$c", ".oculto", "-abc", "ñandu", "a%20b"]) {
+      assert.notEqual(validateImport({ url: `https://archive.org/download/${id}` }), null, id);
+      assert.notEqual(validateImport({ url: `https://archive.org/download/${id}/charleston.mp3` }), null, id);
     }
   });
 
@@ -392,15 +422,16 @@ describe("validateImport: ';' en la ruta como urlparse del backend", () => {
     assert.equal(validateImport({ url: "https://example.org/a;b/tema.mp3", license: "CC0" }), null);
   });
 
-  it("en Internet Archive el ';' sigue siendo un error: el backend tomaría otro identificador", () => {
+  it("en Internet Archive el ';' es un error en el identificador: ia_identifier lee la ruta entera", () => {
     assert.match(validateImport({ url: "https://archive.org/details/x;y" }), /archive\.org\/details/);
+    assert.match(validateImport({ url: "https://archive.org/download/x;y" }), /archive\.org\/details/);
   });
 });
 
 describe("validateImport: servidores de ficheros de Internet Archive", () => {
   it("un fichero de ia800100.us.archive.org no se importa como directo: su licencia está en el ítem", () => {
-    assert.match(validateImport({ url: "https://ia800100.us.archive.org/1/items/x/tema.mp3", license: "CC0" }), /página de su ítem/);
-    assert.match(validateImport({ url: "https://ia800100.us.archive.org/1/items/x/tema.mp3" }), /página de su ítem/);
+    assert.match(validateImport({ url: "https://ia800100.us.archive.org/1/items/x/tema.mp3", license: "CC0" }), /desde su ítem/);
+    assert.match(validateImport({ url: "https://ia800100.us.archive.org/1/items/x/tema.mp3" }), /desde su ítem/);
   });
 });
 
@@ -474,10 +505,70 @@ describe("paridad de la lista de bloqueo con backend/sonidos/sources.py", () => 
     }
   });
 
-  it("la lista de la web es idéntica a la del backend", {
-    todo: "pendiente de integrar feat/gestion-backend: su sources.py tiene las 33 entradas, esta rama conserva la lista anterior",
-  }, () => {
+  it("la lista de la web es idéntica a la del backend", () => {
     assert.deepEqual([...BLOCKED_HOSTS].sort(), [...backendBlocked].sort());
+  });
+});
+
+describe("validateImport: el fichero de archive.org/download como _is_plain_file_name de sources.py", () => {
+  const withFile = (file) => validateImport({ url: `https://archive.org/download/charleston1925/${file}` });
+
+  it("acepta un nombre de texto sin barras, sin control ni formato, también con escapes %XX válidos o inválidos", () => {
+    for (const file of ["charleston.mp3", "Canción%20ñ.flac", "%C3%A1.mp3", "tema%.mp3", "tema.mp3;v=1", "%20", "a.b.c"]) {
+      assert.equal(withFile(file), null, file);
+    }
+  });
+
+  it("rechaza un fichero que, decodificado, es '.' o '..', o tiene barras o barras invertidas", () => {
+    for (const file of [".", "..", "%2e", "%2E%2E", ".%2E", "a%2Fb.mp3", "tema%2fmp3", "tema%5Cmp3", "tema\\mp3"]) {
+      assert.notEqual(withFile(file), null, file);
+    }
+  });
+
+  it("rechaza un fichero con caracteres de control o de formato, también codificados", () => {
+    for (const file of ["tema%00.mp3", "%0A", "%C2%85", "%E2%80%A8", "%EF%BB%BFtema.mp3", "tema%E2%80%8B.mp3"]) {
+      assert.notEqual(withFile(file), null, file);
+    }
+  });
+
+  it("una barra final se tolera, pero una segunda barra deja un fichero vacío y no vale", () => {
+    assert.equal(validateImport({ url: "https://archive.org/download/charleston1925/" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org/download/charleston1925//" }), null);
+  });
+});
+
+describe("paridad de las formas de Internet Archive con backend/sonidos/sources.py", () => {
+  const backendSource = readFileSync(new URL("../../backend/sonidos/sources.py", import.meta.url), "utf8");
+  const start = backendSource.indexOf("def ia_identifier(");
+  const end = backendSource.indexOf("def _is_plain_identifier(");
+  // Tipos de ruta: las palabras entre comillas dobles de ia_identifier, sin los esquemas http y https.
+  const backendKinds = start === -1 || end === -1
+    ? []
+    : [...new Set([...backendSource.slice(start, end).matchAll(/"([a-z]+)"/g)].map((match) => match[1]))]
+      .filter((word) => word !== "http" && word !== "https");
+  const identifier = backendSource.match(/IA_IDENTIFIER = re\.compile\(r"([^"]+)"\)/);
+  const webSource = readFileSync(new URL("../../frontend/web/js/intake.js", import.meta.url), "utf8");
+
+  it("encuentra los tipos de ruta de ia_identifier y el patrón del identificador en sources.py", () => {
+    assert.deepEqual([...backendKinds].sort(), ["details", "download"]);
+    assert.ok(identifier, "no se encuentra IA_IDENTIFIER en sources.py");
+  });
+
+  it("la web acepta archive.org/<tipo>/<identificador> solo con los tipos que admite el backend", () => {
+    for (const kind of ["details", "download", "search", "metadata", "embed", "stream"]) {
+      const accepted = validateImport({ url: `https://archive.org/${kind}/charleston1925` }) === null;
+      assert.equal(accepted, backendKinds.includes(kind), kind);
+    }
+  });
+
+  it("el patrón del identificador es el mismo que IA_IDENTIFIER de sources.py", () => {
+    assert.ok(identifier && webSource.includes(identifier[1]), "intake.js no tiene el patrón de IA_IDENTIFIER");
+  });
+
+  it("ni el backend ni la web aceptan '..' dentro del identificador", () => {
+    assert.ok(backendSource.includes('".." not in identifier'), "sources.py ya no rechaza '..' en el identificador");
+    assert.notEqual(validateImport({ url: "https://archive.org/details/a..b" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org/download/a..b/charleston.mp3" }), null);
   });
 });
 
