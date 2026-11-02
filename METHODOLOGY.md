@@ -42,7 +42,7 @@ Los enunciados son los de [PROJECT_MASTER.md](PROJECT_MASTER.md).
 **Evidencia previa**
 - [clinica-01] (revisión Cochrane de 2025; 30 estudios y 1.720 participantes). Frente a cuidado habitual, mejora ligera de los síntomas depresivos (DME −0,23; certeza moderada) y probablemente ninguna mejora de la agitación ni de la agresión (DME −0,05; certeza moderada). Frente a otras actividades, la certeza es baja y no hay efecto en agitación ni en depresión. La actualización no confirma la mejora del bienestar emocional (DME 0,14) ni de la ansiedad (DME −0,15) que la versión de 2018 señalaba con calidad baja [B1].
 - [clinica-04] (ensayo pragmático por conglomerados; 54 residencias y 976 residentes con demencia). La música personalizada no redujo de forma significativa la agitación medida con el CMAI frente a cuidado habitual, que podía incluir música ambiental o grupal. Tampoco redujo de forma significativa el uso de psicótropos.
-- Pistas dentro de [clinica-04], que no son resultados del ensayo: Cheung et al. 2025 (24 reclutados; diseño no confirmado), donde la lista individualizada no fue más eficaz que una lectura grabada de control; y Hillebrand et al. 2023 (90 participantes), con menos síntomas conductuales solo durante la sesión.
+- Pistas dentro de [clinica-04], que no son resultados del ensayo: Cheung et al. 2025 (24 reclutados; estudio aleatorizado de viabilidad según PubMed, PMID 40148224), donde la lista individualizada no fue más eficaz que una lectura grabada de control; y Hillebrand et al. 2023 (90 participantes), con menos síntomas conductuales solo durante la sesión.
 
 **Límites**
 - La agitación y los síntomas depresivos no son la respuesta emocional momentánea que mide H1. Se miden por separado.
@@ -87,7 +87,7 @@ Los enunciados son los de [PROJECT_MASTER.md](PROJECT_MASTER.md).
 ### 1.4 H3: «la familiaridad modula la respuesta emocional (se solapa con H1; pendiente de separarla).»
 
 **Evidencia previa**
-- Pista de Garrido et al. 2018 (99 personas con demencia), registrada en [clinica-02]: la respuesta afectiva a listas personales varía con la depresión, la ansiedad, la apatía y el deterioro cognitivo. No consta verificado si separa la familiaridad de la preferencia (sección 7.2).
+- Pista de Garrido et al. 2018 (99 personas con demencia), registrada en [clinica-02]: el resumen comunica diferencias según la depresión, la apatía y el deterioro cognitivo. No comunica ningún resultado sobre la ansiedad, aunque esta figura entre los factores del diseño. No consta verificado si separa la familiaridad de la preferencia (sección 7.2).
 - [clinica-02] (Kaiser y Berntsen): la música familiar evoca recuerdos con más probabilidad.
 - [clinica-01]: no consta verificado si la revisión separa la música personal de la genérica (sección 7.2).
 - [B3]: el reconocimiento de melodías conocidas suele estar alterado en Alzheimer. La familiaridad que juzga el cuidador puede no coincidir con la del paciente.
@@ -407,20 +407,20 @@ CLAUDE.md prohíbe datos personales de pacientes en el repositorio. No se versio
 - [audio-05]: leer el artículo de Hu y Loizou 2008 para las conclusiones sobre SNR segmental y PESQ. La fuente de Quackenbush, Barnwell y Clements (1988) no está verificada. El LSD no aparece en lo verificado.
 - [audio-06]: leer el texto de Gray y Markel 1976 para la fórmula exacta. Su validez para música no está verificada.
 - [audio-02]: título y editor de EBU R 128 (V5), desde el PDF oficial.
-- [escalas-01]: el DOI de Arjol et al. 2026 en Psicothema (10.70478/psicothema.2026.38.15) no consta confirmado en el registro de verificación; se cita por PMID. Volumen y páginas del metaanálisis, pendientes.
+- [escalas-01]: el DOI de Arjol et al. 2026 en Psicothema (10.70478/psicothema.2026.38.15) consta en Crossref y PubMed (consulta del 2-nov-2026). Siguen pendientes el volumen y las páginas del metaanálisis (PMID 42380691).
 - [escalas-02]: leer el texto de Folstein et al. 1975 (PMID 1202204, sin resumen) antes de citar su contenido.
 - [escalas-03]: periodo de referencia y versión del NPI, según el texto del instrumento.
 - [escalas-04]: el artículo de validación del IAACM no está verificado. El texto completo de Cohen-Mansfield et al. 1989 no se ha leído.
 - [escalas-05]: Logsdon et al. 1999 (*J Ment Health Aging* 5:21-32) no está en PubMed ni en Crossref.
-- [escalas-06]: el DOI de Gómez-Gallego et al. 2012 (10.1016/j.nrl.2011.03.006) no consta confirmado en el registro de verificación; se cita por PMID.
+- [escalas-06]: el DOI de Gómez-Gallego et al. 2012 (10.1016/j.nrl.2011.03.006) consta en Crossref y PubMed (consulta del 2-nov-2026).
 - [B4]: n = 12 y diseño, con discrepancia respecto a [clinica-03]. Leer el texto completo.
-- [clinica-03]: el sexto autor («Brodaty H») no está confirmado. No se cita.
-- [clinica-05]: tamaño muestral no indicado en el resumen.
-- [clinica-04]: la conclusión sobre la práctica real es inferencia del proyecto, y la frase sobre barreras no está verificada. Ninguna se cita como resultado.
-- Pistas sin autores completos: Garrido et al. 2018, Baird et al. 2018, Cheung et al. 2025, Hillebrand et al. 2023 y MATCH 2025. Transcribir desde PubMed o Crossref.
-- [clinica-04]: el diseño de Cheung et al. 2025 (piloto y aleatorizado) no está confirmado.
+- [clinica-03]: resuelto (2-nov-2026). La página de Cambridge Core lista cinco autores, como PubMed y Europe PMC; «Brodaty H», solo en Crossref, no se cita.
+- [clinica-05]: el resumen no indica el tamaño muestral. El manuscrito aceptado en PMC (PMC2914108) da 13 pacientes y 14 controles reclutados; resuelto con reservas, porque la versión publicada no se ha leído.
+- [clinica-04]: la frase sobre barreras consta en el resumen de PubMed (resuelto el 2-nov-2026). La conclusión sobre la práctica real sigue siendo inferencia del proyecto y no se cita como resultado.
+- Autores de las pistas (Garrido, Baird, Cheung, Hillebrand y MATCH 2025): resuelto el 2-nov-2026 desde PubMed o Crossref.
+- [clinica-04]: resuelto el 2-nov-2026. PubMed (PMID 40148224) da el título «A Randomized Controlled Feasibility Study»; se cita como estudio aleatorizado de viabilidad.
 - [clinica-01]: no consta verificado si la revisión separa la música personal de la genérica, que es la comparación que necesita H1.
-- [escalas-01]: la comprobación describe la muestra de Arjol et al. 2026 (Psicothema) como de atención primaria y la corrección como comunitaria; confirmar en el texto.
+- [escalas-01]: resuelto el 2-nov-2026. El resumen de PubMed describe una muestra comunitaria sin deterioro cognitivo, evaluada en centros de atención primaria; las dos descripciones son compatibles.
 
 ### 7.3 Dictámenes y consultas
 
@@ -439,8 +439,8 @@ Este documento no modifica estos ficheros. Cada punto necesita corrección o una
 - **DESIGN.md**, §1: declara que la interfaz permite evaluar familiaridad, recuerdos y fotografía (H3, H2 y H4). No define la comparación de H1.
 - **DESIGN.md**, §9 y P-16, frente a **SECURITY.md** §3.3: el bloqueo del PIN es de 60 s en §9 y de 45 s en P-16, y el código acepta de 4 a 12 dígitos. SECURITY.md §2.1 señala además que DESIGN fija 10 MB en C-22 y el código 8 MB.
 - **ROADMAP.md**, línea 38 (Plan v2: «sin pruebas perceptuales con personas» en compresión), frente a **docs/audio-processing/COMPRESSION.md**, «Próximos pasos» (prueba MUSHRA).
-- **docs/audio-processing/COMPRESSION.md**, línea 274: dice que la referencia de Gray y Markel no está confirmada, pero [audio-06] la registra en Crossref. Línea 265: dice «Proposed Standard» para la RFC 6716; el texto oficial dice «Standards Track» ([audio-03]).
-- **[BIBLIOGRAPHY.md](BIBLIOGRAPHY.md)**, apartado «Documentos de uso»: dice que ALZHEIMER_RESEARCH, METHODOLOGY y SECURITY no existen. Existen en el worktree desde la revisión del 2 de noviembre de 2026 (sin commit); la entrada se ha corregido.
+- **docs/audio-processing/COMPRESSION.md**, líneas 264, 265 y 274: ya coinciden con la bibliografía (BS.1534-3, RFC 6716 en Standards Track y Gray y Markel registrado en Crossref). No queda discrepancia en esas líneas.
+- **[BIBLIOGRAPHY.md](BIBLIOGRAPHY.md)**, apartado «Documentos de uso»: dice que ALZHEIMER_RESEARCH, METHODOLOGY y SECURITY existen «en el worktree (sin commit)». Ya están en `main` desde el commit 0d8b004; esa nota de BIBLIOGRAPHY.md queda por actualizar.
 - **[ALZHEIMER_RESEARCH.md](ALZHEIMER_RESEARCH.md)** (borrador): agrupa las mismas referencias en categorías sin numerar, coherentes con los niveles de RESEARCH.md. Si cambia la numeración de RESEARCH.md, hay que revisar también ese documento.
 
 ## 9. Identificadores usados
@@ -449,7 +449,7 @@ Este documento no modifica estos ficheros. Cada punto necesita corrección o una
 |---|---|---|---|
 | [clinica-01] (= B1-2025) | Cochrane 2025, van der Steen et al. | Parcial, con corrección de DOI | H1; contexto de agitación y respuesta emocional |
 | [clinica-02] | Kaiser y Berntsen 2023 | Verificada | H2 a H4; pistas de Garrido et al. 2018 y Baird et al. 2018 |
-| [clinica-03] (= B6) | El Haj et al. 2015 | Parcial, con corrección de autores | H1 y H2 |
+| [clinica-03] (= B6) | El Haj et al. 2015 | Verificada con correcciones (autores) | H1 y H2 |
 | [clinica-04] | McCreedy et al. 2022 | Parcial, con corrección de DOI | H1 y H5; pistas de Cheung 2025, Hillebrand 2023 y MATCH 2025 |
 | [clinica-05] (= P2) | Simmons-Stern et al. 2010 | Verificada | H2, antecedente indirecto |
 | [clinica-06] (= B2) | Jacobsen et al. 2015 | Verificada, con la corrección terminológica de B2 | H2, mecanismo |
@@ -466,10 +466,10 @@ Este documento no modifica estos ficheros. Cada punto necesita corrección o una
 | [audio-05] | Hu y Loizou 2008 | Parcial | Solo lo confirmado |
 | [audio-06] | Gray y Markel 1976 | Verificada | Referencia general de medidas de distancia |
 | [legal-01] | RGPD | Parcial, con título corregido | Ética y datos |
-| [legal-02] | LOPDGDD, disposición adicional decimoséptima | Parcial, con correcciones | Ética y datos |
+| [legal-02] | LOPDGDD, disposición adicional decimoséptima | Verificada con correcciones; queda el dictamen | Ética y datos |
 | [legal-03] | Ley 14/2007 | Verificada | Ética y datos |
 | [legal-04] | Declaración de Helsinki de la WMA (2024), en inglés | Verificada | Ética y consentimiento |
-| [legal-05] | TRLPI, arts. 112 y 114-119 | Parcial | Estímulos |
+| [legal-05] | TRLPI, arts. 112 y 114-119 | Verificada con correcciones | Estímulos |
 | [legal-06] | Directiva (UE) 2019/790 | Parcial | Solo revisión sistemática |
 | B1 | Cochrane 2018 | Verificada con correcciones | H1, contexto |
 | B2 | Equivale a [clinica-06] | Verificada con correcciones | H2 |

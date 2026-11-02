@@ -101,7 +101,7 @@ Del propietario (no lo puede hacer el repositorio):
 - Leer el texto completo de [B4] para resolver la discrepancia abierta con [clinica-03] (BIBLIOGRAPHY.md).
 
 Residuos de seguridad y de código:
-- `publicar` debe regenerar los datos públicos desde el catálogo, en lugar de aplicar los que trae el paquete. Hoy `procesar` los genera con `sonidos.publish` (`scripts/ci_library.py`).
+- [x] `publicar` regenera los datos públicos desde el catálogo, en lugar de aplicar los que trae el paquete (hecho el 2026-11-02; ADR-0011).
 - El job de pruebas web está duplicado en `backend.yml` y en `web.yml`.
 - La prueba «la lista de la web es idéntica a la del backend» (`tests/web-unit/intake.test.mjs`) está marcada `todo` con una nota antigua («33 entradas»). Hoy las dos listas tienen 42 entradas y son iguales, así que la marca sobra.
 - Dos fallos de diseño de la interfaz única, señalados en la revisión del 2026-11-02 y pendientes de confirmar y corregir: no se pide el PIN al salir del modo paciente, y se crea una sesión implícita que contamina el registro del estudio.

@@ -10,7 +10,7 @@ En la primera versión de ADR-0008, un único job de `biblioteca.yml` descargaba
 
 ## Decisión
 
-1. **Dos jobs.** `procesar` ejecuta la petición (`scripts/issue_request.py` y `scripts/ci_library.py`) y empaqueta lo que cambió en la biblioteca, sin la parte pública (`scripts/empaquetar_cambios.py`; ver la nota de 2026-11-02). Tiene `contents: read`, no recibe `GITHUB_TOKEN` y su checkout no guarda credenciales. Sube un artefacto `biblioteca-paquete` con el manifiesto y los ficheros cambiados.
+1. **Dos jobs.** `procesar` ejecuta la petición (`scripts/issue_request.py` y `scripts/ci_library.py`) y empaqueta lo que cambió en la biblioteca, sin la parte pública (`scripts/empaquetar_cambios.py`; ver ADR-0011). Tiene `contents: read`, no recibe `GITHUB_TOKEN` y su checkout no guarda credenciales. Sube un artefacto `biblioteca-paquete` con el manifiesto y los ficheros cambiados.
 2. **`publicar`** (`needs: procesar`) descarga el artefacto y lo valida con `backend/sonidos/paquete.py` antes de tocar el repositorio:
    - el manifiesto tiene la forma exacta y su `base` es el HEAD de `main`; si `main` cambió, la petición se rechaza y se reenvía;
    - cada ruta está en la lista cerrada de la biblioteca: `audio-library/indexes/catalog.json` y un fichero directo en `audio-library/audio/`, `frontend/web/audio/` o `frontend/web/data/`;
@@ -32,27 +32,11 @@ En la primera versión de ADR-0008, un único job de `biblioteca.yml` descargaba
 - Si alguien sube a `main` entre el procesado y la publicación, la petición se rechaza sin tocar el repositorio y el propietario la reenvía.
 - Un fichero sin rastrear fuera de la biblioteca (una carpeta de compilación, una caché) no se publica ni bloquea la ejecución. Un cambio rastreado fuera de la biblioteca sí bloquea el procesado.
 - El paquete viaja como artefacto de GitHub con retención de un día.
-- **Riesgo residual:** la validación comprueba rutas y tipos de fichero, no el contenido. Un procesado comprometido podría escribir contenido indebido en el catálogo o en el audio, que son las fuentes de la parte pública; los datos de la web ya no se aceptan del paquete (ver la nota de 2026-11-02). Lo que limita el daño es que el procesado no tiene token y que la web trata esos datos como texto (ADR-0008).
+- **Riesgo residual:** la validación comprueba rutas y tipos de fichero, no el contenido. Un procesado comprometido podría escribir contenido indebido en el catálogo o en el audio, que son las fuentes de la parte pública; los datos de la web ya no se aceptan del paquete (ver ADR-0011). Lo que limita el daño es que el procesado no tiene token y que la web trata esos datos como texto (ADR-0008).
 
 ## Nota de 2026-11-02: la parte pública la regenera `publicar`
 
-La revisión de seguridad dejó un hueco que la decisión anterior no cubría. `procesar` generaba `frontend/web/data/*.json` y el audio publicado, los empaquetaba, y `publicar` los validaba por ruta y tipo, pero los aplicaba tal cual. Un paquete con un `songs.json` forjado (un título con HTML, por ejemplo) llegaba a `main` y, con él, a la web.
-
-Decisiones:
-
-- **El paquete ya no lleva la parte pública.** `procesar` empaqueta con `package_processing_changes` (`backend/sonidos/paquete.py`): solo el catálogo y el audio de `audio-library/`. Se eligió la opción de menor superficie que pasa las pruebas existentes. La parte pública sale del catálogo y del audio, así que el paquete no necesita transportarla; además, el artefacto dejaba de duplicar el audio público. Las pruebas que fijan el paquete completo siguen llamando a `package_changes`, cuyo comportamiento por defecto no cambia.
-- **`publicar` regenera.** `publish_package` aplica el paquete y, después, ejecuta `sonidos.publish.sync_public` sobre el catálogo y el audio aplicados. Lo que cambia se añade al índice junto con el paquete. Lo que se publica de la parte pública depende solo de `audio-library/indexes/catalog.json`, de `audio-library/audio/` y del código de `main` que la genera.
-- **Qué queda visible en el registro del job.** El resultado separa dos listas. `regenerados` son los ficheros de la parte pública que la regeneración escribió y el paquete no traía; se anotan con `::notice` y, en el caso normal, son los que cambian con la petición. `sustituidos_del_paquete` son los que el paquete traía y la regeneración ha reemplazado; son la señal de un paquete forjado o desfasado, y se anotan con `::warning`. La publicación no falla por ello: se publica lo que dice el catálogo.
-- **Comparación de contenido en `sync_public`.** Antes, un audio público ya copiado se daba por bueno con el mismo tamaño. Ahora se compara el contenido, así que un audio forjado del mismo tamaño se sustituye.
-- **Identificadores con formato fijo.** `sync_public` rechaza una canción pública cuyo `id` no tenga la forma `S` seguida de 16 hexadecimales. El `id` da nombre al fichero, y con un `../` la copia saldría de la carpeta de audio. Esto apareció al revisar la regeneración, cuando `publicar` empezó a procesar el catálogo del paquete; tiene prueba propia.
-- **Paradas antes de confirmar.** Sin `catalog.json`, `sync_public` tomaría el catálogo por vacío y vaciaría la parte pública; por eso `publicar` lo rechaza antes. Una canción pública sin su audio detiene la publicación, y lo mismo un catálogo que no se puede regenerar (una canción pública sin título, por ejemplo).
-- **La validación no se amplía.** `ruta_permitida` sigue admitiendo los datos de la web y el audio publicado, porque las pruebas actuales lo exigen. Lo que impide que algo forjado llegue a `main` es la regeneración.
-
-Pruebas: 472 en `backend/` (`python -m pytest -q`). Las nuevas de esta decisión son 6 en `test_paquete.py` (63 en total), 3 en `test_aplicar_paquete.py` (que ejecutan el script tal como lo ejecuta el job, con git real), 2 en `test_publish.py` (7 en total) y 2 en `test_biblioteca_workflow.py` (27 en total). Simulación local sin GitHub, con un remoto bare: un procesado que importa y publica una canción, `publicar` sobre un checkout limpio de `main`, y la comparación: los cinco ficheros públicos confirmados son idénticos a los que produjo el procesado.
-
-**Riesgo residual actualizado:** el procesado sigue pudiendo alterar el catálogo y el audio. El contenido del audio no se valida, y el catálogo se toma como fuente. Las cadenas del catálogo llegan a la web como texto (ADR-0008). Lo que cambia es que el procesado ya no escribe los datos de la web directamente: solo puede influir en ellos a través del catálogo, por ejemplo con títulos y etiquetas, que llegan a `songs.json` y a `catalog.json`.
-
-**No verificado:** la ejecución real en GitHub Actions de esta versión (el paso del artefacto, `queue: max` y los permisos efectivos). Igual que antes, hay que probarlo con una incidencia de prueba antes de darlo por cerrado.
+La decisión, sus pruebas y el riesgo residual actualizado están en [ADR-0011](ADR-0011-publicar-regenera-parte-publica.md), que sustituye a esta nota.
 
 ## Qué se verificó
 
