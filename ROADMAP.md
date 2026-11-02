@@ -13,7 +13,7 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 - [x] Estructura de carpetas y control de versiones.
 - [x] Decisiones de stack documentadas (ADR-0001 a 0003).
 - [x] Núcleo de biblioteca, importación y transcodificación con pruebas.
-- [x] Repositorio privado en GitHub y primer push (github.com/seryi47/doctorado-reminiscencia, privado).
+- [x] Repositorio privado en GitHub y primer push (github.com/seryi47/doctorado-reminiscencia, privado; hoy seryi47/reminiscencia).
 - [x] Verificación de la integración continua en GitHub Actions (Python 3.12 y 3.13, verde en el commit 891149c).
 - **Cierre:** pruebas en verde en local y en GitHub Actions.
 

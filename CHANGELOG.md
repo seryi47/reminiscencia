@@ -5,9 +5,11 @@
 - Auditoría del brief contra el repositorio y la web publicada.
 - Panel de diseño para la nueva interfaz de escucha y del cuidador.
 - Gestión de la biblioteca en la página pública («Gestionar»): cada formulario comprueba la petición y prepara una incidencia con la etiqueta `biblioteca` (ADR-0008).
+- La web rechaza las direcciones que el backend no descargaría: IP privadas, de bucle local, de enlace local, de metadatos o de CGNAT, `localhost`, formas numéricas de IP (`127.1`, `2130706433`) y nombres de una sola etiqueta.
+- Dependencia: la sección necesita `feat/gestion-backend` (`data/catalog.json` y el workflow `biblioteca.yml`). Sin esa rama, la lista de canciones no carga y las incidencias no se procesan.
 - Administración retirada (ADR-0008): sin `/admin/`, sin funciones `api/` ni `lib/`, y sin `ADMIN_PASSWORD`.
 - Content-Security-Policy en la web pública (`vercel.json`).
-- Lista de bloqueo de `intake.js` igual que la de `sources.py`, con las plataformas de vídeo y de streaming y sus dominios de ficheros.
+- Lista de bloqueo de `intake.js` igual que la de `sources.py`, con las plataformas de vídeo y de streaming y sus dominios de ficheros. Se cumple al integrar `feat/gestion-backend`: en esta rama `sources.py` aún tiene 11 entradas.
 
 ## Administración en Vercel, catálogo versionado y app 1.1.0
 

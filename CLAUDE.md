@@ -25,11 +25,11 @@ Proyecto doctoral sobre música, memoria y Alzheimer, con una plataforma que sir
 - `scripts/ci_library.py`: punto de entrada del workflow; lee sus entradas de variables de entorno, nunca de la línea de comandos.
 - `scripts/check_repo_limits.py`: límites de GitHub (CI).
 - `.github/workflows/biblioteca.yml`: escrituras al catálogo desde incidencias del propietario con la etiqueta `biblioteca` o a mano (ADR-0008). Concurrencia única; hace commit y push.
-- `.github/workflows/backend.yml`: pruebas de Python, app Flutter y límites del repositorio.
+- `.github/workflows/backend.yml`: pruebas de Python, app Flutter, límites del repositorio y pruebas de la web (`web-unit`).
 - `frontend/web/`: web pública de escucha y de gestión (`index.html`, `app.js`, `js/gestion.js`, `js/intake.js`, `listen.css`, `styles.css`) y datos publicados (`data/`, `audio/`). No tiene administración ni funciones de Vercel (ADR-0008). Vercel sirve solo esta carpeta (Root Directory).
 - `mobile/`: app Flutter (lee la biblioteca de la web y guarda copia para escuchar sin conexión).
 - `audio-library/`: catálogo (`indexes/catalog.json`) y audio (`audio/`).
-- `docs/`: decisiones (ADR), arquitectura, procesado de audio.
+- `docs/`: decisiones (ADR) y procesado de audio (`docs/audio-processing/`).
 
 ## Cómo ejecutar
 ```
@@ -38,3 +38,5 @@ python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python -m pytest -q
 ```
 Requiere ffmpeg y ffprobe en el PATH (en GitHub Actions ya se instalan).
+
+Pruebas de la web, desde la raíz: `node --test "tests/web-unit/*.test.mjs"`.

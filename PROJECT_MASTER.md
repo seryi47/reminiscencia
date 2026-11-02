@@ -2,7 +2,7 @@
 
 Documento central de estado. Se actualiza cuando cambia una decisión o el estado de un módulo.
 
-Última actualización: 2026-10-31.
+Última actualización: 2026-11-02.
 
 ## Visión
 
@@ -42,20 +42,20 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 
 | Módulo | Estado | Pruebas |
 |---|---|---|
-| Catálogo versionado (`backend/sonidos/catalog.py`) | Implementado; fuente de verdad | 8 pruebas |
-| Importación por URL (`pipeline.py`, `intake.py`, `sources.py`) | Implementado; corre en GitHub Actions | 9 pruebas + 2 importaciones reales en CI |
+| Catálogo versionado (`backend/sonidos/catalog.py`) | Implementado; fuente de verdad | 7 pruebas |
+| Importación por URL (`pipeline.py`, `intake.py`, `sources.py`) | Implementado; corre en GitHub Actions | 19 pruebas (`test_pipeline.py` y `test_sources.py`) + 2 importaciones reales en CI |
 | Publicación y sincronización con la web (`publish.py`) | Implementado; probado en CI (publicar y despublicar) | 2 pruebas + CI |
-| Workflow `library.yml` (importar, publicar, organizar) | Implementado; probado en GitHub | 4 ejecuciones reales en CI |
-| Administración en Vercel (`/admin/`) | Implementado; **inactiva hasta que se configure `ADMIN_PASSWORD`** | Comprobada: falla cerrada (503) sin la variable |
-| Funciones de Vercel (`api/catalog`, `api/dispatch`, `api/runs`) | Implementado; validación y permisos mínimos | Comprobadas sin contraseña (503); con contraseña pendiente |
+| Workflow `library.yml` (importar, publicar, organizar) | Retirado en esta rama; lo sustituye `biblioteca.yml` (ADR-0008, en `feat/gestion-backend`) | — |
+| Administración en Vercel (`/admin/`) | Retirada (ADR-0008): sin `/admin/` ni `ADMIN_PASSWORD` | — |
+| Funciones de Vercel (`api/catalog`, `api/dispatch`, `api/runs`) | Retiradas (ADR-0008) | — |
 | Web pública de escucha (`frontend/web`) | **Pública** en https://reminiscencia.vercel.app; 9 pistas | Probada en escritorio y teléfono contra la URL pública |
 | App Android (`mobile/`) | Versión 1.1.0: biblioteca desde Vercel, copia para escuchar sin conexión | Probada en emulador Android 15: en línea, streaming, descarga y sin conexión |
-| Límites de GitHub (`limits.py`, `check_repo_limits.py`) | Implementado y comprobado en CI | 6 pruebas + CI |
-| Preparación de publicación en Releases (`release.py`) | Implementado en modo simulación | 4 pruebas |
+| Límites de GitHub (`limits.py`, `check_repo_limits.py`) | Implementado y comprobado en CI | 7 pruebas + CI |
+| Preparación de publicación en Releases (`release.py`) | Implementado en modo simulación | 5 pruebas |
 | Biblioteca publicada | 9 pistas de dominio público, todas con licencia declarada en su ítem | Verificada en la web |
 | Experimento de compresión perceptual | **No iniciado** | — |
 | Perfiles de pacientes y datos personales | **No iniciado** | — |
-| Integración continua (GitHub Actions) | Verde: pruebas Python, app Flutter y límites del repositorio | backend.yml + library.yml |
+| Integración continua (GitHub Actions) | Pruebas Python, app Flutter, límites del repositorio y pruebas de la web | backend.yml (incluye el job `web-unit`) |
 
 ## Presupuesto
 

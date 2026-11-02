@@ -62,6 +62,7 @@ const IA_FORM_MESSAGE = "En Internet Archive usa archive.org/details/<identifica
 // Igual que el backend (sources.py, IA_FILE_SERVER_MESSAGE): un fichero de ia800100.us.archive.org no es un fichero directo.
 const IA_FILE_SERVER_MESSAGE = "Un fichero de Internet Archive se importa desde la página de su ítem (archive.org/details/<identificador>), donde figura la licencia.";
 const HOST_MESSAGE = "La dirección no es válida: revisa el dominio (solo letras ASCII, cifras, puntos y guiones).";
+const PRIVATE_MESSAGE = "No se descarga desde una dirección de red privada, de bucle local o de enlace local.";
 
 // Campos permitidos por operación (además de "op"). Cualquier otro campo es un error.
 const OPERATIONS = Object.freeze({
@@ -74,10 +75,22 @@ const OPERATIONS = Object.freeze({
 const len = (text) => [...text].length;
 const hasText = (value) => typeof value === "string" && value.trim() !== "";
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-// Espacios de los extremos como str.strip() de Python, que es lo que mide el backend. No incluye U+FEFF, que trim() sí quita.
-const PY_SPACE_EDGES = /^[\t\n\v\f\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/gu;
-// Longitud de una etiqueta como la mide el backend (_tags): sin espacios de los extremos y en minúsculas.
-const tagLength = (tag) => len(tag.replace(PY_SPACE_EDGES, "").toLowerCase());
+// Espacios que Python quita con str.strip() (los de str.isspace). No incluye U+FEFF, que trim() sí quita.
+function isPySpace(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 0x09 && code <= 0x0d) || code === 0x20 || (code >= 0x1c && code <= 0x1f) || code === 0x85 || code === 0xa0
+    || code === 0x1680 || (code >= 0x2000 && code <= 0x200a) || code === 0x2028 || code === 0x2029 || code === 0x202f
+    || code === 0x205f || code === 0x3000;
+}
+// Longitud de una etiqueta como la mide el backend (_tags): sin espacios de los extremos y en minúsculas. Se recorre desde
+// los extremos: una expresión regular con $ sobre una cadena de espacios interiores tarda en cuadrático.
+function tagLength(tag) {
+  let start = 0;
+  let end = tag.length;
+  while (start < end && isPySpace(tag[start])) start += 1;
+  while (end > start && isPySpace(tag[end - 1])) end -= 1;
+  return len(tag.slice(start, end).toLowerCase());
+}
 
 export const isFolderId = (value) => typeof value === "string" && FOLDER_ID.test(value);
 export const isSongId = (value) => typeof value === "string" && SONG_ID.test(value);
@@ -137,9 +150,43 @@ function isIaItemPath(path) {
   return parts.length === 2 && IA_KINDS.includes(parts[0]) && IA_IDENTIFIER.test(parts[1]);
 }
 
-// "blocked", "archive", "archive-path", "archive-file", "direct", "other" o "invalid". Sigue el orden de sources.classify:
-// primero las plataformas, después Internet Archive (un ítem no admite parámetros) y por último la extensión de audio,
-// leída sin los parámetros de la ruta.
+// Rangos IPv4 que Python (ipaddress, is_global) no considera globales: privados, de bucle local, de enlace local, de
+// metadatos, reservados y de CGNAT (100.64.0.0/10). Son los que el backend rechaza al descargar (_check_public_host).
+const NON_GLOBAL_IPV4 = Object.freeze([
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12],
+  ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24],
+  ["203.0.113.0", 24], ["240.0.0.0", 4], ["255.255.255.255", 32],
+]);
+// Dentro de 192.0.0.0/24, Python las considera globales.
+const GLOBAL_IPV4_EXCEPTIONS = Object.freeze(["192.0.0.9", "192.0.0.10"]);
+// IPv4 con cuatro decimales y sin ceros a la izquierda: la única forma que Python acepta como dirección IP.
+const IPV4_DOTTED = /^(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$/;
+// Último segmento numérico, decimal o hexadecimal: una IP escrita de otra forma (127.1, 2130706433, 0x7f000001).
+const NUMERIC_LABEL = /^(?:[0-9]+|0x[0-9a-f]*)$/;
+
+const ipv4Value = (text) => text.split(".").reduce((value, octet) => value * 256 + Number(octet), 0);
+const inIpv4Range = (value, [base, prefix]) => value >= ipv4Value(base) && value < ipv4Value(base) + 2 ** (32 - prefix);
+// Igual que is_global de ipaddress.IPv4Address, para una dirección que ya cumple IPV4_DOTTED.
+function isGlobalIpv4(text) {
+  const value = ipv4Value(text);
+  if (GLOBAL_IPV4_EXCEPTIONS.some((exception) => ipv4Value(exception) === value)) return true;
+  return !NON_GLOBAL_IPV4.some((range) => inIpv4Range(value, range));
+}
+
+// Clasifica un host ya canonizado: "public", "private" (localhost o una IPv4 no global) o "invalid" (una forma numérica que
+// no es una IPv4 canónica, o un nombre de una sola etiqueta). Solo se decide lo que se sabe sin DNS: el backend además mira a
+// qué IP resuelve cada nombre (_check_public_host).
+function hostKind(host) {
+  if (host === "localhost" || host.endsWith(".localhost")) return "private";
+  if (IPV4_DOTTED.test(host)) return isGlobalIpv4(host) ? "public" : "private";
+  const labels = host.split(".");
+  if (NUMERIC_LABEL.test(labels[labels.length - 1])) return "invalid";
+  return labels.length > 1 ? "public" : "invalid";
+}
+
+// "blocked", "archive", "archive-path", "archive-file", "direct", "private", "other" o "invalid". Sigue el orden de
+// sources.classify: primero las plataformas, después Internet Archive (un ítem no admite parámetros en la ruta, aunque el
+// backend los ignore), después la extensión de audio, leída sin los parámetros de la ruta, y por último el host.
 function classify(url) {
   const { authority, path } = splitUrl(url);
   const host = canonicalHost(authority);
@@ -148,7 +195,9 @@ function classify(url) {
   if (host === IA_HOST) return isIaItemPath(path) ? "archive" : "archive-path";
   if (host.endsWith(`.${IA_HOST}`)) return "archive-file";
   const lower = pathWithoutParams(path).toLowerCase();
-  return AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext)) ? "direct" : "other";
+  if (!AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext))) return "other";
+  const kind = hostKind(host);
+  return kind === "public" ? "direct" : kind;
 }
 
 // Verdadero si la dirección apunta a un fichero de audio directo, que exige licencia.
@@ -176,6 +225,7 @@ export function validateImport({ url, license, title } = {}) {
   if (kind === "blocked") return BLOCKED_MESSAGE;
   if (kind === "archive-path") return IA_FORM_MESSAGE;
   if (kind === "archive-file") return IA_FILE_SERVER_MESSAGE;
+  if (kind === "private") return PRIVATE_MESSAGE;
   if (kind === "other") {
     return "Admite un ítem de Internet Archive (archive.org/details/…) o un enlace directo a un fichero de audio (mp3, flac, ogg, opus, m4a o wav).";
   }

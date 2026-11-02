@@ -1,6 +1,6 @@
 // Reminiscencia · gestión de la biblioteca en la página pública.
 // Cada formulario valida la petición con js/intake.js y abre una incidencia de GitHub con el texto ya escrito.
-// El sistema la procesa en 1 a 3 minutos y la web se actualiza sola.
+// El sistema la procesa y la web se actualiza sola cuando termina.
 // La escucha (app.js) no cambia: esta sección solo lee data/catalog.json y data/folders.json al abrirse.
 import {
   buildImportBody,

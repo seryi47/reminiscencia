@@ -41,6 +41,15 @@ describe("vercel.json: Content-Security-Policy", () => {
   });
 });
 
+describe("vercel.json: tipo de los ficheros de audio", () => {
+  it("sirve los .opus como audio/ogg con codecs=opus, el tipo que reproduce el navegador", () => {
+    const config = JSON.parse(read("vercel.json"));
+    const rule = config.headers.find((item) => item.source === "/audio/(.*)\\.opus");
+    const header = rule?.headers.find((item) => item.key === "Content-Type");
+    assert.equal(header?.value, "audio/ogg; codecs=opus");
+  });
+});
+
 describe("index.html: sin scripts en línea ni atributos de evento", () => {
   it("todo el JavaScript de la página viene de ficheros propios", () => {
     const html = read("index.html");

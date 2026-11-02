@@ -2,7 +2,9 @@
 // Ejecución: node --test "tests/web-unit/*.test.mjs" (desde la raíz del repositorio).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
+  BLOCKED_HOSTS,
   buildImportBody,
   buildIssueTitle,
   buildIssueUrl,
@@ -412,6 +414,81 @@ describe("selectableSongs: lo que la sección muestra y cuenta", () => {
       null,
     ];
     assert.deepEqual(selectableSongs(songs).map((song) => song.id), [SONG]);
+  });
+});
+
+describe("validateImport: direcciones que no son públicas, como check_download_url del backend", () => {
+  it("rechaza las IPv4 de red privada, de bucle local, de enlace local, de metadatos y de CGNAT, aunque haya licencia", () => {
+    for (const host of [
+      "127.0.0.1", "127.255.255.255", "10.0.0.5", "172.16.0.1", "172.31.255.255", "192.168.1.1",
+      "169.254.169.254", "100.64.0.1", "100.127.255.255", "0.0.0.0", "198.18.0.1", "192.0.0.8",
+      "192.0.0.170", "192.0.2.10", "198.51.100.7", "203.0.113.9", "240.0.0.1", "255.255.255.255",
+    ]) {
+      assert.match(validateImport({ url: `https://${host}/audio/cancion.mp3`, license: "CC BY 4.0" }), /red privada/, host);
+    }
+  });
+
+  it("admite una IPv4 pública como fichero directo con licencia, también justo fuera de los rangos privados", () => {
+    for (const host of ["8.8.8.8", "1.1.1.1", "172.15.255.255", "172.32.0.1", "100.63.255.255", "100.128.0.1", "192.0.0.9", "192.0.0.10", "198.20.0.1"]) {
+      assert.equal(validateImport({ url: `https://${host}/audio/cancion.mp3`, license: "CC0" }), null, host);
+    }
+  });
+
+  it("rechaza localhost y sus subdominios, con puerto o con punto final", () => {
+    for (const host of ["localhost", "LOCALHOST", "localhost.", "localhost:8080", "foo.localhost"]) {
+      assert.match(validateImport({ url: `https://${host}/audio/cancion.mp3`, license: "CC0" }), /red privada/, host);
+    }
+  });
+
+  it("rechaza las formas numéricas de una IP que el backend resuelve a un host no público", () => {
+    for (const host of ["127.1", "2130706433", "0x7f000001", "0x7f.0.0.1", "0177.0.0.1", "010.0.0.1", "8.8.8", "7"]) {
+      assert.match(validateImport({ url: `https://${host}/audio/cancion.mp3`, license: "CC0" }), /no es válida/, host);
+    }
+  });
+
+  it("rechaza un nombre de una sola etiqueta, que no es una dirección pública", () => {
+    for (const host of ["intranet", "router"]) {
+      assert.match(validateImport({ url: `https://${host}/audio/cancion.mp3`, license: "CC0" }), /no es válida/, host);
+    }
+  });
+
+  it("no pide licencia para un host que no es público, porque no se va a importar", () => {
+    assert.equal(needsLicense("https://127.0.0.1/tema.mp3"), false);
+    assert.equal(needsLicense("https://8.8.8.8/tema.mp3"), true);
+  });
+});
+
+describe("paridad de la lista de bloqueo con backend/sonidos/sources.py", () => {
+  const backendSource = readFileSync(new URL("../../backend/sonidos/sources.py", import.meta.url), "utf8");
+  const block = backendSource.match(/BLOCKED_HOSTS = frozenset\(\s*\{([\s\S]*?)\}\s*\)/);
+  const backendBlocked = block ? [...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]) : [];
+
+  it("encuentra la lista de bloqueo del backend", () => {
+    assert.ok(backendBlocked.length >= 10, `solo se leyeron ${backendBlocked.length} entradas`);
+  });
+
+  it("la web bloquea todo lo que bloquea el backend, y también los subdominios", () => {
+    for (const host of backendBlocked) {
+      assert.match(validateImport({ url: `https://${host}/tema.mp3`, license: "CC0" }), /no se puede importar/, host);
+      assert.match(validateImport({ url: `https://sub.${host}/tema.mp3`, license: "CC0" }), /no se puede importar/, host);
+    }
+  });
+
+  it("la lista de la web es idéntica a la del backend", {
+    todo: "pendiente de integrar feat/gestion-backend: su sources.py tiene las 33 entradas, esta rama conserva la lista anterior",
+  }, () => {
+    assert.deepEqual([...BLOCKED_HOSTS].sort(), [...backendBlocked].sort());
+  });
+});
+
+describe("validatePayload: una etiqueta con muchos espacios interiores se mide en tiempo lineal", () => {
+  it("responde deprisa aunque la etiqueta tenga 100.000 espacios seguidos", () => {
+    const tag = `a${" ".repeat(100000)}b`;
+    const started = performance.now();
+    const problem = validatePayload({ op: "edit_song", song_id: SONG, tags: [tag] });
+    const elapsed = performance.now() - started;
+    assert.match(problem, /40 caracteres/);
+    assert.ok(elapsed < 1000, `tardó ${Math.round(elapsed)} ms`);
   });
 });
 
