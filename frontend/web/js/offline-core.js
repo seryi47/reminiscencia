@@ -6,7 +6,7 @@
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 2;
+export const SHELL_VERSION = 3;
 
 /** Prefijo de las cachés del shell; sirve para reconocer las antiguas al limpiar. */
 export const SHELL_CACHE_PREFIX = 'reminiscencia-shell-';
@@ -84,6 +84,7 @@ export const SHELL_ASSETS = Object.freeze([
   '/js/cuidador/recuerdos.js',
   '/js/cuidador/sesion.js',
   '/js/cuidador/shell.js',
+  '/js/cuidador/subida-local.js',
   '/data/songs.json',
   '/data/folders.json',
   '/icons/icon-192.png',
@@ -139,6 +140,8 @@ export function listAudioUrls(songs) {
   if (!Array.isArray(songs)) return [];
   const paths = new Set();
   for (const song of songs) {
+    // Las canciones subidas desde este dispositivo (ADR-0012) no están en el servidor: no se descargan.
+    if (song && song.local === true) continue;
     const id = song && typeof song === 'object' ? song.id : undefined;
     if (typeof id === 'string' && SAFE_ID.test(id)) {
       paths.add(`audio/${id}.opus`);

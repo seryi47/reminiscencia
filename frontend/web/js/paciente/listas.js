@@ -145,9 +145,10 @@ export function createPresentationResolver(links = []) {
   return (track) => byId.get(track?.id) ?? DEFAULT_PRESENTATION;
 }
 
-/** Una canción se puede escuchar si hay conexión o si su audio está guardado para escuchar sin conexión. */
+/** Una canción se puede escuchar si hay conexión, si su audio está guardado para escuchar sin conexión o si
+ *  se subió desde este dispositivo (ADR-0012). */
 export function isSongAvailable(song, { online = true, cached = new Set() } = {}) {
-  return online || cached.has(songAudioPath(song));
+  return online || song?.local === true || cached.has(songAudioPath(song));
 }
 
 /** Etiqueta de la fila activa: «Suena: [artista]», o «Suena ahora» si no hay artista. */

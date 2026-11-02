@@ -51,6 +51,7 @@ import { routes as ajustesRoutes } from './cuidador/ajustes.js';
 import { routes as recuerdoRoutes } from './cuidador/recuerdo-editor.js';
 import { routes as listaRoutes } from './cuidador/lista-editor.js';
 import { routes as observacionesRoutes } from './cuidador/observaciones.js';
+import { isLocalAudioUrl, loadLocalSongs } from './cuidador/subida-local.js';
 
 // ---------------------------------------------------------------------------
 // Constantes
@@ -670,7 +671,9 @@ function onPlayerStudyEvent(event) {
 
 // Sin conexión solo suenan las canciones guardadas (DESIGN 8.1).
 function isPlayable(item) {
-  return typeof navigator === 'undefined' || navigator.onLine !== false || cachedPaths.has(item?.audioUrl);
+  // Las canciones locales (blob de este navegador) suenan sin conexión: no dependen de la caché del servidor.
+  return typeof navigator === 'undefined' || navigator.onLine !== false
+    || isLocalAudioUrl(item?.audioUrl) || cachedPaths.has(item?.audioUrl);
 }
 
 // Última pista del perfil (solo en modo paciente y fuera de la vista previa).
@@ -790,9 +793,14 @@ async function fetchList(url) {
   }
 }
 
+// Catálogo publicado más las canciones subidas desde este navegador (ADR-0012). Estas últimas no salen del dispositivo.
 async function loadCatalog() {
-  const [songs, folders] = await Promise.all([fetchList(CATALOG_URLS.songs), fetchList(CATALOG_URLS.folders)]);
-  return { songs, folders };
+  const [songs, folders, local] = await Promise.all([
+    fetchList(CATALOG_URLS.songs),
+    fetchList(CATALOG_URLS.folders),
+    loadLocalSongs(),
+  ]);
+  return { songs: [...songs, ...local], folders };
 }
 
 async function refreshCachedPaths() {

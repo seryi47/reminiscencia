@@ -1243,3 +1243,28 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
     min-width: 260px;
   }
 }
+
+/* Subida local desde este dispositivo (ADR-0012): botón, ayuda, estado con texto, progreso y errores. */
+.c-biblioteca-local {
+  display: grid;
+  gap: var(--espacio-2, 8px);
+  justify-items: start;
+}
+
+.c-biblioteca-local-estado {
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+  margin: 0;
+}
+
+.c-biblioteca-local-progreso {
+  width: min(360px, 100%);
+  height: 12px;
+}
+
+.c-biblioteca-local-errores {
+  font: var(--tipo-meta);
+  color: var(--texto);
+  margin: 0;
+  padding-left: 1.25em;
+}

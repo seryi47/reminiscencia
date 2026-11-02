@@ -8,6 +8,7 @@
 
 import { audioCacheName, planOfflineDownload } from '../offline-core.js';
 import { openIncidentSheet } from './incidencias.js';
+import { addLocalFiles, LOCAL_AUDIO_ACCEPT, opusSupport, UNSUPPORTED_TEXT } from './subida-local.js';
 
 const NS_SVG = 'http://www.w3.org/2000/svg';
 const TITLE = 'Biblioteca';
@@ -125,7 +126,12 @@ export function cachedSongIds(songs, cachedUrls = []) {
   const { alreadyCached } = planOfflineDownload(songs, cachedUrls);
   const prefix = 'audio/';
   const suffix = '.opus';
-  return new Set(alreadyCached.map((path) => path.slice(prefix.length, path.length - suffix.length)));
+  const ids = new Set(alreadyCached.map((path) => path.slice(prefix.length, path.length - suffix.length)));
+  // Las canciones subidas desde este dispositivo están siempre en el navegador (ADR-0012).
+  for (const song of Array.isArray(songs) ? songs : []) {
+    if (song?.local === true && typeof song.id === 'string') ids.add(song.id);
+  }
+  return ids;
 }
 
 /** Filas de la tabla a partir del catálogo y de las valoraciones del perfil. Las filas no tienen DOM. */
@@ -461,7 +467,42 @@ export function mountLibrary(root, services, params = {}) {
   const emptyEl = el('p', { class: 'c-biblioteca-vacio', role: 'status', hidden: true });
   const loadingEl = el('p', { class: 'c-biblioteca-cargando', role: 'status' }, 'Cargando la biblioteca…');
 
-  section.append(toolbar, hintEl, bulk, loadingEl, emptyEl, tableBox);
+  // ---- Subida local (ADR-0012): audio desde este dispositivo, convertido a Opus y guardado solo en este navegador ----
+  const localInput = el('input', {
+    type: 'file',
+    multiple: true,
+    accept: LOCAL_AUDIO_ACCEPT,
+    hidden: true,
+    tabindex: '-1',
+    'aria-hidden': 'true',
+    'data-testid': 'c-biblioteca-local-input',
+  });
+  const localButton = el('button', {
+    type: 'button',
+    class: 'c-biblioteca-boton c-biblioteca-boton--secundario',
+    'data-testid': 'c-biblioteca-local-add',
+    'aria-describedby': 'c-biblioteca-local-ayuda',
+  }, 'Añadir audio desde este dispositivo');
+  const localHelp = el('p', { id: 'c-biblioteca-local-ayuda', class: 'c-biblioteca-ayuda' },
+    'WAV, MP3, M4A, OGG o FLAC. Se convierten a Opus en este navegador y se guardan solo aquí: no se suben a ningún servidor y no entran en la copia cifrada.');
+  const localStatus = el('p', { class: 'c-biblioteca-local-estado', role: 'status', 'data-testid': 'c-biblioteca-local-status' });
+  const localProgress = el('progress', {
+    class: 'c-biblioteca-local-progreso',
+    max: '100',
+    value: '0',
+    hidden: true,
+    'aria-label': 'Progreso de la conversión',
+    'data-testid': 'c-biblioteca-local-progress',
+  });
+  const localErrors = el('ul', { class: 'c-biblioteca-local-errores', hidden: true, 'aria-label': 'Archivos que no se añadieron' });
+  const localPanel = el('div', {
+    class: 'c-biblioteca-local',
+    role: 'region',
+    'aria-label': 'Añadir audio desde este dispositivo',
+    'data-testid': 'c-biblioteca-local',
+  }, localButton, localInput, localHelp, localStatus, localProgress, localErrors);
+
+  section.append(toolbar, hintEl, localPanel, bulk, loadingEl, emptyEl, tableBox);
   // En teléfono, la búsqueda y «Vista previa» no caben en la cabecera de 56 px: van al principio de la pantalla.
   const phoneMedia = globalThis.matchMedia ? globalThis.matchMedia('(max-width: 599.98px)') : null;
   function placeHeaderBox() {
@@ -1098,6 +1139,103 @@ export function mountLibrary(root, services, params = {}) {
     }
   }
 
+  // ---- Subida local: conversión, avisos y filas nuevas (ADR-0012) ----
+
+  const STAGE_TEXT = Object.freeze({
+    leer: 'leyendo el archivo',
+    convertir: 'preparando el audio',
+    codificar: 'convirtiendo a Opus',
+    guardar: 'guardando en este navegador',
+  });
+  let localBusy = false;
+  let localSupported = null; // null hasta comprobar el navegador
+  let lastProgressKey = '';
+
+  function setLocalStatus(text) {
+    localStatus.textContent = text;
+  }
+
+  function showLocalErrors(failed) {
+    localErrors.replaceChildren(...failed.map((item) => el('li', null, `«${item.name}»: ${item.message}`)));
+    localErrors.hidden = failed.length === 0;
+  }
+
+  // El texto cambia al empezar cada fase de cada archivo (no en cada tic, para no saturar al lector de pantalla).
+  // La barra muestra el avance total.
+  function onLocalProgress({ index, total, name, stage, fraction }) {
+    localProgress.value = Math.round(((index + (Number(fraction) || 0)) / total) * 100);
+    const key = `${index}:${stage}`;
+    if (key !== lastProgressKey) {
+      lastProgressKey = key;
+      setLocalStatus(`Archivo ${index + 1} de ${total}: «${name}», ${STAGE_TEXT[stage] ?? 'procesando'}.`);
+    }
+  }
+
+  // Filas de canciones que llegan después del montaje (las subidas), con la misma vista que las demás.
+  function addSongRows(songs) {
+    if (!state.loaded) return;
+    const fresh = songs.filter((song) => !rowsById.has(song.id));
+    if (fresh.length === 0) return;
+    for (const song of fresh) folderIdBySong.set(song.id, song.folder_id ?? null);
+    for (const row of buildRows(fresh, { cachedIds: cachedSongIds(fresh) })) {
+      rowsById.set(row.id, row);
+      state.rows.push(row);
+      buildRow(row);
+    }
+    applyView();
+  }
+
+  function localSummary(added, failed) {
+    const songs = added === 1 ? 'canción' : 'canciones';
+    if (added === 0) return 'No se añadió ninguna canción.';
+    if (failed === 0) return `Se añadieron ${added} ${songs} a la biblioteca.`;
+    return `Se añadieron ${added} ${songs} a la biblioteca. ${failed} ${failed === 1 ? 'archivo no se añadió' : 'archivos no se añadieron'}; la lista dice por qué.`;
+  }
+
+  async function onLocalChosen() {
+    const files = Array.from(localInput.files ?? []);
+    localInput.value = '';
+    if (files.length === 0 || localBusy) return;
+    localBusy = true;
+    localButton.setAttribute('aria-disabled', 'true');
+    localErrors.replaceChildren();
+    localErrors.hidden = true;
+    localProgress.hidden = false;
+    localProgress.value = 0;
+    lastProgressKey = '';
+    setLocalStatus(`Preparando ${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}.`);
+    let result;
+    try {
+      result = await addLocalFiles(files, { onProgress: onLocalProgress });
+    } catch (error) {
+      result = { added: [], failed: [{ name: files[0]?.name ?? '', message: error?.message ?? 'No se pudo añadir el audio.' }] };
+    } finally {
+      localBusy = false;
+      localButton.removeAttribute('aria-disabled');
+    }
+    // Las canciones guardadas entran en el catálogo aunque la pantalla ya no esté: el paciente las ve al abrir su modo.
+    const catalogSongs = Array.isArray(services.catalog?.songs) ? services.catalog.songs : null;
+    if (catalogSongs) {
+      for (const song of result.added) {
+        if (!catalogSongs.some((item) => item.id === song.id)) catalogSongs.push(song);
+      }
+    }
+    if (disposed) return;
+    addSongRows(result.added);
+    localProgress.hidden = true;
+    setLocalStatus(localSummary(result.added.length, result.failed.length));
+    showLocalErrors(result.failed);
+  }
+
+  function onLocalButton() {
+    if (localSupported === false) {
+      setLocalStatus(UNSUPPORTED_TEXT);
+      return;
+    }
+    if (localBusy) return;
+    localInput.click();
+  }
+
   // ---- Carga y estado del reproductor ----
 
   async function load() {
@@ -1284,9 +1422,21 @@ export function mountLibrary(root, services, params = {}) {
 
   previewButton.addEventListener('click', startPreview);
   manageButton.addEventListener('click', openManagement);
+  localButton.addEventListener('click', onLocalButton);
+  localInput.addEventListener('change', onLocalChosen);
 
   doc.addEventListener('keydown', onGlobalKey);
   pollTimer = globalThis.setInterval(syncPlaying, POLL_MS);
+
+  // Sin AudioEncoder con Opus el aviso queda visible desde el principio; no se falla en silencio.
+  opusSupport().then((support) => {
+    if (disposed) return;
+    localSupported = support.ok;
+    if (!support.ok) {
+      localButton.setAttribute('aria-disabled', 'true');
+      setLocalStatus(UNSUPPORTED_TEXT);
+    }
+  });
 
   load();
 

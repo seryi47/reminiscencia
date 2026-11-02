@@ -73,6 +73,16 @@
 
 ## [Sin publicar]
 
+### Añadido (audio subido desde este dispositivo, ADR-0012)
+- Biblioteca del cuidador: «Añadir audio desde este dispositivo». Los archivos (WAV, MP3, M4A, OGG, FLAC) se convierten a Opus en el navegador con AudioEncoder (mono 32 kbps, estéreo 48 kbps) y se guardan solo en IndexedDB de ese navegador (base `reminiscencia-audio-local`, versión 1).
+- Límites de 60 MB y 20 minutos por archivo; comprobación de espacio con `navigator.storage.estimate()`. Sin AudioEncoder con Opus, aviso en la interfaz.
+- Las canciones aparecen en la biblioteca y en el modo paciente como las del catálogo. No se suben a ningún servidor, no van a GitHub ni a la web pública y no entran en la copia cifrada.
+- Módulo `frontend/web/js/cuidador/subida-local.js`; `SHELL_VERSION` 3 con el módulo en `SHELL_ASSETS`.
+- Pruebas: `tests/web-unit/subida-local.test.mjs`. Conversión real probada en Chrome con WAV, MP3, FLAC y M4A.
+
+### Pendiente de confirmar
+- Si la copia cifrada debe llevar los metadatos de estas canciones (el encargo decía «solo metadatos»). Ahora no los lleva.
+
 ### Añadido
 - Estructura inicial del proyecto y control de versiones.
 - Núcleo de backend en Python: lectura de metadatos con ffprobe, huella SHA-256, perfiles de transcodificación (Opus, AAC, MP3), biblioteca SQLite con detección de duplicados y licencia obligatoria, índice JSON sin rutas locales, CLI.
