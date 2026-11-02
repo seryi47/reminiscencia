@@ -4,7 +4,7 @@
 **Base:** propuesta A, la mejor valorada (66,5 de 75 puntos sumados por los tres jueces). Se incorporan los aportes de B (61,5) y C (65,5) que mejoran accesibilidad, tableta o funciones.
 **Ubicación prevista:** `docs/user-experience/DESIGN.md`
 
-> **Pendiente de rediseño (2026-11-02):** replicar la estructura de Apple Music web, decisión del propietario. Hasta el rediseño, las secciones de identidad visual y de estado visual se dejan como estaban.
+> **Rediseño (2026-11-02, en `main`):** la interfaz replica la estructura de la web de Apple Music, decisión del propietario. Esta especificación se ha corregido solo donde contradecía el código de `main`: identidad (§2, principio 7; §13, D39), barras inferiores y mini reproductor (§3.1, §4, §5.4, §6, §15), bloqueo del PIN (P-16) y estado funcional (§17). En el resto (raíles y puntos de ruptura de §3 y §4, cabeceras y tokens de §5.4), manda el código: `frontend/web/css/paciente-shell.css` y `cuidador-shell.css`, con las medidas que comprueba `tests/web-e2e/medidas.e2e.mjs`. Pendiente: poner al día esas tablas con las medidas del rediseño.
 
 ---
 
@@ -18,7 +18,8 @@ Alcance de esta fase:
 - Dos modos: **paciente** (escucha) y **cuidador** (configuración, registro y revisión).
 - Perfiles, fotografías, recuerdos, observaciones e historial se guardan solo en el navegador del cuidador.
 - Sin administración, cuentas, sincronización en la nube, publicidad ni scripts de terceros.
-- Fuera de alcance: importar audio desde el dispositivo (las canciones vienen del catálogo del proyecto) y extraer audio de plataformas de streaming.
+- Audio subido desde el dispositivo del cuidador (C2a): solo en el navegador de ese cuidador, según ADR-0012. Las canciones públicas siguen viniendo del catálogo del proyecto.
+- Fuera de alcance: extraer audio de plataformas de streaming.
 
 ## 2. Principios
 
@@ -28,13 +29,13 @@ Alcance de esta fase:
 4. **Un acento de acción y una señal semántica.** El verde azulado marca la acción y el estado activo. El cálido «Recuerdo» aparece solo en recuerdos y fotografías, siempre con la palabra.
 5. **Ningún dato depende solo del color, del puntero o de un gesto.**
 6. **Lenguaje claro.** Los botones usan verbos. En el modo paciente, las frases tienen hasta 15 palabras y no usan pronombres.
-7. **Estructura de app de música, identidad propia.** Navegación lateral o inferior, secciones con «Ver todas», reproductor persistente y panel «Ahora suena». No se usa ningún logotipo, icono de marca, imagen, texto ni hoja de estilo de ninguna web. Las referencias externas se consultaron de forma parcial, y el diseño no depende de ellas.
+7. **Estructura de app de música, replicada de Apple Music web.** Decisión del propietario (2026-11-02): navegación lateral o inferior, secciones con «Ver todas», reproductor persistente y panel «Ahora suena», con la estructura de la web de Apple Music. Se replica la estructura, no la marca: no se copian logotipos, iconos de marca, imágenes, textos ni hojas de estilo de ninguna web, y el nombre de la app va en texto.
 
 ## 3. Mapa de pantallas y navegación
 
 ### 3.1 Modo paciente
 
-Cuatro destinos fijos: **Escuchar** (inicio), **Listas**, **Carpetas** y **Buscar**. Por debajo de 768 px, la navegación es una barra inferior de 72 px; desde 768 px, es un raíl izquierdo de 112 px. La cabecera mide 64 px: título de la pantalla (H1) a la izquierda y botón **Cuidador** a la derecha.
+Cuatro destinos fijos: **Escuchar** (inicio), **Listas**, **Carpetas** y **Buscar**. En teléfono (menos de 600 px), la navegación es una barra inferior de 64 px más 1 px de borde (65 px medidos a 390 px de ancho), con los cuatro destinos en columnas; desde 600 px, un riel de 72 px en tableta, y desde 1024 px, una barra lateral de 240 px con grupos. La cabecera mide 64 px en teléfono y 88 px en escritorio: título de la pantalla (H1) a la izquierda y botón **Cuidador** a la derecha.
 
 | ID | Pantalla | Contenido y reglas |
 |---|---|---|
@@ -48,7 +49,7 @@ Cuatro destinos fijos: **Escuchar** (inicio), **Listas**, **Carpetas** y **Busca
 | P5 | Volver al modo cuidador | Con PIN: teclado de PIN. Sin PIN: diálogo de confirmación. Acción principal «Seguir escuchando»; secundaria «Volver al modo cuidador». Escape equivale a «Seguir escuchando». «Olvidé el PIN» quita solo el PIN, tras confirmación. |
 | P6 | Aviso de apagado | Diálogo 30 s antes del apagado programado: «La música se para en 30 segundos.», con «Seguir 15 minutos más» (64 px) y «Parar ahora». Sin respuesta, la música se pausa; la app no se cierra. |
 
-**Mini reproductor.** En P2, P2b, P3, P3b y P4 aparece una barra de 72 px con el título (un toque abre P1) y el botón reproducir/pausar de 56 px. Va encima de la barra inferior en teléfono y en la base del contenido en tableta y escritorio.
+**Mini reproductor.** En P2, P2b, P3, P3b y P4 aparece una barra de 64 px en teléfono y de 76 px desde 600 px, con el título (un toque abre P1) y el botón reproducir/pausar de 56 px. Va encima de la barra inferior en teléfono y en la base del contenido en tableta y escritorio.
 
 ### 3.2 Modo cuidador
 
@@ -82,7 +83,7 @@ Cuatro destinos: **Inicio**, **Biblioteca**, **Perfiles** y **Ajustes**. El acce
 
 | Intervalo | Modo paciente | Modo cuidador |
 |---|---|---|
-| 360–767 px | Barra inferior de 72 px. Escuchar en una columna. Mosaicos de 2 columnas. | Barra inferior de 64 px. Tarjetas de 72 px. Hojas inferiores. |
+| 360–767 px | Barra inferior de 64 px (65 con el borde). Escuchar en una columna. Mosaicos de 2 columnas. | Barra inferior de 64 px. Tarjetas de 72 px. Hojas inferiores. |
 | 768–1023 px | Raíl de 112 px. Escuchar en dos columnas (300 px y resto). Mosaicos de 3 columnas. | Raíl de 88 px (desde 600 px). Tabla sin preferencia ni presentación (van en el panel). Panel superpuesto de 320 px. |
 | 1024–1279 px | Raíl de 112 px. Escuchar en dos columnas (280 px y resto). Mosaicos de 4 columnas. | Raíl de 88 px. Tabla completa. Panel superpuesto de 320 px. |
 | ≥1280 px | Raíl de 112 px. Escuchar centrado en 1120 px (360 px y resto). Mosaicos de 4 columnas. | Barra lateral de 232 px con carpetas. Panel superpuesto de 320 px entre 1280 y 1439 px; persistente desde 1440 px. |
@@ -169,7 +170,7 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 |---|---|
 | Cabecera del paciente | 64 |
 | Cabecera del cuidador | 56 |
-| Barra inferior del paciente (menos de 768 px) | 72 (más área segura) |
+| Barra inferior del paciente (menos de 600 px) | 64 de contenido más 1 px de borde y área segura (65 medidos a 390 px) |
 | Barra inferior del cuidador (menos de 600 px) | 64 |
 | Raíl del paciente (desde 768 px) | 112 |
 | Raíl del cuidador (600–1279 px) | 88 |
@@ -200,7 +201,7 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 ### 6.1 Modo paciente
 
 - **P-1 Cabecera (64 px).** Fondo superficie-1 y borde inferior de 1 px borde-suave. H1 a la izquierda. Botón **Cuidador**: alto de 56 px, ancho mínimo de 120 px, icono de candado de 24 px (solo con PIN) y texto 18/24 700. Estados: normal (superficie-2 con borde de 2 px borde-control), enfoque (anillo de 4 px) y pulsado (superficie-3).
-- **P-2 Barra inferior (menos de 768 px).** 72 px más área segura. Cuatro destinos iguales (mínimo 90 px), icono de 28 px y etiqueta 18/24 700. Activo: indicador superior de 4 px en acento, fondo acento-suave y `aria-current="page"`.
+- **P-2 Barra inferior (menos de 600 px).** 64 px de contenido más 1 px de borde y área segura (65 px medidos a 390 px; `.p-nav`, `min-height`). Cuatro destinos iguales en columnas (mínimo 90 px), icono de 28 px y etiqueta 18/24 700. Activo: indicador superior de 4 px en acento, fondo acento-suave y `aria-current="page"`.
 - **P-3 Raíl (desde 768 px).** 112 px de ancho; destinos de 96 px de alto; icono de 36 px; etiqueta 18/24 700. Activo: fondo acento-suave y barra lateral de 6 px en acento.
 - **P-4 Portada.** Cuadrada, radio 24 px, sin sombra (tamaños en 5.4). Sin portada: superficie-3 con la inicial en 96 px, peso 700 y color texto-2. No es interactiva. Texto alternativo «Portada de [álbum], [artista]»; vacío si el título ya aparece junto a ella.
 - **P-5 Título y artista.** Título en H2 (máximo dos líneas; se reservan 72 px). Artista en una línea, con puntos suspensivos si no cabe. Sin reproducción: «No suena nada. Elige una lista o una carpeta.», con «Ir a Listas» e «Ir a Carpetas» de 56 px.
@@ -214,9 +215,9 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 - **P-13 Botones de acción.** Primario (Reproducir lista, Reproducir carpeta, Buscar): alto de 64 px, fondo acento y texto sobre-acento. Secundario (Ver todas, Leer todo, Otro recuerdo, Cerrar, Ir a Listas): alto de 56 px, superficie-2 y borde de 2 px borde-control. Etiqueta 20/28 700, relleno horizontal de 24 px, radio 16. Pulsado: acento-fuerte (primario) o superficie-3 (secundario). Enfoque: anillo de 4 px.
 - **P-14 Chips de categoría (Buscar).** Alto de 64 px, radio 999, ancho mínimo de 160 px (dos columnas en teléfono), etiqueta 22/28 600. Pulsado: acento-suave.
 - **P-15 Búsqueda.** Etiqueta visible «Buscar» 20/28 700 encima del campo. Campo de 64 px, texto 24/32, borde de 2 px borde-control y radio 16. Ayuda 18/26 «Escribe un título o un artista» en texto-2. Botón «Buscar» (P-13) debajo en teléfono y a la derecha desde 768 px. «Borrar búsqueda» de 56 px al escribir. `enterkeyhint="search"`; autocorrección, mayúsculas y autocompletado desactivados. Los resultados aparecen en P4 al pulsar Buscar o Intro.
-- **P-16 Teclado de PIN.** Indicadores de 20 px (4 o 6, según el PIN). Teclas de 72×72 px (teléfono) o 80×80 px (desde 768 px), separadas 16 px; dígitos 32/40 600. «Borrar» del mismo tamaño. «Mostrar PIN» y «Olvidé el PIN» de 48 px. Admite pegar. Tras cinco fallos: teclas deshabilitadas y «Vuelve a intentarlo en 45 s» 20/28, con cuenta atrás. No hay pruebas de memoria.
+- **P-16 Teclado de PIN.** Indicadores de 20 px (4 o 6, según el PIN). Teclas de 72×72 px (teléfono) o 80×80 px (desde 768 px), separadas 16 px; dígitos 32/40 600. «Borrar» del mismo tamaño. «Mostrar PIN» y «Olvidé el PIN» de 48 px. Admite pegar. Tras cinco fallos: teclas deshabilitadas y «Vuelve a intentarlo en 60 s» 20/28, con cuenta atrás. No hay pruebas de memoria.
 - **P-17 Diálogo de salida (P5).** Dos botones de 64 px a ancho completo (teléfono) o de 280 px (escritorio). Primario «Seguir escuchando» (foco inicial); secundario «Volver al modo cuidador».
-- **P-18 Mini reproductor.** 72 px. Título 20/28 600 en una línea (un toque abre P1). Botón reproducir/pausar de 56 px. Sin volumen.
+- **P-18 Mini reproductor.** 64 px en teléfono y 76 px desde 600 px (`.p-mini`). Título 20/28 600 en una línea (un toque abre P1). Botón reproducir/pausar de 56 px. Sin volumen.
 - **P-19 Banda sin conexión.** Banda de 48 px bajo la cabecera, con icono y «Sin internet: se escuchan las canciones guardadas» (18/26). Aparece solo sin conexión.
 
 ### 6.2 Modo cuidador
@@ -402,7 +403,7 @@ Esquemas, no a escala.
 | Recuerdo                             |
 | Título del recuerdo                  |
 +--------------------------------------+
-| Escuchar | Listas | Carpetas | Buscar |  barra 72
+| Escuchar | Listas | Carpetas | Buscar |  barra 64
 +--------------------------------------+
 ```
 
@@ -540,7 +541,7 @@ Esquemas, no a escala.
 | D36 | Un solo panel para «Ahora suena» y la ficha. | Una sola zona de detalle. |
 | D37 | La vista previa del paciente no crea sesión ni registra eventos. | Los datos del estudio no se contaminan. |
 | D38 | Preferencias de pantalla en localStorage; datos personales solo en IndexedDB. | Restricción del brief: los datos personales se guardan solo en el navegador del cuidador. |
-| D39 | Sin logotipo: el nombre de la app va en texto. | Originalidad: no se copia ninguna marca. |
+| D39 | Sin logotipo: el nombre de la app va en texto. | Sin logotipos ni marcas de terceros. La estructura de Apple Music web se replica por decisión del propietario (2026-11-02). |
 
 ## 14. Qué se descartó de cada propuesta y por qué
 
@@ -588,7 +589,7 @@ Se comprueban con capturas de pantalla a los anchos 390, 820, 1024 y 1440 px, co
 - Sin desplazamiento horizontal (`scrollWidth` no supera el ancho).
 - Escuchar: cabecera de 64 px; «Cuidador» visible, de 56 px o más de alto.
 - Portada de 232×232 px; Anterior 72 px, Reproducir 96 px y Siguiente 72 px, con etiquetas visibles; zona de progreso de 56 px; botones de volumen de 56 px.
-- Barra inferior de 72 px con cuatro destinos. La zona de fotografía empieza entre 728 y 736 px y se ve al menos 40 px por encima de la barra.
+- Barra inferior de 64 px más 1 px de borde (65 px medidos) con cuatro destinos. La zona de fotografía empieza entre 728 y 736 px y se ve al menos 40 px por encima de la barra.
 - Tras desplazar: fotografía de 358×268 px y tarjeta de recuerdo con cuatro líneas visibles.
 - Mosaicos de listas de 171 px en dos columnas.
 - Cuidador: tarjetas de 72 px; mini reproductor de 64 px encima de la barra inferior de 64 px; editor de recuerdo con pie fijo de 72 px.
@@ -635,7 +636,7 @@ No bloquean el cierre del diseño, pero deben hacerse antes de la fase de estudi
 
 ## 17. Estado funcional de la implementación (2026-11-02)
 
-Verificado en el código de `feat/ui-publica` (commit 9d4ae8f), que es la interfaz única de [ADR-0009](../decisions/ADR-0009-interfaz-unica-y-datos-locales.md). Esta sección describe solo el comportamiento. El estado visual (identidad, tokens, tipografía, medidas y componentes) no se evalúa aquí y queda pendiente de rediseño.
+Verificado en el código de `main` (2026-11-02), que es la interfaz única de [ADR-0009](../decisions/ADR-0009-interfaz-unica-y-datos-locales.md). Esta sección describe solo el comportamiento. El estado visual (identidad, tokens, tipografía, medidas y componentes) no se evalúa aquí; ver el aviso del principio del documento.
 
 | ID | Pantalla o función | Estado | Notas |
 |---|---|---|---|
@@ -655,12 +656,12 @@ Verificado en el código de `feat/ui-publica` (commit 9d4ae8f), que es la interf
 | C3d | Nueva observación | Implementado | Ver discrepancia 9 para la longitud de la nota. |
 | C3e | Asistente de primer perfil | Implementado | Tres pasos; el PIN viene activado por defecto. |
 | C3f | Opciones del paciente | Implementado | |
-| C4 | Empezar sesión | Parcial | No hay «Terminar sesión» y la sesión se abre al arrancar (discrepancia 2). |
+| C4 | Empezar sesión | Parcial | No hay «Terminar sesión» (discrepancia 2). La sesión solo se abre desde C4. |
 | C5 | Ajustes | Implementado | |
 | — | Arranque y primer uso (§3.3) | Parcial | Con un perfil, la app abre el último modo; sin elegir entre cuidador y paciente en el primer uso (discrepancia 10). |
 | — | Vista previa | Implementado | No crea sesión ni registra eventos (D37). |
 | — | Copia cifrada (§9) | Implementado | Combinar por defecto; sustituir exige la casilla. |
-| — | PIN (§9, D12) | Implementado | De 4 a 6 dígitos; bloqueo tras cinco fallos (discrepancia 4). |
+| — | PIN (§9, D12) | Implementado | De 4 a 6 dígitos; bloqueo de 60 s tras cinco fallos (discrepancia 4, resuelta). |
 | — | Registro del estudio (§8.4) | Parcial | Ver discrepancia 7. |
 | — | Sin conexión (§8.1, §9) | Implementado | Caché del shell `reminiscencia-shell-v4` y del audio `reminiscencia-audio-v1`. |
 | — | Atajos de una tecla (§7.4) | Parcial | Ver discrepancia 8. |
@@ -668,9 +669,9 @@ Verificado en el código de `feat/ui-publica` (commit 9d4ae8f), que es la interf
 **Discrepancias funcionales con esta especificación.** No cambian ninguna decisión; quedan como pendientes en [ROADMAP](../../ROADMAP.md).
 
 1. **Parámetros de ruta de la biblioteca.** `mountLibrary` recibe `params` y no los lee (`frontend/web/js/cuidador/biblioteca.js`, línea 309). El enlace de Inicio a «sin familiaridad» y las carpetas muestran todo el catálogo.
-2. **Sesión de escucha (§8.2).** No hay «Terminar sesión» en el modo cuidador. Con perfil y modo paciente, la app abre una sesión al arrancar, sin pasar por C4 (`frontend/web/js/app.js`, líneas 1076 a 1079), con la última condición guardada.
+2. **Sesión de escucha (§8.2).** Resuelta en `main`: la app no abre sesión al arrancar ni al reabrirse; la sesión solo se abre desde C4 (`frontend/web/js/app.js`, `beginSession`, llamada desde `enterPatientMode`). Sigue pendiente «Terminar sesión» en el modo cuidador, que no existe.
 3. **Carpetas del cuidador (§3.2).** La especificación prevé la barra lateral en escritorio y un menú en el resto. Por debajo de 1280 px no hay menú, y el clic en una carpeta no filtra.
-4. **Bloqueo del PIN.** P-16 dice «Vuelve a intentarlo en 45 s», mientras que D12 y la sección 9 dicen 60 segundos. El código usa 60 s (`frontend/web/js/store.js`, líneas 49 y 50). La especificación se contradice; hay que fijar un valor.
+4. **Bloqueo del PIN.** Resuelta: P-16 dice 60 s, igual que D12 y la sección 9. El código usa 60 s (`PIN_LOCK_MS` en `frontend/web/js/store.js`).
 5. **Borrador del recuerdo.** El borrador se escribe cada 5 s en el almacén `memoryDrafts`, pero nada lo lee al reabrir. La especificación no dice si debe recuperarse.
 6. **«Olvidé el PIN».** P5 lo sitúa en la pantalla de salida del paciente, y la sección 12 dice que ninguna acción destructiva está al alcance del paciente. La especificación se contradice; el código sigue P5.
 7. **Registro del estudio (§8.4).** El resumen por reproducción no incluye familiaridad ni preferencia, y el evento «observación registrada» no aparece en el código. Además, borrar un perfil borra también sus eventos del registro (`CHILD_STORES` en `store.js`), algo que la sección 9 no precisa.

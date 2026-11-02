@@ -12,7 +12,7 @@ Estado a 2026-11-02, según `main`, con la interfaz única de [ADR-0009](docs/de
 | 1. Base del proyecto | Hecho | Estructura, ADR-0001 a 0003, pruebas en CI, repositorio privado | — | — |
 | 2. Motor de audio | En curso | Experimento objetivo de compresión (cinco grabaciones, 2026-10-31) | — | Prueba perceptual MUSHRA; variantes en GitHub Releases; silencios, picos y calidad de señal |
 | 3. Servicio y administración | En curso | Catálogo; importación; publicación y despublicación por incidencias, probadas con incidencias reales; administración retirada | — | Borrado de canciones; residuos de seguridad (ver «Pendiente») |
-| 4. Web pública | Implementada; pendiente de rediseño | Interfaz única (modo paciente y modo cuidador) con datos locales, copia cifrada, uso sin conexión y gestión de la biblioteca por incidencias; desplegada desde `main` | — | Rediseño visual (decisión del propietario, 2026-11-02); discrepancias funcionales de DESIGN §17; resultado de las pruebas e2e (CHANGELOG) |
+| 4. Web pública | Implementada y rediseñada | Interfaz única (modo paciente y modo cuidador) con la estructura de Apple Music web, datos locales, copia cifrada, uso sin conexión, audio subido desde el dispositivo (ADR-0012), lista de bloqueo de 42 entradas y gestión de la biblioteca por incidencias; desplegada desde `main` | — | Discrepancias funcionales de DESIGN §17; medidas de DESIGN §3, §4 y §5.4 por poner al día con el rediseño |
 | 5. Android | En curso | App 1.1.0 con listas, favoritos, modo paciente y copia sin conexión; workflow `android.yml` en `main` | — | Primera ejecución de `android.yml`; firma de producción en CI; pruebas en dispositivo físico; copia de seguridad de la clave |
 | 6. Investigación de campo | Pendiente | — | — | Protocolo y aprobación ética; estudio piloto |
 
@@ -46,8 +46,8 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 | Frente | Qué entrega | Estado |
 |---|---|---|
 | Auditoría del brief | Matriz de requisitos con evidencia y verificación adversarial de lo marcado como hecho | Hecho (según CHANGELOG): 0 requisitos cumplidos del todo, 40 parciales, 8 pendientes y 1 descartado |
-| Panel de diseño | Especificación de diseño en `docs/user-experience/DESIGN.md` | Hecho: versión 1.0, cierre de diseño del 31-oct-2026. Rediseño visual pendiente (decisión del propietario, 2026-11-02) |
-| Web de escucha (modo paciente) | Interfaz nueva según el diseño, fotos y recuerdos del perfil activo, uso sin conexión (PWA) | Implementada en la interfaz única (ADR-0009); pendiente de rediseño visual y de las discrepancias de DESIGN §17 |
+| Panel de diseño | Especificación de diseño en `docs/user-experience/DESIGN.md` | Hecho: versión 1.0, cierre de diseño del 31-oct-2026. Rediseño visual hecho en `main` (2026-11-02, estructura de Apple Music web, decisión del propietario); DESIGN corregido según el código en su aviso inicial |
+| Web de escucha (modo paciente) | Interfaz nueva según el diseño, fotos y recuerdos del perfil activo, uso sin conexión (PWA) | Implementada en la interfaz única (ADR-0009) y rediseñada; pendientes las discrepancias de DESIGN §17 |
 | Datos locales del cuidador | Perfiles, fotos, recuerdos, listas, observaciones e historial en IndexedDB; copia cifrada con contraseña | Implementado en la interfaz única: IndexedDB (versión 3), copia cifrada `.rmc` y PIN local |
 | Panel del cuidador | Interfaz para gestionar todo lo anterior, con PIN local de ajustes | Implementado como modo cuidador de la interfaz única. La ruta `/cuidar/` del plan original no existe |
 | App Android | Listas, modo paciente con botones grandes, icono propio, tableta, ajustes persistentes, pruebas | En curso: lo implementado está en la fase 5; falta la prueba en dispositivo físico |
@@ -67,14 +67,17 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 - [ ] Borrado de canciones (hoy solo se despublican).
 - **Cierre:** una importación y una publicación probadas con incidencias reales. Este criterio está cumplido; la fase se marcará como terminada cuando la documentación esté al día, según la regla general de esta hoja.
 
-## Fase 4: web pública (implementada; pendiente de rediseño)
+## Fase 4: web pública (implementada y rediseñada)
 - [x] Escucha por listas y carpetas, búsqueda y reproductor en el modo paciente (ADR-0009).
 - [x] Desplegada en https://reminiscencia.vercel.app (Git integration, Root Directory `frontend/web`).
 - [x] Gestión de la biblioteca por incidencias desde Biblioteca del modo cuidador («Gestionar la biblioteca»), que valida el formato en el navegador (ADR-0008).
 - [x] Panel de cuidador: perfiles, fotos, recuerdos, listas, observaciones, historial y copia cifrada, en la interfaz única.
-- [ ] Probada en escritorio y teléfono con la versión fusionada en `main`. La última prueba es de una versión anterior.
-- [ ] Pruebas de extremo a extremo: resultado en CHANGELOG.
-- [ ] Rediseño visual según la estructura de Apple Music web (decisión del propietario, 2026-11-02).
+- [x] Rediseño con la estructura de Apple Music web (decisión del propietario, 2026-11-02), en `main`.
+- [x] Audio subido desde el dispositivo, solo en el navegador (ADR-0012), en `main`.
+- [x] Lista de bloqueo de la web igual que la del backend (42 entradas), en `main`.
+- [x] Cabeceras de seguridad (CSP) en `frontend/web/vercel.json`, en `main`.
+- [x] Sesión de escucha solo desde la entrada en C4 y bloqueo del PIN de 60 s, en `main`.
+- [ ] Pruebas de extremo a extremo: 147 de 148 en verde sobre `c663e5c`; no repetidas sobre `main` (CHANGELOG).
 - [ ] Discrepancias funcionales de DESIGN §17 (lista en «Pendiente»).
 - **Cierre:** panel de cuidador con perfiles.
 
@@ -86,6 +89,7 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 - [x] Reproducción en streaming y en segundo plano, notificación y auriculares (emulador Android 15).
 - [x] Copia para escuchar sin conexión, probada con la red apagada.
 - [x] APK 1.1.0 firmada para producción (clave de subida propia).
+- [x] Subida de audio local en la APK, convertida a Opus con FFmpeg y solo en el dispositivo (ADR-0013, en `main`). Pendiente de probar en dispositivo físico, como el resto de la fase.
 - [ ] Pruebas en dispositivo físico: llamadas, Bluetooth, TalkBack, tabletas.
 - [ ] Copia de seguridad de la clave de firma fuera de este equipo.
 - **Cierre:** probada en dispositivo real.
@@ -102,17 +106,18 @@ Del propietario (no lo puede hacer el repositorio):
 - Revocar el token de GitHub que usaba la administración retirada.
 - Clave de firma de Android: sin ella no se puede verificar la compilación de release.
 - Leer el texto completo de [B4] para resolver la discrepancia abierta con [clinica-03] (BIBLIOGRAPHY.md).
-- Rediseño visual de la interfaz según la estructura de Apple Music web (decisión del propietario, 2026-11-02). Hasta entonces, la parte visual de DESIGN no se actualiza.
+- Publicar una canción real en GitHub: sin probar. Publicar cambia la parte pública; requiere permiso expreso del propietario.
+- Las 18 referencias abiertas de BIBLIOGRAPHY.md: no verificadas o parciales; no se citan hasta resolverlas.
+- Fallo e2e: «Biblioteca a 1440 px: se ven 11 filas completas» (`tests/web-e2e/cuidador.e2e.mjs`, línea 81) mide 10 filas. Decidir si el código o la prueba cambian; no se ha tocado en la tarea de documentación.
+
+Hecho en `main` (2026-11-02), antes en esta lista: rediseño con la estructura de Apple Music web; lista de bloqueo igualada (42 entradas); sesión solo desde C4; PIN de 60 s en P-16 de DESIGN.
 
 Interfaz única (ADR-0009; discrepancias funcionales en DESIGN §17):
-- Sesión al arrancar: con perfil y modo paciente se abre una sesión sin pasar por C4 (`frontend/web/js/app.js`, líneas 1076 a 1079), y el registro del estudio la recoge. Decidir y corregir.
 - Parámetros de ruta de la biblioteca: `mountLibrary` no los lee (`frontend/web/js/cuidador/biblioteca.js`, línea 309). El enlace de Inicio a «sin familiaridad» y las carpetas muestran todo el catálogo.
-- Lista de bloqueo de la web: `BLOCKED_HOSTS` en `frontend/web/js/cuidador/incidencias.js` tiene 11 dominios; la de `backend/sonidos/sources.py` tiene más. ADR-0008 exige que la web no acepte más que el backend. Igualarla.
 - «Terminar sesión» en el modo cuidador (DESIGN §8.2): no existe.
 - Borrador del recuerdo: se escribe cada 5 s y nunca se recupera al reabrir.
 - Atajos: ↑ y ↓ cambian el volumen en pasos de 10 % (DESIGN §7.4 dice 5 %). En el paciente, ←/→ mueven el progreso con «Saltar al tocar la barra» (`frontend/web/js/paciente/escuchar.js`, líneas 825 a 832), contra DESIGN §12.
 - «Olvidé el PIN» está en P5, y DESIGN §12 dice que ninguna acción destructiva está al alcance del paciente. La especificación debe decidir.
-- Bloqueo del PIN: DESIGN P-16 dice 45 s; D12 y §9 dicen 60 s. El código usa 60 s.
 - Registro del estudio: el resumen no incluye familiaridad ni preferencia, y el evento «observación registrada» no aparece en el código. Borrar un perfil borra también sus eventos; DESIGN §9 no lo precisa.
 - Validadores más laxos que la interfaz: familiaridad de 0 a 5, preferencia de −2 a 2 y nota de observación de 1000 caracteres (`frontend/web/js/schema.js`).
 - Carpetas del cuidador: sin menú por debajo de 1280 px, y el clic no filtra.
@@ -120,22 +125,20 @@ Interfaz única (ADR-0009; discrepancias funcionales en DESIGN §17):
 - Falta el texto «Suelta las fotografías aquí» (DESIGN C-22).
 - Deshacer en Biblioteca: restaura la asociación con `setSongLink` en lugar de `deleteSongLink` (`frontend/web/js/cuidador/biblioteca.js`, líneas 726 a 735). Pendiente de verificar en el navegador.
 - Pruebas e2e: el resultado de la última ejecución está en CHANGELOG. El comentario de `.github/workflows/web-e2e.yml` (línea 19) habla de una interfaz incompleta; revisarlo con ese resultado.
-- Cifras de pruebas web: las de `main` antes de la fusión (188 de 189) no valen para el código fusionado. Recalcular con `node --test`.
+- Cifras de pruebas web: `node --test "tests/web-unit/*.test.mjs"` da 650 de 650 en `main` (2026-11-02, commit `8638a86`).
 - Documentación técnica: revisar `docs/user-experience/PLAYER.md`, `docs/datos/DATABASE.md` (almacenes de IndexedDB) y la parte 2 de `docs/audio-processing/AUDIO_ENGINE.md`.
 
-Antes de cerrar la fusión de `feat/ui-publica` en `main`:
-- Conflictos previstos (simulación de fusión del 2026-11-02): `frontend/web/index.html` (ambas ramas lo cambian) y `frontend/web/listen.css` (borrado en la rama, modificado en `main`).
-- Sin borrarlos, sobreviven a la fusión `frontend/web/js/gestion.js`, `frontend/web/js/intake.js`, `frontend/web/listen.css`, `tests/web-unit/gestion.test.mjs` y `tests/web-unit/intake.test.mjs`. Hay que retirarlos.
-- `frontend/web/vercel.json` de la rama no tiene la política de contenido (CSP) que sí tiene `main`. Conservarla y comprobarla después de la fusión.
+Fusión de `feat/ui-publica` (hecha en `main`, merge `0629371`):
+- Retirados en `main`: `frontend/web/js/gestion.js`, `app.js` y `listen.css` de la raíz, y `tests/web-unit/gestion.test.mjs`.
+- Pendiente: `frontend/web/js/intake.js` y `tests/web-unit/intake.test.mjs` siguen en `main`. La app no importa `intake.js`, pero `js/offline-core.js` lo lista en `SHELL_ASSETS`. Retirarlo exige cambiar código y la versión del shell.
 
 Residuos de seguridad y de código:
 - [x] `publicar` regenera los datos públicos desde el catálogo, en lugar de aplicar los que trae el paquete (hecho el 2026-11-02; ADR-0011).
 - [x] Corregido en la documentación: `backend.yml` no ejecuta pruebas web. Las pruebas web las ejecutan `web.yml` (sintaxis y `node --test`) y `web-e2e.yml` (extremo a extremo).
 
 Colaboradores e Internet Archive:
-- Colaboradores con permiso de escritura: el contrato está en `feat/contrato-colaboradores`, con cambios sin confirmar. Nada de ese trabajo está en `main`.
-- Internet Archive `/download/`: en `main`, `sources.py` ya acepta `archive.org/download/<id>`. Queda por concretar qué falta en la rama de colaboradores.
+- Colaboradores con permiso de escritura e Internet Archive `/download/`: fusionados en `main` (commit `8d29978`, merge `5c060c1`).
 
 Documentación por actualizar:
-- ADR-0005, ADR-0007, ADR-0008 (sus cifras de pruebas están desactualizadas), RELEASE.md y DESIGN.md (sección 17 al día; la parte visual, pendiente de rediseño).
+- ADR-0005, ADR-0007, ADR-0008 (sus cifras de pruebas están desactualizadas), RELEASE.md y DESIGN.md (§17 al día; las tablas de medidas de §3, §4 y §5.4, pendientes de poner al día con el rediseño).
 - Numeración: `ADR-0009` es la interfaz única y `ADR-0010` el procesado y la publicación separados (renumerado el 2026-11-02).

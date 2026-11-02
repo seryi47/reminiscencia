@@ -13,19 +13,23 @@
 - Prueba real de importar, publicar y despublicar «Tell me pretty maiden» con las incidencias #1, #2 y #3, todas cerradas. La pista queda en el catálogo con `public: false`.
 - Prueba real de importación privada por incidencia (#5, 2026-11-02): la ejecución 41490773271 pasa por `autorizar`, `procesar` y `publicar` en success. El commit `e988292` del bot («biblioteca: import») añade el audio y el catálogo de la canción (+16 líneas en `catalog.json`), y la parte pública no cambia. Sin probar: publicar una canción (la parte pública cambia) y la concurrencia `queue: max`.
 - Interfaz única (ADR-0009): modo paciente (escucha, listas, carpetas, búsqueda y salida con PIN) y modo cuidador (inicio, biblioteca, perfiles, recuerdos, observaciones, copia cifrada, PIN local y ajustes) en una sola página (`frontend/web/index.html`, `js/app.js`, `js/paciente/`, `js/cuidador/` y `css/`). Los datos del cuidador están en IndexedDB (versión 3), con copia cifrada `.rmc` y uso sin conexión.
-- Pruebas de extremo a extremo y de accesibilidad en `tests/web-e2e/` (puppeteer-core y axe-core) y workflow `web-e2e.yml`. Resultado de la última ejecución: Resultado de la última ejecución (2026-11-02): 142 casos e2e en verde (paciente 28, accesibilidad 38, cuidador 21 y medidas 55; la prueba P6 de 15 minutos se ejecuta aparte y pasa) y 645 pruebas unitarias en verde..
+- Pruebas de extremo a extremo y de accesibilidad en `tests/web-e2e/` (puppeteer-core y axe-core) y workflow `web-e2e.yml`. Resultado de la última ejecución (2026-11-02, `npm test` en `tests/web-e2e/`, Chrome local): 148 casos, 147 en verde y 1 fallo. El fallo es «Biblioteca a 1440 px: se ven 11 filas completas de la lista» (`cuidador.e2e.mjs`, línea 81): la página muestra 10 filas completas, no 11. Esa ejecución era sobre `c663e5c`. En `main` (`8638a86`) la prueba ya espera 10 filas (commit `1923a55`); la suite completa no se ha repetido sobre `8638a86`. Incluye la prueba P6 de 15 minutos con el temporizador real, que pasa. Pruebas unitarias de la web (`node --test`) en `8638a86`: 650 de 650 en verde.
 
 ### Cambiado
+- Rediseño de la interfaz con la estructura de la web de Apple Music (barra lateral, riel, barra de pestañas y reproductor; decisión del propietario, 2026-11-02): commits `8bf94a6`, `c9deb31` y `3b5d75b`, fusionados en `main` con `0629371`.
+- La sesión de escucha se abre solo desde la entrada en C4; arrancar o reabrir la app no abre sesión (`a82bece`, `97f07e5`).
 - «Gestionar la biblioteca» pasa de la página de escucha a Biblioteca del modo cuidador (`js/cuidador/incidencias.js`). La petición sigue siendo una incidencia de GitHub con la etiqueta `biblioteca` (ADR-0008).
 - Publicar regenera la parte pública desde el catálogo (`ba1825e`; ADR-0011). El paquete del procesado ya no lleva `frontend/web/data/*.json` ni el audio publicado: `publicar` los regenera con `sonidos.publish.sync_public` después de aplicar el paquete, compara el audio por contenido, valida el identificador de cada canción pública y avisa, sin fallar, de lo que la regeneración cambia fuera del paquete o sustituye.
 - Revisión de la bibliografía, consulta del 2026-11-02 (`61eb229`): quedan resueltos 17 de los 35 pendientes de `BIBLIOGRAPHY.md`, con Crossref y PubMed (y, según el caso, Europe PMC, la página de la revista en Cambridge Core y el manuscrito aceptado en PMC). Quedan 18 abiertos. Corregido: el resumen de Garrido et al. 2018 no comunica resultados sobre la ansiedad, y se retira esa atribución de `RESEARCH.md` y `METHODOLOGY.md`.
+- DESIGN corregido según el código: el bloqueo del PIN es de 60 s también en P-16 (antes decía 45 s), y la identidad visual replica la estructura de Apple Music web por decisión del propietario.
+
+- Política de contenido (CSP) en `frontend/web/vercel.json`, en `main`.
+- Colaboradores con permiso de escritura e Internet Archive `/download/` (`8d29978`, fusionados en `main` con `5c060c1`).
 
 ### Retirado
-- Página de escucha anterior (`app.js`, `styles.css` y `listen.css` de la raíz de `frontend/web/`) y la sección «Gestionar» de esa página (`js/gestion.js`, `js/intake.js` y sus pruebas), sustituidas por la interfaz única (ADR-0009).
+- Página de escucha anterior (`app.js`, `styles.css` y `listen.css` de la raíz de `frontend/web/`) y la sección «Gestionar» de esa página (`js/gestion.js` y `tests/web-unit/gestion.test.mjs`), sustituidas por la interfaz única (ADR-0009). `js/intake.js` y `tests/web-unit/intake.test.mjs` siguen en `main`: la app no los usa, pero `js/offline-core.js` los lista en `SHELL_ASSETS`. Pendiente de retirar (ver ROADMAP).
 - Administración de la web pública (`0fa6ed3`): se borran `frontend/web/admin/`, las funciones `api/` (catálogo, despacho y ejecuciones) y `lib/` (autenticación, GitHub y validación).
 
-### En curso
-- Contrato de colaboradores e Internet Archive `/download/` en `feat/contrato-colaboradores`, que todavía no tiene commits propios.
 
 ## Integrado: app Android y entrega de APK (2026-10-31)
 

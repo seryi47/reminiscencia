@@ -59,6 +59,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 | Pruebas y límites (CI) | `backend.yml`, `web.yml`, `web-e2e.yml`, `android.yml` | `backend.yml`: pruebas de Python (3.12 y 3.13), límites de GitHub y app Flutter; no ejecuta pruebas web. `web.yml`: sintaxis y pruebas unitarias de la web. `web-e2e.yml`: pruebas de extremo a extremo con Chrome. `android.yml`: compilación de la app Android. |
 | Interfaz pública | `frontend/web/index.html`, `js/app.js`, `js/paciente/`, `js/cuidador/`, `js/player.js`, `css/` | Una sola página. `app.js` arranca el modo paciente (escucha, listas, carpetas, búsqueda y salida) o el modo cuidador (inicio, biblioteca, perfiles, ajustes), según el último modo usado. `player.js` reproduce el audio. |
 | Datos locales, copia y PWA | `js/store.js`, `js/schema.js`, `js/crypto.js`, `js/backup.js`, `js/prefs.js`, `js/pwa.js`, `js/offline-core.js`, `sw.js`, `manifest.webmanifest` | IndexedDB (versión 3) para los datos del cuidador; copia cifrada `.rmc`; preferencias de pantalla en localStorage; service worker y caché para el uso sin conexión (ADR-0009). |
+| Audio subido desde el dispositivo | `js/cuidador/subida-local.js` | Convierte a Opus en el navegador y guarda el audio en IndexedDB `reminiscencia-audio-local` (versión 1). No sale del navegador ni entra en la copia cifrada (ADR-0012). |
 | Pruebas de la web | `tests/web-unit/` (`node:test`), `tests/web-e2e/` (puppeteer-core y axe-core) | Lógica sin navegador, y pruebas de extremo a extremo y de accesibilidad con Chrome. |
 | App Android | `mobile/` | Flutter. Lee la biblioteca de la web y guarda copia local. ADR-0004. |
 | Backend | `backend/sonidos/` | `catalog`, `intake`, `sources`, `pipeline`, `paquete`, `publish`, `probe`, `compression`, `hashing`, `limits` e `issue_request`. `release.py` existe, pero ningún workflow lo usa. |
@@ -71,7 +72,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 
 **Gestión (importar, organizar, publicar).**
 
-1. En el modo cuidador, «Gestionar la biblioteca» (Biblioteca) valida el formato de la petición en el navegador (`js/cuidador/incidencias.js`) y abre una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito. La envía en GitHub una cuenta con permiso de escritura. La lista de bloqueo de la web es hoy más corta que la del backend (ver «Pendiente»).
+1. En el modo cuidador, «Gestionar la biblioteca» (Biblioteca) valida el formato de la petición en el navegador (`js/cuidador/incidencias.js`) y abre una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito. La envía en GitHub una cuenta con permiso de escritura. La lista de bloqueo de la web tiene las mismas 42 entradas que la del backend.
 2. `biblioteca.yml`, job `autorizar`, comprueba el permiso de escritura del autor; sin permiso, solo comenta la incidencia. No hace checkout. El disparo manual no pasa por este paso.
 3. `biblioteca.yml`, job `procesar`, descarga y convierte, o aplica la operación de organización al catálogo, y deja un paquete de cambios como artefacto. No tiene token.
 4. `biblioteca.yml`, job `publicar`, valida el paquete contra `main`, lo aplica, regenera la parte pública desde el catálogo, confirma, sube a `main` y responde a la incidencia. La incidencia se cierra, o recibe la etiqueta `error`.
@@ -95,21 +96,24 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 
 - Biblioteca por incidencias: `biblioteca.yml` con los jobs `autorizar`, `procesar` y `publicar`, el paquete de cambios y la publicación separada (ADR-0008, ADR-0010).
 - Interfaz única (ADR-0009): modo paciente y modo cuidador en una sola página, con datos locales en IndexedDB (versión 3), copia cifrada, PIN local y uso sin conexión. «Gestionar la biblioteca» está en Biblioteca del modo cuidador.
+- Interfaz con la estructura de la web de Apple Music (rediseño del 2026-11-02, decisión del propietario): barra lateral en escritorio, riel en tableta y barra de pestañas inferior en teléfono.
+- Audio subido desde el dispositivo del cuidador, solo en su navegador (ADR-0012).
+- Pruebas: 650 pruebas unitarias de la web (`node --test`) y la suite e2e de `tests/web-e2e/` (resultado en CHANGELOG).
+- Audio subido desde el teléfono, solo en la APK (ADR-0013).
 - Prueba real del flujo con la grabación «Tell me pretty maiden», con las incidencias #1 (importar), #2 (publicar) y #3 (despublicar). Quedan en el historial los commits del bot `biblioteca: import` y `biblioteca: organize`. La grabación está hoy sin publicar.
-- Biblioteca actual: 12 canciones en el catálogo, 9 publicadas y ninguna carpeta.
+- Biblioteca actual: 13 canciones en el catálogo, 9 publicadas, 4 privadas y ninguna carpeta.
 - Documentación técnica: ADR-0009 «Interfaz única y datos locales» y ADR-0010 «Procesado y publicación separados». `AUDIO_ENGINE.md`, `DATABASE.md` y `PLAYER.md` están pendientes de revisión (ver «Pendiente»).
 - Investigación: bibliografía, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`.
 - CI: `backend.yml`, `biblioteca.yml`, `web.yml`, `web-e2e.yml` y `android.yml`.
 
-**Fuera de main:** colaboradores con permiso de escritura e Internet Archive por `/download/` (rama `feat/contrato-colaboradores`). La rama no tiene commits propios sobre main (comprobado el 2026-11-02). Main ya acepta `archive.org/download/<identificador>` cuando es la forma de un ítem (`backend/sonidos/sources.py`).
+Colaboradores con permiso de escritura e Internet Archive por `/download/` están en `main` (commit `8d29978`, fusionado en `5c060c1`). Procesan las peticiones las cuentas con permiso `admin`, `maintain` o `write`, y `sources.py` acepta `archive.org/download/<identificador>`.
 
 ## Pendiente
 
 **Código y documentación:**
 
-- Igualar la lista de bloqueo de la web (`BLOCKED_HOSTS` en `frontend/web/js/cuidador/incidencias.js`, 11 dominios) con la del backend (`BLOCKED_HOSTS` en `backend/sonidos/sources.py`). ADR-0008 exige que la web no acepte más que el backend.
 - Revisar `PLAYER.md`, `DATABASE.md` y la parte 2 de `AUDIO_ENGINE.md`, que describen la rama antes de la integración.
-- Al fusionar `feat/ui-publica` en `main`: conservar la CSP de `frontend/web/vercel.json` (la rama no la tiene) y retirar `js/gestion.js`, `js/intake.js`, `listen.css` y sus pruebas, que sobreviven a la fusión.
+- Retirar `js/intake.js` y `tests/web-unit/intake.test.mjs`. Siguen en `main`: la app no importa `intake.js`, pero `js/offline-core.js` lo lista en `SHELL_ASSETS`. Quitarlo exige un cambio de código y de la versión del shell, fuera de esta tarea de documentación. Ya retirados en `main`: `js/gestion.js`, `app.js` y `listen.css` de la raíz, y sus pruebas. La CSP de `frontend/web/vercel.json` está en `main`.
 - ADR-0008 y ADR-0010 describen el flujo. La prueba real de las incidencias #1 a #3 (importar, publicar y despublicar) está en GITHUB_STORAGE.md.
 - Dictamen legal sobre las licencias de Internet Archive (ADR-0005).
 

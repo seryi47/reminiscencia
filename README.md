@@ -2,7 +2,7 @@
 
 Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado (2026-11-02):** la web pública de escucha y la app Android funcionan con la biblioteca publicada: 9 canciones públicas, y las privadas no se muestran. La biblioteca se gestiona con incidencias de GitHub (ADR-0008); no hay panel de administración. La interfaz única, con modo paciente y modo cuidador, está implementada (ADR-0009); su parte visual está pendiente de rediseño. Estudios con personas, pendientes.
+**Estado (2026-11-02):** la web pública de escucha y la app Android funcionan con la biblioteca publicada: 9 canciones públicas, y las privadas no se muestran. La biblioteca se gestiona con incidencias de GitHub (ADR-0008); no hay panel de administración. La interfaz única, con modo paciente y modo cuidador, está en `main` (ADR-0009) y tiene la estructura de la web de Apple Music (rediseño del 2026-11-02). Pendiente: publicar una canción real en GitHub (sin probar; requiere permiso del propietario), las 18 referencias abiertas de `BIBLIOGRAPHY.md` (no verificadas) y los estudios con personas.
 
 | Qué | Dónde |
 |---|---|
@@ -12,7 +12,9 @@ Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la 
 
 ## Qué es la web pública
 
-https://reminiscencia.vercel.app es la interfaz pública de la biblioteca, en una sola página con dos modos. El **modo paciente** escucha las grabaciones de dominio público por listas y carpetas, con búsqueda y reproductor, y solo muestra las canciones publicadas. El **modo cuidador** guarda perfiles, recuerdos, fotografías, observaciones e historial solo en el navegador (IndexedDB); no hay cuentas ni sincronización, y la copia cifrada `.rmc` es la única vía para llevar los datos a otro dispositivo (ADR-0009). Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/` y `audio/`).
+https://reminiscencia.vercel.app es la interfaz pública de la biblioteca, en una sola página con dos modos. El **modo paciente** escucha las grabaciones de dominio público por listas y carpetas, con búsqueda y reproductor, y muestra las canciones publicadas, además de las que el cuidador sube desde su dispositivo (abajo). El **modo cuidador** guarda perfiles, recuerdos, fotografías, observaciones e historial solo en el navegador (IndexedDB); no hay cuentas ni sincronización, y la copia cifrada `.rmc` es la única vía para llevar los datos a otro dispositivo (ADR-0009). Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/` y `audio/`).
+
+El cuidador también puede añadir audio desde su propio dispositivo (WAV, MP3, M4A, OGG o FLAC). Se convierte a Opus en el navegador y se guarda solo en ese navegador: no se sube a ningún servidor, no va a GitHub y no entra en la copia cifrada. Esas canciones aparecen en la biblioteca y en el modo paciente de ese mismo navegador (ADR-0012). La app Android tiene una subida equivalente: el audio se convierte a Opus con FFmpeg y se guarda solo en el teléfono (ADR-0013).
 
 El modo cuidador tiene además **Gestionar la biblioteca**, en la sección Biblioteca. Valida la petición en el navegador y abre en GitHub una incidencia nueva con el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. La web no tiene contraseña ni token, y solo las cuentas con permiso de escritura procesan las peticiones (job `autorizar`).
 

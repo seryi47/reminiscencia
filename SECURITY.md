@@ -156,8 +156,8 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 - «Olvidé el PIN» quita solo el PIN y conserva los datos (`removePin`, `store.js`).
 - Finalidad declarada: evitar salidas accidentales del modo paciente. No protege los datos frente a quien tenga el dispositivo desbloqueado (DESIGN §9).
 - Divergencias:
-  - Longitud. `schema.js` acepta de 4 a 12 dígitos. DESIGN §9 dice de 4 a 6, y P-16 muestra indicadores para 4 o 6.
-  - Bloqueo. DESIGN §9 fija 60 s tras cinco fallos, y P-16 fija 45 s. El bloqueo no está en el código de la rama.
+  - Longitud. Resuelto (2026-11-02): `schema.js` acepta de 4 a 6 dígitos, como DESIGN §9.
+  - Bloqueo. Resuelto (2026-11-02): DESIGN §9 y P-16 fijan 60 s tras cinco fallos, como el código (`PIN_LOCK_MS` en `store.js`).
 
 ### 3.4 Sin administración ni contraseñas en la web: Implementado
 
@@ -306,7 +306,7 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 10. Conectar la capa de datos a la interfaz del cuidador. En la rama, `index.html` solo carga `app.js`, y `js/pwa.js` no se carga.
 11. Persistencia del almacenamiento (`navigator.storage.persist()`) y aviso de cuota (DESIGN §9).
 12. Fotografías: reducción a 1600 px y eliminación de EXIF. Alinear el límite, que es de 8 MB en `store.js` y de 10 MB en DESIGN C-22.
-13. PIN: alinear la longitud (de 4 a 12 en `schema.js`, de 4 a 6 en DESIGN §9) y decidir el bloqueo tras cinco fallos (60 s en §9, 45 s en P-16).
+13. PIN: resuelto el 2026-11-02. Longitud de 4 a 6 dígitos en `schema.js` y DESIGN §9; bloqueo de 60 s tras cinco fallos en DESIGN §9, P-16 y el código.
 14. Registro del estudio: decidir el almacén (DESIGN §8.4 y §9), porque `store.js` no tiene uno propio.
 15. Gestión por incidencias de GitHub: implementada para cuentas con permiso de escritura (§3.5). Pendiente: revisar el filtro de autor antes de hacer público el repositorio (ADR-0008).
 16. Workflows: la separación de procesado y escritura, y `persist-credentials: false` en el procesado, están hechos en `biblioteca.yml` (R1 y R2; importación verificada en GitHub el 2-nov-2026; falta la publicación). Pendiente: `permissions: contents: read` en `backend.yml`.
@@ -324,4 +324,4 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 25. Resuelto en lo referente a la administración. Queda la acción del propietario de borrar `ADMIN_PASSWORD` y `GITHUB_TOKEN` en Vercel (ROADMAP.md, «Pendiente»).
 26. Resuelto: ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02, y los puntos 4 y 5 de ADR-0007 están superados por ADR-0008.
 27. Resuelto: `.github/workflows/library.yml` ya no existe en `main`; su comentario obsoleto salió con el fichero.
-28. DESIGN.md: longitud del PIN, bloqueo (60 s en §9 frente a 45 s en P-16), tamaño de fotografía y §1 (la app Android no es la PWA).
+28. DESIGN.md: tamaño de fotografía y §1 (la app Android no es la PWA). El PIN (longitud y bloqueo de 60 s) está resuelto desde el 2026-11-02.
