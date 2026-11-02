@@ -3,6 +3,7 @@
 ## Sin publicar (2026-11-02)
 
 ### Añadido
+- APK: subida de audio desde el teléfono (WAV, MP3, M4A, FLAC, OGG) convertida a Opus con FFmpeg, solo en el dispositivo y sin publicar (ADR-0013). Sincronización al abrir, al volver a primer plano y al refrescar; descarga sin conexión solo en Wi-Fi; las canciones retiradas dejan su audio cuando ya no están en uso.
 - Datos locales del cuidador (almacén IndexedDB, copia cifrada y validación) y PWA con service worker, manifiesto e iconos para escuchar sin conexión (`8a19a09`).
 - Integración continua de la web en `.github/workflows/web.yml`: sintaxis y pruebas con `node:test` (`7f93756`).
 - Investigación verificada (`4b79df2`): bibliografía maestra en `BIBLIOGRAPHY.md`, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`.

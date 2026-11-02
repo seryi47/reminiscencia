@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copia automática de Android (API 30 y anteriores). El audio subido desde este teléfono nunca sale del dispositivo:
+     la carpeta de audio queda fuera. El índice de metadatos sí se copia (ADR-0013). -->
+<full-backup-content>
+    <exclude domain="root" path="app_flutter/biblioteca-local/audio/" />
+</full-backup-content>

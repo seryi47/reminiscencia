@@ -36,7 +36,7 @@ Estado de `main` a 2026-11-02, con la interfaz única (ADR-0009).
   - Datos locales y PWA: `js/store.js` (IndexedDB, base `reminiscencia`, versión 3), `js/schema.js`, `js/crypto.js` y `js/backup.js` (copia cifrada `.rmc`), `js/prefs.js` (preferencias de pantalla), `js/pwa.js`, `js/offline-core.js`, `sw.js` y `manifest.webmanifest`.
   - Datos publicados: `data/` (`songs.json`, `folders.json` y `catalog.json`, generados por `publish`) y `audio/` (solo canciones públicas). `vercel.json` define cabeceras: política de contenido (CSP) y tipo del audio.
   - La lista de bloqueo de la web está en `js/cuidador/incidencias.js` (`BLOCKED_HOSTS`, 11 dominios). No coincide con la del backend (`backend/sonidos/sources.py`), que tiene más entradas: pendiente de igualar (ADR-0008).
-- `mobile/`: app Flutter 1.1.0. Lee `data/songs.json` y `data/folders.json` de la web y guarda una copia para escuchar sin conexión.
+- `mobile/`: app Flutter 1.1.0. Lee `data/songs.json` y `data/folders.json` de la web y guarda una copia para escuchar sin conexión. Permite subir audio local desde el teléfono, convertido a Opus y solo en el dispositivo (ADR-0013).
 - `audio-library/`: catálogo (`indexes/catalog.json`) y audio (`audio/`), también el de las canciones privadas.
 - `tests/`: `web-unit/` (pruebas de la web con `node:test`, sin dependencias; `index.mjs` carga todos los ficheros) y `web-e2e/` (pruebas de extremo a extremo y de accesibilidad con puppeteer-core, axe-core y Chrome).
 - `docs/`: decisiones (`decisions/`), interfaz (`user-experience/`), procesado de audio (`audio-processing/`), datos (`datos/`) y Android (`android/`). `research-data/` guarda los datos del experimento de compresión.

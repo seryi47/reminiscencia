@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
@@ -8,6 +9,7 @@ import 'package:just_audio/just_audio.dart';
 import 'app_error.dart';
 import 'library_store.dart';
 import 'playback.dart';
+import 'playback_plan.dart';
 import 'song.dart';
 
 /// Reproductor en segundo plano con controles del sistema y el contrato [PlaybackPort] para la interfaz.
@@ -19,7 +21,7 @@ class SonidosAudioHandler extends BaseAudioHandler
   SonidosAudioHandler(this._store) {
     _player.playbackEventStream.listen(
       (_) => _broadcastState(),
-      onError: (Object error, StackTrace stackTrace) => _reportError(error),
+      onError: (Object error, StackTrace stackTrace) => _onPlaybackError(error),
     );
     _player.playingStream.listen((_) => _publish());
     _player.currentIndexStream.listen((index) {
@@ -39,6 +41,9 @@ class SonidosAudioHandler extends BaseAudioHandler
   );
   final ValueNotifier<String?> _error = ValueNotifier<String?>(null);
   List<String> _queueIds = const [];
+  // Canciones de la cola cargada y si cada una puede sonar sin red (local o ya guardada).
+  List<Song> _queueSongs = const [];
+  List<bool> _playableOffline = const [];
   Future<void> _serial = Future<void>.value();
 
   @override
@@ -46,6 +51,44 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   @override
   ValueListenable<String?> get playbackError => _error;
+
+  @override
+  Set<String> get queueSongIds => _queueIds.toSet();
+
+  /// Error de un elemento de la cola. Si es la canción que suena y no se puede reproducir sin red,
+  /// se pasa a la siguiente sin cerrar la reproducción. Un error de un elemento que no suena (precarga) se ignora.
+  void _onPlaybackError(Object error) {
+    final failed =
+        (error is PlayerException ? error.index : null) ?? _player.currentIndex;
+    if (failed == null || failed != _player.currentIndex) {
+      debugPrint('reproductor: error de un elemento que no suena: $error');
+      return;
+    }
+    if (failed < 0 ||
+        failed >= _playableOffline.length ||
+        _playableOffline[failed]) {
+      _reportError(error);
+      return;
+    }
+    unawaited(_skipUnavailable(failed));
+  }
+
+  Future<void> _skipUnavailable(int index) async {
+    final title = _queueSongs[index].title;
+    final next = nextAvailableIndex(_playableOffline, index);
+    try {
+      if (next != null) {
+        await _player.seek(Duration.zero, index: next);
+        _startPlayback();
+      }
+    } catch (error) {
+      _reportError(error);
+    }
+    // Se muestra después de arrancar, porque _startPlayback limpia el error anterior.
+    _error.value = next == null
+        ? '«$title» no está guardada y no hay conexión. No quedan canciones que sonar sin conexión.'
+        : '«$title» no está guardada y no hay conexión. Paso a la siguiente.';
+  }
 
   Future<void> _configureSession() async {
     try {
@@ -85,10 +128,20 @@ class SonidosAudioHandler extends BaseAudioHandler
     queue.add(items);
     try {
       final sources = <AudioSource>[];
+      final playable = <bool>[];
       for (final song in songs) {
-        final file = await _store.audioFile(song);
-        if (await file.exists()) {
+        // Las canciones locales (ADR-0013) tienen su fichero en `audio` y nunca se transmiten.
+        final file = song.local
+            ? File(song.audio)
+            : await _store.audioFile(song);
+        final cached = await file.exists();
+        playable.add(playableOffline(song: song, cached: cached));
+        if (cached) {
           sources.add(AudioSource.file(file.path, tag: song.id));
+        } else if (song.local) {
+          throw AppException(
+            'Falta el archivo de «${song.title}». Bórrala de la lista y vuelve a añadirla.',
+          );
         } else {
           // LockCachingAudioSource (experimental en just_audio 0.10) transmite y guarda a la vez.
           sources.add(
@@ -102,13 +155,17 @@ class SonidosAudioHandler extends BaseAudioHandler
         }
       }
       await _player.setAudioSources(sources);
+      _playableOffline = playable;
     } catch (error) {
       queue.add(const []);
       mediaItem.add(null);
       _queueIds = const [];
+      _queueSongs = const [];
+      _playableOffline = const [];
       _publish();
       throw AppException(describePlayerError(error));
     }
+    _queueSongs = songs;
     _queueIds = [for (final song in songs) song.id];
     mediaItem.add(items.first);
     _publish();

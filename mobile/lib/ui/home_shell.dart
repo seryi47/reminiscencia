@@ -25,6 +25,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   AppSection _section = AppSection.listen;
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
@@ -32,6 +33,18 @@ class _HomeShellState extends State<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.services.library.ensureLoaded();
     });
+    // Sin temporizadores: la biblioteca se sincroniza al volver a primer plano (si pasó un tiempo)
+    // y la conversión de archivos locales se para al salir de la app.
+    _lifecycle = AppLifecycleListener(
+      onResume: () => widget.services.library.syncIfStale(),
+      onPause: () => widget.services.library.pauseImport(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
   }
 
   /// Secciones visibles según el modo paciente.

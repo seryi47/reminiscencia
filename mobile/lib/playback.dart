@@ -44,6 +44,9 @@ abstract interface class PlaybackPort {
   /// Último error de reproducción, o null. Se limpia al volver a reproducir.
   ValueListenable<String?> get playbackError;
 
+  /// Ids de las canciones que están en la cola cargada. Sus ficheros no se borran aunque la web los retire.
+  Set<String> get queueSongIds;
+
   /// Prepara la cola con estas canciones sin empezar a sonar.
   /// Lanza AppException con el motivo si no se puede.
   Future<void> loadQueue(List<Song> songs);
