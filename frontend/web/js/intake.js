@@ -2,7 +2,8 @@
 // Módulo ES sin DOM. Lo usan js/gestion.js y tests/web-unit/intake.test.mjs.
 //
 // Una petición es un texto con líneas "clave: valor". Claves: action, url, license, title y payload.
-// Las plataformas bloqueadas son las de backend/sonidos/sources.py (ADR-0005): deben coincidir.
+// La web no acepta nada que el backend rechace (backend/sonidos/issue_request.py y sources.py): si este módulo
+// acepta una petición, el backend también la acepta. Las plataformas bloqueadas son las de sources.py (ADR-0005).
 // Las longitudes se miden en caracteres (puntos de código), como len() en Python.
 
 export const REPO = "seryi47/reminiscencia";
@@ -33,16 +34,24 @@ export const AUDIO_EXTENSIONS = Object.freeze([".mp3", ".flac", ".ogg", ".opus",
 
 const FOLDER_ID = /^[0-9a-f]{10}$/;
 const SONG_ID = /^S[0-9a-f]{16}$/;
-const ARCHIVE_PATH = /^\/(details|download)\/[^/]+/;
 const HTTP_URL = /^https?:\/\//;
-// Caracteres que no caben en un texto de una sola línea.
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+// Igual que IA_IDENTIFIER en sources.py: sin barras, y sin punto ni guion al principio.
+const IA_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+const IA_HOST = "archive.org";
+const IA_KINDS = Object.freeze(["details", "download"]);
+// Host en ASCII con puerto opcional. Lo que no encaja (IPv6, usuario, caracteres codificados) se rechaza.
+const AUTHORITY = /^([A-Za-z0-9.-]+)(?::[0-9]*)?$/;
+// Espacios Unicode (los que Python llama isspace) y caracteres de control: no pueden estar en una dirección.
+const URL_SPACE_OR_CONTROL = /[\p{Zs}\p{Cc}\p{Zl}\p{Zp}\p{Cs}]/u;
+// Caracteres que el backend rechaza en cualquier texto (issue_request.py, _has_control).
+const CONTROL = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}]/u;
 // Lo que Python (str.splitlines) trata como salto de línea.
 const LINE_BREAK = /[\n\r\v\f\u001c-\u001e\u0085\u2028\u2029]/;
-const SPACE_OR_CONTROL = /[\s\u0000-\u001f\u007f]/;
 const REPO_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 const BLOCKED_MESSAGE = "Esta plataforma no se puede importar: sus condiciones de uso no permiten descargar el contenido. Usa un fichero de audio con licencia o un ítem de Internet Archive.";
+const IA_FORM_MESSAGE = "En Internet Archive usa archive.org/details/<identificador> o archive.org/download/<identificador>.";
+const HOST_MESSAGE = "La dirección no es válida: revisa el dominio (solo letras ASCII, cifras, puntos y guiones).";
 
 // Campos permitidos por operación (además de "op"). Cualquier otro campo es un error.
 const OPERATIONS = Object.freeze({
@@ -71,26 +80,55 @@ function requestText(text) {
 
 // ---------- importación por URL ----------
 
-// Host en minúsculas, sin "www." ni punto final (youtube.com. cuenta como youtube.com).
-const hostOf = (parsed) => parsed.hostname.replace(/\.$/, "").replace(/^www\./, "");
+// Texto de la dirección tras el esquema, partido como urlsplit de Python: host y ruta, sin normalizar nada.
+function splitUrl(url) {
+  const rest = url.replace(HTTP_URL, "");
+  const cut = rest.search(/[/?#]/);
+  const authority = cut === -1 ? rest : rest.slice(0, cut);
+  const tail = cut === -1 ? "" : rest.slice(cut);
+  const end = tail.search(/[?#]/);
+  return { authority, path: end === -1 ? tail : tail.slice(0, end) };
+}
 
-// "blocked", "archive", "archive-path", "direct" u "other".
-function classify(parsed) {
-  const host = hostOf(parsed);
-  if (BLOCKED_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`))) return "blocked";
-  if (host === "archive.org") return ARCHIVE_PATH.test(parsed.pathname) ? "archive" : "archive-path";
-  const path = parsed.pathname.toLowerCase();
-  return AUDIO_EXTENSIONS.some((ext) => path.endsWith(ext)) ? "direct" : "other";
+// Host en minúsculas como lo canoniza el backend (canonical_host): sin punto final ni "www.".
+// Devuelve null si el host no tiene la forma que el backend acepta: vacío, con etiquetas vacías
+// (solo se admite una al final, el punto final) o de 64 caracteres o más.
+function canonicalHost(authority) {
+  const match = AUTHORITY.exec(authority);
+  if (!match) return null;
+  const host = match[1].toLowerCase();
+  const labels = host.split(".");
+  const last = labels.length - 1;
+  const malformed = labels.some((label, index) => label.length > 63 || (label === "" && index < last));
+  if (malformed) return null;
+  const bare = host.endsWith(".") ? host.slice(0, -1) : host;
+  return bare.startsWith("www.") ? bare.slice(4) : bare;
+}
+
+const isBlockedHost = (host) => BLOCKED_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`));
+
+// Ruta de un ítem de Internet Archive: exactamente /details/<identificador> o /download/<identificador>.
+// Las barras al principio y al final no cuentan, como strip("/") en el backend.
+function isIaItemPath(path) {
+  const parts = path.replace(/^\/+|\/+$/g, "").split("/");
+  return parts.length === 2 && IA_KINDS.includes(parts[0]) && IA_IDENTIFIER.test(parts[1]);
+}
+
+// "blocked", "archive", "archive-path", "direct", "other" o "invalid". Sigue el orden de sources.classify:
+// primero las plataformas, después Internet Archive y por último la extensión de audio.
+function classify(url) {
+  const { authority, path } = splitUrl(url);
+  const host = canonicalHost(authority);
+  if (host === null) return "invalid";
+  if (isBlockedHost(host)) return "blocked";
+  if (host === IA_HOST) return isIaItemPath(path) ? "archive" : "archive-path";
+  const lower = path.toLowerCase();
+  return AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext)) ? "direct" : "other";
 }
 
 // Verdadero si la dirección apunta a un fichero de audio directo, que exige licencia.
 export function needsLicense(url) {
-  if (typeof url !== "string" || !HTTP_URL.test(url)) return false;
-  try {
-    return classify(new URL(url)) === "direct";
-  } catch {
-    return false;
-  }
+  return typeof url === "string" && HTTP_URL.test(url) && classify(url) === "direct";
 }
 
 // Texto de una sola línea. Con required, no puede quedar en blanco.
@@ -106,19 +144,12 @@ function checkText(value, { name, max, required = false }) {
 export function validateImport({ url, license, title } = {}) {
   if (typeof url !== "string" || url === "") return "Escribe la dirección del audio.";
   if (len(url) > LIMITS.url) return `La dirección no puede tener más de ${LIMITS.url} caracteres.`;
-  if (SPACE_OR_CONTROL.test(url)) return "La dirección no puede tener espacios ni caracteres de control.";
+  if (URL_SPACE_OR_CONTROL.test(url)) return "La dirección no puede tener espacios ni caracteres de control.";
   if (!HTTP_URL.test(url)) return "La dirección debe empezar por https:// (o http://).";
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return "La dirección no es válida.";
-  }
-  const kind = classify(parsed);
+  const kind = classify(url);
+  if (kind === "invalid") return HOST_MESSAGE;
   if (kind === "blocked") return BLOCKED_MESSAGE;
-  if (kind === "archive-path") {
-    return "En Internet Archive usa archive.org/details/<identificador> o archive.org/download/<identificador>.";
-  }
+  if (kind === "archive-path") return IA_FORM_MESSAGE;
   if (kind === "other") {
     return "Admite un ítem de Internet Archive (archive.org/details/…) o un enlace directo a un fichero de audio (mp3, flac, ogg, opus, m4a o wav).";
   }
@@ -206,6 +237,12 @@ function checkEditFields(data) {
   return null;
 }
 
+// Una canción se edita con al menos un campo que cambiar: sin ninguno, el backend rechaza la petición.
+const checkSomeChange = (data) =>
+  Object.keys(data).some((key) => key !== "op" && key !== "song_id" && data[key] !== undefined)
+    ? null
+    : "Indica al menos un campo que cambiar en la canción.";
+
 function checkOperation(data) {
   switch (data.op) {
     case "create_folder":
@@ -215,7 +252,7 @@ function checkOperation(data) {
     case "delete_folder":
       return checkFolderRef(data.folder_id);
     default:
-      return checkSongRef(data.song_id) ?? checkEditFields(data);
+      return checkSongRef(data.song_id) ?? checkEditFields(data) ?? checkSomeChange(data);
   }
 }
 

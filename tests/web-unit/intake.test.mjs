@@ -59,8 +59,16 @@ describe("validateImport: esquema y tipo de fuente", () => {
     assert.notEqual(validateImport({ url: "javascript:alert(1)" }), null);
   });
 
-  it("acepta archive.org/download sin licencia, porque la licencia va en los metadatos", () => {
-    assert.equal(validateImport({ url: "https://archive.org/download/charleston1925/charleston.mp3" }), null);
+  it("solo admite el ítem de Internet Archive, no un fichero dentro de archive.org/download", () => {
+    assert.equal(validateImport({ url: "https://archive.org/download/charleston1925" }), null);
+    assert.match(validateImport({ url: "https://archive.org/download/charleston1925/charleston.mp3" }), /archive\.org\/details/);
+  });
+
+  it("exige exactamente un tipo y un identificador en la ruta de Internet Archive, como el backend", () => {
+    assert.notEqual(validateImport({ url: "https://archive.org/details/abc/extra" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org/details/a//b" }), null);
+    assert.equal(validateImport({ url: "https://archive.org/details/abc/" }), null);
+    assert.equal(validateImport({ url: "https://archive.org//details/abc" }), null);
   });
 
   it("rechaza archive.org sin identificador o con otra ruta", () => {
@@ -87,11 +95,11 @@ describe("validateImport: esquema y tipo de fuente", () => {
 
 describe("validateImport: límites y texto", () => {
   it("la dirección admite 2048 caracteres y no más", () => {
-    const base = "https://archive.org/details/";
-    const exact = base + "a".repeat(2048 - base.length);
+    const exact = `https://example.org/${"a".repeat(2048 - 20 - 4)}.mp3`;
+    const over = `https://example.org/${"a".repeat(2049 - 20 - 4)}.mp3`;
     assert.equal(exact.length, 2048);
-    assert.equal(validateImport({ url: exact }), null);
-    assert.notEqual(validateImport({ url: `${exact}a` }), null);
+    assert.equal(validateImport({ url: exact, license: "CC0" }), null);
+    assert.match(validateImport({ url: over, license: "CC0" }), /2048/);
   });
 
   it("rechaza espacios dentro de la dirección", () => {
@@ -108,6 +116,47 @@ describe("validateImport: límites y texto", () => {
 
   it("rechaza saltos de línea en el título, porque romperían el formato de la petición", () => {
     assert.notEqual(validateImport({ url: "https://archive.org/details/x", title: "uno\nurl: otra" }), null);
+  });
+});
+
+describe("validateImport: paridad con backend/sonidos/sources.py", () => {
+  it("valida el identificador de Internet Archive: 200 caracteres como máximo, sin símbolos ni inicio con punto o guion", () => {
+    assert.equal(validateImport({ url: "https://archive.org/details/Free_20s.Jazz-1" }), null);
+    assert.equal(validateImport({ url: `https://archive.org/details/${"a".repeat(200)}` }), null);
+    assert.notEqual(validateImport({ url: `https://archive.org/details/${"a".repeat(201)}` }), null);
+    for (const id of ["ab$c", ".oculto", "-abc", "ñandu", "a%20b"]) {
+      assert.notEqual(validateImport({ url: `https://archive.org/details/${id}` }), null, id);
+    }
+  });
+
+  it("acepta archive.org con punto final y rechaza etiquetas vacías o de 64 caracteres o más", () => {
+    assert.equal(validateImport({ url: "https://archive.org./details/x" }), null);
+    assert.notEqual(validateImport({ url: "https://archive.org../details/x" }), null);
+    assert.notEqual(validateImport({ url: "https://a..b.org/tema.mp3", license: "CC0" }), null);
+    assert.equal(validateImport({ url: `https://${"a".repeat(63)}.org/tema.mp3`, license: "CC0" }), null);
+    assert.notEqual(validateImport({ url: `https://${"a".repeat(64)}.org/tema.mp3`, license: "CC0" }), null);
+  });
+
+  it("rechaza hosts que el backend no lee como tales: codificados, con barra invertida o sin host", () => {
+    for (const url of [
+      "https://%61rchive.org/details/x",
+      "https://archive.org\\details/x",
+      "https://example.org\\tema.mp3",
+      "https:///a/tema.mp3",
+    ]) {
+      assert.notEqual(validateImport({ url, license: "CC0" }), null, url);
+    }
+  });
+
+  it("rechaza caracteres C1, separadores Unicode y surrogates sueltos en la dirección", () => {
+    for (const code of [0x80, 0x85, 0x9f, 0x2028, 0x2029, 0xd800]) {
+      const url = `https://example.org/te${String.fromCharCode(code)}ma.mp3`;
+      assert.notEqual(validateImport({ url, license: "CC0" }), null, code.toString(16));
+    }
+  });
+
+  it("rechaza espacios Unicode dentro de la dirección, como Python", () => {
+    assert.notEqual(validateImport({ url: "https://example.org/te ma.mp3", license: "CC0" }), null);
   });
 });
 
@@ -205,6 +254,12 @@ describe("validatePayload: operaciones e identificadores", () => {
     assert.match(validatePayload({ op: "rename_folder", name: "x" }), /Falta la carpeta/);
     assert.match(validatePayload({ op: "delete_folder" }), /Falta la carpeta/);
     assert.equal(validatePayload({ op: "rename_folder", folder_id: FOLDER, name: "nuevo" }), null);
+  });
+
+  it("exige al menos un campo que cambiar en edit_song, como el backend", () => {
+    assert.match(validatePayload({ op: "edit_song", song_id: SONG }), /al menos un campo/);
+    assert.match(validatePayload({ op: "edit_song", song_id: SONG, title: undefined }), /al menos un campo/);
+    assert.equal(validatePayload({ op: "edit_song", song_id: SONG, artist: "" }), null);
   });
 
   it("acepta el payload como texto JSON, pero no en varias líneas", () => {

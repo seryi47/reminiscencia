@@ -108,7 +108,7 @@ const titleOf = (song) => String(song.title ?? "").trim() || song.id;
 const artistOf = (song) => String(song.artist ?? "").trim();
 const songLabel = (song) => {
   const artist = artistOf(song);
-  return `${titleOf(song)}${artist ? ` (${artist})` : ""} · ${song.public === true ? "publicada" : "sin publicar"}`;
+  return `${titleOf(song)}${artist ? ` (${artist})` : ""}`;
 };
 const yearOf = (song) => (song.year === null || song.year === undefined || song.year === "" ? null : Number(song.year));
 const sameList = (a, b) => a.length === b.length && a.every((value, index) => value === b[index]);
@@ -175,8 +175,7 @@ function reportStatus() {
     say(statusLine, `No se pudo leer ${failed.join(" ni ")}. Cierra y vuelve a abrir esta sección para reintentarlo.`, "bad");
     return;
   }
-  const published = store.songs.filter((song) => song && song.public === true).length;
-  say(statusLine, `${store.songs.length} canciones (${published} publicadas) · ${store.folders.length} carpetas`);
+  say(statusLine, `${store.songs.length} canciones publicadas · ${store.folders.length} carpetas`);
 }
 
 // ---------- datos (se leen al abrir la sección) ----------
@@ -190,7 +189,9 @@ async function getJson(url) {
 async function loadData() {
   say(statusLine, "Cargando la biblioteca…");
   const [songs, folders] = await Promise.allSettled([getJson(SOURCES.songs), getJson(SOURCES.folders)]);
-  store.songs = songs.status === "fulfilled" ? listOf(songs.value) : null;
+  // La página solo lista las canciones publicadas (ADR-0008): las demás no aparecen aunque el catálogo las trajera.
+  const list = songs.status === "fulfilled" ? listOf(songs.value) : null;
+  store.songs = list ? list.filter((song) => song && song.public === true) : null;
   store.folders = folders.status === "fulfilled" && Array.isArray(folders.value) ? folders.value : null;
   fillSelects();
   reportStatus();
