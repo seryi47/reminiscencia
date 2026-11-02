@@ -1,6 +1,6 @@
 import pytest
 
-from sonidos import sources
+from sonidos import intake, sources
 from sonidos.sources import (
     SourceError,
     canonical_host,
@@ -39,6 +39,106 @@ def test_ia_identifier_accepts_details_and_download_forms(url):
 def test_ia_identifier_refuses_other_shapes_and_unsafe_identifiers(url):
     with pytest.raises(SourceError, match="forma archive.org"):
         ia_identifier(url)
+
+
+# --- Formas de descarga de Internet Archive (ADR-0008): archive.org/download/<id>/<fichero> -------------
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://archive.org/download/tema-item", "tema-item"),
+        ("https://archive.org/download/tema-item/tema.flac", "tema-item"),
+        ("https://archive.org/download/tema-item/tema%20uno%20%28versi%C3%B3n%202%29.mp3", "tema-item"),
+        ("https://archive.org/download/tema-item/portada.jpg", "tema-item"),
+        ("https://archive.org/download/tema-item/tema.mp3?download=1", "tema-item"),
+        ("https://archive.org/download/tema-item/tema.mp3#t=10", "tema-item"),
+        ("https://www.archive.org/download/tema-item/tema.mp3", "tema-item"),
+        ("https://archive.org./download/tema-item/tema.mp3", "tema-item"),
+        ("https://archive.org/details/tema-item/", "tema-item"),
+    ],
+)
+def test_download_forms_with_a_file_are_the_item_and_the_file_name_is_ignored(url, expected):
+    assert ia_identifier(url) == expected
+
+
+def test_classify_sends_download_paths_to_internet_archive():
+    assert classify("https://archive.org/download/tema-item") == "internet-archive"
+    assert classify("https://archive.org/download/tema-item/tema.flac") == "internet-archive"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # Sin identificador
+        "https://archive.org/",
+        "https://archive.org/download/",
+        "https://archive.org/download",
+        "https://archive.org/download//tema.mp3",
+        "https://archive.org//download/tema-item",
+        # Identificadores con barras, con '..' o codificados
+        "https://archive.org/download/../tema.mp3",
+        "https://archive.org/download/a..b/tema.mp3",
+        "https://archive.org/download/a%2Fb/tema.mp3",
+        "https://archive.org/download/tema-item;x/tema.mp3",
+        # Un fichero que no es un único nombre de texto
+        "https://archive.org/download/tema-item/..",
+        "https://archive.org/download/tema-item/.",
+        "https://archive.org/download/tema-item/%2e%2e",
+        "https://archive.org/download/tema-item/sub/tema.mp3",
+        "https://archive.org/download/tema-item/a%2Fb.mp3",
+        "https://archive.org/download/tema-item/a%5Cb.mp3",
+        "https://archive.org/download/tema-item/%E2%80%AEtema.mp3",
+        "https://archive.org/download/tema-item//",
+        # Otras formas: details no admite fichero, y stream, services o la búsqueda no son ítems
+        "https://archive.org/details/tema-item/tema.mp3",
+        "https://archive.org/details/a/b",
+        "https://archive.org/stream/tema-item/tema.mp3",
+        "https://archive.org/services/tema-item",
+        "https://archive.org/search?query=tema",
+    ],
+)
+def test_archive_forms_outside_the_contract_are_refused(url):
+    with pytest.raises(SourceError, match="forma archive.org"):
+        ia_identifier(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://ia800100.us.archive.org/download/tema-item/tema.mp3",
+        "https://ia800100.us.archive.org/download/tema-item",
+        "https://ia800100.us.archive.org/12/items/tema-item/tema.mp3",
+        "http://ia600200.us.archive.org/5/items/tema-item/tema.flac",
+    ],
+)
+def test_internet_archive_file_servers_are_refused_as_item_identifiers(url):
+    with pytest.raises(SourceError, match="archive.org/details"):
+        ia_identifier(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://archive.org.ejemplo.com/download/tema-item/tema.mp3",
+        "https://ejemplo.com/archive.org/download/tema-item",
+        "https://notarchive.org/details/tema-item",
+        "ftp://archive.org/download/tema-item/tema.mp3",
+    ],
+)
+def test_other_hosts_and_schemes_are_not_internet_archive_items(url):
+    with pytest.raises(SourceError, match="forma archive.org"):
+        ia_identifier(url)
+
+
+def test_error_messages_name_the_download_forms_too():
+    with pytest.raises(SourceError) as shape:
+        ia_identifier("https://archive.org/stream/tema-item")
+    with pytest.raises(SourceError) as server:
+        ia_identifier("https://ia800100.us.archive.org/download/tema-item/tema.mp3")
+
+    assert "archive.org/download/<identificador>/<fichero>" in str(shape.value)
+    assert "archive.org/download/<identificador>" in str(server.value)
 
 
 @pytest.mark.parametrize(
@@ -472,3 +572,57 @@ def test_ia_license_with_invented_relative_or_backslash_parts_is_not_a_license(l
 )
 def test_ia_license_accepts_the_usual_suffixes_of_creative_commons_urls(license_url, expected):
     assert ia_license_name(license_url) == expected
+
+
+# --- Formas de descarga de Internet Archive (ADR-0008): la licencia y el audio salen del ítem ---------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://archive.org/details/tema-item",
+        "https://archive.org/download/tema-item",
+        "https://archive.org/download/tema-item/",
+        "https://archive.org/download/tema-item/otro-nombre.wav",
+    ],
+)
+def test_every_item_form_resolves_to_the_same_item_license_and_file(url):
+    metadata = _ia_metadata(
+        "https://creativecommons.org/licenses/by-sa/4.0/",
+        [{"name": "tema.mp3", "format": "VBR MP3"}, {"name": "tema.flac", "format": "Flac"}],
+    )
+
+    resolved = resolve_internet_archive(url, metadata)
+
+    assert resolved.identifier == "tema-item"
+    assert resolved.license == "CC BY-SA 4.0 (Internet Archive: tema-item)"
+    assert resolved.file_name == "tema.flac"
+    assert resolved.download_url == "https://archive.org/download/tema-item/tema.flac"
+
+
+def test_file_name_in_a_download_url_cannot_declare_the_license():
+    metadata = _ia_metadata(
+        "https://example.com/licencia-rara",
+        [{"name": "tema.mp3", "format": "VBR MP3"}],
+    )
+
+    with pytest.raises(SourceError, match="no declara una licencia reconocida"):
+        resolve_internet_archive("https://archive.org/download/tema-item/CC0-1.0.mp3", metadata)
+
+
+def test_resolve_url_asks_for_the_metadata_of_the_item_not_of_the_file(monkeypatch):
+    asked = []
+
+    def fake_fetch(url):
+        asked.append(url)
+        return _ia_metadata(
+            "https://creativecommons.org/publicdomain/zero/1.0/",
+            [{"name": "tema.flac", "format": "Flac"}],
+        )
+
+    monkeypatch.setattr(intake, "fetch_json", fake_fetch)
+
+    resolved = intake.resolve_url("https://archive.org/download/tema-item/otro-nombre.wav")
+
+    assert asked == ["https://archive.org/metadata/tema-item"]
+    assert resolved.download_url == "https://archive.org/download/tema-item/tema.flac"

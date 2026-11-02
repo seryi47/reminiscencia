@@ -16,7 +16,7 @@ import re
 import socket
 import unicodedata
 from dataclasses import dataclass
-from urllib.parse import quote, urlparse, urlsplit
+from urllib.parse import quote, unquote, urlparse, urlsplit
 
 AUDIO_EXTENSIONS = (".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav")
 
@@ -266,15 +266,60 @@ def choose_ia_file(files: list[dict]) -> dict | None:
     return None
 
 
+IA_ITEM_FORM_MESSAGE = (
+    "La URL de Internet Archive debe ser de la forma archive.org/details/<identificador>, "
+    "archive.org/download/<identificador> o archive.org/download/<identificador>/<fichero>"
+)
+
+
 def ia_identifier(url: str) -> str:
-    """Identificador de un ítem de Internet Archive, de la forma archive.org/details/<id> o archive.org/download/<id>."""
-    parts = urlparse(url).path.strip("/").split("/")
-    if len(parts) != 2 or parts[0] not in {"details", "download"} or not IA_IDENTIFIER.fullmatch(parts[1]):
-        raise SourceError(
-            "La URL de Internet Archive debe ser de la forma archive.org/details/<identificador> "
-            "o archive.org/download/<identificador>"
-        )
-    return parts[1]
+    """Identificador del ítem de una URL de Internet Archive (ADR-0005, ADR-0008), con http o https y el host
+    archive.org (también con 'www.' o punto final). Se aceptan:
+
+    - archive.org/details/<identificador>
+    - archive.org/download/<identificador>, con una barra final opcional
+    - archive.org/download/<identificador>/<fichero>. El fichero no se usa: la licencia y el audio salen de los
+      metadatos del ítem.
+
+    Se rechaza cualquier otra forma, los servidores de fichero (ia800100.us.archive.org) y los identificadores con
+    barras, con '..' o con caracteres fuera de [A-Za-z0-9._-].
+    """
+    url_parts = urlsplit(url)
+    if url_parts.scheme not in ("http", "https"):
+        raise SourceError(IA_ITEM_FORM_MESSAGE)
+    host = canonical_host(url)
+    if host != "archive.org":
+        raise SourceError(IA_FILE_SERVER_MESSAGE if _internet_archive_file_server(host) else IA_ITEM_FORM_MESSAGE)
+    # Ruta sin la barra inicial: [tipo, identificador] o [download, identificador, fichero]. Una barra final se tolera.
+    parts = url_parts.path.split("/")[1:]
+    if parts[-1:] == [""]:
+        parts.pop()
+    if len(parts) not in (2, 3) or parts[0] not in {"details", "download"}:
+        raise SourceError(IA_ITEM_FORM_MESSAGE)
+    identifier, file_part = parts[1], parts[2:]
+    if file_part and (parts[0] != "download" or not _is_plain_file_name(file_part[0])):
+        raise SourceError(IA_ITEM_FORM_MESSAGE)
+    if not _is_plain_identifier(identifier):
+        raise SourceError(IA_ITEM_FORM_MESSAGE)
+    return identifier
+
+
+def _is_plain_identifier(identifier: str) -> bool:
+    """Identificador que puede ir en una URL de descarga y en una carpeta de trabajo: sin barras ni '..'."""
+    return IA_IDENTIFIER.fullmatch(identifier) is not None and ".." not in identifier
+
+
+def _is_plain_file_name(segment: str) -> bool:
+    """Segmento de fichero de una ruta de Internet Archive. No se usa para nada, pero tiene que ser un único
+    segmento de texto: no vacío, ni '.' o '..' (también codificados), ni con barras ni caracteres de control o de
+    formato."""
+    name = unquote(segment)
+    return (
+        name not in ("", ".", "..")
+        and "/" not in name
+        and "\\" not in name
+        and not any(unicodedata.category(char) in UNSAFE_TEXT_CATEGORIES for char in name)
+    )
 
 
 def _ia_file_name(name: object) -> str:
@@ -338,8 +383,8 @@ def _internet_archive_file_server(host: str) -> bool:
 
 
 IA_FILE_SERVER_MESSAGE = (
-    "Un fichero de Internet Archive se importa desde la página de su ítem (archive.org/details/<identificador>), "
-    "donde figura la licencia"
+    "Un fichero de Internet Archive se importa desde su ítem (archive.org/details/<identificador> o "
+    "archive.org/download/<identificador>), donde figura la licencia"
 )
 
 

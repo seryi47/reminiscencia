@@ -8,8 +8,9 @@ Este módulo la valida antes de tocar la red o el catálogo:
   un error. Una línea sin dos puntos se ignora. Una clave con valor vacío equivale a no enviarla.
   Límite total: 8000 caracteres.
 - action import: url obligatoria (http o https, sin plataformas bloqueadas). Internet Archive
-  (archive.org/details/<id> o archive.org/download/<id>), o un fichero de audio directo que exige
-  license. title y license son opcionales en el resto de casos. No admite payload.
+  (archive.org/details/<id>, archive.org/download/<id> o archive.org/download/<id>/<fichero>; el fichero
+  no se usa), o un fichero de audio directo que exige license. title y license son opcionales en el resto
+  de casos. No admite payload.
 - action organize: payload obligatorio, un objeto JSON en una sola línea. No admite url, license ni title.
 
 Las URL se validan con sonidos.sources (classify, resolve_direct_file, ia_identifier): la misma
