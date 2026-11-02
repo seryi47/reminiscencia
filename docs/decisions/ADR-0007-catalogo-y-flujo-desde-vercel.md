@@ -3,6 +3,7 @@
 - Estado: aceptada
 - Fecha: 2026-10-31
 - Sustituye: la base de datos SQLite local como fuente de verdad (ADR-0001 para la base de datos local queda para desarrollo sin Vercel)
+- Nota de estado (2026-10-31): **administración retirada.** Los puntos 4 y 5 (administración en Vercel, funciones `api/*` y el workflow `library.yml`) quedan sustituidos por ADR-0008: toda escritura es una petición en una incidencia del propietario y el workflow es `biblioteca.yml`. Siguen vigentes el catálogo versionado, el audio en el repositorio, la publicación por `public` y el límite de los ficheros de GitHub (puntos 1 a 3 y 6).
 
 ## Contexto
 

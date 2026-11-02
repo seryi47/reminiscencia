@@ -11,10 +11,11 @@ import shutil
 from pathlib import Path
 
 from sonidos import catalog
+from sonidos import intake
 from sonidos.compression import transcode
 from sonidos.hashing import sha256_file
-from sonidos import intake
 from sonidos.probe import probe
+from sonidos.sources import IA_TITLE_MAX_CHARS
 
 PLAYBACK_PROFILE = "opus-64k"
 
@@ -29,8 +30,14 @@ def import_url(
     title: str | None = None,
 ) -> dict:
     resolved = intake.resolve_url(url, license=license)
-    target = intake.download(resolved.download_url, staging_dir / resolved.identifier.replace("/", "_") / resolved.file_name)
+    # La carpeta de trabajo se borra siempre, también si la descarga falla (ningún resto queda en staging).
+    work_dir = staging_dir / resolved.identifier.replace("/", "_")
     try:
+        target = intake.download(
+            resolved.download_url,
+            work_dir / resolved.file_name,
+            internet_archive=resolved.source == "internet-archive",
+        )
         sha256 = sha256_file(target)
         info = probe(target)
 
@@ -38,7 +45,7 @@ def import_url(
         song, created = catalog.add_song(
             data,
             sha256=sha256,
-            title=title or resolved.title or target.stem,
+            title=title or resolved.title or target.stem[:IA_TITLE_MAX_CHARS],
             license=resolved.license,
             source=f"{resolved.source}:{resolved.identifier}",
             codec=info.codec,
@@ -52,4 +59,4 @@ def import_url(
             catalog.save(catalog_path, data)
         return {"song_id": song["id"], "created": created, "source": resolved.source, "license": song["license"]}
     finally:
-        shutil.rmtree(staging_dir / resolved.identifier.replace("/", "_"), ignore_errors=True)
+        shutil.rmtree(work_dir, ignore_errors=True)

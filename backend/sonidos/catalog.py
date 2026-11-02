@@ -115,8 +115,8 @@ def update_song(data: dict, song_id: str, fields: dict) -> dict:
         fields["year"] = int(fields["year"])
     elif "year" in fields:
         fields["year"] = None
-    if "public" in fields:
-        fields["public"] = bool(fields["public"])
+    if "public" in fields and not isinstance(fields["public"], bool):
+        raise CatalogError("public debe ser true o false (booleano, no texto ni número)")
     if "folder_id" in fields and not fields["folder_id"]:
         fields["folder_id"] = None
     song.update(fields)
@@ -124,11 +124,16 @@ def update_song(data: dict, song_id: str, fields: dict) -> dict:
 
 
 def create_folder(data: dict, name: str, parent_id: str | None = None) -> dict:
+    """Crea una carpeta. Si ya hay una con ese nombre bajo el mismo padre, la devuelve: reejecutar una
+    petición no duplica la carpeta."""
     clean = name.strip()
     if not clean:
         raise CatalogError("el nombre de la carpeta no puede estar vacío")
     if parent_id:
         find_folder(data, parent_id)
+    for existing in data["folders"]:
+        if existing["name"] == clean and existing["parent_id"] == (parent_id or None):
+            return existing
     folder = {"id": uuid.uuid4().hex[:10], "name": clean, "parent_id": parent_id or None}
     data["folders"].append(folder)
     return folder

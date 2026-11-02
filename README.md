@@ -2,23 +2,22 @@
 
 Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado:** la plataforma funciona en la web y en la app Android. La biblioteca se gestiona desde Vercel. Estudios con personas, pendientes.
+**Estado:** la plataforma funciona en la web y en la app Android. La biblioteca se gestiona con incidencias de GitHub (ADR-0008). Estudios con personas, pendientes.
 
 | Qué | Dónde |
 |---|---|
 | Escuchar (público) | https://reminiscencia.vercel.app |
-| Administrar (contraseña) | https://reminiscencia.vercel.app/admin/ |
 | App Android | `mobile/` (lee la biblioteca de la web) |
-| Trabajos de importación y edición | GitHub Actions: workflow `library` |
+| Cambios en la biblioteca | Incidencias con la etiqueta `biblioteca`, procesadas por el workflow `biblioteca` |
 
 ## Cómo se usa
 
-1. Entra en **/admin/** con la contraseña de administración.
-2. **Añadir audio:** pega una dirección de Internet Archive (`archive.org/details/…`) o un enlace directo a un fichero de audio con su licencia. YouTube y las plataformas de streaming no se admiten.
-3. El trabajo se ejecuta en GitHub (descarga, conversión y guardado en el repositorio). Tarda 1-3 minutos y la web se actualiza sola.
-4. Organiza en carpetas, edita título, artista, año y etiquetas, y **publica** las canciones que quieras en la web.
+1. Abre una incidencia en el repositorio con la etiqueta **biblioteca**. Su cuerpo es una petición: líneas `clave: valor` con `action` (`import` u `organize`) y los campos de cada acción. El formato completo está en [ADR-0008](docs/decisions/ADR-0008-entrada-por-incidencias.md).
+2. **Añadir audio:** `action: import` con una dirección de Internet Archive (`archive.org/details/…`) o con un enlace directo a un fichero de audio y su licencia, que es obligatoria. YouTube y las plataformas de streaming no se admiten.
+3. Solo el propietario procesa las peticiones. El workflow descarga, convierte y guarda el resultado en el repositorio, responde en la incidencia y la cierra. Tarda unos minutos y la web se actualiza sola.
+4. **Publicar o editar:** `action: organize` con un `payload` JSON en una sola línea, por ejemplo `{"op":"edit_song","song_id":"S…","public":true}`. Los identificadores de canción están en `audio-library/indexes/catalog.json`.
 
-Las canciones nuevas quedan **privadas** hasta que las publicas.
+Las canciones nuevas quedan **privadas** hasta que las publicas, y la web solo muestra las públicas.
 
 ## Documentación
 

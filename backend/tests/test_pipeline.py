@@ -2,7 +2,7 @@ import shutil
 
 import pytest
 
-from sonidos import intake
+from sonidos import catalog, intake
 from sonidos.catalog import CatalogError
 from sonidos.pipeline import import_url
 from sonidos.sources import SourceError
@@ -14,7 +14,7 @@ def paths(tmp_path):
 
 
 def _fake_download(source):
-    def download(url, destination):
+    def download(url, destination, **kwargs):
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
         return destination
@@ -66,3 +66,43 @@ def test_empty_license_is_refused_before_download(paths, monkeypatch):
     monkeypatch.setattr(intake, "download", no_network)
     with pytest.raises(SourceError, match="indicar la licencia"):
         import_url(url="https://ejemplo.com/tema.wav", license="   ", **paths)
+
+
+# --- Corrección de la ronda 2 (2026-11-02) -----------------------------------------------------
+
+
+def test_staging_folder_is_removed_when_the_download_fails(paths, monkeypatch):
+    def broken_download(url, destination, **kwargs):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"parcial")
+        raise SourceError("La descarga se cortó antes de terminar")
+
+    monkeypatch.setattr(intake, "download", broken_download)
+
+    with pytest.raises(SourceError, match="cortó"):
+        import_url(url="https://ejemplo.com/tema.wav", license="CC0", **paths)
+
+    assert not (paths["staging_dir"] / "ejemplo.com_tema.wav").exists()
+
+
+def test_title_taken_from_the_file_name_is_limited_to_200_characters(paths, tone_wav, monkeypatch):
+    monkeypatch.setattr(intake, "download", _fake_download(tone_wav))
+
+    result = import_url(url=f"https://ejemplo.com/{'a' * 210}.wav", license="CC0", **paths)
+
+    song = catalog.find_song(catalog.load(paths["catalog_path"]), result["song_id"])
+    assert len(song["title"]) == 200
+
+
+def test_direct_download_is_not_marked_as_internet_archive(paths, tone_wav, monkeypatch):
+    seen = {}
+
+    def spy(url, destination, **kwargs):
+        seen.update(kwargs)
+        return _fake_download(tone_wav)(url, destination)
+
+    monkeypatch.setattr(intake, "download", spy)
+
+    import_url(url="https://ejemplo.com/tema.wav", license="CC0", **paths)
+
+    assert seen == {"internet_archive": False}

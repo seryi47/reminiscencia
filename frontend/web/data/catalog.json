@@ -1,0 +1,113 @@
+{
+  "songs": [
+    {
+      "id": "S65bfe90013b5e118",
+      "title": "2 to 2",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+      "source": "internet-archive:Free_20s_Jazz_Collection",
+      "duration_s": 177.685,
+      "public": true
+    },
+    {
+      "id": "S5aac103b6eb2ecf4",
+      "title": "Charleston (Fox Trot)",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público según Internet Archive (item charleston1925; Public Domain Mark / CC0 declarada por el depositante)",
+      "source": "internet-archive:charleston1925",
+      "duration_s": 242.416,
+      "public": true
+    },
+    {
+      "id": "S63dd0f83182c55e7",
+      "title": "Charleston Rag",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+      "source": "internet-archive:Free_20s_Jazz_Collection",
+      "duration_s": 175.868,
+      "public": true
+    },
+    {
+      "id": "S5bf3b26b83582a89",
+      "title": "Christmas Bells",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público (Creative Commons) (Internet Archive: christmasbells1919)",
+      "source": "internet-archive:christmasbells1919",
+      "duration_s": 180.661,
+      "public": true
+    },
+    {
+      "id": "S4b8e59026c17c3f0",
+      "title": "Henpecked Blues",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+      "source": "internet-archive:Free_20s_Jazz_Collection",
+      "duration_s": 189.857,
+      "public": true
+    },
+    {
+      "id": "S32f9cc74e4842795",
+      "title": "Hold Me",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+      "source": "internet-archive:Free_20s_Jazz_Collection",
+      "duration_s": 156.508,
+      "public": true
+    },
+    {
+      "id": "S3558a2f1ac2678f5",
+      "title": "Kater St. Rag",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+      "source": "internet-archive:Free_20s_Jazz_Collection",
+      "duration_s": 151.284,
+      "public": true
+    },
+    {
+      "id": "Sc561a4ba1ae57521",
+      "title": "One Dime Blues",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público según Internet Archive (item Blind_Lemon_Jefferson_One_Dime_Blues; Public Domain Mark / CC0 declarada por el depositante)",
+      "source": "internet-archive:Blind_Lemon_Jefferson_One_Dime_Blues",
+      "duration_s": 169.04,
+      "public": true
+    },
+    {
+      "id": "Sf749859f9e2e7ec1",
+      "title": "Whispering",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
+      "source": "internet-archive:Free_20s_Jazz_Collection",
+      "duration_s": 197.509,
+      "public": true
+    }
+  ],
+  "folders": []
+}

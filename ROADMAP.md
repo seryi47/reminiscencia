@@ -25,7 +25,7 @@ Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cu
 
 ## Plan v2 (en curso desde 2026-10-31)
 
-Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` por fases. La administración en Vercel queda **sin usar** por decisión del investigador hasta nuevo aviso (no se configura `ADMIN_PASSWORD`).
+Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` por fases. La administración en Vercel queda **retirada** (ADR-0008): la biblioteca se gestiona con incidencias de GitHub y no hay `ADMIN_PASSWORD` que configurar.
 
 | Frente | Qué entrega | Estado |
 |---|---|---|
@@ -45,11 +45,11 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 - [x] Catálogo versionado en el repositorio como fuente de verdad (ADR-0007).
 - [x] Importación por URL en GitHub Actions, probada con ítems reales de Internet Archive.
 - [x] Publicar, despublicar, carpetas y edición de metadatos vía workflow, probados en GitHub.
-- [x] Funciones de Vercel con contraseña, validación y falla cerrada.
-- [ ] **Configurar `ADMIN_PASSWORD` en Vercel** (Production). Sin ella, `/admin/` no funciona.
-- [ ] Probar el panel de administración de extremo a extremo con la contraseña configurada.
+- [x] Funciones de Vercel con contraseña, validación y falla cerrada (retiradas después, en ADR-0008).
+- [x] Administración retirada en favor de incidencias de GitHub (ADR-0008): no hay `ADMIN_PASSWORD` que configurar.
+- [ ] Probar una incidencia real con la etiqueta `biblioteca` (importar y organizar) y su respuesta automática.
 - [ ] Borrado de canciones (hoy solo se despublican).
-- **Cierre:** panel probado en la web de Vercel con la contraseña real.
+- **Cierre:** una importación y una publicación probadas con incidencias reales.
 
 ## Fase 4: web pública
 - [x] Escucha por carpetas, búsqueda, reproductor y vista a pantalla completa en el teléfono.
