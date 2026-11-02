@@ -997,6 +997,12 @@ export function mountLibrary(root, services, params = {}) {
     });
   }
 
+  // Fuente de verdad: la canción del catálogo en este momento (las subidas pueden llegar después de montar la tabla).
+  function esBorrable(songId) {
+    const song = (services.catalog?.songs ?? []).find((item) => item?.id === songId);
+    return song ? isDeletableSong(song) : localSongIds.has(songId);
+  }
+
   function openRowMenu(button, songId) {
     const row = rowsById.get(songId);
     if (!row) return;
@@ -1007,7 +1013,7 @@ export function mountLibrary(root, services, params = {}) {
         { value: 'ficha', label: 'Abrir la ficha' },
         { value: 'quitar', label: 'Quitar del perfil', disabled: !canRemove() },
         // Solo las canciones subidas desde este navegador tienen esta opción; las públicas no se borran aquí.
-        ...(localSongIds.has(songId) ? [{ value: 'borrar', label: 'Borrar de este navegador' }] : []),
+        ...(esBorrable(songId) ? [{ value: 'borrar', label: 'Borrar de este navegador' }] : []),
       ],
       onPick: (value) => {
         if (value === 'ficha') openPanelFor(songId);
@@ -1296,9 +1302,6 @@ export function mountLibrary(root, services, params = {}) {
       if (disposed) return;
       state.profileId = profileId ?? null;
       const songs = Array.isArray(services.catalog?.songs) ? services.catalog.songs : [];
-      for (const song of songs) {
-        if (isDeletableSong(song)) localSongIds.add(song.id);
-      }
       const [links, memories, cachedUrls] = await Promise.all([
         state.profileId !== null ? store.listSongLinks(state.profileId) : [],
         state.profileId !== null ? store.listMemories(state.profileId) : [],
@@ -1306,6 +1309,10 @@ export function mountLibrary(root, services, params = {}) {
       ]);
       if (disposed) return;
       const player = readPlayerState(services.player);
+      // Se marcan aquí, justo antes de construir las filas: las canciones subidas pueden llegar al catálogo durante los await de arriba.
+      for (const song of songs) {
+        if (isDeletableSong(song)) localSongIds.add(song.id);
+      }
       state.rows = buildRows(songs, {
         links,
         memorySongIds: memorySongIds(memories),

@@ -373,12 +373,35 @@ async function contarCancionesLocales(page) {
   });
 }
 
+// Espera a que la biblioteca termine de cargar: las canciones subidas llegan después del montaje y vuelven a pintar
+// la tabla. Se considera estable cuando el número de filas no cambia durante 800 ms.
+async function esperarBibliotecaEstable(page) {
+  let anterior = -1;
+  let desdeEstable = Date.now();
+  const limite = Date.now() + 8000;
+  while (Date.now() < limite) {
+    const total = await page.$$eval('[data-testid="c-biblioteca-row"]', (filas) => filas.length);
+    if (total !== anterior) { anterior = total; desdeEstable = Date.now(); }
+    else if (Date.now() - desdeEstable >= 800) return;
+    await new Promise((resolver) => setTimeout(resolver, 150));
+  }
+}
+
 // Abre el menú «Más opciones» de una fila y devuelve el texto de sus opciones.
 async function abrirMenuDeFila(page, songId) {
+  await esperarBibliotecaEstable(page);
   const boton = `[data-testid="c-biblioteca-row"][data-song-id="${songId}"] [data-control="menu"]`;
   await page.waitForSelector(boton, { timeout: 5000 });
-  await page.click(boton);
-  await page.waitForSelector(".c-biblioteca-menu [role='menuitem']", { timeout: 5000 });
+  // El clic se da sobre el propio elemento; si una nueva pintura de la tabla lo tira, se repite una vez.
+  for (let intento = 0; intento < 2; intento += 1) {
+    await page.$eval(boton, (elemento) => elemento.click());
+    try {
+      await page.waitForSelector(".c-biblioteca-menu [role='menuitem']", { timeout: 3000 });
+      break;
+    } catch (error) {
+      if (intento === 1) throw error;
+    }
+  }
   return page.$$eval(".c-biblioteca-menu [role='menuitem']", (items) => items.map((item) => item.textContent.trim()));
 }
 
@@ -404,6 +427,7 @@ describe("Biblioteca: borrar canciones subidas desde este navegador", () => {
       const opciones = await abrirMenuDeFila(page, ID_CANCION_LOCAL);
       assert.ok(opciones.includes("Borrar de este navegador"), `El menú de la canción local no ofrece borrar: ${opciones.join(", ")}`);
       // Por teclado: el foco inicial está en la primera opción; ArrowDown avanza hasta «Borrar de este navegador».
+      await page.waitForFunction(() => Boolean(document.activeElement?.closest(".c-biblioteca-menu")), { timeout: 3000 });
       let enfocada = "";
       for (let intento = 0; intento < 5 && enfocada !== "Borrar de este navegador"; intento += 1) {
         await page.keyboard.press("ArrowDown");
