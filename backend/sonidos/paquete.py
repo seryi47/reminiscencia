@@ -30,7 +30,12 @@ CHANGES_DIR = "cambios"
 METADATA_FILES = ("peticion.json", "resultado.json")
 # Lo que escribe la biblioteca: el catálogo, el audio y los datos públicos de la web.
 ALLOWED_FILES = frozenset({"audio-library/indexes/catalog.json"})
-ALLOWED_DIRECTORIES = ("audio-library/audio", "frontend/web/audio", "frontend/web/data")
+# Solo audio con identificador de canción, y solo los tres datos públicos de la web. Nunca HTML, SVG ni JS:
+# la web es estática y se sirve tal cual.
+AUDIO_DIRECTORIES = ("audio-library/audio", "frontend/web/audio")
+DATA_DIRECTORY = "frontend/web/data"
+DATA_FILES = frozenset({"songs.json", "folders.json", "catalog.json"})
+AUDIO_NAME = re.compile(r"S[0-9a-f]{16}\.opus")
 STATES = ("A", "M", "D")
 MAX_CHANGES = 2000
 
@@ -60,7 +65,18 @@ def ruta_permitida(ruta: object) -> bool:
     if ruta in ALLOWED_FILES:
         return True
     directory, _, name = ruta.rpartition("/")
-    return directory in ALLOWED_DIRECTORIES and _FILE_NAME.fullmatch(name) is not None
+    if directory in AUDIO_DIRECTORIES:
+        return AUDIO_NAME.fullmatch(name) is not None
+    if directory == DATA_DIRECTORY:
+        return name in DATA_FILES
+    return False
+
+
+def borrado_permitido(ruta: str) -> bool:
+    """Un paquete solo puede borrar audio de la biblioteca (una canción despublicada o retirada). Nunca borra el
+    catálogo ni los datos públicos: esos solo se reescriben."""
+    directory, _, name = ruta.rpartition("/")
+    return directory in AUDIO_DIRECTORIES and AUDIO_NAME.fullmatch(name) is not None
 
 
 def head_commit(repo: Path) -> str:
@@ -80,6 +96,8 @@ def package_changes(repo: Path, package: Path, *, action: str) -> dict:
                 continue  # restos que no son de la biblioteca (una carpeta de compilación): no se publican
             raise PaqueteError(f"el procesado cambió una ruta no permitida: {path}")
         if "D" in code:
+            if not borrado_permitido(path):
+                raise PaqueteError(f"el procesado intentó borrar una ruta protegida: {path}")
             changes.append(Change(path, "D"))
             continue
         source = repo / path
@@ -134,6 +152,8 @@ def read_manifest(package: Path, *, head: str) -> tuple[str, list[Change]]:
             raise PaqueteError(f"ruta no permitida en el paquete: {ruta!r}")
         if state not in STATES or ruta in seen:
             raise PaqueteError(f"cambio repetido o estado no válido: {ruta}")
+        if state == "D" and not borrado_permitido(ruta):
+            raise PaqueteError(f"borrado no permitido en el paquete: {ruta}")
         seen.add(ruta)
         changes.append(Change(ruta, state))
     return action, changes
