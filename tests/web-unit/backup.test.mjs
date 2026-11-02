@@ -1,6 +1,6 @@
-// Pruebas de backup.js: ida y vuelta de la copia cifrada, combinación, límites y validación.
-// Sin IndexedDB: el almacén de pruebas implementa exportAll/importAll en memoria y usa planMerge real.
-// Datos ficticios; las fotografías se generan en memoria.
+// Pruebas de backup.js: ida y vuelta de la copia cifrada, combinación, límites, validación y compatibilidad
+// con copias de la versión 1 (sin registro del estudio). Sin IndexedDB: el almacén de pruebas implementa
+// exportAll/importAll en memoria y usa planMerge real. Datos ficticios; las fotografías se generan en memoria.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -21,7 +21,7 @@ import { planMerge } from '../../frontend/web/js/store.js';
 const PASSPHRASE = 'frase de prueba 2026';
 const OTHER_PASSPHRASE = 'otra frase distinta';
 const T0 = 1700000000000;
-const COLLECTIONS = ['profiles', 'songLinks', 'memories', 'photos', 'playlists', 'observations', 'history'];
+const COLLECTIONS = ['profiles', 'songLinks', 'memories', 'photos', 'playlists', 'observations', 'history', 'studyEvents'];
 const SONG = 'S0123456789abcdef';
 const DECRYPT_FAILURE = { name: 'Error', message: 'Contraseña incorrecta o copia dañada' };
 
@@ -69,6 +69,38 @@ function sampleContent() {
     playlists: [{ id: 'lista-prueba-01', profileId: PROFILE.id, name: 'Lista de prueba', songIds: [SONG], createdAt: T0, updatedAt: T0 }],
     observations: [{ id: 'obs-prueba-01', profileId: PROFILE.id, at: T0, text: 'Observación ficticia', songId: SONG }],
     history: [{ id: 'hist-prueba-01', profileId: PROFILE.id, songId: SONG, at: T0, listenedS: 42, completed: false }],
+    studyEvents: [
+      {
+        id: 'evento-prueba-01',
+        participantCode: 'CP-001',
+        type: 'track-end',
+        at: '2026-11-02T18:30:00+01:00',
+        sessionId: 'sesion-prueba-01',
+        profileId: PROFILE.id,
+        songId: SONG,
+        presentation: 'C1',
+        condition: 'segun-cancion',
+        origin: 'lista',
+        seconds: 120,
+        completed: true,
+        trackSeconds: 240,
+      },
+      {
+        id: 'evento-prueba-02',
+        participantCode: 'CP-001',
+        type: 'session-start',
+        at: '2026-11-02T18:00:00+01:00',
+        sessionId: 'sesion-prueba-01',
+        profileId: PROFILE.id,
+        songId: null,
+        presentation: null,
+        condition: 'segun-cancion',
+        origin: null,
+        seconds: null,
+        completed: null,
+        trackSeconds: null,
+      },
+    ],
   };
 }
 
@@ -128,12 +160,14 @@ async function assertSameContent(actual, expected) {
   }
 }
 
-test('ida y vuelta: la copia restaurada es idéntica al original, incluida la fotografía', async () => {
+test('ida y vuelta: la copia restaurada es idéntica al original, incluidas la fotografía y los eventos del estudio', async () => {
   const source = await filledStore();
   const file = await buildBackup(source, PASSPHRASE);
   const target = new MemoryStore();
   const summary = await restoreBackup(target, file, PASSPHRASE, { mode: 'replace' });
-  assert.deepEqual(summary.written, { profiles: 1, songLinks: 1, memories: 1, photos: 1, playlists: 1, observations: 1, history: 1 });
+  assert.deepEqual(summary.written, {
+    profiles: 1, songLinks: 1, memories: 1, photos: 1, playlists: 1, observations: 1, history: 1, studyEvents: 2,
+  });
   await assertSameContent(await target.exportAll(), await source.exportAll());
 });
 
@@ -143,10 +177,30 @@ test('la copia no incluye el hash del PIN ni los ajustes del dispositivo, y no m
   const payload = await decryptJson(envelope, PASSPHRASE);
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ['exportedAt', 'history', 'memories', 'observations', 'payloadVersion', 'photos', 'playlists', 'profiles', 'songLinks'],
+    ['exportedAt', 'history', 'memories', 'observations', 'payloadVersion', 'photos', 'playlists', 'profiles', 'songLinks', 'studyEvents'],
   );
+  assert.equal(payload.payloadVersion, 2);
   assert.equal(JSON.stringify(envelope).includes('Persona de prueba'), false);
   assert.equal(JSON.stringify(envelope).includes('Recuerdo de prueba'), false);
+});
+
+test('los eventos del estudio se exportan sin clave local ni fecha derivada, pero con su identificador', async () => {
+  const source = await filledStore();
+  // Simula lo que devuelve el almacén real: clave local (seq) y fecha derivada (day).
+  source.data.studyEvents = source.data.studyEvents.map((event, index) => ({
+    ...event,
+    seq: index + 1,
+    day: event.at.slice(0, 10),
+  }));
+  const file = await buildBackup(source, PASSPHRASE);
+  const payload = await decryptJson(JSON.parse(await file.text()), PASSPHRASE);
+  assert.equal(payload.studyEvents.length, 2);
+  for (const event of payload.studyEvents) {
+    assert.equal('seq' in event, false);
+    assert.equal('day' in event, false);
+    assert.equal(typeof event.id, 'string');
+  }
+  assert.equal(payload.studyEvents[0].id, 'evento-prueba-01');
 });
 
 test('combinar conserva la versión local cuando es más reciente', async () => {
@@ -237,10 +291,57 @@ test('una copia cifrada con contenido inválido no se importa', async () => {
   assert.equal((await target.exportAll()).profiles.length, 0);
 });
 
-test('la vista previa cuenta el contenido sin escribir nada', async () => {
+test('una copia de la versión 1 (sin eventos del estudio) se importa y deja el registro vacío', async () => {
+  const v1Payload = {
+    payloadVersion: 1,
+    exportedAt: T0,
+    profiles: [PROFILE],
+    songLinks: [],
+    memories: [],
+    photos: [],
+    playlists: [],
+    observations: [],
+    history: [],
+  };
+  const file = new Blob([JSON.stringify(await encryptJson(v1Payload, PASSPHRASE))]);
+  const target = new MemoryStore();
+  const summary = await restoreBackup(target, file, PASSPHRASE, { mode: 'replace' });
+  assert.equal(summary.written.profiles, 1);
+  assert.equal(summary.written.studyEvents, 0);
+  assert.equal((await target.exportAll()).profiles.length, 1);
+  assert.deepEqual(await previewBackup(file, PASSPHRASE), {
+    profiles: 1, songLinks: 0, memories: 0, photos: 0, playlists: 0, observations: 0, history: 0, studyEvents: 0,
+  });
+});
+
+test('una copia de una versión de contenido desconocida se rechaza sin escribir nada', async () => {
+  const futurePayload = {
+    payloadVersion: 3,
+    exportedAt: T0,
+    profiles: [PROFILE],
+    songLinks: [],
+    memories: [],
+    photos: [],
+    playlists: [],
+    observations: [],
+    history: [],
+    studyEvents: [],
+  };
+  const file = new Blob([JSON.stringify(await encryptJson(futurePayload, PASSPHRASE))]);
+  const target = new MemoryStore();
+  await assert.rejects(
+    restoreBackup(target, file, PASSPHRASE),
+    /La versión del contenido de la copia no es compatible/,
+  );
+  assert.equal((await target.exportAll()).profiles.length, 0);
+});
+
+test('la vista previa cuenta el contenido, incluidos los eventos del estudio, sin escribir nada', async () => {
   const file = await buildBackup(await filledStore(), PASSPHRASE);
   const counts = await previewBackup(file, PASSPHRASE);
-  assert.deepEqual(counts, { profiles: 1, songLinks: 1, memories: 1, photos: 1, playlists: 1, observations: 1, history: 1 });
+  assert.deepEqual(counts, {
+    profiles: 1, songLinks: 1, memories: 1, photos: 1, playlists: 1, observations: 1, history: 1, studyEvents: 2,
+  });
 });
 
 test('una contraseña de menos de 10 caracteres no llega a exportar', async () => {

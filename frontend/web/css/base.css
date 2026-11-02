@@ -1,0 +1,253 @@
+/* Base de la interfaz de Reminiscencia: fuente, reset mínimo, tipografía por modo (DESIGN 5.3),
+   anillo de foco (DESIGN 5.4), .visually-hidden, .skip-link y .cifras.
+
+   Usa los tokens de tokens.css. Cada var() tiene respaldo, así que este fichero funciona
+   aunque tokens.css no esté cargado. */
+
+/* ---------- Fuente: Atkinson Hyperlegible Next, SIL OFL 1.1 (ver ../fonts/LICENSE-atkinson.txt) ---------- */
+
+@font-face {
+  font-family: "Atkinson Next";
+  src: url("../fonts/atkinson-next-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Atkinson Next";
+  src: url("../fonts/atkinson-next-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Atkinson Next";
+  src: url("../fonts/atkinson-next-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------- Tipografía por modo (DESIGN 5.3) ----------
+   Cada rol es una propiedad "font" completa: font: var(--tipo-h1).
+   Tamaños e interlíneas en px, multiplicados por --escala. */
+
+:root {
+  --familia-base: var(--fuente, "Atkinson Next", system-ui, Arial, sans-serif);
+}
+
+/* Paciente (base 22 px). También es el valor por defecto sin data-modo. */
+:root,
+html[data-modo="paciente"] {
+  --tam-base: 22px;
+  --foco-grosor: 4px;
+  --foco-separacion: 3px;
+  --tipo-h1: 700 calc(28px * var(--escala, 1)) / calc(36px * var(--escala, 1)) var(--familia-base);
+  --tipo-titulo-cancion: 700 calc(28px * var(--escala, 1)) / calc(36px * var(--escala, 1)) var(--familia-base);
+  --tipo-seccion: 700 calc(28px * var(--escala, 1)) / calc(36px * var(--escala, 1)) var(--familia-base);
+  --tipo-fila: 700 calc(22px * var(--escala, 1)) / calc(30px * var(--escala, 1)) var(--familia-base);
+  --tipo-titulo-recuerdo: 700 calc(28px * var(--escala, 1)) / calc(36px * var(--escala, 1)) var(--familia-base);
+  --tipo-texto-recuerdo: 400 calc(24px * var(--escala, 1)) / calc(36px * var(--escala, 1)) var(--familia-base);
+  --tipo-etiqueta: 700 calc(20px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
+  --tipo-artista: 400 calc(20px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
+  --tipo-meta: 400 calc(18px * var(--escala, 1)) / calc(26px * var(--escala, 1)) var(--familia-base);
+  --tipo-tiempo: 400 calc(20px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
+  --tipo-busqueda: 400 calc(24px * var(--escala, 1)) / calc(32px * var(--escala, 1)) var(--familia-base);
+  --tipo-cuerpo: 400 calc(22px * var(--escala, 1)) / calc(30px * var(--escala, 1)) var(--familia-base);
+  --tipo-cabecera-tabla: 700 calc(18px * var(--escala, 1)) / calc(26px * var(--escala, 1)) var(--familia-base);
+}
+
+/* Paciente desde 768 px: H1 y título de canción pasan a 32/40. */
+@media (min-width: 768px) {
+  :root,
+  html[data-modo="paciente"] {
+    --tipo-h1: 700 calc(32px * var(--escala, 1)) / calc(40px * var(--escala, 1)) var(--familia-base);
+    --tipo-titulo-cancion: 700 calc(32px * var(--escala, 1)) / calc(40px * var(--escala, 1)) var(--familia-base);
+  }
+}
+
+/* Cuidador (base 15 px). */
+html[data-modo="cuidador"] {
+  --tam-base: 15px;
+  --foco-grosor: 2px;
+  --foco-separacion: 2px;
+  --tipo-h1: 700 calc(24px * var(--escala, 1)) / calc(30px * var(--escala, 1)) var(--familia-base);
+  --tipo-titulo-cancion: 600 calc(15px * var(--escala, 1)) / calc(22px * var(--escala, 1)) var(--familia-base);
+  --tipo-seccion: 700 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+  --tipo-fila: 600 calc(15px * var(--escala, 1)) / calc(22px * var(--escala, 1)) var(--familia-base);
+  --tipo-titulo-recuerdo: 600 calc(15px * var(--escala, 1)) / calc(22px * var(--escala, 1)) var(--familia-base);
+  --tipo-texto-recuerdo: 400 calc(15px * var(--escala, 1)) / calc(22px * var(--escala, 1)) var(--familia-base);
+  --tipo-etiqueta: 600 calc(14px * var(--escala, 1)) / calc(20px * var(--escala, 1)) var(--familia-base);
+  --tipo-artista: 400 calc(13px * var(--escala, 1)) / calc(18px * var(--escala, 1)) var(--familia-base);
+  --tipo-meta: 400 calc(13px * var(--escala, 1)) / calc(18px * var(--escala, 1)) var(--familia-base);
+  --tipo-tiempo: 400 calc(13px * var(--escala, 1)) / calc(18px * var(--escala, 1)) var(--familia-base);
+  --tipo-busqueda: 400 calc(15px * var(--escala, 1)) / calc(22px * var(--escala, 1)) var(--familia-base);
+  --tipo-cuerpo: 400 calc(15px * var(--escala, 1)) / calc(22px * var(--escala, 1)) var(--familia-base);
+  --tipo-cabecera-tabla: 600 calc(12px * var(--escala, 1)) / calc(16px * var(--escala, 1)) var(--familia-base);
+}
+
+/* ---------- Reset mínimo ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior: contain;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--fondo, #F6F4EE);
+  color: var(--texto, #1A1D1A);
+  font-family: var(--familia-base);
+  font-size: calc(var(--tam-base) * var(--escala, 1));
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  overscroll-behavior: contain;
+}
+
+h1,
+h2,
+h3,
+p,
+figure,
+blockquote {
+  margin: 0;
+}
+
+/* Valores por defecto de los encabezados; cada componente puede cambiarlos. */
+h1 {
+  font: var(--tipo-h1);
+}
+
+h2 {
+  font: var(--tipo-seccion);
+}
+
+h3 {
+  font: var(--tipo-fila);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---------- Anillo de foco (DESIGN 5.4) ----------
+   Paciente: 4 px sólidos con 3 px de separación. Cuidador: 2 px con 2 px.
+   Solo con :focus-visible, para no mostrarlo al usar el puntero. */
+
+:focus-visible {
+  outline: var(--foco-grosor, 4px) solid var(--foco, #9A4D00);
+  outline-offset: var(--foco-separacion, 3px);
+}
+
+/* ---------- Utilidades ---------- */
+
+/* Texto solo para lectores de pantalla. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Primer foco de la página: «Saltar al contenido». Oculto hasta que recibe el foco. */
+.skip-link {
+  position: absolute;
+  top: var(--espacio-2, 8px);
+  left: var(--espacio-2, 8px);
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--objetivo-minimo, 48px);
+  padding: 0 var(--espacio-5, 24px);
+  border-radius: var(--radio-control, 16px);
+  background: var(--acento, #0B6B57);
+  color: var(--sobre-acento, #FFFFFF);
+  font: var(--tipo-etiqueta);
+  text-decoration: none;
+}
+
+.skip-link:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Cifras tabulares para tiempos, contadores y valores (DESIGN 5.3). */
+.cifras {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Por encima de --escala 1,5 (data-escala="1.75"), los contenedores de listas y de Escuchar
+   pasan a una columna. El integrador pone la clase; el contenedor debe ser una cuadrícula. */
+.escala-grande {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ---------- Movimiento: respaldo de data-movimiento para cualquier transición o animación ---------- */
+
+html[data-movimiento="reducido"] *,
+html[data-movimiento="reducido"] *::before,
+html[data-movimiento="reducido"] *::after {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-movimiento="normal"]) *,
+  html:not([data-movimiento="normal"]) *::before,
+  html:not([data-movimiento="normal"]) *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

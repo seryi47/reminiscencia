@@ -14,9 +14,9 @@ import {
 } from '../../frontend/web/js/store.js';
 import { validatePatientOptions, validateSettings } from '../../frontend/web/js/schema.js';
 
-test('constantes del contrato: base reminiscencia, versión 1', () => {
+test('constantes del contrato: base reminiscencia, versión 2 (registro del estudio)', () => {
   assert.equal(DB_NAME, 'reminiscencia');
-  assert.equal(DB_VERSION, 1);
+  assert.equal(DB_VERSION, 2);
 });
 
 test('alias: se valida igual que en el almacén (1–60 caracteres, sin vacíos ni saltos de línea)', () => {
@@ -30,13 +30,13 @@ test('alias: se valida igual que en el almacén (1–60 caracteres, sin vacíos 
   assert.equal(validateAlias(undefined).length, 1);
 });
 
-test('PIN: 4 a 12 dígitos; cualquier otra cosa se rechaza con un mensaje en español', () => {
-  assert.deepEqual(validatePin('0000'), []);
-  assert.deepEqual(validatePin('123456789012'), []);
-  assert.deepEqual(validatePin('123'), ['El PIN debe tener entre 4 y 12 dígitos.']);
-  assert.equal(validatePin('1234567890123').length, 1);
-  assert.equal(validatePin('12ab').length, 1);
-  assert.equal(validatePin(null).length, 1);
+test('PIN: de 4 a 6 dígitos; devuelve null si es válido y el mensaje en español si no', () => {
+  assert.equal(validatePin('0000'), null);
+  assert.equal(validatePin('123456'), null);
+  assert.equal(validatePin('123'), 'El PIN debe tener entre 4 y 6 dígitos.');
+  assert.equal(validatePin('1234567'), 'El PIN debe tener entre 4 y 6 dígitos.');
+  assert.equal(validatePin('12ab'), 'El PIN debe tener entre 4 y 6 dígitos.');
+  assert.equal(validatePin(null), 'El PIN debe tener entre 4 y 6 dígitos.');
 });
 
 test('sin IndexedDB, la apertura rechaza con un mensaje en español', async () => {
@@ -76,11 +76,19 @@ test('una base bloqueada por otra pestaña avisa en español', async () => {
   await assert.rejects(openStore({ indexedDB: factory }), /otra pestaña/);
 });
 
-test('valores por defecto: ajustes y opciones del paciente cumplen el esquema', () => {
+test('valores por defecto: ajustes del dispositivo y opciones del paciente cumplen el esquema', () => {
   assert.deepEqual(validateSettings(DEFAULT_SETTINGS), []);
   assert.deepEqual(validatePatientOptions(DEFAULT_PATIENT_OPTIONS), []);
-  assert.equal(DEFAULT_SETTINGS.theme, 'auto');
   assert.equal(DEFAULT_PATIENT_OPTIONS.volumeLimit, 100);
+  assert.equal(DEFAULT_SETTINGS.wakeLock, true);
+  assert.equal(DEFAULT_SETTINGS.alwaysPatientMode, false);
+  assert.equal(DEFAULT_SETTINGS.sleepTimerMinutes, null);
+});
+
+test('las preferencias de pantalla no están en los ajustes del dispositivo', () => {
+  for (const key of ['textScale', 'highContrast', 'contrast', 'reduceMotion', 'theme', 'shortcuts']) {
+    assert.equal(key in DEFAULT_SETTINGS, false, key);
+  }
 });
 
 test('combinar: un registro nuevo se añade', () => {

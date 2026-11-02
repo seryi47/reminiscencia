@@ -23,7 +23,18 @@ import {
 export const DEFAULT_MAX_BYTES = 300 * 1024 * 1024;
 
 const NOT_A_BACKUP = 'El archivo no es una copia de Reminiscencia.';
-const CONTENT_LISTS = ['profiles', 'songLinks', 'memories', 'photos', 'playlists', 'observations', 'history'];
+const CONTENT_LISTS = [
+  'profiles', 'songLinks', 'memories', 'photos', 'playlists', 'observations', 'history', 'studyEvents',
+];
+
+// Los eventos del estudio se exportan sin la clave local (seq) ni la fecha derivada (day): al importar,
+// el almacén asigna las suyas y usa el identificador (id) para no duplicar eventos.
+function toPortableStudyEvent(event) {
+  const portable = { ...event };
+  delete portable.seq;
+  delete portable.day;
+  return portable;
+}
 
 function checkMaxBytes(maxBytes) {
   if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
@@ -69,6 +80,7 @@ export async function buildBackup(store, passphrase, { maxBytes = DEFAULT_MAX_BY
     playlists: data.playlists,
     observations: data.observations,
     history: data.history,
+    studyEvents: data.studyEvents.map(toPortableStudyEvent),
   };
   const envelope = await encryptJson(payload, passphrase);
   const file = new Blob([JSON.stringify(envelope)], { type: 'application/json' });
@@ -115,7 +127,8 @@ export async function readBackup(file, passphrase, { maxBytes = DEFAULT_MAX_BYTE
 
   const content = {};
   for (const name of CONTENT_LISTS) {
-    content[name] = name === 'photos' ? payload.photos.map(decodePhoto) : payload[name];
+    // Las copias de la versión 1 no traen eventos del estudio: se leen como lista vacía.
+    content[name] = name === 'photos' ? payload.photos.map(decodePhoto) : (payload[name] ?? []);
   }
   return content;
 }
