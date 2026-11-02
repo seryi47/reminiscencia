@@ -3,16 +3,18 @@
 
    Atributos de <html> que leen estos tokens (los pone app.js):
    - data-modo="paciente" | "cuidador". Sin atributo, valores de paciente.
-   - data-tema="claro" | "oscuro" | "auto". En paciente, "auto" y la ausencia dan claro.
-     En cuidador, "auto" (o la ausencia) sigue a prefers-color-scheme.
+   - data-tema="oscuro" | "claro" | "auto". Sin atributo, o con "auto", la paleta es la oscura (por defecto),
+     en paciente y en cuidador. En cuidador, "auto" sigue a prefers-color-scheme: con sistema claro, la paleta clara.
    - data-contraste="alto" | "normal". El alto se activa con data-contraste="alto" o con
      prefers-contrast: more (DESIGN 5.1, "también").
    - data-escala="1" | "1.25" | "1.5" | "1.75" (fija --escala).
    - data-movimiento="reducido" | "normal". "reducido" pone las duraciones a 0 ms; "normal"
      ignora prefers-reduced-motion; sin atributo manda el sistema.
 
-   Hay cuatro paletas (DESIGN 5.1): claro (por defecto), oscuro, alto contraste claro y alto
-   contraste oscuro. Cada bloque de paleta declara los 18 tokens de color. */
+   Hay cuatro paletas (DESIGN 5.1): oscuro (por defecto), claro, alto contraste oscuro y alto contraste claro.
+   Cada bloque de paleta declara los 18 tokens de color. La paleta oscura usa neutros (fondo casi negro, superficies
+   elevadas y texto casi blanco) con el acento menta. Los bloques de paleta van en este orden: con igual
+   especificidad, el que aparece después gana. */
 
 /* ---------- Escala de texto ---------- */
 
@@ -33,9 +35,34 @@ html[data-escala="1.75"] {
   --escala: 1.75;
 }
 
-/* ---------- Paleta 1: claro (por defecto; paciente con tema "auto" o sin tema) ---------- */
+/* ---------- Paleta 1: oscuro (por defecto; sin tema, tema "auto" y cuidador sin preferencia del sistema) ---------- */
 
-:root {
+:root,
+html:not([data-tema="claro"]):not([data-contraste="alto"]) {
+  color-scheme: dark;
+  --fondo: #0B0B0D;
+  --superficie-1: #1C1C1E;
+  --superficie-2: #242426;
+  --superficie-3: #2C2C2E;
+  --borde-control: #8E8E95;
+  --borde-suave: #2E2E32;
+  --texto: #F5F5F7;
+  --texto-2: #D1D1D6;
+  --texto-3: #AEAEB4;
+  --deshabilitado: #6F6F76;
+  --acento: #7ED8BC;
+  --acento-fuerte: #5CC7A6;
+  --sobre-acento: #0B0B0D;
+  --acento-suave: #1F3B33;
+  --recuerdo: #F2A07F;
+  --foco: #FFD25A;
+  --peligro: #FF9B8A;
+  --sobre-peligro: #2A0E0B;
+}
+
+/* ---------- Paleta 2: claro (tema "claro" explícito, contraste normal) ---------- */
+
+html[data-tema="claro"]:not([data-contraste="alto"]) {
   color-scheme: light;
   --fondo: #F6F4EE;
   --superficie-1: #ECE9E0;
@@ -57,83 +84,35 @@ html[data-escala="1.75"] {
   --sobre-peligro: #FFFFFF;
 }
 
-/* ---------- Paleta 2: oscuro (tema "oscuro" explícito, contraste normal) ---------- */
+/* ---------- Paleta 2 (cuidador con tema automático): clara si el sistema la pide ---------- */
 
-html[data-tema="oscuro"]:not([data-contraste="alto"]) {
-  color-scheme: dark;
-  --fondo: #121512;
-  --superficie-1: #1A1E1B;
-  --superficie-2: #232824;
-  --superficie-3: #2D332E;
-  --borde-control: #8C9689;
-  --borde-suave: #343B35;
-  --texto: #F3EFE6;
-  --texto-2: #C9CEC4;
-  --texto-3: #A9B1A6;
-  --deshabilitado: #6F786D;
-  --acento: #7ED8BC;
-  --acento-fuerte: #5CC7A6;
-  --sobre-acento: #0B120E;
-  --acento-suave: #1F3B33;
-  --recuerdo: #F2A07F;
-  --foco: #FFD25A;
-  --peligro: #FF9B8A;
-  --sobre-peligro: #2A0E0B;
-}
-
-/* ---------- Paleta 2 (cuidador con tema automático): oscuro si el sistema lo pide ---------- */
-
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   html[data-modo="cuidador"]:not([data-tema="claro"]):not([data-tema="oscuro"]):not([data-contraste="alto"]) {
-    color-scheme: dark;
-    --fondo: #121512;
-    --superficie-1: #1A1E1B;
-    --superficie-2: #232824;
-    --superficie-3: #2D332E;
-    --borde-control: #8C9689;
-    --borde-suave: #343B35;
-    --texto: #F3EFE6;
-    --texto-2: #C9CEC4;
-    --texto-3: #A9B1A6;
-    --deshabilitado: #6F786D;
-    --acento: #7ED8BC;
-    --acento-fuerte: #5CC7A6;
-    --sobre-acento: #0B120E;
-    --acento-suave: #1F3B33;
-    --recuerdo: #F2A07F;
-    --foco: #FFD25A;
-    --peligro: #FF9B8A;
-    --sobre-peligro: #2A0E0B;
+    color-scheme: light;
+    --fondo: #F6F4EE;
+    --superficie-1: #ECE9E0;
+    --superficie-2: #FFFFFF;
+    --superficie-3: #E2DFD4;
+    --borde-control: #6B7268;
+    --borde-suave: #D6D0C2;
+    --texto: #1A1D1A;
+    --texto-2: #3F463F;
+    --texto-3: #545B53;
+    --deshabilitado: #8A9187;
+    --acento: #0B6B57;
+    --acento-fuerte: #084F41;
+    --sobre-acento: #FFFFFF;
+    --acento-suave: #D5EDE6;
+    --recuerdo: #9A3F25;
+    --foco: #9A4D00;
+    --peligro: #A8321E;
+    --sobre-peligro: #FFFFFF;
   }
 }
 
-/* ---------- Paleta 3: alto contraste claro ---------- */
+/* ---------- Paleta 3: alto contraste oscuro (por defecto con contraste alto, y tema "oscuro") ---------- */
 
-html[data-contraste="alto"]:not([data-tema="oscuro"]) {
-  color-scheme: light;
-  --fondo: #FFFFFF;
-  --superficie-1: #F0F0F0;
-  --superficie-2: #FFFFFF;
-  --superficie-3: #E6E6E6;
-  --borde-control: #4A5148;
-  --borde-suave: #B0B0B0;
-  --texto: #000000;
-  --texto-2: #1A1A1A;
-  --texto-3: #1A1A1A;
-  --deshabilitado: #6E746C;
-  --acento: #004D3F;
-  --acento-fuerte: #003A30;
-  --sobre-acento: #FFFFFF;
-  --acento-suave: #D5EDE6;
-  --recuerdo: #6E2A18;
-  --foco: #7A3E00;
-  --peligro: #8A1F10;
-  --sobre-peligro: #FFFFFF;
-}
-
-/* ---------- Paleta 4: alto contraste oscuro ---------- */
-
-html[data-tema="oscuro"][data-contraste="alto"] {
+html[data-contraste="alto"]:not([data-tema="claro"]) {
   color-scheme: dark;
   --fondo: #000000;
   --superficie-1: #0A0D0A;
@@ -155,36 +134,61 @@ html[data-tema="oscuro"][data-contraste="alto"] {
   --sobre-peligro: #000000;
 }
 
-/* ---------- Paleta 4 (cuidador con tema automático y alto contraste, sistema oscuro) ---------- */
+/* ---------- Paleta 4: alto contraste claro (tema "claro" con contraste alto) ---------- */
 
-@media (prefers-color-scheme: dark) {
+html[data-contraste="alto"][data-tema="claro"] {
+  color-scheme: light;
+  --fondo: #FFFFFF;
+  --superficie-1: #F0F0F0;
+  --superficie-2: #FFFFFF;
+  --superficie-3: #E6E6E6;
+  --borde-control: #4A5148;
+  --borde-suave: #B0B0B0;
+  --texto: #000000;
+  --texto-2: #1A1A1A;
+  --texto-3: #1A1A1A;
+  --deshabilitado: #6E746C;
+  --acento: #004D3F;
+  --acento-fuerte: #003A30;
+  --sobre-acento: #FFFFFF;
+  --acento-suave: #D5EDE6;
+  --recuerdo: #6E2A18;
+  --foco: #7A3E00;
+  --peligro: #8A1F10;
+  --sobre-peligro: #FFFFFF;
+}
+
+/* ---------- Paleta 4 (cuidador con tema automático y contraste alto, sistema claro) ---------- */
+
+@media (prefers-color-scheme: light) {
   html[data-modo="cuidador"]:not([data-tema="claro"]):not([data-tema="oscuro"])[data-contraste="alto"] {
-    color-scheme: dark;
-    --fondo: #000000;
-    --superficie-1: #0A0D0A;
-    --superficie-2: #101410;
-    --superficie-3: #1C221D;
-    --borde-control: #BFC7BC;
-    --borde-suave: #4D4D4D;
-    --texto: #FFFFFF;
-    --texto-2: #E6E6E6;
-    --texto-3: #E6E6E6;
-    --deshabilitado: #8F968D;
-    --acento: #A6F5DC;
-    --acento-fuerte: #8FEBD0;
-    --sobre-acento: #000000;
-    --acento-suave: #0F2A22;
-    --recuerdo: #FFC2AD;
-    --foco: #FFE066;
-    --peligro: #FFB4A8;
-    --sobre-peligro: #000000;
+    color-scheme: light;
+    --fondo: #FFFFFF;
+    --superficie-1: #F0F0F0;
+    --superficie-2: #FFFFFF;
+    --superficie-3: #E6E6E6;
+    --borde-control: #4A5148;
+    --borde-suave: #B0B0B0;
+    --texto: #000000;
+    --texto-2: #1A1A1A;
+    --texto-3: #1A1A1A;
+    --deshabilitado: #6E746C;
+    --acento: #004D3F;
+    --acento-fuerte: #003A30;
+    --sobre-acento: #FFFFFF;
+    --acento-suave: #D5EDE6;
+    --recuerdo: #6E2A18;
+    --foco: #7A3E00;
+    --peligro: #8A1F10;
+    --sobre-peligro: #FFFFFF;
   }
 }
 
-/* ---------- Contraste alto por el sistema (prefers-contrast: more) ---------- */
+/* ---------- Contraste alto por el sistema (prefers-contrast: more) ----------
+   Repite las paletas de contraste alto con los mismos selectores que las normales, para que ganen por orden. */
 
 @media (prefers-contrast: more) {
-  html:not([data-tema="oscuro"]) {
+  html[data-tema="claro"]:not([data-contraste="alto"]) {
     color-scheme: light;
     --fondo: #FFFFFF;
     --superficie-1: #F0F0F0;
@@ -206,7 +210,7 @@ html[data-tema="oscuro"][data-contraste="alto"] {
     --sobre-peligro: #FFFFFF;
   }
 
-  html[data-tema="oscuro"]:not([data-contraste="alto"]) {
+  html:not([data-tema="claro"]):not([data-contraste="alto"]) {
     color-scheme: dark;
     --fondo: #000000;
     --superficie-1: #0A0D0A;
@@ -229,27 +233,27 @@ html[data-tema="oscuro"][data-contraste="alto"] {
   }
 }
 
-@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+@media (prefers-contrast: more) and (prefers-color-scheme: light) {
   html[data-modo="cuidador"]:not([data-tema="claro"]):not([data-tema="oscuro"]):not([data-contraste="alto"]) {
-    color-scheme: dark;
-    --fondo: #000000;
-    --superficie-1: #0A0D0A;
-    --superficie-2: #101410;
-    --superficie-3: #1C221D;
-    --borde-control: #BFC7BC;
-    --borde-suave: #4D4D4D;
-    --texto: #FFFFFF;
-    --texto-2: #E6E6E6;
-    --texto-3: #E6E6E6;
-    --deshabilitado: #8F968D;
-    --acento: #A6F5DC;
-    --acento-fuerte: #8FEBD0;
-    --sobre-acento: #000000;
-    --acento-suave: #0F2A22;
-    --recuerdo: #FFC2AD;
-    --foco: #FFE066;
-    --peligro: #FFB4A8;
-    --sobre-peligro: #000000;
+    color-scheme: light;
+    --fondo: #FFFFFF;
+    --superficie-1: #F0F0F0;
+    --superficie-2: #FFFFFF;
+    --superficie-3: #E6E6E6;
+    --borde-control: #4A5148;
+    --borde-suave: #B0B0B0;
+    --texto: #000000;
+    --texto-2: #1A1A1A;
+    --texto-3: #1A1A1A;
+    --deshabilitado: #6E746C;
+    --acento: #004D3F;
+    --acento-fuerte: #003A30;
+    --sobre-acento: #FFFFFF;
+    --acento-suave: #D5EDE6;
+    --recuerdo: #6E2A18;
+    --foco: #7A3E00;
+    --peligro: #8A1F10;
+    --sobre-peligro: #FFFFFF;
   }
 }
 
@@ -305,17 +309,18 @@ html[data-modo="cuidador"] {
   --sombra-3: 0 16px 40px rgba(26, 29, 26, 0.18);
 }
 
-html[data-modo="cuidador"][data-tema="oscuro"] {
+/* Sombras oscuras del cuidador en tema oscuro (por defecto) y en automático sin sistema claro. */
+html[data-modo="cuidador"]:not([data-tema="claro"]) {
   --sombra-1: none;
   --sombra-2: 0 8px 24px rgba(0, 0, 0, 0.45);
   --sombra-3: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   html[data-modo="cuidador"]:not([data-tema="claro"]):not([data-tema="oscuro"]) {
-    --sombra-1: none;
-    --sombra-2: 0 8px 24px rgba(0, 0, 0, 0.45);
-    --sombra-3: 0 16px 48px rgba(0, 0, 0, 0.55);
+    --sombra-1: 0 1px 2px rgba(26, 29, 26, 0.10);
+    --sombra-2: 0 6px 16px rgba(26, 29, 26, 0.12);
+    --sombra-3: 0 16px 40px rgba(26, 29, 26, 0.18);
   }
 }
 

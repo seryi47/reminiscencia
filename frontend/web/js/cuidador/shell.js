@@ -436,25 +436,36 @@ export function mountShell(appRoot, services) {
   tools.append(profileWrap, moreToggle, toolsMore);
   header.append(titleEl, headerSlot, tools);
 
-  // Navegación: barra lateral (escritorio), raíl (tableta) o barra inferior (teléfono). Mismo marcado.
+  // Navegación: barra lateral (escritorio), riel (tableta) o barra inferior (teléfono). Mismo marcado.
+  // Grupos de la barra lateral: «Escuchar» (Inicio), «Biblioteca» (con sus carpetas), y «Perfiles» y «Ajustes» sueltos.
+  // En teléfono y tableta, cada grupo es una columna o un bloque; data-tip repite el nombre para el tooltip del riel.
   const nav = el('nav', 'c-sidebar');
   nav.dataset.testid = 'c-sidebar';
   nav.setAttribute('aria-label', 'Principal');
   nav.append(el('p', 'c-brand', APP_NAME));
-  const navList = el('ul', 'c-nav-list');
   const navItems = [];
-  for (const dest of NAV_DESTINATIONS) {
+  const navItemFor = (dest) => {
     const item = el('li', 'c-nav-li');
     const button = el('button', 'c-nav-item');
     button.type = 'button';
     button.dataset.testid = dest.testid;
     button.dataset.key = dest.key;
+    button.dataset.tip = dest.label;
     button.append(createIcon(dest.icon), el('span', 'c-nav-label', dest.label));
     item.append(button);
-    navList.append(item);
     navItems.push({ key: dest.key, route: dest.route, button });
-  }
-  nav.append(navList);
+    return item;
+  };
+  const navGroupFor = (title, key) => {
+    const group = el('div', 'c-nav-grupo');
+    if (title) group.append(el('p', 'c-nav-titulo', title));
+    const list = el('ul', 'c-nav-list');
+    list.append(navItemFor(NAV_DESTINATIONS.find((dest) => dest.key === key)));
+    group.append(list);
+    return group;
+  };
+  const libraryGroup = navGroupFor('Biblioteca', 'biblioteca');
+  nav.append(navGroupFor('Escuchar', 'inicio'), libraryGroup, navGroupFor(null, 'perfiles'), navGroupFor(null, 'ajustes'));
 
   // Carpetas (solo en la barra lateral de escritorio). Filas de 28 px con recuento.
   const folders = el('div', 'c-folders');
@@ -466,7 +477,7 @@ export function mountShell(appRoot, services) {
   const folderList = el('ul', 'c-folder-list');
   folderList.id = 'c-folder-list';
   folders.append(foldersToggle, folderList);
-  nav.append(folders);
+  libraryGroup.append(folders);
 
   const openPatient = el('button', 'c-btn c-btn--primary c-open-patient');
   openPatient.type = 'button';
