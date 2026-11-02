@@ -23,7 +23,7 @@ Quieres que todo funcione desde la web de Vercel y desde la APK, sin depender de
    *Qué queda vigente:* Vercel sirve la web estática de `frontend/web`. No hay página de administración, ni funciones `api/*`, ni contraseña (ADR-0008).
 5. **[Superado por ADR-0008]** **Workflow `library.yml`** (`workflow_dispatch`): importar URL, publicar/despublicar, organizar carpetas y editar metadatos. Usa ffmpeg del runner, hace commit y push con `GITHUB_TOKEN`. Un grupo de concurrencia evita dos escrituras a la vez.
 
-   *Qué queda vigente:* el workflow es `biblioteca.yml`, con dos jobs separados (`procesar` y `publicar`; ADR-0009). Un único grupo de concurrencia (`library-catalog`) evita dos escrituras a la vez.
+   *Qué queda vigente:* el workflow es `biblioteca.yml`, con dos jobs separados (`procesar` y `publicar`; ADR-0010). Un único grupo de concurrencia (`library-catalog`) evita dos escrituras a la vez.
 6. **APK:** leerá el catálogo público desde `https://reminiscencia.vercel.app/data/songs.json`.
 
    *Implementado:* `mobile/lib/library_store.dart` lee `data/songs.json` y `data/folders.json` de `https://reminiscencia.vercel.app/` y guarda una copia para escuchar sin conexión.

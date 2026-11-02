@@ -1,7 +1,7 @@
 # Almacenamiento en GitHub: audio, catálogo y límites
 
 - Estado: refleja `main` en el commit b3daf9f (2026-11-02).
-- Decisiones: ADR-0003 (almacenamiento en el ecosistema GitHub, parcialmente superada), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo), ADR-0008 (entrada por incidencias) y ADR-0009 (procesado y publicación separados).
+- Decisiones: ADR-0003 (almacenamiento en el ecosistema GitHub, parcialmente superada), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo), ADR-0008 (entrada por incidencias) y ADR-0010 (procesado y publicación separados).
 - Código: `backend/sonidos/` (`limits.py`, `catalog.py`, `pipeline.py`, `publish.py`, `paquete.py`) y `scripts/check_repo_limits.py`.
 
 ## 1. Qué hay en el repositorio
@@ -64,7 +64,7 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 | Etiquetas | 20 por canción, de 40 caracteres como máximo | igual |
 | Cambios en un paquete | 2000 | `paquete.py`, `MAX_CHANGES` |
 
-## 6. Flujo de incidencias (ADR-0008, ADR-0009)
+## 6. Flujo de incidencias (ADR-0008, ADR-0010)
 
 1. **Petición.** El propietario abre una incidencia con la etiqueta `biblioteca`. Su cuerpo son líneas `clave: valor` (`action: import` con `url`, `license` y `title`, o `action: organize` con un `payload` en JSON de una línea). La web prepara el texto y abre el formulario de nueva incidencia de GitHub con el texto ya escrito; lo envía el propietario. El workflow solo actúa si el autor es el propietario y la etiqueta está al crear la incidencia: si se añade después, no se lanza (ADR-0008).
 2. **Validación.** `scripts/issue_request.py` valida la petición con `sonidos/issue_request.py`: claves y operaciones en lista blanca, identificadores con formato fijo, límites de longitud y booleanos JSON estrictos.
@@ -78,7 +78,7 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
    Después aplica el paquete (`scripts/aplicar_paquete.py`), comprueba los límites, confirma con `github-actions[bot]` y sube a `main`.
 5. **Respuesta.** `scripts/responder_incidencia.py` comenta en la incidencia. Si todo salió bien, la cierra. Si algo falló, le añade la etiqueta `error`.
 
-**Garantías y límites.** Un único grupo de concurrencia (`library-catalog`) evita dos escrituras a la vez, y las peticiones en espera no se cancelan (ADR-0008). La validación comprueba rutas y tipos de fichero, no el contenido: un procesado comprometido podría escribir contenido indebido en las rutas permitidas (riesgo residual de ADR-0009).
+**Garantías y límites.** Un único grupo de concurrencia (`library-catalog`) evita dos escrituras a la vez, y las peticiones en espera no se cancelan (ADR-0008). La validación comprueba rutas y tipos de fichero, no el contenido: un procesado comprometido podría escribir contenido indebido en las rutas permitidas (riesgo residual de ADR-0010).
 
 ## 7. Prueba real y pendientes
 

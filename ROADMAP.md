@@ -114,4 +114,4 @@ Colaboradores e Internet Archive:
 Documentación por actualizar:
 - CHANGELOG, ADR-0005, ADR-0007, ADR-0008 (sus cifras de pruebas están desactualizadas), RELEASE.md y DESIGN.md (su estado).
 - Las referencias a ARCHITECTURE y GITHUB_STORAGE, que todavía no existen.
-- Dos ficheros `ADR-0009` en `docs/decisions/`: el de la interfaz única y el de procesado y publicación. Hay que renumerar uno.
+- Numeración: `ADR-0009` es la interfaz única y `ADR-0010` el procesado y la publicación separados (renumerado el 2026-11-02).
