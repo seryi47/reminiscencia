@@ -188,11 +188,13 @@ describe("P1 · Escuchar a 390 × 844 px (teléfono)", () => {
     }),
   );
 
-  prueba("P1 a 390 px: la barra inferior mide 72 px de alto", () =>
+  // El rediseño fija la barra inferior en 64 px de contenido (paciente-shell.css, min-height) más 1 px del borde
+  // superior: 65 px medidos en el navegador. Ya no son los 72 px de la versión anterior del diseño.
+  prueba("P1 a 390 px: la barra inferior mide 65 px de alto (64 px del marco más el borde de 1 px)", () =>
     withPage(browser, VIEWPORTS.telefono, async (page) => {
       await openPatientMode(page, server.url);
       const caja = await measure(page, "p-nav", "barra inferior del paciente");
-      expectSize("Barra inferior (alto)", caja.height, 72);
+      expectSize("Barra inferior (alto)", caja.height, 65);
     }),
   );
 

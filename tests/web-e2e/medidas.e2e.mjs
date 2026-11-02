@@ -2,7 +2,7 @@
 // Valores de la especificación del rediseño:
 //   Escritorio (≥1024 px): barra lateral de 240 px; título de página de 40 px con peso 700; reproductor fijo de 76 px.
 //   Tableta (600–1023 px): riel lateral de 72 px; reproductor de 76 px.
-//   Teléfono (<600 px): barra de pestañas inferior con cinco destinos; minirreproductor de 64 px; objetivos táctiles de 44 px.
+//   Teléfono (<600 px): barra de pestañas inferior con cuatro destinos (DESIGN 3.1 y P-2); minirreproductor de 64 px; objetivos táctiles de 44 px.
 // Tolerancia de medida: ±2 px («±2 px es la tolerancia de medición»). Los mínimos («o más») se miden con la misma tolerancia.
 // Las medidas que la especificación no fija no se comprueban aquí. Además, cada ancho guarda capturas de las pantallas
 // de ambos modos en tests/web-e2e/capturas.
@@ -185,7 +185,7 @@ describe("Rediseño · 390 × 844 px (teléfono)", () => {
     }),
   );
 
-  prueba("390 px · Escuchar: la barra inferior muestra sus cinco destinos", () =>
+  prueba("390 px · Escuchar: la barra inferior muestra sus cuatro destinos", () =>
     withPage(browser, telefono, async (page) => {
       await openPatientMode(page, server.url);
       await waitVisible(page, "p-nav", { context: "barra inferior del paciente" });
@@ -200,7 +200,7 @@ describe("Rediseño · 390 × 844 px (teléfono)", () => {
       });
       assert.deepEqual(faltan, [], "Destinos ausentes de la barra inferior:");
       const destinos = await countInteractive(page, "p-nav", "barra inferior del paciente");
-      assert.equal(destinos, 5, `La barra inferior muestra ${destinos} destinos y la especificación fija cinco.`);
+      assert.equal(destinos, 4, `La barra inferior muestra ${destinos} destinos y la especificación (DESIGN 3.1, P-2) fija cuatro.`);
     }),
   );
 

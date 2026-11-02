@@ -71,7 +71,8 @@ export function openExitDialog(services) {
   const bodyNode = element('p', { class: 'p5-texto' });
 
   // ---- Teclado del PIN (P-16). Las teclas numéricas no se limitan por tiempo: un PIN puede repetir dígitos.
-  const indicatorsNode = element('div', { class: 'p5-indicadores' });
+  // role="group" da sentido al aria-label del contenedor (un div sin rol no admite aria-label).
+  const indicatorsNode = element('div', { class: 'p5-indicadores', role: 'group' });
   const keyButtons = [];
   const digitKey = (digit) => {
     const button = element('button', {
