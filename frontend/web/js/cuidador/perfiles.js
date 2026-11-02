@@ -525,7 +525,8 @@ export function mountProfiles(root, services) {
   services.setTitle?.('Perfiles');
   services.setActive?.('perfiles');
 
-  const title = el('h1', { id: 'cp-titulo-perfiles', tabindex: '-1' }, 'Perfiles');
+  // El H1 de la pantalla es el de la cabecera del marco (C-1); el título de la pantalla es un H2.
+  const title = el('h2', { id: 'cp-titulo-perfiles', class: 'cp-titulo-pantalla', tabindex: '-1' }, 'Perfiles');
   const newButton = el('button', { type: 'button', class: 'cp-boton cp-boton--primario', 'data-testid': 'c-profile-new' },
     'Nuevo perfil');
   newButton.addEventListener('click', () => services.navigate('asistente'));

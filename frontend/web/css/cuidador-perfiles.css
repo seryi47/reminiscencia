@@ -13,8 +13,8 @@
   min-width: 0;
 }
 
-/* Encabezado de página grande: 40 px, peso 700 (especificación de rediseño). */
-.cp-pantalla h1 {
+/* Encabezado de página grande: 40 px, peso 700 (especificación de rediseño). Es un H2 (el H1 es el de la cabecera). */
+.cp-pantalla .cp-titulo-pantalla {
   margin: 0;
   font: 700 calc(40px * var(--escala, 1)) / calc(46px * var(--escala, 1)) var(--familia-base);
   color: var(--texto);

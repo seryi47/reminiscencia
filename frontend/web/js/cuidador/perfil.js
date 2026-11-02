@@ -562,7 +562,8 @@ export function mountProfile(root, services, params = {}) {
   let panelGeneration = 0;
   const profileId = typeof params.profileId === 'string' ? params.profileId : '';
 
-  const title = el('h1', { id: 'cp-titulo-perfil', tabindex: '-1' }, 'Perfil');
+  // El H1 de la pantalla es el de la cabecera del marco (C-1); el título de la pantalla es un H2.
+  const title = el('h2', { id: 'cp-titulo-perfil', class: 'cp-titulo-pantalla', tabindex: '-1' }, 'Perfil');
   const aliasInput = el('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', 'data-testid': 'c-profile-alias' });
   const aliasField = labeledField({
     id: 'cp-perfil-alias',
