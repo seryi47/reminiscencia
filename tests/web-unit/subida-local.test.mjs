@@ -10,10 +10,13 @@ import {
   buildOggOpus,
   checkFileLimits,
   checkSpace,
+  deleteLocalSong,
   estimateOpusBytes,
   formatMegabytes,
+  isDeletableSong,
   isLocalAudioUrl,
   LOCAL_AUDIO_ACCEPT,
+  LocalAudioError,
   MAX_DURATION_S,
   MAX_FILE_BYTES,
   newLocalSongId,
@@ -22,6 +25,7 @@ import {
   outputFormat,
   packetSamples,
   preSkipFromHead,
+  songFromRecord,
   SPACE_RESERVE_BYTES,
   titleFromFileName,
 } from '../../frontend/web/js/cuidador/subida-local.js';
@@ -256,5 +260,115 @@ describe('canciones locales en la descarga sin conexión', () => {
       { id: 'L00112233aabbccdd', title: 'Local', local: true, audio: 'blob:https://x.example/1' },
     ];
     assert.deepEqual(listAudioUrls(songs), ['audio/S1.opus']);
+  });
+});
+
+// Un IndexedDB falso y mínimo: basta para abrir la base, borrar un registro y terminar la transacción.
+function fakeIndexedDb({ records = [], failDelete = false } = {}) {
+  const store = new Map(records.map((record) => [record.id, record]));
+  const stores = new Set(['pistas']);
+  const db = {
+    objectStoreNames: { contains: (name) => stores.has(name) },
+    createObjectStore(name) {
+      stores.add(name);
+    },
+    transaction() {
+      const tx = { oncomplete: null, onerror: null, onabort: null, error: null };
+      const objectStore = {
+        delete(key) {
+          const req = { onsuccess: null };
+          setTimeout(() => {
+            if (failDelete) {
+              tx.error = new Error('fallo simulado');
+              tx.onerror?.();
+              return;
+            }
+            store.delete(key);
+            req.onsuccess?.();
+            tx.oncomplete?.();
+          }, 0);
+          return req;
+        },
+      };
+      tx.objectStore = () => objectStore;
+      return tx;
+    },
+    close() {},
+  };
+  const indexedDB = {
+    open() {
+      const request = { result: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+      setTimeout(() => {
+        request.result = db;
+        request.onupgradeneeded?.();
+        request.onsuccess?.();
+      }, 0);
+      return request;
+    },
+  };
+  return { env: { indexedDB }, store };
+}
+
+// Registra las URL de objeto revocadas durante la prueba, sin cambiar lo que hace el navegador.
+async function withRevokeSpy(work) {
+  const revoked = [];
+  const original = URL.revokeObjectURL;
+  URL.revokeObjectURL = (url) => {
+    revoked.push(url);
+    original.call(URL, url);
+  };
+  try {
+    return await work(revoked);
+  } finally {
+    URL.revokeObjectURL = original;
+  }
+}
+
+describe('canciones que se pueden borrar desde este navegador', () => {
+  test('solo las subidas aquí (marca local e id L) son borrables', () => {
+    assert.equal(isDeletableSong({ id: 'L00112233aabbccdd', title: 'Local', local: true }), true);
+    assert.equal(isDeletableSong({ id: 'Sabcdef0123456789', title: 'Catálogo' }), false);
+    assert.equal(isDeletableSong({ id: 'Sabcdef0123456789', title: 'Catálogo', local: true }), false);
+    assert.equal(isDeletableSong({ id: 'L00112233aabbccdd', title: 'Sin marca' }), false);
+    assert.equal(isDeletableSong({ title: 'Sin id', local: true }), false);
+    assert.equal(isDeletableSong(null), false);
+  });
+});
+
+describe('borrado de una canción local', () => {
+  test('rechaza una canción pública sin tocar la base de datos', async () => {
+    const { env, store } = fakeIndexedDb({ records: [{ id: 'L00112233aabbccdd' }] });
+    await assert.rejects(deleteLocalSong('Sabcdef0123456789', env), LocalAudioError);
+    assert.equal(store.has('L00112233aabbccdd'), true);
+  });
+
+  test('quita el registro de IndexedDB y revoca la URL de objeto que lo reproducía', async () => {
+    const record = { id: 'L0011223344556677', title: 'Local', durationS: 60, blob: new Blob([new Uint8Array(8)]) };
+    const { env, store } = fakeIndexedDb({ records: [record] });
+    const song = songFromRecord(record);
+    await withRevokeSpy(async (revoked) => {
+      await deleteLocalSong(song.id, env);
+      assert.equal(store.has(record.id), false);
+      assert.deepEqual(revoked, [song.audio]);
+    });
+  });
+
+  test('si el borrado falla, el registro y la URL se conservan y el error es claro', async () => {
+    const record = { id: 'L8899aabbccddeeff', title: 'Local', durationS: 30, blob: new Blob([new Uint8Array(4)]) };
+    const { env, store } = fakeIndexedDb({ records: [record], failDelete: true });
+    const song = songFromRecord(record);
+    await withRevokeSpy(async (revoked) => {
+      await assert.rejects(deleteLocalSong(song.id, env), (error) => {
+        assert.ok(error instanceof LocalAudioError);
+        assert.equal(error.message, 'No se pudo borrar la canción de este navegador.');
+        return true;
+      });
+      assert.equal(store.has(record.id), true);
+      assert.deepEqual(revoked, []);
+    });
+  });
+
+  test('sin almacenamiento de audio en el navegador avisa en lugar de fallar en silencio', async () => {
+    await assert.rejects(deleteLocalSong('L0011223344556677', {}), LocalAudioError);
   });
 });

@@ -96,8 +96,10 @@ export function mountWizard(root, services) {
       hasPin = false;
     });
 
-  // El H1 de la pantalla es el de la cabecera del marco (C-1); el título del asistente es un H2.
-  const title = el('h2', { id: 'cp-titulo-asistente', class: 'cp-titulo-pantalla', tabindex: '-1' }, 'Nuevo perfil');
+  // El H1 de la pantalla es el de la cabecera del marco (C-1); el título del asistente es un H2. Como el marco ya
+  // muestra «Nuevo perfil», el H2 queda oculto a la vista (no se repite) pero sigue en el árbol de accesibilidad
+  // y nombra la sección (aria-labelledby).
+  const title = el('h2', { id: 'cp-titulo-asistente', class: 'cp-titulo-pantalla visually-hidden', tabindex: '-1' }, 'Nuevo perfil');
   const indicator = el('p', { class: 'cp-paso', 'data-testid': 'c-wizard-step', 'aria-live': 'polite' });
   const body = el('div', { class: 'cp-paso-cuerpo' });
   const problem = createErrorNode({ id: 'cp-asistente-error' });

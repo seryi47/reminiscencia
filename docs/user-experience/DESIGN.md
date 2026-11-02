@@ -58,7 +58,7 @@ Cuatro destinos: **Inicio**, **Biblioteca**, **Perfiles** y **Ajustes**. El acce
 |---|---|---|
 | C1 | Inicio | Perfil activo y «Abrir modo paciente». Pendientes (canciones sin familiaridad, recuerdos sin fotografía, listas vacías) con enlace. Última sesión y resumen del día. Avisos: copia con más de 14 días, almacenamiento por encima del 80 %, almacenamiento persistente no concedido, registro del estudio activo, app no instalada en iOS. |
 | C2 | Biblioteca | Tabla de canciones del catálogo, con búsqueda (Ctrl/Cmd+K), filtros (Todas, Sin familiaridad, Con recuerdo, Sin conexión) y selección múltiple con barra de acciones. Las carpetas están en la barra lateral (escritorio) o en un menú (resto). El catálogo publicado es de solo lectura. |
-| C2a | Biblioteca: añadir audio | «Añadir audio desde este dispositivo» (archivos WAV, MP3, M4A, OGG o FLAC): se convierten a Opus en el navegador y se guardan solo ahí (ADR-0012). Progreso con texto y barra, aviso de espacio y de navegador sin soporte; las canciones suben a la tabla y las marca como locales. |
+| C2a | Biblioteca: añadir audio | «Añadir audio desde este dispositivo» (archivos WAV, MP3, M4A, OGG o FLAC): se convierten a Opus en el navegador y se guardan solo ahí (ADR-0012). Progreso con texto y barra, aviso de espacio y de navegador sin soporte; las canciones suben a la tabla y las marca como locales. Borrado: «Borrar de este navegador» en el menú de la fila, solo para las locales, con confirmación. |
 | C2b | Panel de canción | Ficha de la canción seleccionada o, sin selección, de la que suena (C-20). |
 | C3 | Perfiles | Tarjetas con alias, código de participante opcional, canciones asociadas, recuerdos y última sesión. «Nuevo perfil» abre C3e. |
 | C3a | Perfil | Alias editable, código, «Opciones del paciente» (C3f) y cinco pestañas. **Canciones**: familiaridad, preferencia y presentación de cada canción, con «Asociar canciones». **Recuerdos**: lista y «Nuevo recuerdo». **Listas**: listas del perfil y «Nueva lista». **Observaciones**: cronológicas, con «Nueva observación». **Historial**: escuchas agrupadas por día con resumen diario; filtros por fechas, sesión y presentación; «Exportar CSV». |
@@ -662,7 +662,7 @@ Verificado en el código de `feat/ui-publica` (commit 9d4ae8f), que es la interf
 | — | Copia cifrada (§9) | Implementado | Combinar por defecto; sustituir exige la casilla. |
 | — | PIN (§9, D12) | Implementado | De 4 a 6 dígitos; bloqueo tras cinco fallos (discrepancia 4). |
 | — | Registro del estudio (§8.4) | Parcial | Ver discrepancia 7. |
-| — | Sin conexión (§8.1, §9) | Implementado | Caché del shell `reminiscencia-shell-v2` y del audio `reminiscencia-audio-v1`. |
+| — | Sin conexión (§8.1, §9) | Implementado | Caché del shell `reminiscencia-shell-v4` y del audio `reminiscencia-audio-v1`. |
 | — | Atajos de una tecla (§7.4) | Parcial | Ver discrepancia 8. |
 
 **Discrepancias funcionales con esta especificación.** No cambian ninguna decisión; quedan como pendientes en [ROADMAP](../../ROADMAP.md).

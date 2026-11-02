@@ -419,6 +419,35 @@ export async function loadLocalSongs(env = globalThis) {
   }
 }
 
+/**
+ * Dice si una canción puede borrarse desde este navegador: solo las subidas aquí (marca local y id «L»).
+ * Las canciones públicas del catálogo nunca cumplen esto.
+ */
+export function isDeletableSong(song) {
+  return song?.local === true && typeof song.id === 'string' && song.id.startsWith(LOCAL_ID_PREFIX);
+}
+
+/**
+ * Borra una canción subida desde este navegador: su registro de IndexedDB y la URL de objeto que la reproduce.
+ * Un id que no es local se rechaza sin tocar la base de datos. La URL se revoca solo si el borrado ha terminado.
+ */
+export async function deleteLocalSong(id, env = globalThis) {
+  if (typeof id !== 'string' || !id.startsWith(LOCAL_ID_PREFIX)) {
+    throw new LocalAudioError('Solo se pueden borrar las canciones subidas desde este navegador.');
+  }
+  try {
+    await withStore('readwrite', (store) => store.delete(id), env);
+  } catch (error) {
+    if (error instanceof LocalAudioError) throw error;
+    throw new LocalAudioError('No se pudo borrar la canción de este navegador.');
+  }
+  const url = objectUrls.get(id);
+  if (url) {
+    URL.revokeObjectURL(url);
+    objectUrls.delete(id);
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -24,7 +24,7 @@ El cuidador quiere escuchar con el paciente canciones que tiene en su propio dis
 
 - Las canciones viven solo en ese navegador. Borrar los datos del sitio o cambiar de dispositivo las elimina. No hay copia de estos audios, y es una decisión, no un descuido.
 - **Metadatos fuera de la copia.** El encargo decía «solo metadatos» en la copia cifrada. Aquí la copia no lleva ni audio ni metadatos de estas canciones. Incluirlos exigiría subir `payloadVersion` y la validación de `schema.js`, y sin el audio no suenan. **Pendiente de confirmar por el propietario.**
-- En esta versión solo se pueden añadir canciones; no hay opción para borrarlas.
+- Borrado: cada canción subida desde este navegador se borra desde «Más opciones» de su fila, con confirmación («¿Borrar esta canción de este navegador? No se puede deshacer.»). Quita el registro de IndexedDB y la URL de objeto. Las canciones públicas no tienen esa opción. Los vínculos de esa canción con perfiles y listas no se borran: quedan en el almacén sin canción a la que apuntar. Pendiente de limpiar.
 - La canción se identifica con `L` más 16 hexadecimales. Los identificadores del catálogo empiezan por `S`, así que no chocan.
 - Verificación: pruebas unitarias en Node (título, límites, tamaño, espacio, CRC y empaquetado Ogg). Conversión real probada en Chrome 155 con WAV, MP3, FLAC y M4A: duración exacta, Ogg Opus que ffmpeg decodifica sin avisos y que el `<audio>` del navegador reproduce. Fidelidad objetiva de 31 dB en un estéreo de tonos puros. Esto no sustituye una prueba de escucha.
 
