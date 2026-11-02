@@ -437,7 +437,7 @@ Este documento no modifica estos ficheros. Cada punto necesita corrección o una
 - **[RESEARCH.md](RESEARCH.md)**: las correcciones de las verificaciones ([B1], [B2], [B4], [B5] y [B6]) están aplicadas desde el 2 de noviembre de 2026. La antigua «Réplica en 2015» no era una réplica de B4: es otro estudio ([clinica-03]).
 - **RESEARCH.md**, sección 5: pide comparar «música personalizada, lista genérica, silencio y, si se contrasta H4, con y sin fotografía». DESIGN §8.3 no incluye silencio ni lista genérica.
 - **DESIGN.md**, §1: declara que la interfaz permite evaluar familiaridad, recuerdos y fotografía (H3, H2 y H4). No define la comparación de H1.
-- **DESIGN.md**, §9 y P-16, frente a **SECURITY.md** §3.3: el bloqueo del PIN es de 60 s en §9 y de 45 s en P-16, y el código acepta de 4 a 12 dígitos. SECURITY.md §2.1 señala además que DESIGN fija 10 MB en C-22 y el código 8 MB.
+- **DESIGN.md**, §9 y P-16, frente a **SECURITY.md** §3.3: el bloqueo del PIN es de 60 s en §9 y en P-16 (corregido el 2026-11-02), y el código acepta de 4 a 6 dígitos. SECURITY.md §2.1 señala además que DESIGN fija 10 MB en C-22 y el código 8 MB.
 - **ROADMAP.md**, línea 38 (Plan v2: «sin pruebas perceptuales con personas» en compresión), frente a **docs/audio-processing/COMPRESSION.md**, «Próximos pasos» (prueba MUSHRA).
 - **docs/audio-processing/COMPRESSION.md**, líneas 264, 265 y 274: ya coinciden con la bibliografía (BS.1534-3, RFC 6716 en Standards Track y Gray y Markel registrado en Crossref). No queda discrepancia en esas líneas.
 - **[BIBLIOGRAPHY.md](BIBLIOGRAPHY.md)**, apartado «Documentos de uso»: dice que ALZHEIMER_RESEARCH, METHODOLOGY y SECURITY existían «en el worktree (sin commit)». Corregido: están en `main` desde el commit 0d8b004.
