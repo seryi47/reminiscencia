@@ -30,12 +30,15 @@
         <p class="nav-empty" id="tree-empty" hidden>Aún no hay carpetas.</p>
       </nav>
 
-      <p class="side-foot">Grabaciones de dominio público.</p>
+      <div class="side-foot">
+        <p>Grabaciones de dominio público.</p>
+        <a class="side-manage" href="#gestion" id="open-gestion">Gestionar</a>
+      </div>
     </aside>
 
     <div class="scrim" id="scrim" hidden></div>
 
-    <section class="content" id="main" tabindex="-1">
+    <main class="content" id="main" tabindex="-1">
       <header class="top">
         <label class="search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
@@ -56,7 +59,132 @@
         <ol class="list" id="list" aria-label="Canciones"></ol>
         <p class="empty" id="empty" hidden>No hay canciones que coincidan.</p>
       </div>
-    </section>
+
+      <details class="gestion" id="gestion">
+        <summary><h2 class="gestion-title">Gestionar la biblioteca</h2></summary>
+        <div class="gestion-body">
+          <p class="muted g-intro">Cada cambio se envía como una incidencia de GitHub, así que hace falta una cuenta de GitHub. Después de pulsar «Submit new issue» en GitHub, el sistema procesa la petición y la web se actualiza sola cuando termina.</p>
+          <p class="g-msg" id="g-status" aria-live="polite"></p>
+
+          <div class="g-grid">
+            <form class="g-card" id="g-add-form" novalidate aria-labelledby="g-h-add">
+              <h3 id="g-h-add">Añadir audio</h3>
+              <p class="g-help" id="g-add-help">Un ítem de Internet Archive (archive.org/details/…) o un enlace directo a un fichero de audio (mp3, flac, ogg, opus, m4a o wav). No se admiten YouTube ni plataformas de streaming.</p>
+              <label class="field">
+                <span>Dirección del audio</span>
+                <input type="url" id="g-add-url" name="url" autocomplete="off" spellcheck="false" maxlength="2048" aria-describedby="g-add-help">
+              </label>
+              <div class="g-license" id="g-add-license-wrap" hidden>
+                <label class="field">
+                  <span>Licencia de uso (obligatoria en un fichero directo)</span>
+                  <input type="text" id="g-add-license" name="license" autocomplete="off" maxlength="300">
+                </label>
+              </div>
+              <label class="field">
+                <span>Título (opcional)</span>
+                <input type="text" id="g-add-title" name="title" autocomplete="off" maxlength="200">
+              </label>
+              <div class="g-actions">
+                <button class="btn btn-primary" type="submit">Preparar la petición</button>
+              </div>
+              <p class="g-msg" id="g-add-msg" aria-live="polite"></p>
+            </form>
+
+            <section class="g-card" aria-labelledby="g-h-folders">
+              <h3 id="g-h-folders">Carpetas</h3>
+
+              <form class="g-sub" id="g-create-form" novalidate aria-labelledby="g-h-create">
+                <h4 id="g-h-create">Crear carpeta</h4>
+                <label class="field">
+                  <span>Nombre (de 1 a 80 caracteres)</span>
+                  <input type="text" id="g-create-name" name="name" autocomplete="off" maxlength="80">
+                </label>
+                <label class="field">
+                  <span>Carpeta padre (opcional)</span>
+                  <select id="g-create-parent"><option value="">Cargando…</option></select>
+                </label>
+                <div class="g-actions">
+                  <button class="btn btn-primary" type="submit">Preparar la petición</button>
+                </div>
+                <p class="g-msg" id="g-create-msg" aria-live="polite"></p>
+              </form>
+
+              <form class="g-sub" id="g-rename-form" novalidate aria-labelledby="g-h-rename">
+                <h4 id="g-h-rename">Renombrar carpeta</h4>
+                <label class="field">
+                  <span>Carpeta</span>
+                  <select id="g-rename-folder"><option value="">Cargando…</option></select>
+                </label>
+                <label class="field">
+                  <span>Nombre nuevo (de 1 a 80 caracteres)</span>
+                  <input type="text" id="g-rename-name" name="name" autocomplete="off" maxlength="80">
+                </label>
+                <div class="g-actions">
+                  <button class="btn btn-primary" type="submit">Preparar la petición</button>
+                </div>
+                <p class="g-msg" id="g-rename-msg" aria-live="polite"></p>
+              </form>
+
+              <form class="g-sub" id="g-delete-form" novalidate aria-labelledby="g-h-delete">
+                <h4 id="g-h-delete">Borrar carpeta</h4>
+                <label class="field">
+                  <span>Carpeta</span>
+                  <select id="g-delete-folder"><option value="">Cargando…</option></select>
+                </label>
+                <label class="check">
+                  <input type="checkbox" id="g-delete-confirm">
+                  <span>Confirmo que quiero borrar esta carpeta. Sus canciones y subcarpetas suben al nivel superior.</span>
+                </label>
+                <div class="g-actions">
+                  <button class="btn btn-primary" type="submit">Preparar la petición</button>
+                </div>
+                <p class="g-msg" id="g-delete-msg" aria-live="polite"></p>
+              </form>
+            </section>
+
+            <form class="g-card" id="g-song-form" novalidate aria-labelledby="g-h-songs">
+              <h3 id="g-h-songs">Canciones</h3>
+              <label class="field">
+                <span>Canción</span>
+                <select id="g-song-select"><option value="">Cargando…</option></select>
+              </label>
+              <p class="g-help">Solo se envían los campos que cambies.</p>
+              <fieldset class="g-fields" id="g-song-fields" disabled>
+                <legend class="visually-hidden">Datos de la canción</legend>
+                <label class="field">
+                  <span>Título</span>
+                  <input type="text" id="g-song-title" name="title" autocomplete="off" maxlength="200">
+                </label>
+                <label class="field">
+                  <span>Artista</span>
+                  <input type="text" id="g-song-artist" name="artist" autocomplete="off" maxlength="200">
+                </label>
+                <label class="field">
+                  <span>Año (vacío si no se conoce)</span>
+                  <input type="text" id="g-song-year" name="year" inputmode="numeric" autocomplete="off" maxlength="4">
+                </label>
+                <label class="field">
+                  <span>Etiquetas (separadas por comas)</span>
+                  <input type="text" id="g-song-tags" name="tags" autocomplete="off">
+                </label>
+                <label class="field">
+                  <span>Carpeta</span>
+                  <select id="g-song-folder"><option value="">Sin carpeta</option></select>
+                </label>
+                <label class="check">
+                  <input type="checkbox" id="g-song-public">
+                  <span>Publicada en la web</span>
+                </label>
+                <div class="g-actions">
+                  <button class="btn btn-primary" type="submit">Preparar la petición</button>
+                </div>
+              </fieldset>
+              <p class="g-msg" id="g-song-msg" aria-live="polite"></p>
+            </form>
+          </div>
+        </div>
+      </details>
+    </main>
 
     <!-- Reproductor fijo (escritorio) / minirreproductor (móvil) -->
     <section class="player" aria-label="Reproductor">
@@ -133,5 +261,6 @@
   </div>
 
   <script src="app.js"></script>
+  <script type="module" src="js/gestion.js"></script>
 </body>
 </html>
