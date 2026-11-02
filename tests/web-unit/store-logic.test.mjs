@@ -14,9 +14,9 @@ import {
 } from '../../frontend/web/js/store.js';
 import { validatePatientOptions, validateSettings } from '../../frontend/web/js/schema.js';
 
-test('constantes del contrato: base reminiscencia, versión 2 (registro del estudio)', () => {
+test('constantes del contrato: base reminiscencia, versión 3 (borradores de recuerdo)', () => {
   assert.equal(DB_NAME, 'reminiscencia');
-  assert.equal(DB_VERSION, 2);
+  assert.equal(DB_VERSION, 3);
 });
 
 test('alias: se valida igual que en el almacén (1–60 caracteres, sin vacíos ni saltos de línea)', () => {
@@ -83,6 +83,15 @@ test('valores por defecto: ajustes del dispositivo y opciones del paciente cumpl
   assert.equal(DEFAULT_SETTINGS.wakeLock, true);
   assert.equal(DEFAULT_SETTINGS.alwaysPatientMode, false);
   assert.equal(DEFAULT_SETTINGS.sleepTimerMinutes, null);
+  assert.equal(DEFAULT_SETTINGS.studyRecording, true);
+});
+
+test('combinar: una descripción de fotografía cambiada (fecha de cambio) gana a la copia antigua', () => {
+  const local = [{ id: 'foto-1', createdAt: 100, updatedAt: 300, caption: 'Cambiada' }];
+  const older = [{ id: 'foto-1', createdAt: 100, caption: 'Original' }];
+  assert.deepEqual(planMerge(local, older), []);
+  const newer = [{ id: 'foto-1', createdAt: 100, updatedAt: 400, caption: 'Más reciente' }];
+  assert.deepEqual(planMerge(local, newer), newer);
 });
 
 test('las preferencias de pantalla no están en los ajustes del dispositivo', () => {

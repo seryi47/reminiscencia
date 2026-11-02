@@ -165,14 +165,15 @@ test('el historial no cuenta eventos que no son fin de pista y sin escuchas no d
 });
 
 test('las migraciones se numeran en orden y terminan en la versión de la base', () => {
-  assert.deepEqual(SCHEMA_MIGRATIONS.map((migration) => migration.version), [1, 2]);
+  assert.deepEqual(SCHEMA_MIGRATIONS.map((migration) => migration.version), [1, 2, 3]);
   assert.equal(SCHEMA_MIGRATIONS.at(-1).version, DB_VERSION);
 });
 
-test('migraciones pendientes: de una base nueva, de la versión 1 y ya al día', () => {
-  assert.deepEqual(pendingMigrations(0).map((m) => m.version), [1, 2]);
-  assert.deepEqual(pendingMigrations(1).map((m) => m.version), [2]);
-  assert.deepEqual(pendingMigrations(2), []);
+test('migraciones pendientes: de una base nueva, de la versión 1, de la 2 y ya al día', () => {
+  assert.deepEqual(pendingMigrations(0).map((m) => m.version), [1, 2, 3]);
+  assert.deepEqual(pendingMigrations(1).map((m) => m.version), [2, 3]);
+  assert.deepEqual(pendingMigrations(2).map((m) => m.version), [3]);
+  assert.deepEqual(pendingMigrations(3), []);
   assert.deepEqual(pendingMigrations(0, 1).map((m) => m.version), [1]);
 });
 
@@ -196,27 +197,36 @@ function fakeDatabase(existing = []) {
 
 const VERSION_1_STORES = ['meta', 'profiles', 'songLinks', 'memories', 'photos', 'playlists', 'observations', 'history'];
 
-test('una base nueva recibe todos los almacenes de las dos versiones', () => {
+test('una base nueva recibe todos los almacenes de las tres versiones', () => {
   const db = fakeDatabase();
   runMigrations(db, 0);
-  assert.deepEqual(db.created.map((c) => c.name), [...VERSION_1_STORES, 'studyEvents']);
+  assert.deepEqual(db.created.map((c) => c.name), [...VERSION_1_STORES, 'studyEvents', 'memoryDrafts']);
   assert.deepEqual(db.created.find((c) => c.name === 'songLinks').options, { keyPath: ['profileId', 'songId'] });
   assert.deepEqual(db.created.find((c) => c.name === 'studyEvents').options, { keyPath: 'seq', autoIncrement: true });
+  assert.deepEqual(db.created.find((c) => c.name === 'memoryDrafts').options, { keyPath: ['profileId', 'memoryId'] });
 });
 
-test('desde la versión 1 solo se añade el registro del estudio y sus tres índices; no se recrea nada', () => {
+test('desde la versión 1 solo se añaden el registro del estudio y los borradores, con sus índices; no se recrea nada', () => {
   const db = fakeDatabase(VERSION_1_STORES);
   runMigrations(db, 1);
-  assert.deepEqual(db.created.map((c) => c.name), ['studyEvents']);
+  assert.deepEqual(db.created.map((c) => c.name), ['studyEvents', 'memoryDrafts']);
   assert.deepEqual(db.indexes, [
     { store: 'studyEvents', indexName: 'bySession', keyPath: 'sessionId' },
     { store: 'studyEvents', indexName: 'byProfile', keyPath: 'profileId' },
     { store: 'studyEvents', indexName: 'byDay', keyPath: 'day' },
+    { store: 'memoryDrafts', indexName: 'byProfile', keyPath: 'profileId' },
   ]);
 });
 
-test('una base ya en la última versión no cambia', () => {
+test('desde la versión 2 solo se añaden los borradores de recuerdo', () => {
   const db = fakeDatabase([...VERSION_1_STORES, 'studyEvents']);
+  runMigrations(db, 2);
+  assert.deepEqual(db.created.map((c) => c.name), ['memoryDrafts']);
+  assert.deepEqual(db.indexes, [{ store: 'memoryDrafts', indexName: 'byProfile', keyPath: 'profileId' }]);
+});
+
+test('una base ya en la última versión no cambia', () => {
+  const db = fakeDatabase([...VERSION_1_STORES, 'studyEvents', 'memoryDrafts']);
   runMigrations(db, DB_VERSION);
   assert.deepEqual(db.created, []);
   assert.deepEqual(db.indexes, []);

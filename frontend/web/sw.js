@@ -55,6 +55,12 @@ function shellKey(url) {
   return `${origin}${pathname}`;
 }
 
+/** Solo se guarda lo correcto y sin redirigir: el navegador no acepta una respuesta redirigida
+ *  como respuesta a una navegación (p. ej. /index.html si el hosting lo redirige a /). */
+function isCacheable(response) {
+  return response.ok && !response.redirected;
+}
+
 /** Guarda el shell en la caché de la versión actual. Un recurso que falle (no existe todavía
  *  o no hay red) se omite: la siguiente visita lo completa. */
 async function precacheShell() {
@@ -63,7 +69,7 @@ async function precacheShell() {
     SHELL_ASSETS.map(async (path) => {
       try {
         const response = await fetch(path, { cache: 'reload' });
-        if (response.ok) await cache.put(shellKey(path), response);
+        if (isCacheable(response)) await cache.put(shellKey(path), response);
       } catch {
         // Sin red durante la instalación: se completa en la siguiente visita.
       }
@@ -79,7 +85,7 @@ async function staleWhileRevalidate(event) {
   const cached = await cache.match(key);
   const network = fetch(event.request).then(async (response) => {
     // Un fallo al escribir en caché (p. ej. cuota llena) no debe romper la respuesta.
-    if (response.ok) await cache.put(key, response.clone()).catch(() => {});
+    if (isCacheable(response)) await cache.put(key, response.clone()).catch(() => {});
     return response;
   });
   if (cached) {
@@ -95,7 +101,7 @@ async function networkFirst(event) {
   const cache = await caches.open(SHELL_CACHE);
   try {
     const response = await fetch(event.request);
-    if (response.ok) event.waitUntil(cache.put(key, response.clone()).catch(() => {}));
+    if (isCacheable(response)) event.waitUntil(cache.put(key, response.clone()).catch(() => {}));
     return response;
   } catch (error) {
     const cached = await cache.match(key);

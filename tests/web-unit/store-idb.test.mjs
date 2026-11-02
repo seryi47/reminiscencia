@@ -305,14 +305,15 @@ const trackEnd = (profileId, changes = {}) => ({
 // Marca de fecha y hora de cada evento, sin segundos ni zona: para comparar el orden.
 const stampsOf = (events) => events.map((event) => event.at.slice(0, 16));
 
-test('base nueva: versión de la base 2, todos los almacenes y los tres índices del registro del estudio', async () => {
+test('base nueva: versión 3, todos los almacenes, los índices del registro del estudio y los borradores de recuerdo', async () => {
   const { db, store } = await openFresh();
-  assert.equal(DB_VERSION, 2);
-  assert.equal(db.version, 2);
+  assert.equal(DB_VERSION, 3);
+  assert.equal(db.version, 3);
   assert.deepEqual([...db.stores.keys()].sort(), [
-    'history', 'memories', 'meta', 'observations', 'photos', 'playlists', 'profiles', 'songLinks', 'studyEvents',
+    'history', 'memories', 'memoryDrafts', 'meta', 'observations', 'photos', 'playlists', 'profiles', 'songLinks', 'studyEvents',
   ]);
   assert.deepEqual([...db.stores.get('studyEvents').indexes.keys()].sort(), ['byDay', 'byProfile', 'bySession']);
+  assert.deepEqual([...db.stores.get('memoryDrafts').indexes.keys()], ['byProfile']);
   store.close();
 });
 
@@ -329,7 +330,8 @@ test('migración: una base de la versión 1 con datos conserva perfiles y perfil
   });
   v1.seed('meta', { key: 'activeProfile', value: 'perfil-antiguo-01' });
   const store = await openStore({ indexedDB: factory, name: NAME });
-  assert.equal(v1.version, 2);
+  assert.equal(v1.version, DB_VERSION);
+  assert.equal(v1.stores.has('memoryDrafts'), true);
   assert.deepEqual((await store.listProfiles()).map((profile) => profile.alias), ['Persona antigua']);
   assert.equal(await store.getActiveProfileId(), 'perfil-antiguo-01');
   const key = await store.recordStudyEvent(trackEnd('perfil-antiguo-01'));
@@ -537,9 +539,9 @@ test('última pista: rechaza datos inválidos y perfiles inexistentes', async ()
 
 test('ajustes del dispositivo: valores por defecto, guardado parcial y rechazo de claves de pantalla', async () => {
   const { db, store } = await openFresh();
-  assert.deepEqual(await store.getSettings(), { sleepTimerMinutes: null, alwaysPatientMode: false, wakeLock: true });
+  assert.deepEqual(await store.getSettings(), { sleepTimerMinutes: null, alwaysPatientMode: false, wakeLock: true, studyRecording: true });
   assert.deepEqual(await store.saveSettings({ wakeLock: false, sleepTimerMinutes: 30 }), {
-    sleepTimerMinutes: 30, alwaysPatientMode: false, wakeLock: false,
+    sleepTimerMinutes: 30, alwaysPatientMode: false, wakeLock: false, studyRecording: true,
   });
   assert.equal((await store.getSettings()).wakeLock, false);
   await assert.rejects(store.saveSettings({ textScale: 1.5 }), { message: 'Ajuste desconocido: textScale.' });
@@ -552,7 +554,225 @@ test('ajustes del dispositivo: valores por defecto, guardado parcial y rechazo d
   assert.equal('textScale' in settings, false);
   assert.equal(settings.wakeLock, false);
   legacy.store.close();
-  assert.equal(db.version, 2);
+  assert.equal(db.version, DB_VERSION);
+});
+
+// Campos de un borrador de recuerdo sin contenido especial, para las pruebas de borradores.
+const DRAFT_FIELDS = { title: 'Borrador', text: '', yearText: '', yearApproximate: false, people: [], songIds: [] };
+
+test('presentación por canción: C0 por defecto, cambia a C1 o C2, lo inválido no se guarda y una asociación anterior se lee como C0', async () => {
+  const { db, store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  assert.equal(await store.getSongLink(profile.id, SONG), null);
+  const created = await store.setSongLink(profile.id, SONG, { familiarity: 4 });
+  assert.equal(created.presentation, 'C0');
+  await store.setSongLink(profile.id, SONG, { presentation: 'C2' });
+  const link = await store.getSongLink(profile.id, SONG);
+  assert.equal(link.presentation, 'C2');
+  assert.equal(link.familiarity, 4);
+  await assert.rejects(store.setSongLink(profile.id, SONG, { presentation: 'C3' }), {
+    message: 'Canción: la presentación debe ser C0, C1 o C2.',
+  });
+  assert.equal((await store.getSongLink(profile.id, SONG)).presentation, 'C2');
+  // Una asociación guardada antes de la presentación no la trae: se lee como C0 y la próxima escritura la completa.
+  db.seed('songLinks', { profileId: profile.id, songId: SONG_B, familiarity: 2, preference: 1, notes: '', updatedAt: NOW });
+  assert.equal((await store.getSongLink(profile.id, SONG_B)).presentation, 'C0');
+  assert.equal((await store.listSongLinks(profile.id)).find((item) => item.songId === SONG_B).presentation, 'C0');
+  await store.setSongLink(profile.id, SONG_B, { notes: 'Nota' });
+  assert.equal(db.stores.get('songLinks').records.get(keyText([profile.id, SONG_B])).presentation, 'C0');
+  store.close();
+});
+
+test('quitar del perfil: borra solo la asociación de ese perfil; la canción y las demás asociaciones quedan', async () => {
+  const { store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  const other = await store.createProfile({ alias: 'Otra persona de prueba', code: 'CP-002' });
+  await store.setSongLink(profile.id, SONG, { familiarity: 5, presentation: 'C1' });
+  await store.setSongLink(other.id, SONG, { familiarity: 1 });
+  await store.setSongLink(profile.id, SONG_B, { familiarity: 2 });
+  await store.deleteSongLink(profile.id, SONG);
+  assert.equal(await store.getSongLink(profile.id, SONG), null);
+  assert.equal((await store.getSongLink(other.id, SONG)).familiarity, 1);
+  assert.deepEqual((await store.listSongLinks(profile.id)).map((item) => item.songId), [SONG_B]);
+  await store.deleteSongLink(profile.id, SONG);
+  await assert.rejects(store.deleteSongLink(profile.id, 'S123'), { message: 'Canción no válida.' });
+  await assert.rejects(store.deleteSongLink('no es perfil', SONG), { message: 'Perfil no válido.' });
+  store.close();
+});
+
+test('registro del estudio: es un ajuste del dispositivo que vale sí por defecto; con «no» no se guarda ningún evento', async () => {
+  const { store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  assert.equal((await store.getSettings()).studyRecording, true);
+  assert.equal(typeof (await store.recordStudyEvent(trackEnd(profile.id))), 'number');
+  assert.equal((await store.saveSettings({ studyRecording: false })).studyRecording, false);
+  assert.equal(await store.recordStudyEvent(trackEnd(profile.id, { at: '2026-11-02T18:40:00+01:00' })), null);
+  assert.equal((await store.listStudyEvents({ profileId: profile.id })).length, 1);
+  await assert.rejects(store.saveSettings({ studyRecording: 'no' }), { message: 'El registro del estudio debe ser sí o no.' });
+  assert.equal((await store.getSettings()).studyRecording, false);
+  // Con el registro desactivado, un evento inválido sigue siendo un error.
+  await assert.rejects(store.recordStudyEvent(trackEnd(profile.id, { type: 'clic' })), { message: 'Evento: el tipo no es válido.' });
+  await store.saveSettings({ studyRecording: true });
+  assert.equal(typeof (await store.recordStudyEvent(trackEnd(profile.id, { at: '2026-11-02T18:50:00+01:00' }))), 'number');
+  assert.equal((await store.listStudyEvents({ profileId: profile.id })).length, 2);
+  store.close();
+});
+
+test('observaciones: guardan etiquetas, el texto de «Otra», la fecha elegida y un texto vacío si hay etiquetas', async () => {
+  const { store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  const tagged = await store.addObservation(profile.id, {
+    text: '  ', songId: SONG, at: NOW - 60_000, tags: ['sings', 'other'], otherTag: '  canturrea bajito  ',
+  });
+  assert.equal(tagged.text, '');
+  assert.equal(tagged.songId, SONG);
+  assert.equal(tagged.at, NOW - 60_000);
+  assert.deepEqual(tagged.tags, ['sings', 'other']);
+  assert.equal(tagged.otherTag, 'canturrea bajito');
+  const plain = await store.addObservation(profile.id, { text: 'Nota libre' });
+  assert.deepEqual({ tags: plain.tags, otherTag: plain.otherTag, songId: plain.songId }, { tags: [], otherTag: null, songId: null });
+  assert.equal(typeof plain.at, 'number');
+  // Sin «Otra» marcada, su texto no se guarda.
+  const unmarked = await store.addObservation(profile.id, { text: 'Otra nota', tags: ['calm'], otherTag: 'sobra' });
+  assert.equal(unmarked.otherTag, null);
+  await assert.rejects(store.addObservation(profile.id, { text: '' }), { message: 'Observación: el texto no puede estar vacío.' });
+  await assert.rejects(store.addObservation(profile.id, { text: 'Nota', tags: ['other'], otherTag: '   ' }), {
+    message: 'Observación: el texto de «Otra» no puede estar vacío.',
+  });
+  await assert.rejects(store.addObservation(profile.id, { text: 'Nota', tags: ['aburrido'] }), {
+    message: 'Observación: las etiquetas no son válidas.',
+  });
+  await assert.rejects(store.addObservation(profile.id, { text: 'Nota', at: null }), { message: 'Observación: fecha no válida.' });
+  const listed = await store.listObservations(profile.id);
+  assert.equal(listed.length, 3);
+  assert.deepEqual(listed.find((item) => item.id === tagged.id).tags, ['sings', 'other']);
+  store.close();
+});
+
+test('recuerdos: el año aproximado se guarda con el año, se apaga al quitarlo y un valor que no es sí o no se rechaza', async () => {
+  const { store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  const memory = { profileId: profile.id, title: 'Verano en la playa', text: '', people: [], songIds: [], photoIds: [] };
+  const saved = await store.saveMemory({ ...memory, year: 1975, yearApproximate: true });
+  assert.equal(saved.yearApproximate, true);
+  const withoutYear = await store.saveMemory({ ...memory, id: saved.id, year: null, yearApproximate: true });
+  assert.equal(withoutYear.yearApproximate, false);
+  assert.equal((await store.listMemories(profile.id))[0].yearApproximate, false);
+  await assert.rejects(store.saveMemory({ ...memory, yearApproximate: 'sí' }), {
+    message: 'Recuerdo: el año aproximado debe ser sí o no.',
+  });
+  // Un recuerdo sin el campo (anterior a esta versión) se guarda con el año aproximado apagado.
+  assert.equal((await store.saveMemory({ ...memory, title: 'Recuerdo antiguo', year: 1980 })).yearApproximate, false);
+  store.close();
+});
+
+test('fotografías: cambiar la descripción conserva la imagen, pone la fecha de cambio y valida el texto', async () => {
+  const { store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  const photo = await store.addPhoto(profile.id, new Blob(['imagen de prueba'], { type: 'image/png' }), { caption: 'Antes' });
+  const updated = await store.updatePhotoCaption(photo.id, '  Después de la boda  ');
+  assert.equal(updated.caption, 'Después de la boda');
+  assert.equal(updated.mime, 'image/png');
+  assert.equal(typeof updated.updatedAt, 'number');
+  const [stored] = await store.listPhotos(profile.id);
+  assert.equal(stored.caption, 'Después de la boda');
+  assert.equal(stored.blob.size, 'imagen de prueba'.length);
+  await assert.rejects(store.updatePhotoCaption(photo.id, 'x'.repeat(201)), {
+    message: 'Fotografía: la descripción no puede superar 200 caracteres.',
+  });
+  await assert.rejects(store.updatePhotoCaption(photo.id, null), { message: 'La descripción de la fotografía debe ser texto.' });
+  await assert.rejects(store.updatePhotoCaption('no es identificador', 'Texto'), { message: 'Fotografía: identificador no válido.' });
+  await assert.rejects(store.updatePhotoCaption('foto-que-no-existe', 'Texto'), { message: 'La fotografía no existe.' });
+  assert.equal((await store.listPhotos(profile.id))[0].caption, 'Después de la boda');
+  store.close();
+});
+
+test('borradores de recuerdo: se guardan por perfil y recuerdo, se sustituyen y se borran; el del recuerdo nuevo usa la clave vacía', async () => {
+  const { store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  const other = await store.createProfile({ alias: 'Otra persona de prueba', code: 'CP-002' });
+  const memory = await store.saveMemory({
+    profileId: profile.id, title: 'Recuerdo guardado', text: 'Texto', year: 1990, people: [], songIds: [], photoIds: [],
+  });
+  assert.equal(await store.getMemoryDraft(profile.id, null), null);
+  const fresh = await store.saveMemoryDraft(profile.id, null, { ...DRAFT_FIELDS, text: 'Empiezo a escribir' });
+  assert.equal(fresh.memoryId, '');
+  const draft = await store.saveMemoryDraft(profile.id, memory.id, {
+    title: 'Cambiado', text: 'Texto cambiado', yearText: '1990', yearApproximate: true, people: ['Ana'], songIds: [SONG],
+  });
+  const read = await store.getMemoryDraft(profile.id, memory.id);
+  assert.deepEqual(read, draft);
+  assert.equal(read.yearApproximate, true);
+  await store.saveMemoryDraft(profile.id, memory.id, { ...DRAFT_FIELDS, title: 'Otra vez' });
+  assert.equal((await store.getMemoryDraft(profile.id, memory.id)).title, 'Otra vez');
+  assert.equal(await store.getMemoryDraft(other.id, memory.id), null);
+  assert.equal((await store.getMemoryDraft(profile.id, null)).text, 'Empiezo a escribir');
+  // Los borradores no van en la copia.
+  assert.equal('memoryDrafts' in (await store.exportAll()), false);
+  await store.deleteMemoryDraft(profile.id, memory.id);
+  assert.equal(await store.getMemoryDraft(profile.id, memory.id), null);
+  assert.notEqual(await store.getMemoryDraft(profile.id, null), null);
+  store.close();
+});
+
+test('borradores de recuerdo: rechazan lo inválido y lo ajeno; guardar o borrar el recuerdo quita su borrador', async () => {
+  const { store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  const other = await store.createProfile({ alias: 'Otra persona de prueba', code: 'CP-002' });
+  const memory = await store.saveMemory({ profileId: profile.id, title: 'Recuerdo', text: '', people: [], songIds: [], photoIds: [] });
+  const foreign = await store.saveMemory({ profileId: other.id, title: 'Ajeno', text: '', people: [], songIds: [], photoIds: [] });
+  await assert.rejects(store.saveMemoryDraft(profile.id, memory.id, { ...DRAFT_FIELDS, title: 'x'.repeat(81) }), {
+    message: 'Borrador: el título no puede superar 80 caracteres.',
+  });
+  await assert.rejects(store.saveMemoryDraft(profile.id, foreign.id, DRAFT_FIELDS), {
+    message: 'Ese recuerdo no existe en este perfil.',
+  });
+  await assert.rejects(store.saveMemoryDraft(profile.id, 'recuerdo-que-no-existe', DRAFT_FIELDS), {
+    message: 'Ese recuerdo no existe en este perfil.',
+  });
+  await assert.rejects(store.saveMemoryDraft(profile.id, 'no es identificador', DRAFT_FIELDS), {
+    message: 'Recuerdo: identificador no válido.',
+  });
+  await assert.rejects(store.saveMemoryDraft('perfil-que-no-existe', null, DRAFT_FIELDS), { message: 'El perfil no existe.' });
+  await assert.rejects(store.saveMemoryDraft(profile.id, null, 'texto suelto'), { message: 'El borrador no es válido.' });
+  // Guardar el recuerdo quita su borrador; crear uno nuevo quita el del recuerdo nuevo.
+  await store.saveMemoryDraft(profile.id, memory.id, DRAFT_FIELDS);
+  await store.saveMemoryDraft(profile.id, null, DRAFT_FIELDS);
+  await store.saveMemory({ id: memory.id, profileId: profile.id, title: 'Recuerdo', text: 'Editado', people: [], songIds: [], photoIds: [] });
+  assert.equal(await store.getMemoryDraft(profile.id, memory.id), null);
+  assert.notEqual(await store.getMemoryDraft(profile.id, null), null);
+  await store.saveMemory({ profileId: profile.id, title: 'Nuevo', text: '', people: [], songIds: [], photoIds: [] });
+  assert.equal(await store.getMemoryDraft(profile.id, null), null);
+  // Borrar el recuerdo quita su borrador.
+  await store.saveMemoryDraft(profile.id, memory.id, DRAFT_FIELDS);
+  await store.deleteMemory(memory.id);
+  assert.equal(await store.getMemoryDraft(profile.id, memory.id), null);
+  store.close();
+});
+
+test('borrar un perfil borra también sus borradores de recuerdo, y no los de otro perfil', async () => {
+  const { db, store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  const other = await store.createProfile({ alias: 'Otra persona de prueba', code: 'CP-002' });
+  await store.saveMemoryDraft(profile.id, null, DRAFT_FIELDS);
+  await store.saveMemoryDraft(other.id, null, DRAFT_FIELDS);
+  await store.deleteProfile(profile.id);
+  assert.equal(await store.getMemoryDraft(profile.id, null), null);
+  assert.notEqual(await store.getMemoryDraft(other.id, null), null);
+  assert.equal(db.stores.get('memoryDrafts').records.size, 1);
+  store.close();
+});
+
+test('importar: sustituir borra los borradores de recuerdo y combinar los conserva', async () => {
+  const { store } = await openFresh();
+  const profile = await store.createProfile({ alias: 'Persona de prueba', code: 'CP-001' });
+  await store.saveMemoryDraft(profile.id, null, DRAFT_FIELDS);
+  const content = await store.exportAll();
+  await store.importAll(content, { mode: 'merge' });
+  assert.notEqual(await store.getMemoryDraft(profile.id, null), null);
+  await store.importAll(content, { mode: 'replace' });
+  assert.equal(await store.getMemoryDraft(profile.id, null), null);
+  store.close();
 });
 
 test('importar: combina los eventos por identificador sin duplicarlos y, en sustituir, los reemplaza', async () => {

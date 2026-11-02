@@ -1,0 +1,1676 @@
+/* Marco y pantallas del modo cuidador (DESIGN 3.2, 6.2, 4 y 5; contrato 4 y 6).
+   Usa solo tokens de tokens.css y tipos de base.css (--tipo-*). Puntos de ruptura: 600, 1024, 1280 y 1440 px.
+   Contenido: marco (.c-shell, .c-header, .c-sidebar, .c-main, .c-now, .c-panel-slot), primitivas compartidas
+   (.c-btn, .c-field, .c-dialog, .c-icon-btn...), Inicio, panel «Ahora suena», sesión y ajustes.
+   Otras hojas del cuidador (biblioteca, perfiles, contenido) pueden reutilizar estas primitivas. */
+
+/* ---------- Estructura del marco: teléfono (menos de 600 px) ---------- */
+
+.c-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 56px minmax(0, 1fr) auto 64px;
+  grid-template-areas:
+    "head"
+    "main"
+    "now"
+    "side";
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--fondo);
+  color: var(--texto);
+}
+
+.c-header {
+  grid-area: head;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 56px;
+  padding: 0 var(--margen-pagina, 16px);
+  background: var(--superficie-1);
+  border-bottom: 1px solid var(--borde-suave);
+}
+
+.c-title {
+  margin: 0;
+  min-width: 0;
+  flex: 0 1 auto;
+  font: var(--tipo-h1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.c-header-slot {
+  flex: 1 1 240px;
+  min-width: 0;
+  max-width: 320px;
+  display: flex;
+}
+
+.c-header-slot:empty {
+  display: none;
+}
+
+.c-header-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.c-main {
+  grid-area: main;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--margen-pagina, 16px);
+  overscroll-behavior: contain;
+}
+
+/* Barra de navegación: barra inferior en teléfono. */
+.c-sidebar {
+  grid-area: side;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+  height: 64px;
+  background: var(--superficie-1);
+  border-top: 1px solid var(--borde-suave);
+  overflow: hidden;
+}
+
+.c-sidebar .c-brand,
+.c-sidebar .c-folders,
+.c-sidebar .c-open-patient {
+  display: none;
+}
+
+.c-nav-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 1 1 auto;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.c-nav-li {
+  display: flex;
+  min-width: 0;
+}
+
+.c-nav-item {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--texto-2);
+  font: var(--tipo-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.c-nav-item .c-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.c-nav-item[aria-current="page"] {
+  background: var(--acento-suave);
+  color: var(--texto);
+  box-shadow: inset 0 3px 0 var(--acento);
+}
+
+.c-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Barra de reproducción: mini de 64 px encima de la barra inferior. */
+.c-now {
+  grid-area: now;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 64px;
+  min-width: 0;
+  padding: 0 12px;
+  background: var(--superficie-1);
+  border-top: 1px solid var(--borde-suave);
+}
+
+.c-now[hidden] {
+  display: none;
+}
+
+.c-now-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.c-now-cover {
+  display: none;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--superficie-3);
+  color: var(--texto-2);
+  font: 700 20px/1 var(--familia-base);
+}
+
+.c-now-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.c-now-title {
+  margin: 0;
+  font: 600 calc(14px * var(--escala, 1)) / calc(20px * var(--escala, 1)) var(--familia-base);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.c-now-artist {
+  margin: 0;
+  font: var(--tipo-artista);
+  color: var(--texto-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.c-now-notice {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--peligro);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.c-now-sleep {
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+.c-now.is-idle .c-now-title {
+  color: var(--texto-2);
+}
+
+.c-now-transport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.c-now-progress-wrap {
+  position: absolute;
+  top: -12px;
+  left: 0;
+  right: 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.c-now-time {
+  display: none;
+  font: var(--tipo-tiempo);
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-2);
+  min-width: 40px;
+  text-align: right;
+}
+
+.c-now-time--total {
+  text-align: left;
+}
+
+.c-now-progress {
+  position: relative;
+  flex: 1 1 auto;
+  height: 24px;
+  min-width: 0;
+  cursor: pointer;
+  touch-action: none;
+  border-radius: 999px;
+}
+
+.c-now-progress[aria-disabled="true"] {
+  cursor: default;
+}
+
+.c-now-track-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 999px;
+  background: var(--superficie-3);
+  overflow: hidden;
+}
+
+.c-now-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: var(--acento);
+}
+
+.c-now-thumb {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 999px;
+  background: var(--acento);
+  border: 2px solid var(--superficie-2);
+}
+
+.c-now-volume-wrap {
+  display: none;
+  align-items: center;
+  flex: none;
+}
+
+.c-now-volume-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.c-now-volume {
+  width: 120px;
+  accent-color: var(--acento);
+}
+
+.c-now-open {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid var(--borde-control);
+  border-radius: 8px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-etiqueta);
+  cursor: pointer;
+}
+
+.c-now-open-label {
+  display: none;
+}
+
+/* Controles de la barra: anterior y siguiente de 40 px (44 en teléfono), reproducir de 44 px (48 en teléfono). */
+.c-icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--borde-control);
+  border-radius: 8px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.c-icon-btn:disabled {
+  background: var(--superficie-3);
+  border-color: transparent;
+  color: var(--deshabilitado);
+  cursor: default;
+}
+
+.c-now-prev,
+.c-now-next {
+  width: 44px;
+  height: 44px;
+}
+
+.c-now-toggle--main {
+  width: 48px;
+  height: 48px;
+  background: var(--acento);
+  border-color: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.c-now-toggle--main:disabled {
+  background: var(--superficie-3);
+  border-color: transparent;
+  color: var(--deshabilitado);
+}
+
+.c-now-toggle--main .c-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.c-more-toggle {
+  display: inline-flex;
+}
+
+/* Desplegable de «Vista previa» en teléfono (dentro del menú de la cabecera). */
+.c-tools-more {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: var(--margen-pagina, 16px);
+  z-index: 50;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  min-width: 200px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borde-suave);
+  border-radius: 12px;
+  box-shadow: var(--sombra-2);
+}
+
+.c-tools-more.is-open {
+  display: flex;
+}
+
+.c-tools-more[hidden],
+.c-more-toggle[hidden] {
+  display: none !important;
+}
+
+/* Panel «Ahora suena»: superpuesto en teléfono y tableta; persistente desde 1440 px. */
+.c-panel-slot {
+  display: none;
+  position: fixed;
+  top: 56px;
+  right: 0;
+  bottom: 72px;
+  z-index: 40;
+  width: var(--ancho-panel, 320px);
+  max-width: 100%;
+  overflow-y: auto;
+  background: var(--superficie-1);
+  /* El separador es una sombra interior: así el panel mide exactamente 320 px. */
+  box-shadow: inset 1px 0 0 var(--borde-suave), var(--sombra-2);
+}
+
+.c-shell.is-panel-open .c-panel-slot {
+  display: block;
+}
+
+.c-panel-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+.c-panel-host {
+  min-height: 100%;
+}
+
+/* ---------- Teléfono: desplegable de cabecera (perfil y vista previa) ---------- */
+
+.c-profile-wrap {
+  position: relative;
+  min-width: 0;
+  display: flex;
+}
+
+.c-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  max-width: 100%;
+  padding: 0 10px 0 4px;
+  border: 1px solid var(--borde-control);
+  border-radius: 6px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-etiqueta);
+  cursor: pointer;
+}
+
+.c-profile-alias {
+  min-width: 0;
+  max-width: 9em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.c-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--superficie-3);
+  color: var(--texto-2);
+  font: var(--tipo-etiqueta);
+}
+
+.c-avatar--lg {
+  width: 56px;
+  height: 56px;
+  font: 600 calc(22px * var(--escala, 1)) / 1 var(--familia-base);
+}
+
+.c-chevron {
+  width: 16px;
+  height: 16px;
+}
+
+.c-profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  max-width: min(320px, 90vw);
+  padding: 8px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borde-suave);
+  border-radius: 12px;
+  box-shadow: var(--sombra-2);
+}
+
+.c-profile-menu[hidden] {
+  display: none;
+}
+
+.c-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--texto);
+  font: var(--tipo-etiqueta);
+  text-align: left;
+  cursor: pointer;
+}
+
+.c-menu-item[aria-checked="true"] {
+  background: var(--acento-suave);
+}
+
+.c-menu-sep {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--borde-suave);
+}
+
+.c-menu-empty {
+  margin: 0;
+  padding: 8px 12px;
+  font: var(--tipo-meta);
+  color: var(--texto-3);
+}
+
+/* ---------- Tableta: raíl de 88 px (600 a 1279 px) ---------- */
+
+@media (min-width: 600px) {
+  .c-shell {
+    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-rows: 56px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "side head"
+      "side main"
+      "now now";
+  }
+
+  .c-header {
+    padding: 0 var(--margen-pagina, 24px);
+  }
+
+  .c-main {
+    padding: var(--margen-pagina, 24px);
+  }
+
+  .c-sidebar {
+    flex-direction: column;
+    height: auto;
+    border-top: 0;
+    border-right: 1px solid var(--borde-suave);
+    padding: 12px 8px;
+  }
+
+  .c-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: auto;
+  }
+
+  .c-nav-item {
+    flex: none;
+    width: 100%;
+    min-height: 64px;
+    border-radius: 12px;
+    font: var(--tipo-meta);
+    font-weight: 600;
+  }
+
+  .c-nav-item[aria-current="page"] {
+    box-shadow: inset 4px 0 0 var(--acento);
+  }
+
+  .c-now {
+    height: 72px;
+    padding: 0 var(--margen-pagina, 24px);
+    gap: 16px;
+  }
+
+  .c-now-cover {
+    display: inline-flex;
+  }
+
+  .c-now-track {
+    flex: 0 1 260px;
+  }
+
+  .c-now-time {
+    display: block;
+  }
+
+  .c-now-progress-wrap {
+    position: static;
+    height: auto;
+    flex: 1 1 auto;
+    min-width: 120px;
+    padding: 0;
+  }
+
+  .c-now-open {
+    width: auto;
+    padding: 0 12px;
+  }
+
+  .c-now-open-label {
+    display: inline;
+  }
+
+  .c-now-prev,
+  .c-now-next {
+    width: 40px;
+    height: 40px;
+  }
+
+  .c-now-toggle--main {
+    width: 44px;
+    height: 44px;
+  }
+
+  .c-tools-more {
+    position: static;
+    display: flex;
+    flex-direction: row;
+    padding: 0;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .c-more-toggle {
+    display: none;
+  }
+
+  .c-panel-slot {
+    bottom: 72px;
+  }
+
+  .c-shell.is-panel-open .c-main {
+    scroll-padding-right: 336px;
+  }
+}
+
+/* ---------- Escritorio: barra lateral de 232 px (desde 1280 px) ---------- */
+
+@media (min-width: 1024px) {
+  .c-now-volume-wrap {
+    display: flex;
+  }
+}
+
+@media (min-width: 1280px) {
+  .c-shell {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .c-sidebar {
+    padding: 16px 12px;
+    gap: 0;
+    overflow-y: auto;
+  }
+
+  .c-sidebar .c-brand {
+    display: block;
+    margin: 0 0 16px;
+    padding: 0 12px;
+    font: 600 16px / 24px var(--familia-base);
+    color: var(--texto);
+  }
+
+  .c-nav-list {
+    gap: 4px;
+  }
+
+  .c-nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 8px;
+    font: 600 14px / 20px var(--familia-base);
+  }
+
+  .c-nav-item .c-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .c-sidebar .c-folders {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 16px;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .c-folders-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--texto-2);
+    font: var(--tipo-etiqueta);
+    cursor: pointer;
+  }
+
+  .c-folders-toggle .c-chevron {
+    margin-left: auto;
+  }
+
+  .c-folders-toggle[aria-expanded="false"] .c-chevron {
+    transform: rotate(-90deg);
+  }
+
+  .c-folder-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .c-folder-list[hidden] {
+    display: none;
+  }
+
+  .c-folder-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--texto-2);
+    font: var(--tipo-meta);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .c-folder-item .c-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .c-folder-name {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .c-folder-count {
+    margin-left: auto;
+    color: var(--texto-3);
+  }
+
+  .c-folder-empty {
+    padding: 0 12px;
+    font: var(--tipo-meta);
+    color: var(--texto-3);
+  }
+
+  .c-sidebar .c-open-patient {
+    display: flex;
+    margin-top: auto;
+    width: 100%;
+    min-height: 40px;
+  }
+}
+
+/* Panel persistente desde 1440 px: ocupa la tercera columna cuando está abierto. */
+@media (min-width: 1440px) {
+  .c-shell.is-panel-open {
+    grid-template-columns: 232px minmax(0, 1fr) 320px;
+    grid-template-areas:
+      "side head panel"
+      "side main panel"
+      "now now now";
+  }
+
+  .c-shell.is-panel-open .c-panel-slot {
+    grid-area: panel;
+    position: static;
+    width: auto;
+    bottom: auto;
+    box-shadow: inset 1px 0 0 var(--borde-suave);
+    min-height: 0;
+  }
+
+  .c-shell.is-panel-open .c-main {
+    scroll-padding-right: 0;
+  }
+
+  .c-panel-close {
+    display: none;
+  }
+}
+
+/* ---------- Teléfono: panel como hoja inferior y el resto de la barra ---------- */
+
+@media (max-width: 599.98px) {
+  .c-panel-slot {
+    top: auto;
+    right: 0;
+    left: 0;
+    bottom: 128px;
+    width: auto;
+    max-height: 70dvh;
+    border-radius: 16px 16px 0 0;
+    box-shadow: inset 0 1px 0 var(--borde-suave), var(--sombra-3);
+  }
+
+  .c-now-open {
+    width: 40px;
+    padding: 0;
+  }
+
+  .c-now-open-label {
+    display: none;
+  }
+
+  .c-now-title {
+    font-size: calc(14px * var(--escala, 1));
+  }
+
+  .c-btn,
+  .c-link {
+    min-height: 48px;
+  }
+}
+
+@media (pointer: coarse) {
+  .c-icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ---------- Primitivas compartidas (botones, campos, diálogos, tarjetas) ---------- */
+
+.c-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.c-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 760px;
+  margin: 0 auto;
+  min-width: 0;
+}
+
+.c-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.c-section-title {
+  margin: 0;
+  font: var(--tipo-seccion);
+  color: var(--texto);
+}
+
+.c-body {
+  margin: 0;
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+}
+
+.c-help {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-3);
+}
+
+.c-meta {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-3);
+}
+
+.c-form-error {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--peligro);
+}
+
+.c-form-error:empty {
+  display: none;
+}
+
+.c-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radio-control, 8px);
+  font: var(--tipo-etiqueta);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.c-btn--primary {
+  background: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.c-btn--primary:active {
+  background: var(--acento-fuerte);
+}
+
+.c-btn--secondary {
+  background: var(--superficie-2);
+  color: var(--texto);
+  border-color: var(--borde-control);
+}
+
+.c-btn--secondary:active {
+  background: var(--superficie-3);
+}
+
+.c-btn--danger {
+  background: transparent;
+  color: var(--peligro);
+  border-color: var(--peligro);
+}
+
+.c-btn--block {
+  width: 100%;
+}
+
+.c-btn:disabled {
+  background: var(--superficie-3);
+  border-color: transparent;
+  color: var(--deshabilitado);
+  cursor: default;
+}
+
+.c-link {
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--acento);
+  font: var(--tipo-etiqueta);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.c-link:disabled {
+  color: var(--deshabilitado);
+  cursor: default;
+}
+
+.c-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.c-label {
+  margin: 0;
+  font: var(--tipo-etiqueta);
+  color: var(--texto);
+}
+
+.c-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--borde-control);
+  border-radius: var(--radio-control, 8px);
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-cuerpo);
+}
+
+.c-input:focus {
+  border-color: var(--acento);
+  border-width: 2px;
+  padding: 7px 11px;
+}
+
+.c-input:disabled {
+  background: var(--superficie-3);
+  color: var(--deshabilitado);
+}
+
+.c-fieldset {
+  min-width: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+}
+
+.c-fieldset > .c-label {
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.c-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.c-choice,
+.c-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.c-choice input,
+.c-check input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--acento);
+}
+
+.c-file {
+  min-height: 48px;
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+.c-dialog-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--texto) 45%, transparent);
+}
+
+.c-dialog {
+  width: min(480px, 100%);
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  border-radius: var(--radio-hoja, 16px);
+  box-shadow: var(--sombra-3);
+}
+
+.c-dialog-title {
+  margin: 0;
+  font: 600 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+  color: var(--texto);
+}
+
+.c-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.c-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.c-dialog--danger .c-dialog-title {
+  color: var(--peligro);
+}
+
+@media (max-width: 599.98px) {
+  .c-dialog-layer {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .c-dialog {
+    width: 100%;
+    max-height: 90dvh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .c-dialog-actions .c-btn {
+    flex: 1 1 100%;
+  }
+}
+
+.c-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borde-suave);
+  border-radius: var(--radio-tarjeta, 12px);
+  box-shadow: var(--sombra-1);
+}
+
+.c-card-title {
+  margin: 0;
+  font: var(--tipo-fila);
+  color: var(--texto);
+}
+
+.c-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.c-profile-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.c-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.c-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borde-control);
+  border-radius: 8px;
+  box-shadow: var(--sombra-2);
+}
+
+.c-notice-text {
+  margin: 0;
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+}
+
+/* ---------- Inicio (C1) ---------- */
+
+.c-inicio [aria-busy="true"] {
+  min-height: 120px;
+}
+
+/* ---------- Panel «Ahora suena» (C2b y C-20) ---------- */
+
+.c-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  width: var(--ancho-panel, 320px);
+  max-width: 100%;
+  padding: 16px;
+}
+
+.c-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.c-panel-title {
+  margin: 0;
+  font: var(--tipo-seccion);
+  color: var(--texto);
+}
+
+.c-panel-cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 160px;
+  height: 160px;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: var(--radio-tarjeta, 12px);
+  background: var(--superficie-3);
+  color: var(--texto-2);
+  font: 700 64px / 1 var(--familia-base);
+}
+
+.c-panel-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.c-panel-song-title {
+  margin: 0;
+  font: var(--tipo-titulo-cancion);
+  color: var(--texto);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.c-panel-artist {
+  margin: 0;
+  font: var(--tipo-artista);
+  color: var(--texto-2);
+}
+
+.c-panel-empty {
+  margin: 0;
+  font: var(--tipo-cuerpo);
+  color: var(--texto-2);
+}
+
+.c-panel .c-field-label {
+  margin: 4px 0 0;
+  font: var(--tipo-etiqueta);
+  color: var(--texto);
+}
+
+.c-panel-legend {
+  margin-top: -6px;
+}
+
+.c-panel-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.c-panel-subtitle {
+  margin: 0;
+  font: var(--tipo-etiqueta);
+  color: var(--texto-2);
+}
+
+.c-panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.c-panel-actions .c-btn {
+  width: 100%;
+  min-height: 40px;
+}
+
+.c-panel-note {
+  margin: 0;
+}
+
+.c-panel-status {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+.c-panel-status:empty {
+  display: none;
+}
+
+.c-panel-status--error {
+  color: var(--peligro);
+}
+
+.c-panel-source {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-3);
+}
+
+/* Grupos de opciones: familiaridad (5 botones), preferencia (3) y presentación (3). */
+.c-radiogroup {
+  display: flex;
+  gap: 4px;
+}
+
+.c-radiogroup[aria-disabled="true"] {
+  opacity: 1;
+}
+
+.c-radio {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--borde-control);
+  border-radius: 8px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-etiqueta);
+  cursor: pointer;
+}
+
+.c-radio:disabled {
+  background: var(--superficie-3);
+  border-color: transparent;
+  color: var(--deshabilitado);
+  cursor: default;
+}
+
+.c-radio.is-selected {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.c-radio-check {
+  display: none;
+  width: 14px;
+  height: 14px;
+}
+
+.c-radio.is-selected .c-radio-check {
+  display: inline-block;
+}
+
+.c-radiogroup--familiarity {
+  gap: 4px;
+}
+
+.c-radio--familiarity {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.c-radio--familiarity .c-radio-check {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--superficie-2);
+  color: var(--acento);
+}
+
+.c-radio--familiarity.is-selected .c-radio-check {
+  background: var(--sobre-acento);
+  color: var(--acento);
+}
+
+.c-radiogroup--segments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(96px, 1fr));
+}
+
+.c-radio--segments {
+  min-height: 36px;
+  padding: 0 6px;
+  font: var(--tipo-etiqueta);
+  white-space: nowrap;
+}
+
+.c-radiogroup--presentation {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.c-radio--presentation {
+  min-height: 56px;
+  padding: 6px 6px;
+  flex-direction: column;
+  gap: 2px;
+  font: var(--tipo-meta);
+  line-height: 18px;
+  text-align: center;
+}
+
+.c-radio--presentation .c-radio-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+/* En los segmentos de preferencia la comprobación va en la esquina, para no tocar el texto. */
+.c-radio--segments {
+  padding: 0 10px;
+}
+
+.c-radio--segments .c-radio-check {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 10px;
+  height: 10px;
+}
+
+.c-radio--presentation .c-radio-text {
+  display: block;
+}
+
+.c-radio-text {
+  min-width: 0;
+}
+
+.c-memory-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--borde-suave);
+  border-radius: 8px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-cuerpo);
+  text-align: left;
+  cursor: pointer;
+}
+
+.c-memory-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--superficie-3);
+  color: var(--recuerdo);
+}
+
+.c-memory-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.c-memory-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.c-panel-memories {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.c-panel-memory-empty {
+  font: var(--tipo-meta);
+  color: var(--texto-3);
+}
+
+/* ---------- Hoja «Empezar sesión» (C4) ---------- */
+
+.c-session-sheet .c-field {
+  margin-bottom: 0;
+}
+
+.c-session-sheet .c-choice {
+  min-height: 40px;
+}
+
+/* ---------- Ajustes (C5) ---------- */
+
+.c-settings {
+  max-width: 720px;
+}
+
+.c-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--borde-suave);
+  min-width: 0;
+}
+
+.c-settings-section > .c-section-title {
+  margin: 0;
+}
+
+.c-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+}
+
+.c-switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.c-switch-label {
+  margin: 0;
+  font: var(--tipo-etiqueta);
+  color: var(--texto);
+}
+
+.c-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--texto);
+  font: var(--tipo-etiqueta);
+  cursor: pointer;
+}
+
+.c-switch-state {
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+.c-switch-track {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border: 1px solid var(--borde-control);
+  border-radius: 999px;
+  background: var(--superficie-3);
+}
+
+.c-switch-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--superficie-2);
+  transition: transform var(--duracion-micro, 120ms) var(--curva-movimiento, ease);
+}
+
+.c-switch[aria-checked="true"] .c-switch-track {
+  background: var(--acento);
+  border-color: var(--acento);
+}
+
+.c-switch[aria-checked="true"] .c-switch-thumb {
+  transform: translateX(20px);
+  background: var(--sobre-acento);
+}
+
+.c-pin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.c-pin-form .c-field[hidden] {
+  display: none;
+}
+
+.c-preview-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borde-suave);
+  border-radius: var(--radio-tarjeta, 12px);
+}
+
+.c-preview-box[hidden] {
+  display: none;
+}
+
+.c-preview-text {
+  margin: 0;
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+}
+
+.c-settings-persist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.c-settings-danger .c-btn--danger {
+  align-self: flex-start;
+}
+
+.c-settings-help .c-body + .c-body {
+  margin-top: 4px;
+}

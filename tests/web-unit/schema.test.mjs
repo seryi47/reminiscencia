@@ -4,14 +4,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BACKUP_PAYLOAD_VERSION,
+  DEFAULT_PRESENTATION,
   isCalendarDay,
   isIsoWithZone,
   LIMITS,
+  OBSERVATION_TAG_CODES,
   validateAlias,
   validateBackup,
   validateHistoryEntry,
   validateLastTrack,
   validateMemory,
+  validateMemoryDraft,
   validateObservation,
   validatePatientOptions,
   validatePhotoMeta,
@@ -117,7 +120,7 @@ test('PIN: acepta de 4 a 6 dígitos y rechaza el resto', () => {
 });
 
 test('ajustes del dispositivo: la lista completa es válida y los valores se respetan', () => {
-  const full = { sleepTimerMinutes: null, alwaysPatientMode: false, wakeLock: true };
+  const full = { sleepTimerMinutes: null, alwaysPatientMode: false, wakeLock: true, studyRecording: true };
   assert.deepEqual(validateSettings(full), []);
   assert.deepEqual(validateSettings(withChanges(full, { sleepTimerMinutes: 30, alwaysPatientMode: true, wakeLock: false })), []);
   assert.equal(validateSettings(withChanges(full, { wakeLock: 'sí' })).length, 1);
@@ -125,7 +128,7 @@ test('ajustes del dispositivo: la lista completa es válida y los valores se res
 });
 
 test('ajustes: el apagado automático solo admite No, 15, 30 o 60 minutos', () => {
-  const base = { alwaysPatientMode: false, wakeLock: true };
+  const base = { alwaysPatientMode: false, wakeLock: true, studyRecording: true };
   for (const sleepTimerMinutes of [null, 15, 30, 60]) {
     assert.deepEqual(validateSettings({ ...base, sleepTimerMinutes }), []);
   }
@@ -436,6 +439,88 @@ test('límites exportados coinciden con los documentados', () => {
   assert.equal(LIMITS.memoryText, 1000);
   assert.equal(LIMITS.memoryPhotos, 10);
   assert.equal(LIMITS.listenedMaxS, 86400);
+  assert.equal(LIMITS.observationOtherTag, 60);
+  assert.equal(LIMITS.draftYearText, 20);
+});
+
+test('ajustes: el registro del estudio es sí o no; en parcial solo se valida si viene', () => {
+  const full = { sleepTimerMinutes: null, alwaysPatientMode: false, wakeLock: true, studyRecording: true };
+  assert.deepEqual(validateSettings(withChanges(full, { studyRecording: false })), []);
+  for (const studyRecording of ['sí', 1, null]) {
+    assert.equal(validateSettings(withChanges(full, { studyRecording })).length, 1, String(studyRecording));
+  }
+  assert.deepEqual(validateSettings({ studyRecording: false }, { partial: true }), []);
+  assert.deepEqual(validateSettings({ studyRecording: 'no' }, { partial: true }), ['El registro del estudio debe ser sí o no.']);
+});
+
+test('asociación canción: la presentación es C0, C1 o C2; las asociaciones anteriores no la traen y siguen siendo válidas', () => {
+  assert.equal(DEFAULT_PRESENTATION, 'C0');
+  assert.deepEqual(validateSongLink(SONG_LINK), []);
+  for (const presentation of ['C0', 'C1', 'C2']) {
+    assert.deepEqual(validateSongLink(withChanges(SONG_LINK, { presentation })), []);
+  }
+  for (const presentation of ['C3', 'c1', 'Solo canción', null, 1]) {
+    assert.equal(validateSongLink(withChanges(SONG_LINK, { presentation })).length, 1, String(presentation));
+  }
+});
+
+test('observación: etiquetas cerradas; «Otra» exige su texto y sin «Otra» no lo admite; sin texto vale si hay etiquetas', () => {
+  assert.deepEqual([...OBSERVATION_TAG_CODES], ['recognizes', 'sings', 'rhythm', 'repeat', 'restless', 'calm', 'change', 'other']);
+  assert.deepEqual(validateObservation(withChanges(OBSERVATION, { text: '', tags: ['sings'], otherTag: null })), []);
+  assert.deepEqual(validateObservation(withChanges(OBSERVATION, { tags: ['other'], otherTag: 'Canturrea bajito' })), []);
+  assert.deepEqual(validateObservation(withChanges(OBSERVATION, { tags: ['other'], otherTag: repeat('o', 60) })), []);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { tags: ['other'], otherTag: repeat('o', 61) })).length, 1);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { tags: ['other'], otherTag: '' })).length, 1);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { tags: ['other'], otherTag: null })).length, 1);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { tags: ['calm'], otherTag: 'sobra' })).length, 1);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { tags: ['aburrido'] })).length, 1);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { tags: ['calm', 'calm'] })).length, 1);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { tags: 'calm' })).length, 1);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { text: '', tags: [] })).length, 1);
+  assert.equal(validateObservation(withChanges(OBSERVATION, { at: -1 })).length, 1);
+});
+
+test('recuerdo: el año aproximado es sí o no y solo existe con un año; las fichas anteriores no lo traen', () => {
+  assert.deepEqual(validateMemory(MEMORY), []);
+  assert.deepEqual(validateMemory(withChanges(MEMORY, { yearApproximate: true })), []);
+  assert.deepEqual(validateMemory(withChanges(MEMORY, { yearApproximate: false })), []);
+  assert.deepEqual(validateMemory(withChanges(MEMORY, { year: null, yearApproximate: false })), []);
+  assert.equal(validateMemory(withChanges(MEMORY, { yearApproximate: 'sí' })).length, 1);
+  assert.equal(validateMemory(withChanges(MEMORY, { year: null, yearApproximate: true })).length, 1);
+});
+
+test('fotografía: la fecha de cambio es opcional, pero si existe debe ser una fecha válida', () => {
+  assert.deepEqual(validatePhotoMeta(withChanges(PHOTO_META, { updatedAt: T0 + 5 })), []);
+  assert.equal(validatePhotoMeta(withChanges(PHOTO_META, { updatedAt: -1 })).length, 1);
+  assert.equal(validatePhotoMeta(withChanges(PHOTO_META, { updatedAt: '2026-11-02' })).length, 1);
+});
+
+const DRAFT = {
+  profileId: PROFILE_ID,
+  memoryId: 'recuerdo-prueba-01',
+  title: 'Recuerdo a medias',
+  text: '',
+  yearText: '1975',
+  yearApproximate: false,
+  people: ['Persona de prueba'],
+  songIds: [SONG],
+  updatedAt: T0,
+};
+
+test('borrador de recuerdo: puede estar incompleto; el de un recuerdo nuevo usa memoryId vacío', () => {
+  assert.deepEqual(validateMemoryDraft(DRAFT), []);
+  assert.deepEqual(validateMemoryDraft(withChanges(DRAFT, { memoryId: '', title: '', yearText: '' })), []);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { memoryId: 'no es identificador' })).length, 1);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { profileId: undefined })).length, 1);
+  assert.deepEqual(validateMemoryDraft(withChanges(DRAFT, { title: repeat('t', 80) })), []);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { title: repeat('t', 81) })).length, 1);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { text: repeat('x', 1001) })).length, 1);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { yearText: repeat('1', 21) })).length, 1);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { yearApproximate: 'sí' })).length, 1);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { people: [''] })).length, 1);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { songIds: ['S123'] })).length, 1);
+  assert.equal(validateMemoryDraft(withChanges(DRAFT, { updatedAt: undefined })).length, 1);
+  assert.equal(validateMemoryDraft('no es un borrador').length, 1);
 });
 
 function validPayload(changes = {}) {

@@ -12,10 +12,12 @@ export const LIMITS = Object.freeze({
   personAlias: 60,
   memorySongs: 50,
   memoryPhotos: 10,
+  draftYearText: 20,
   caption: 200,
   playlistName: 80,
   playlistSongs: 500,
   observationText: 1000,
+  observationOtherTag: 60,
   notes: 500,
   listenedMaxS: 86400,
 });
@@ -27,8 +29,13 @@ export const SLEEP_TIMER_MINUTES = Object.freeze([15, 30, 60]);
 export const BACKUP_PAYLOAD_VERSION = 2;
 export const BACKUP_PAYLOAD_VERSIONS = Object.freeze([1, 2]);
 // Ajustes del dispositivo (IndexedDB). Las preferencias de pantalla están en prefs.js (localStorage).
-export const SETTING_KEYS = Object.freeze(['sleepTimerMinutes', 'alwaysPatientMode', 'wakeLock']);
+export const SETTING_KEYS = Object.freeze(['sleepTimerMinutes', 'alwaysPatientMode', 'wakeLock', 'studyRecording']);
 export const PATIENT_OPTION_KEYS = Object.freeze(['volumeLimit', 'repeatList', 'resumeOnOpen', 'seekOnTap']);
+// Etiquetas cerradas de las observaciones (DESIGN 8.5). Códigos en inglés; «other» («Otra») exige texto propio.
+export const OBSERVATION_TAG_CODES = Object.freeze([
+  'recognizes', 'sings', 'rhythm', 'repeat', 'restless', 'calm', 'change', 'other',
+]);
+export const OBSERVATION_OTHER_TAG = 'other';
 
 // Registro del estudio (DESIGN 8.4). Los códigos son identificadores en inglés; la interfaz los traduce.
 export const STUDY_EVENT_TYPES = Object.freeze([
@@ -36,6 +43,8 @@ export const STUDY_EVENT_TYPES = Object.freeze([
   'memory-seen', 'memory-other', 'photo-zoom', 'observation',
 ]);
 export const STUDY_PRESENTATIONS = Object.freeze(['C0', 'C1', 'C2']);
+// Presentación inicial de cada asociación canción–perfil (DESIGN C-7).
+export const DEFAULT_PRESENTATION = 'C0';
 // Códigos en castellano sin tildes, como ya usa el reproductor («continua»). Los textos los pone la interfaz.
 // Condición de la sesión: «Según cada canción» = segun-cancion; «Solo audio» = solo-audio.
 export const STUDY_CONDITIONS = Object.freeze(['segun-cancion', 'solo-audio']);
@@ -129,6 +138,7 @@ const SETTING_RULES = {
   ],
   alwaysPatientMode: [isBoolean, 'Abrir siempre en modo paciente debe ser sí o no.'],
   wakeLock: [isBoolean, 'Mantener la pantalla encendida en modo paciente debe ser sí o no.'],
+  studyRecording: [isBoolean, 'El registro del estudio debe ser sí o no.'],
 };
 
 // Ajustes del dispositivo. Con { partial: true } se validan solo los campos presentes.
@@ -198,11 +208,13 @@ export function validateProfile(profile) {
   return errors;
 }
 
+// Una persona del recuerdo: alias de 1 a 60 caracteres, en una sola línea.
+const isPersonAlias = (person) => textProblem(person, 'Una persona', { min: 1, max: LIMITS.personAlias }) === null;
+
 export function validateMemory(memory) {
   if (!isPlainObject(memory)) return ['El recuerdo no es válido.'];
   const errors = [];
   const add = (problem) => { if (problem) errors.push(problem); };
-  const personOk = (person) => textProblem(person, 'Una persona', { min: 1, max: LIMITS.personAlias }) === null;
   if (!isId(memory.id)) errors.push('Recuerdo: identificador no válido.');
   if (!isId(memory.profileId)) errors.push('Recuerdo: perfil no válido.');
   add(textProblem(memory.title, 'Recuerdo: el título', { min: 1, max: LIMITS.memoryTitle }));
@@ -210,10 +222,35 @@ export function validateMemory(memory) {
   if (!(memory.year === null || isIntegerIn(memory.year, 1000, 9999))) {
     errors.push('Recuerdo: el año debe tener cuatro cifras o quedar vacío.');
   }
-  if (!isList(memory.people, LIMITS.memoryPeople, personOk)) errors.push('Recuerdo: la lista de personas no es válida.');
+  // El año aproximado es opcional (las fichas anteriores no lo traen) y solo tiene sentido con un año.
+  if (memory.yearApproximate !== undefined && !isBoolean(memory.yearApproximate)) {
+    errors.push('Recuerdo: el año aproximado debe ser sí o no.');
+  }
+  if (memory.yearApproximate === true && memory.year === null) {
+    errors.push('Recuerdo: el año aproximado solo puede marcarse con un año.');
+  }
+  if (!isList(memory.people, LIMITS.memoryPeople, isPersonAlias)) errors.push('Recuerdo: la lista de personas no es válida.');
   if (!isList(memory.songIds, LIMITS.memorySongs, isSongId)) errors.push('Recuerdo: la lista de canciones no es válida.');
   if (!isList(memory.photoIds, LIMITS.memoryPhotos, isId)) errors.push('Recuerdo: la lista de fotografías no es válida.');
   if (!isTimestamp(memory.createdAt) || !isTimestamp(memory.updatedAt)) errors.push('Recuerdo: fechas no válidas.');
+  return errors;
+}
+
+// Borrador de recuerdo (DESIGN C-21): lo que la persona lleva escrito, aunque esté incompleto, así que el título
+// y el texto pueden estar vacíos. El identificador de recuerdo '' es el borrador de un recuerdo nuevo.
+export function validateMemoryDraft(draft) {
+  if (!isPlainObject(draft)) return ['El borrador no es válido.'];
+  const errors = [];
+  const add = (problem) => { if (problem) errors.push(problem); };
+  if (!isId(draft.profileId)) errors.push('Borrador: perfil no válido.');
+  if (!(draft.memoryId === '' || isId(draft.memoryId))) errors.push('Borrador: recuerdo no válido.');
+  add(textProblem(draft.title, 'Borrador: el título', { max: LIMITS.memoryTitle }));
+  add(textProblem(draft.text, 'Borrador: el texto', { max: LIMITS.memoryText, multiline: true }));
+  add(textProblem(draft.yearText, 'Borrador: el año', { max: LIMITS.draftYearText }));
+  if (!isBoolean(draft.yearApproximate)) errors.push('Borrador: el año aproximado debe ser sí o no.');
+  if (!isList(draft.people, LIMITS.memoryPeople, isPersonAlias)) errors.push('Borrador: la lista de personas no es válida.');
+  if (!isList(draft.songIds, LIMITS.memorySongs, isSongId)) errors.push('Borrador: la lista de canciones no es válida.');
+  if (!isTimestamp(draft.updatedAt)) errors.push('Borrador: fecha no válida.');
   return errors;
 }
 
@@ -239,10 +276,17 @@ export function validateSongLink(link) {
   if (!isIntegerIn(link.familiarity, 0, 5)) errors.push('Canción: la familiaridad debe ser un número entero del 0 al 5.');
   if (!isIntegerIn(link.preference, -2, 2)) errors.push('Canción: la preferencia debe ser un número entero de −2 a 2.');
   add(textProblem(link.notes, 'Canción: las notas', { max: LIMITS.notes, multiline: true }));
+  // La presentación es opcional: las asociaciones anteriores a ella no la traen y se leen como C0.
+  if (link.presentation !== undefined && !STUDY_PRESENTATIONS.includes(link.presentation)) {
+    errors.push('Canción: la presentación debe ser C0, C1 o C2.');
+  }
   if (!isTimestamp(link.updatedAt)) errors.push('Canción: fecha no válida.');
   return errors;
 }
 
+// Observación del cuidador (DESIGN 8.5): texto, etiquetas cerradas y canción opcional.
+// Sin etiquetas el texto es obligatorio; con etiquetas puede quedar vacío. «Otra» exige su propio texto.
+// Las observaciones anteriores a las etiquetas no traen tags ni otherTag: equivalen a «sin etiquetas».
 export function validateObservation(observation) {
   if (!isPlainObject(observation)) return ['La observación no es válida.'];
   const errors = [];
@@ -250,8 +294,19 @@ export function validateObservation(observation) {
   if (!isId(observation.id)) errors.push('Observación: identificador no válido.');
   if (!isId(observation.profileId)) errors.push('Observación: perfil no válido.');
   if (!isTimestamp(observation.at)) errors.push('Observación: fecha no válida.');
-  add(textProblem(observation.text, 'Observación: el texto', { min: 1, max: LIMITS.observationText, multiline: true }));
+  const tags = observation.tags === undefined ? [] : observation.tags;
+  const tagsOk = isList(tags, OBSERVATION_TAG_CODES.length, (code) => OBSERVATION_TAG_CODES.includes(code))
+    && new Set(tags).size === tags.length;
+  if (!tagsOk) errors.push('Observación: las etiquetas no son válidas.');
+  const hasTags = tagsOk && tags.length > 0;
+  add(textProblem(observation.text, 'Observación: el texto', { min: hasTags ? 0 : 1, max: LIMITS.observationText, multiline: true }));
   if (!(observation.songId === null || isSongId(observation.songId))) errors.push('Observación: canción no válida.');
+  const hasOther = tagsOk && tags.includes(OBSERVATION_OTHER_TAG);
+  if (hasOther) {
+    add(textProblem(observation.otherTag, 'Observación: el texto de «Otra»', { min: 1, max: LIMITS.observationOtherTag }));
+  } else if (observation.otherTag !== undefined && observation.otherTag !== null) {
+    errors.push('Observación: el texto de «Otra» solo puede existir con la etiqueta «Otra».');
+  }
   return errors;
 }
 
@@ -277,6 +332,8 @@ export function validatePhotoMeta(photo) {
   if (!PHOTO_TYPES.includes(photo.mime)) errors.push('Fotografía: el formato debe ser JPEG, PNG o WebP.');
   add(textProblem(photo.caption, 'Fotografía: la descripción', { max: LIMITS.caption }));
   if (!isTimestamp(photo.createdAt)) errors.push('Fotografía: fecha no válida.');
+  // La fecha de cambio es opcional; la pone updatePhotoCaption para que una copia más antigua no pise la descripción.
+  if (photo.updatedAt !== undefined && !isTimestamp(photo.updatedAt)) errors.push('Fotografía: fecha de cambio no válida.');
   return errors;
 }
 
