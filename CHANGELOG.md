@@ -12,7 +12,7 @@
 - Prueba real de importar, publicar y despublicar «Tell me pretty maiden» con las incidencias #1, #2 y #3, todas cerradas. La pista queda en el catálogo con `public: false`.
 - Prueba real de importación privada por incidencia (#5, 2026-11-02): la ejecución 41490773271 pasa por `autorizar`, `procesar` y `publicar` en success. El commit `e988292` del bot («biblioteca: import») añade el audio y el catálogo de la canción (+16 líneas en `catalog.json`), y la parte pública no cambia. Sin probar: publicar una canción (la parte pública cambia) y la concurrencia `queue: max`.
 - Interfaz única (ADR-0009): modo paciente (escucha, listas, carpetas, búsqueda y salida con PIN) y modo cuidador (inicio, biblioteca, perfiles, recuerdos, observaciones, copia cifrada, PIN local y ajustes) en una sola página (`frontend/web/index.html`, `js/app.js`, `js/paciente/`, `js/cuidador/` y `css/`). Los datos del cuidador están en IndexedDB (versión 3), con copia cifrada `.rmc` y uso sin conexión.
-- Pruebas de extremo a extremo y de accesibilidad en `tests/web-e2e/` (puppeteer-core y axe-core) y workflow `web-e2e.yml`. Resultado de la última ejecución: {{RESULTADO_E2E}}.
+- Pruebas de extremo a extremo y de accesibilidad en `tests/web-e2e/` (puppeteer-core y axe-core) y workflow `web-e2e.yml`. Resultado de la última ejecución: Resultado de la última ejecución (2026-11-02): 142 casos e2e en verde (paciente 28, accesibilidad 38, cuidador 21 y medidas 55; la prueba P6 de 15 minutos se ejecuta aparte y pasa) y 645 pruebas unitarias en verde..
 
 ### Cambiado
 - «Gestionar la biblioteca» pasa de la página de escucha a Biblioteca del modo cuidador (`js/cuidador/incidencias.js`). La petición sigue siendo una incidencia de GitHub con la etiqueta `biblioteca` (ADR-0008).
