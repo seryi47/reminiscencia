@@ -14,7 +14,7 @@ Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la 
 
 https://reminiscencia.vercel.app es la página de escucha de la biblioteca: grabaciones de dominio público, organizadas por carpetas, con búsqueda y reproductor. Solo muestra las canciones publicadas. Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/` y `audio/`).
 
-La página tiene además una sección **Gestionar**. Valida la petición en el navegador y abre en GitHub una incidencia nueva con el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. La web no tiene contraseña ni token, y solo el propietario procesa las peticiones.
+La página tiene además una sección **Gestionar**. Valida la petición en el navegador y abre en GitHub una incidencia nueva con el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. La web no tiene contraseña ni token, y solo las cuentas con permiso de escritura procesan las peticiones (job `autorizar`).
 
 ## Cómo se usa
 

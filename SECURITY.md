@@ -172,7 +172,7 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
   1. El permiso del autor se consulta en el propio workflow, con la API de GitHub, no en la interfaz.
   2. El cuerpo de la incidencia y los campos pasan por variables de entorno (`env`); ningún texto se interpola en `run:`.
   3. Permisos mínimos por job (§3.7): `autorizar` solo tiene `issues: write`.
-- Pendiente: la ejecución real de esta versión en GitHub Actions no está verificada (ADR-0010).
+- Verificado en GitHub (2-nov-2026): la importación por la incidencia #5, con los tres jobs en success. Sin verificar: publicar una canción y la concurrencia `queue: max` (ADR-0010).
 
 ### 3.6 Secretos fuera del repositorio: Implementado, con pendiente
 
@@ -186,7 +186,7 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 | Workflow | Permisos declarados | Estado |
 |---|---|---|
 | `android.yml` | `contents: read` a nivel de workflow. El job de producción hace checkout con `persist-credentials: false`. Solo el job de publicación de la release (etiquetas `android-v*`) tiene `contents: write`. | Implementado. Es el modelo a seguir. |
-| `biblioteca.yml` | Sin bloque de permisos a nivel de workflow. `autorizar`: `issues: write`. `procesar`: `contents: read`, sin token y con `persist-credentials: false`. `publicar`: `contents: write` e `issues: write`; el token solo llega a los pasos que suben a `main` y responden. | Implementado (ADR-0010). Sin verificar en GitHub Actions. |
+| `biblioteca.yml` | Sin bloque de permisos a nivel de workflow. `autorizar`: `issues: write`. `procesar`: `contents: read`, sin token y con `persist-credentials: false`. `publicar`: `contents: write` e `issues: write`; el token solo llega a los pasos que suben a `main` y responden. | Implementado (ADR-0010). Importación verificada en GitHub el 2-nov-2026; publicación sin verificar. |
 | `backend.yml` | Sin bloque `permissions`. Hereda el valor por defecto del repositorio. | Pendiente: declarar `contents: read`. |
 
 - `biblioteca.yml` se lanza con `workflow_dispatch` (quien tenga permiso de escritura en el repositorio) y al abrirse una incidencia (§3.5). Es el comportamiento habitual de GitHub, no comprobado con otra cuenta.
@@ -215,18 +215,18 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 
 ## 4. Amenazas y riesgos residuales
 
-**R1. Procesado de ficheros externos con ffmpeg y escritura en el repositorio.** Mitigado con dos jobs (ADR-0010); sin verificar en GitHub Actions.
+**R1. Procesado de ficheros externos con ffmpeg y escritura en el repositorio.** Mitigado con procesar y publicar separados (ADR-0010); el flujo de importación se verificó en GitHub el 2-nov-2026.
 
 - Evidencia: en `biblioteca.yml`, el job `procesar` (`contents: read`) descarga la URL con `intake.py` y ejecuta ffmpeg con `compression.py`; lo que cambia sale como artefacto `biblioteca-paquete`. El job `publicar` (`contents: write`, `needs: procesar`) valida el paquete por ruta y tipo de fichero (`backend/sonidos/paquete.py`), lo aplica sobre `main` y confirma.
 - Mitigación actual: solo Internet Archive con licencia declarada, o ficheros directos con licencia declarada (ADR-0005). Bloqueo de plataformas en `sources.py` (`BLOCKED_HOSTS`). Descarga limitada a 200 MiB y escritura solo dentro del directorio de destino (`intake.py`). ffmpeg se llama con una lista de argumentos, con `-map 0:a:0` y `-vn` (`compression.py`). `check_repo_limits.py` se ejecuta antes del commit. `publicar` regenera la parte pública desde el catálogo y no acepta la que trae el paquete (ADR-0011).
 - Riesgo residual: un fichero preparado para explotar el decodificador de ffmpeg podría ejecutar código en `procesar`, que no tiene token ni permiso de escritura. Ese código sí puede alterar el catálogo y el audio de `audio-library/`, que son las fuentes de la parte pública, porque la validación comprueba rutas y tipos, no el contenido (ADR-0010).
-- Pendiente: la ejecución real en GitHub Actions (artefacto entre jobs, `queue: max` y permisos efectivos).
+- Verificado en GitHub (2-nov-2026): el flujo de importación, con el artefacto entre jobs y los permisos efectivos. Pendiente: publicar una canción (la parte pública cambia) y la concurrencia `queue: max`.
 
-**R2. Token de GitHub disponible en los pasos del procesado.** Mitigado en el workflow (ADR-0010); sin verificar en GitHub Actions.
+**R2. Token de GitHub disponible en los pasos del procesado.** Mitigado en el workflow (ADR-0010); verificado en la importación real del 2-nov-2026.
 
 - Evidencia: `procesar` tiene `persist-credentials: false` en el checkout y ningún paso usa `github.token`. El token solo llega a los pasos de `publicar` que suben a `main` y responden (`GH_TOKEN`).
 - Riesgo residual: `publicar` ejecuta scripts del checkout de `main` con permiso de escritura, pero no ejecuta nada del paquete (`scripts/aplicar_paquete.py`; ADR-0010).
-- Pendiente: la prueba en GitHub Actions, igual que en R1.
+- Pendiente: la publicación real de una canción, igual que en R1.
 
 **R3. Publicación accidental del repositorio.**
 
@@ -277,9 +277,9 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 
 **R10. Documentación desactualizada.** Resuelta en lo principal (2-nov-2026).
 
-- Evidencia: CLAUDE.md, PROJECT_MASTER.md, ROADMAP.md, ADR-0005 y ADR-0007 ya indican que la administración está retirada; ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02. Ningún fichero del repositorio lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. Queda una descripción antigua de la administración en `docs/audio-processing/AUDIO_ENGINE.md` (líneas 305 y 306), fuera de este fichero.
+- Evidencia: CLAUDE.md, PROJECT_MASTER.md, ROADMAP.md, ADR-0005 y ADR-0007 ya indican que la administración está retirada; ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02. Ningún fichero del repositorio lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. Las referencias antiguas a `library.yml` y a la administración de `docs/audio-processing/AUDIO_ENGINE.md` y `docs/datos/DATABASE.md` se corrigieron el 2-nov-2026.
 - Riesgo: que alguien dé por protegida una vía que no existe, o mantenga una lista de bloqueo duplicada que ya no existe.
-- Propuesta: borrar `ADMIN_PASSWORD` y `GITHUB_TOKEN` de Vercel si siguen configuradas (ROADMAP.md, «Pendiente»), y corregir `AUDIO_ENGINE.md` (§5, C).
+- Propuesta: borrar `ADMIN_PASSWORD` y `GITHUB_TOKEN` de Vercel si siguen configuradas (ROADMAP.md, «Pendiente»).
 
 **R11. Pérdida de la clave de firma de Android.**
 
@@ -308,8 +308,8 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 12. Fotografías: reducción a 1600 px y eliminación de EXIF. Alinear el límite, que es de 8 MB en `store.js` y de 10 MB en DESIGN C-22.
 13. PIN: alinear la longitud (de 4 a 12 en `schema.js`, de 4 a 6 en DESIGN §9) y decidir el bloqueo tras cinco fallos (60 s en §9, 45 s en P-16).
 14. Registro del estudio: decidir el almacén (DESIGN §8.4 y §9), porque `store.js` no tiene uno propio.
-15. Gestión por incidencias de GitHub, solo del propietario (CHANGELOG.md, línea 19), con las condiciones de §3.5.
-16. Workflows: la separación de procesado y escritura, y `persist-credentials: false` en el procesado, están hechos en `biblioteca.yml` (R1 y R2; sin verificar en GitHub Actions). Pendiente: `permissions: contents: read` en `backend.yml`.
+15. Gestión por incidencias de GitHub: implementada para cuentas con permiso de escritura (§3.5). Pendiente: revisar el filtro de autor antes de hacer público el repositorio (ADR-0008).
+16. Workflows: la separación de procesado y escritura, y `persist-credentials: false` en el procesado, están hechos en `biblioteca.yml` (R1 y R2; importación verificada en GitHub el 2-nov-2026; falta la publicación). Pendiente: `permissions: contents: read` en `backend.yml`.
 17. Cabeceras y CSP en `vercel.json` (R9).
 18. Fuentes: añadir los ficheros WOFF2 autoalojados o corregir DESIGN §5.3.
 19. `android:allowBackup`: decidir el valor y declararlo en `AndroidManifest.xml`.

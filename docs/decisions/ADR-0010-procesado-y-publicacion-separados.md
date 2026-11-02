@@ -10,7 +10,7 @@ En la primera versión de ADR-0008, un único job de `biblioteca.yml` descargaba
 
 ## Decisión
 
-1. **Dos jobs.** `procesar` ejecuta la petición (`scripts/issue_request.py` y `scripts/ci_library.py`) y empaqueta lo que cambió en la biblioteca, sin la parte pública (`scripts/empaquetar_cambios.py`; ver ADR-0011). Tiene `contents: read`, no recibe `GITHUB_TOKEN` y su checkout no guarda credenciales. Sube un artefacto `biblioteca-paquete` con el manifiesto y los ficheros cambiados.
+1. **Dos jobs, precedidos por `autorizar`** (ADR-0008: comprueba el permiso de escritura del autor antes de cualquier paso). `procesar` ejecuta la petición (`scripts/issue_request.py` y `scripts/ci_library.py`) y empaqueta lo que cambió en la biblioteca, sin la parte pública (`scripts/empaquetar_cambios.py`; ver ADR-0011). Tiene `contents: read`, no recibe `GITHUB_TOKEN` y su checkout no guarda credenciales. Sube un artefacto `biblioteca-paquete` con el manifiesto y los ficheros cambiados.
 2. **`publicar`** (`needs: procesar`) descarga el artefacto y lo valida con `backend/sonidos/paquete.py` antes de tocar el repositorio:
    - el manifiesto tiene la forma exacta y su `base` es el HEAD de `main`; si `main` cambió, la petición se rechaza y se reenvía;
    - cada ruta está en la lista cerrada de la biblioteca: `audio-library/indexes/catalog.json` y un fichero directo en `audio-library/audio/`, `frontend/web/audio/` o `frontend/web/data/`;
@@ -18,7 +18,7 @@ En la primera versión de ADR-0008, un único job de `biblioteca.yml` descargaba
    - tras aplicar, el índice de git solo contiene esas rutas, con modos de fichero regular.
 
    Solo después regenera la parte pública desde el catálogo, confirma, sube a `main` y responde a la incidencia. Este job no ejecuta ffmpeg ni código del paquete: el código que ejecuta (`scripts/aplicar_paquete.py`, `scripts/responder_incidencia.py`) viene del checkout de `main`.
-3. **Guardas en los dos jobs:** condición de propietario y etiqueta; guarda de rama al inicio del procesado, antes de instalar nada que ejecute código del árbol, y otra antes del push; `persist-credentials: false` en los checkouts. La concurrencia `library-catalog` con `queue: max` va a nivel de workflow, de modo que cubre los dos jobs como una sola escritura.
+3. **Guardas en los dos jobs:** condición de permiso de escritura del autor (`autorizar`, ADR-0008) y etiqueta; guarda de rama al inicio del procesado, antes de instalar nada que ejecute código del árbol, y otra antes del push; `persist-credentials: false` en los checkouts. La concurrencia `library-catalog` con `queue: max` va a nivel de workflow, de modo que cubre los dos jobs como una sola escritura.
 4. **Acciones fijadas por SHA** en el workflow de la biblioteca, con la versión en un comentario, y todas con runtime node24.
 
 ## Alternativas descartadas

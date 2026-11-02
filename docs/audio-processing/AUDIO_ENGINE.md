@@ -13,19 +13,19 @@ Las reglas de producto están en [DESIGN.md](../user-experience/DESIGN.md), secc
 
 | Pieza | Fichero | Rama |
 |---|---|---|
-| Workflow de la biblioteca | `.github/workflows/library.yml` | main |
+| Workflow de la biblioteca (`autorizar`, `procesar` y `publicar`; ADR-0008 y ADR-0010) | `.github/workflows/biblioteca.yml` | main |
 | Punto de entrada del workflow | `scripts/ci_library.py` | main |
 | Pipeline de importación | `backend/sonidos/pipeline.py` | main |
 | Fuentes, descarga, sondeo, perfiles, catálogo, límites y publicación | `backend/sonidos/{sources,intake,probe,compression,catalog,limits,publish}.py` | main |
 | Reproductor | `frontend/web/js/player.js` | feat/ui-publica |
 | Pruebas del reproductor | `tests/web-unit/player.test.mjs` | feat/ui-publica |
-| Workflow por incidencias | `.github/workflows/biblioteca.yml` | feat/gestion-backend (pendiente) |
+| Paquete entre jobs | `backend/sonidos/paquete.py`, `scripts/empaquetar_cambios.py` y `scripts/aplicar_paquete.py` | main |
 
 ## 1. Procesado en GitHub Actions (main)
 
 ### 1.1 Disparo y flujo
 
-`library.yml` (nombre `library`) solo se lanza a mano (`workflow_dispatch`). Entradas: `action` (`import`, `publish` u `organize`), `url`, `license`, `title`, `song_id`, `public` (`"true"` o `"false"`, por defecto `"false"`) y `payload` (JSON de una operación, por defecto `"{}"`). El comentario del workflow dice que lo lanza la web de administración en Vercel mediante funciones `/api/dispatch`. Ese comentario está obsoleto: la administración se retiró de `main` con el commit `0fa6ed3` («Retira la administración de la web pública») y `main` ya no tiene `frontend/web/api/` ni `frontend/web/admin/` (ver Pendiente).
+`biblioteca.yml` se lanza al abrir una incidencia con la etiqueta `biblioteca` (el job `autorizar` comprueba que el autor tiene permiso de escritura) o a mano (`workflow_dispatch`, que no pasa por `autorizar`). Entradas del disparo manual: `action` (`import` u `organize`), `url`, `license`, `title` y `payload` (JSON de una operación en una sola línea; vacío por defecto). `library.yml` está retirado con la administración web; lo sustituye `biblioteca.yml` (ADR-0008).
 
 - Concurrencia: grupo `library-catalog` con `cancel-in-progress: false`. Permisos: `contents: write`. Tiempo máximo: 30 minutos.
 - Pasos: checkout, Python 3.12, ffmpeg (apt), `pip install -q -e backend` y `python scripts/ci_library.py`. Las entradas llegan como variables de entorno (`ACTION`, `URL`, `LICENSE`, `TITLE`, `SONG_ID`, `PUBLIC`, `PAYLOAD`), nunca como argumentos. El resultado JSON se copia al resumen del trabajo.
@@ -123,7 +123,7 @@ Los valores son los que declara `limits.py`, que indica haberlos verificado en d
 | Assets por release | 1000 | `RELEASE_DATA_ASSETS_PER_BATCH = 999`; el restante es `SHA256SUMS.txt` |
 
 - `audit_repository` mira solo los ficheros de `git ls-files`. Como el workflow ejecuta `git add -A` antes, incluye los ficheros nuevos.
-- `scripts/check_repo_limits.py` imprime `AVISO/ERROR:` por cada problema. Sale con código 1 si algún problema contiene «bloquea» o «máximo»; si no, imprime «Límites de GitHub: correcto» y sale con 0. Lo usan `library.yml`, antes del commit, y el job `limites-repositorio` de `backend.yml`.
+- `scripts/check_repo_limits.py` imprime `AVISO/ERROR:` por cada problema. Sale con código 1 si algún problema contiene «bloquea» o «máximo»; si no, imprime «Límites de GitHub: correcto» y sale con 0. Lo usan `biblioteca.yml` (job `publicar`, antes del commit) y el job `limites-repositorio` de `backend.yml`.
 - `backend/sonidos/release.py` prepara lotes para GitHub Releases (ADR-0003): tags `<prefijo>-NN`, nombres de asset `<id>_<fichero>` y un manifiesto `SHA256SUMS.txt`. `publish(repo, batches, *, execute)` solo devuelve los comandos `gh`; ejecutarlos exige `execute=True`, y ese argumento no tiene valor por defecto. Ningún workflow de `main` lo invoca; solo lo usan sus pruebas.
 
 ### 1.8 Publicación pública (`backend/sonidos/publish.py`)
@@ -301,9 +301,9 @@ Cada evento incluye `type`, `at` (ISO 8601), `songId`, `position` (segundos, 0,1
 **Procesado (parte 1)**
 
 - **main ha avanzado.** `main` está en `7f93756`, que añade `.github/workflows/web.yml` (integración continua de la web); no se describe aquí.
-- **feat/gestion-backend, pendiente de fusión (ADR-0008; cabeza 22b444a, que incluye 679b11c y dos correcciones posteriores).** Sustituye `library.yml` por `.github/workflows/biblioteca.yml`, que se dispara al abrir una incidencia (el trabajo solo corre si es del propietario y tiene la etiqueta `biblioteca`) y también se lanza a mano. Añade `scripts/issue_request.py`, `scripts/responder_incidencia.py` y `backend/sonidos/issue_request.py`. Cambia lo que describe la parte 1: `ci_library.py` deja de tener la acción `publish` (la publicación pasa a `edit_song` con `public`) y cualquier error sale como JSON con código 1; `sources.py` valida el identificador de Internet Archive (`ia_identifier`) y `intake.py` lo usa; `publish.py` genera además `frontend/web/data/catalog.json` con las canciones públicas y todas las carpetas, sin rutas de audio ni huellas SHA-256. En 679b11c incluía también las no publicadas; la cabeza lo corrige, y ADR-0008 deja esa decisión para confirmar por el investigador. El workflow añade `queue: max` (según su comentario, una petición en espera no se cancela cuando llega otra) y un paso que aborta si la ejecución no es desde `main`. `library.yml` de `main` no tiene ninguna de las dos cosas: su paso de guardado empuja `HEAD` a `main` desde cualquier rama.
-- **Comentario obsoleto y documentos desfasados.** El comentario de `library.yml` habla de `/api/dispatch`, funciones retiradas de `main` con `0fa6ed3`. Otros documentos de `main` siguen describiendo la administración como vigente: `CLAUDE.md` (sección «Arquitectura», con `frontend/web/admin/`, `api/*` y `lib/*`), `PROJECT_MASTER.md` (línea 50, marca como «Implementado» las funciones de Vercel), `CHANGELOG.md` (línea 30, administración en `/admin/`), `docs/decisions/ADR-0005-entrada-por-url.md` (línea 31) y `docs/decisions/ADR-0007-catalogo-y-flujo-desde-vercel.md` (líneas 16 a 20), que describen la entrada por `/admin/` y el disparo desde Vercel. No se han editado aquí: hay que actualizarlos al cerrar la tarea.
-- **Paridad de la lista de bloqueo.** `CLAUDE.md` y `ADR-0005` piden que la lista de `backend/sonidos/sources.py` coincida con la de `frontend/web/lib/validate.js`. Ese fichero ya no está en `main` ni en ninguna rama local (se retiró en `0fa6ed3`). En su última versión (`0fa6ed3^`), la lista tenía `spotify.com` y no tenía `open.spotify.com` como entrada; `sources.py` sí lo tiene. El efecto es el mismo, porque ambas comparan subdominios, pero las listas no son idénticas.
+- **feat/gestion-backend, incorporada en `main` (ADR-0008; cabeza 22b444a, que incluye 679b11c y dos correcciones posteriores).** Sustituye `library.yml` por `.github/workflows/biblioteca.yml`, que se dispara al abrir una incidencia (el job `autorizar` exige permiso de escritura en el autor y la etiqueta `biblioteca`) y también se lanza a mano. Añade `scripts/issue_request.py`, `scripts/responder_incidencia.py` y `backend/sonidos/issue_request.py`. Cambia lo que describe la parte 1: `ci_library.py` deja de tener la acción `publish` (la publicación pasa a `edit_song` con `public`) y cualquier error sale como JSON con código 1; `sources.py` valida el identificador de Internet Archive (`ia_identifier`) y `intake.py` lo usa; `publish.py` genera además `frontend/web/data/catalog.json` con las canciones públicas y todas las carpetas, sin rutas de audio ni huellas SHA-256. En 679b11c incluía también las no publicadas; la cabeza lo corrige, y ADR-0008 deja esa decisión para confirmar por el investigador. El workflow añade `queue: max` (según su comentario, una petición en espera no se cancela cuando llega otra) y un paso que aborta si la ejecución no es desde `main`. `library.yml`, ya retirado, no tenía ninguna de las dos cosas: su paso de guardado empuja `HEAD` a `main` desde cualquier rama.
+- **Comentario obsoleto y documentos desfasados (corregido el 2-nov-2026).** El comentario de `library.yml` hablaba de `/api/dispatch`, funciones retiradas de `main` con `0fa6ed3`; `library.yml` ya no existe. `CLAUDE.md`, `PROJECT_MASTER.md`, `ADR-0005` y `ADR-0007` describen hoy la administración como retirada. `CHANGELOG.md` conserva las entradas de la administración como historial.
+- **Paridad de la lista de bloqueo.** `CLAUDE.md` y `ADR-0005` piden que la lista de `backend/sonidos/sources.py` coincida con la copia de la web en `frontend/web/js/intake.js` (antes, `frontend/web/lib/validate.js`). Ese fichero ya no está en `main` ni en ninguna rama local (se retiró en `0fa6ed3`). En su última versión (`0fa6ed3^`), la lista tenía `spotify.com` y no tenía `open.spotify.com` como entrada; `sources.py` sí lo tiene. El efecto es el mismo, porque ambas comparan subdominios, pero las listas no son idénticas.
 - **Importación desde Internet Archive.** Si el FLAC preferido supera 200 MiB, la importación falla y no prueba el siguiente formato de la lista.
 - **Perfil `opus-64k`.** Está fijado en el código, pero COMPRESSION.md indica que la calidad percibida no se ha medido; la prueba MUSHRA está pendiente.
 - **Errores sin JSON.** `ProbeError`, `TranscodeError` y los errores de red salen como traza (1.9).
@@ -318,4 +318,4 @@ Cada evento incluye `type`, `at` (ISO 8601), `songId`, `position` (segundos, 0,1
 - **Ajuste `wakeLock`.** Comprobar que llega como `wakeLockEnabled`.
 - **Constantes duplicadas en la interfaz sin versionar.** `VOLUME_STEPS = 10` y `EXTEND_MINUTES = 15` en `paciente/escuchar.js` repiten `VOLUME_STEP_MAX` y `extendSleepMinutes`. Conviene importar las de `player.js`.
 - **Índice de pruebas.** `player.test.mjs` no está en `tests/web-unit/index.mjs`.
-- **Fusión.** `feat/ui-publica` y `feat/gestion-backend` no están en `main`. Hasta que se fusionen, la parte 2 describe código sin integrar.
+- **Fusión.** `feat/ui-publica` no está en `main`; `feat/gestion-backend` sí (ADR-0008). Hasta que se fusione `feat/ui-publica`, la parte 2 describe código sin integrar.

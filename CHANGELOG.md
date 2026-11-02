@@ -10,6 +10,7 @@
 - Backend de la biblioteca por incidencias y paquete de cambios (`b6c986b`; ADR-0008): el procesado deja un paquete de cambios y la publicación lo valida y lo aplica por separado. El paquete solo admite rutas de audio con identificador y de los tres JSON públicos, y solo puede borrar audio; el catálogo y los datos públicos se reescriben. El workflow `library` pasa a `biblioteca`.
 - Web con gestión por incidencias y la misma lista de bloqueo que el backend (42 entradas), con rechazo de caracteres de formato (`14dbe82`).
 - Prueba real de importar, publicar y despublicar «Tell me pretty maiden» con las incidencias #1, #2 y #3, todas cerradas. La pista queda en el catálogo con `public: false`.
+- Prueba real de importación privada por incidencia (#5, 2026-11-02): la ejecución 41490773271 pasa por `autorizar`, `procesar` y `publicar` en success. El commit `e988292` del bot («biblioteca: import») añade el audio y el catálogo de la canción (+16 líneas en `catalog.json`), y la parte pública no cambia. Sin probar: publicar una canción (la parte pública cambia) y la concurrencia `queue: max`.
 
 ### Cambiado
 - Publicar regenera la parte pública desde el catálogo (`ba1825e`; ADR-0011). El paquete del procesado ya no lleva `frontend/web/data/*.json` ni el audio publicado: `publicar` los regenera con `sonidos.publish.sync_public` después de aplicar el paquete, compara el audio por contenido, valida el identificador de cada canción pública y avisa, sin fallar, de lo que la regeneración cambia fuera del paquete o sustituye.

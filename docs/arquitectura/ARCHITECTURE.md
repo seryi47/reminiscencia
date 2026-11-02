@@ -18,6 +18,8 @@ Cuatro piezas, cada una con una sola responsabilidad:
 flowchart LR
   subgraph GH["GitHub (repositorio privado)"]
     ISSUE["Incidencia con etiqueta biblioteca"]
+    AUTORIZAR["biblioteca.yml, job autorizar (permiso de escritura del autor)"]
+    MANUAL["Disparo manual (workflow_dispatch)"]
     PROCESAR["biblioteca.yml, job procesar (sin token)"]
     PUBLICAR["biblioteca.yml, job publicar (token solo para subir)"]
     MAIN["main: catálogo, audio y datos públicos"]
@@ -29,7 +31,10 @@ flowchart LR
   APP["App Android (Flutter)"]
 
   NAVEG -->|"formulario valida y abre la incidencia"| ISSUE
-  ISSUE -->|"autor propietario y etiqueta"| PROCESAR
+  ISSUE -->|"etiqueta biblioteca"| AUTORIZAR
+  AUTORIZAR -->|"sin permiso: solo comenta"| ISSUE
+  AUTORIZAR -->|"con permiso de escritura"| PROCESAR
+  MANUAL -->|"sin autorizar"| PROCESAR
   PROCESAR -->|"descarga con límite de 200 MiB"| FUENTES
   PROCESAR -->|"artefacto biblioteca-paquete"| PUBLICAR
   PUBLICAR -->|"valida rutas y base, confirma y sube"| MAIN
@@ -50,7 +55,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 | Audio de la biblioteca | `audio-library/audio/<id>.opus` | Opus de todas las canciones, también de las no publicadas. Lo genera la importación (`backend/sonidos/pipeline.py`). |
 | Audio publicado | `frontend/web/audio/<id>.opus` | Copia de las canciones con `public: true`. Lo sincroniza `backend/sonidos/publish.py`. |
 | Datos públicos | `frontend/web/data/` | `songs.json`, `folders.json` y `catalog.json`, solo con lo publicado. Los regenera `publish.py`. |
-| Biblioteca (CI) | `.github/workflows/biblioteca.yml` | Procesa las incidencias del propietario con la etiqueta `biblioteca` y las ejecuciones manuales. Dos jobs: `procesar` (sin token) y `publicar` (escribe en `main`). ADR-0008 y ADR-0010. |
+| Biblioteca (CI) | `.github/workflows/biblioteca.yml` | Procesa las incidencias con la etiqueta `biblioteca` de cuentas con permiso de escritura, y las ejecuciones manuales. Tres jobs: `autorizar` (comprueba el permiso del autor; sin checkout), `procesar` (sin token) y `publicar` (escribe en `main`). ADR-0008 y ADR-0010. |
 | Pruebas y límites (CI) | `backend.yml`, `web.yml`, `android.yml` | Pruebas de Python (3.12 y 3.13), análisis y pruebas de Flutter, pruebas de la web con Node, límites de GitHub y compilación de la app Android. |
 | Web pública | `frontend/web/` | `index.html` con `app.js` (escucha) y `js/gestion.js` (gestión, que valida con `js/intake.js`). |
 | Web: almacén local y PWA | `js/store.js`, `js/pwa.js`, `js/offline-core.js`, `sw.js`, `manifest.webmanifest` | Código en main. La página no lo carga todavía (ver «Estado»). |
@@ -65,10 +70,11 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 
 **Gestión (importar, organizar, publicar).**
 
-1. El propietario rellena un formulario de la web. `js/intake.js` valida la petición con las mismas reglas que el backend, y el enlace abre una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito. La envía el propietario en GitHub.
-2. `biblioteca.yml`, job `procesar`, descarga y convierte, o aplica la operación de organización al catálogo, y deja un paquete de cambios como artefacto. No tiene token.
-3. `biblioteca.yml`, job `publicar`, valida el paquete contra `main`, lo aplica, regenera la parte pública desde el catálogo, confirma, sube a `main` y responde a la incidencia. La incidencia se cierra, o recibe la etiqueta `error`.
-4. Vercel redespliega `main`.
+1. El propietario rellena un formulario de la web. `js/intake.js` valida la petición con las mismas reglas que el backend, y el enlace abre una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito. La envía en GitHub una cuenta con permiso de escritura.
+2. `biblioteca.yml`, job `autorizar`, comprueba el permiso de escritura del autor; sin permiso, solo comenta la incidencia. No hace checkout. El disparo manual no pasa por este paso.
+3. `biblioteca.yml`, job `procesar`, descarga y convierte, o aplica la operación de organización al catálogo, y deja un paquete de cambios como artefacto. No tiene token.
+4. `biblioteca.yml`, job `publicar`, valida el paquete contra `main`, lo aplica, regenera la parte pública desde el catálogo, confirma, sube a `main` y responde a la incidencia. La incidencia se cierra, o recibe la etiqueta `error`.
+5. Vercel redespliega `main`.
 
 **Pruebas en cada cambio.** `backend.yml` corre en cada push a `main` y en cada pull request. `web.yml` corre solo si cambian `frontend/web/**` o `tests/web-unit/**`. `android.yml` corre a mano o con una etiqueta `android-v*` (ver `docs/android/RELEASE.md`).
 
@@ -77,7 +83,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 - **Sin secretos en la web.** No hay contraseña de administración ni token en el navegador ni en Vercel (ADR-0008). Ningún código del repositorio lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`.
 - **El procesado no tiene token.** `procesar` tiene `contents: read` y su checkout no guarda credenciales. El token llega solo al paso que sube a `main` y al que responde.
 - **Solo `main` escribe en el catálogo.** Hay guardas de rama al inicio del procesado y antes del push. Si `main` cambia entre los dos jobs, la petición se rechaza y hay que reenviarla (ADR-0010).
-- **Solo el propietario procesa.** El workflow exige que el autor de la incidencia sea el propietario del repositorio y que la incidencia lleve la etiqueta `biblioteca`.
+- **Solo cuentas con permiso de escritura procesan.** El job `autorizar` exige que el autor de la incidencia tenga permiso de escritura (`admin`, `maintain` o `write`) y que la incidencia lleve la etiqueta `biblioteca` (ADR-0008, enmienda de 2026-11-02).
 - **Repositorio privado.** Comprobado con `gh` el 2026-11-02. ADR-0008 exige revisar el filtro de autor antes de hacerlo público.
 - **Cabeceras de Vercel.** `frontend/web/vercel.json` fija una política de contenido (CSP) que limita los scripts, las conexiones y el audio al mismo origen.
 - **Acciones de GitHub.** `biblioteca.yml` fija cada acción por SHA. `backend.yml`, `web.yml` y `android.yml` usan etiquetas de versión (por ejemplo `actions/checkout@v4`). Decidir si también se fijan por SHA está pendiente.
@@ -86,7 +92,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 
 **En main (b3daf9f):**
 
-- Biblioteca por incidencias: `biblioteca.yml` con los jobs `procesar` y `publicar`, el paquete de cambios y la publicación separada (ADR-0008, ADR-0010).
+- Biblioteca por incidencias: `biblioteca.yml` con los jobs `autorizar`, `procesar` y `publicar`, el paquete de cambios y la publicación separada (ADR-0008, ADR-0010).
 - Web pública sin administración, con gestión por incidencias y la misma lista de bloqueo que el backend (42 entradas).
 - Prueba real del flujo con la grabación «Tell me pretty maiden», con las incidencias #1 (importar), #2 (publicar) y #3 (despublicar). Quedan en el historial los commits del bot `biblioteca: import` y `biblioteca: organize`. La grabación está hoy sin publicar.
 - Biblioteca actual: 12 canciones en el catálogo, 9 publicadas y ninguna carpeta.
