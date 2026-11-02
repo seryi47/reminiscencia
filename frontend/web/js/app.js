@@ -586,7 +586,9 @@ async function endSession(atMs) {
   await writeEvent(buildRecord(ended, 'session-end', atMs, {}));
 }
 
-// Al volver a sonar tras un cierre por inactividad se abre una sesión nueva con la misma condición.
+// DESIGN 8.2: si la sesión se cerró por inactividad y vuelve a sonar, se abre otra con la misma condición. Solo vale
+// si la entrada de este modo paciente fue explícita (C4): resumeAllowed lo pone beginSession y lo quita al salir o al
+// entrar sin sesión; el arranque de la app nunca lo activa.
 async function reopenSession() {
   if (session || !resumeAllowed || previewing || currentMode !== 'paciente' || !activeProfile) return;
   await beginSession(activeProfile, { condition: lastCondition, startPoint: null });
@@ -1073,10 +1075,7 @@ async function start() {
       lastMode: readLocal(MODE_KEY),
     });
     mountMode(mode);
-    if (mode === 'paciente' && activeProfile) {
-      await enqueue(() => beginSession(activeProfile, { condition: lastCondition, startPoint: null }));
-      playerApi.setSleepTimer(settings.sleepTimerMinutes ?? null);
-    }
+    // Arrancar o reabrir la app no abre sesión de estudio ni aplica el temporizador: ambos se fijan en C4 (DESIGN 8.2).
     startTimers();
     const wanted = profiles.length === 0
       ? { route: 'asistente', params: {} }

@@ -323,7 +323,11 @@ export function mountLibrary(root, services, params = {}) {
     activeId: null,
     profileId: null,
     loaded: false,
+    folderId: null,
   };
+  // Parámetros de la ruta (app.js los toma de la consulta del hash): un filtro de C-8 y una carpeta del catálogo.
+  // Lo que no coincide con nada se ignora y se muestra la biblioteca completa.
+  if (FILTERS.some((item) => item.key === params?.filter)) state.filter = params.filter;
   let disposed = false;
   let popup = null;
   let notice = null;
@@ -480,6 +484,12 @@ export function mountLibrary(root, services, params = {}) {
   for (const song of Array.isArray(services.catalog?.songs) ? services.catalog.songs : []) {
     if (typeof song?.id === 'string') folderIdBySong.set(song.id, song.folder_id);
   }
+  // Carpeta de la ruta (la barra lateral navega con folderId): solo sus canciones. Una carpeta desconocida no acota.
+  if (typeof params?.folderId === 'string' && folderNames.has(params.folderId)) state.folderId = params.folderId;
+  // Filas dentro del ámbito de carpeta (o todas si no hay carpeta). Lo usan la vista y los recuentos de los filtros.
+  function scopeRows(rows) {
+    return state.folderId === null ? rows : rows.filter((row) => folderIdBySong.get(row.id) === state.folderId);
+  }
   function folderLabel(songId) {
     return folderNames.get(folderIdBySong.get(songId)) || '—';
   }
@@ -610,7 +620,7 @@ export function mountLibrary(root, services, params = {}) {
   function applyView() {
     if (disposed) return;
     const visible = sortRows(
-      filterRows(state.rows, state.filter).filter((row) => matchesQuery(row, state.query)),
+      filterRows(scopeRows(state.rows), state.filter).filter((row) => matchesQuery(row, state.query)),
       state.sort.key,
       state.sort.direction,
     );
@@ -626,7 +636,7 @@ export function mountLibrary(root, services, params = {}) {
 
   // Lo que depende de la vista completa: chips, orden, casilla de cabecera, barra de selección y mensajes.
   function updateChrome() {
-    const counts = countByFilter(state.rows);
+    const counts = countByFilter(scopeRows(state.rows));
     for (const filter of FILTERS) {
       const entry = chips.get(filter.key);
       entry.text.textContent = `${entry.label} (${counts[filter.key]})`;
@@ -664,7 +674,9 @@ export function mountLibrary(root, services, params = {}) {
       message = 'La biblioteca no tiene canciones todavía.';
     } else if (state.loaded && state.visible.length === 0) {
       const query = state.query.trim();
-      message = query !== '' ? `No hay canciones con «${query}». Prueba con otro título o artista.` : 'Ninguna canción cumple este filtro.';
+      if (query !== '') message = `No hay canciones con «${query}». Prueba con otro título o artista.`;
+      else if (state.folderId !== null && scopeRows(state.rows).length === 0) message = 'No hay canciones en esta carpeta todavía.';
+      else message = 'Ninguna canción cumple este filtro.';
     }
     emptyEl.textContent = message;
     emptyEl.hidden = message === '';
