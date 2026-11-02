@@ -4,12 +4,17 @@ Solo usan servidores en 127.0.0.1 o se rechazan antes de conectar: estas pruebas
 """
 
 import http.server
+import shutil
+import socket
 import socketserver
+import ssl
+import subprocess
 import threading
+from urllib.request import Request
 
 import pytest
 
-from sonidos import intake
+from sonidos import intake, sources
 from sonidos.sources import SourceError
 
 PAYLOAD = b"audio de prueba"
@@ -150,14 +155,14 @@ def test_metadata_larger_than_the_limit_is_refused(server, monkeypatch):
     monkeypatch.setattr(intake, "MAX_METADATA_BYTES", 100)
 
     with pytest.raises(SourceError, match="superan"):
-        intake.fetch_json(f"http://127.0.0.1:{port}/metadata/tema-item")
+        intake.fetch_json(f"http://127.0.0.1:{port}/metadata/tema-item", allow_private_network=True)
 
 
 def test_metadata_within_the_limit_is_read(server):
     port, routes = server
     routes["/metadata/tema-item"] = (200, None, b'{"files": []}')
 
-    assert intake.fetch_json(f"http://127.0.0.1:{port}/metadata/tema-item") == {"files": []}
+    assert intake.fetch_json(f"http://127.0.0.1:{port}/metadata/tema-item", allow_private_network=True) == {"files": []}
 
 
 class _EndlessBody:
@@ -182,3 +187,192 @@ def test_redirect_body_is_read_only_up_to_a_limit(monkeypatch):
 
     assert len(data) <= 16
     assert all(0 < amount <= 16 for amount in body.requested)
+
+
+# --- Corrección de la ronda 2 (2026-11-02): conexión validada, longitud y redirecciones ----------
+
+
+@pytest.fixture
+def raw_server():
+    """Sirve, en 127.0.0.1, la respuesta HTTP exacta que se le pase (cabeceras y cuerpo)."""
+    servers = []
+
+    def serve(payload: bytes) -> int:
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                while self.rfile.readline() not in (b"\r\n", b""):
+                    pass
+                self.wfile.write(payload)
+
+        httpd = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Handler)
+        httpd.daemon_threads = True
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        servers.append(httpd)
+        return httpd.server_address[1]
+
+    try:
+        yield serve
+    finally:
+        for httpd in servers:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+@pytest.mark.parametrize("declared", ["+10000", "1_0000", "10000, 10000", "abc"])
+def test_content_length_that_is_not_plain_digits_is_refused(raw_server, tmp_path, declared):
+    port = raw_server(
+        b"HTTP/1.1 200 OK\r\nContent-Length: " + declared.encode() + b"\r\nConnection: close\r\n\r\n" + b"x" * 4000
+    )
+    destination = tmp_path / "staging" / "tema.mp3"
+
+    with pytest.raises(SourceError, match="tamaño"):
+        intake.download(f"http://127.0.0.1:{port}/tema.mp3", destination, allow_private_network=True)
+
+    assert not destination.exists()
+
+
+def test_response_without_content_length_or_chunked_encoding_is_refused(raw_server, tmp_path):
+    # Sin longitud no se puede saber si el servidor cortó: el fichero quedaría truncado y aceptado.
+    port = raw_server(b"HTTP/1.0 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n" + b"x" * 4000)
+    destination = tmp_path / "staging" / "tema.mp3"
+
+    with pytest.raises(SourceError, match="no declara el tamaño"):
+        intake.download(f"http://127.0.0.1:{port}/tema.mp3", destination, allow_private_network=True)
+
+    assert not destination.exists()
+
+
+def test_chunked_download_cut_in_the_middle_is_refused_and_removed(raw_server, tmp_path):
+    port = raw_server(
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" + b"100\r\n" + b"x" * 40 + b"\r\n"
+    )
+    destination = tmp_path / "staging" / "tema.mp3"
+
+    with pytest.raises(SourceError, match="cortó"):
+        intake.download(f"http://127.0.0.1:{port}/tema.mp3", destination, allow_private_network=True)
+
+    assert not destination.exists()
+
+
+def test_address_that_changes_between_the_check_and_the_connection_is_refused(monkeypatch, tmp_path):
+    # El primer DNS responde pública (la comprobación) y el segundo, de bucle local (la conexión).
+    answers = []
+
+    def getaddrinfo(host, *args, **kwargs):
+        answers.append(host)
+        address = "93.184.216.34" if len(answers) == 1 else "127.0.0.1"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 80))]
+
+    monkeypatch.setattr(sources.socket, "getaddrinfo", getaddrinfo)
+    destination = tmp_path / "staging" / "tema.mp3"
+
+    with pytest.raises(SourceError, match="red privada"):
+        intake.download("http://rebind.example/tema.mp3", destination)
+
+    assert not destination.exists()
+    assert len(answers) >= 2
+
+
+def test_download_ignores_proxies_from_the_environment(server, tmp_path, monkeypatch):
+    # Con un proxy en el entorno, la petición iría a ese proxy y no a la dirección que se validó. El proxy
+    # de aquí está cerrado: si se usara, la descarga fallaría.
+    port, routes = server
+    routes["/tema.mp3"] = (200, None, PAYLOAD)
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:1")
+    destination = tmp_path / "staging" / "tema.mp3"
+
+    intake.download(f"http://127.0.0.1:{port}/tema.mp3", destination, allow_private_network=True)
+
+    assert destination.read_bytes() == PAYLOAD
+
+
+def test_direct_download_cannot_be_redirected_into_internet_archive():
+    handler = intake._checked_redirects(allow_private_network=True, internet_archive=False)()
+
+    with pytest.raises(SourceError, match="archive.org/details"):
+        handler.redirect_request(None, None, 302, "Found", {}, "https://ia800100.us.archive.org/items/abc/x.mp3")
+
+
+def test_internet_archive_download_may_follow_its_own_file_server():
+    handler = intake._checked_redirects(allow_private_network=True, internet_archive=True)()
+    request = Request("https://archive.org/download/abc/x.mp3")
+
+    redirected = handler.redirect_request(
+        request, None, 302, "Found", {}, "https://ia800100.us.archive.org/9/items/abc/x.mp3"
+    )
+
+    assert redirected.full_url == "https://ia800100.us.archive.org/9/items/abc/x.mp3"
+
+
+def test_metadata_request_refuses_a_private_address_by_default(server):
+    port, routes = server
+    routes["/metadata/tema-item"] = (200, None, b'{"files": []}')
+
+    with pytest.raises(SourceError, match="red privada"):
+        intake.fetch_json(f"http://127.0.0.1:{port}/metadata/tema-item")
+
+
+def test_metadata_redirect_to_a_private_address_is_refused():
+    handler = intake._checked_redirects(allow_private_network=False, internet_archive=True)()
+
+    with pytest.raises(SourceError, match="red privada"):
+        handler.redirect_request(None, None, 302, "Found", {}, "http://127.0.0.1:8080/metadata/x")
+
+
+@pytest.fixture
+def tls_server(tmp_path, monkeypatch):
+    """Servidor HTTPS en 127.0.0.1 con un certificado de prueba. El entorno lo declara de confianza
+    (SSL_CERT_FILE), así que la descarga verifica el certificado como en Internet Archive."""
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        pytest.skip("hace falta openssl para generar el certificado de prueba")
+    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    made = subprocess.run(
+        [openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key), "-out", str(cert),
+         "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"],
+        capture_output=True, check=False,
+    )
+    if made.returncode != 0:
+        pytest.skip("openssl no puede generar el certificado de prueba")
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - nombre fijado por http.server
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(PAYLOAD)))
+            self.end_headers()
+            self.wfile.write(PAYLOAD)
+
+        def log_message(self, *args):
+            return
+
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    monkeypatch.setenv("SSL_CERT_FILE", str(cert))
+    try:
+        yield httpd.server_address[1]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_https_download_verifies_the_certificate_and_reads_the_body(tls_server, tmp_path):
+    destination = tmp_path / "staging" / "tema.mp3"
+
+    intake.download(f"https://127.0.0.1:{tls_server}/tema.mp3", destination, allow_private_network=True)
+
+    assert destination.read_bytes() == PAYLOAD
+
+
+def test_https_download_refuses_a_certificate_nobody_trusts(tls_server, tmp_path, monkeypatch):
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    destination = tmp_path / "staging" / "tema.mp3"
+
+    with pytest.raises(OSError):
+        intake.download(f"https://127.0.0.1:{tls_server}/tema.mp3", destination, allow_private_network=True)
+
+    assert not destination.exists()

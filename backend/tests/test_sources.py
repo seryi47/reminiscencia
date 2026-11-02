@@ -373,3 +373,102 @@ def test_host_name_resolving_only_to_public_addresses_is_allowed(monkeypatch):
     monkeypatch.setattr(sources.socket, "getaddrinfo", lambda *args, **kwargs: [(0, 0, 0, "", ("93.184.216.34", 0))])
 
     check_download_url("https://ejemplo.com/tema.mp3")
+
+
+# --- Corrección de la ronda 2 (2026-11-02) -----------------------------------------------------
+
+
+@pytest.mark.parametrize("url", ["https://dai.ly/clip.mp3", "https://fb.watch/clip.mp3", "https://instagr.am/clip.mp3"])
+def test_short_domains_of_platforms_are_refused(url):
+    with pytest.raises(SourceError, match="no se puede importar"):
+        classify(url)
+
+
+def test_a_host_that_only_ends_like_a_platform_is_not_blocked():
+    assert classify("https://xyoutube.com/a.mp3") == "direct"
+    assert classify("https://notyoutu.be/a.mp3") == "direct"
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://youtube.com /a.mp3", "https://youtube.com　/a.mp3", "https://ejemplo.com /a.mp3"],
+)
+def test_host_with_a_space_or_an_ideographic_separator_is_refused(url):
+    with pytest.raises(SourceError, match="host"):
+        canonical_host(url)
+    with pytest.raises(SourceError, match="host"):
+        classify(url)
+
+
+def test_name_with_www_is_resolved_as_the_connection_resolves_it(monkeypatch):
+    # La conexión resuelve 'www.pub-entry.example' tal cual; la comprobación tiene que mirar ese mismo nombre.
+    answers = {"pub-entry.example": "93.184.216.34", "www.pub-entry.example": "127.0.0.1"}
+    monkeypatch.setattr(sources.socket, "getaddrinfo", lambda host, *args, **kwargs: [(2, 1, 6, "", (answers[host], 0))])
+
+    check_download_url("https://pub-entry.example/final.mp3")
+    with pytest.raises(SourceError, match="red privada"):
+        check_download_url("https://www.pub-entry.example/final.mp3")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://[::127.0.0.1]/x.mp3",
+        "http://[::7f00:1]/x.mp3",
+        "http://[::ffff:0:7f00:1]/x.mp3",
+        "http://[64:ff9b::7f00:1]/x.mp3",
+        "http://[64:ff9b:1::1]/x.mp3",
+        "http://[2002:7f00:1::1]/x.mp3",
+        "http://[::ffff:10.0.0.5]/x.mp3",
+    ],
+)
+def test_ipv6_forms_that_embed_a_private_ipv4_address_are_refused(url):
+    with pytest.raises(SourceError, match="red privada"):
+        check_download_url(url)
+
+
+def test_ipv6_form_that_embeds_a_public_ipv4_address_is_allowed():
+    check_download_url("http://[64:ff9b::5db8:d822]/x.mp3")
+
+
+def test_archive_org_apex_is_not_a_direct_file_either():
+    with pytest.raises(SourceError, match="archive.org/details"):
+        resolve_direct_file("https://archive.org/download/x/y.mp3", license="CC0")
+
+
+@pytest.mark.parametrize("title", ["Hola‮mundo", "Hola​mundo", "Hola﻿mundo"])
+def test_internet_archive_title_with_format_characters_is_not_used(title):
+    metadata = _ia_metadata(
+        "http://creativecommons.org/publicdomain/mark/1.0/",
+        [{"name": "tema.mp3", "format": "VBR MP3"}],
+    )
+    metadata["metadata"]["title"] = title
+
+    assert resolve_internet_archive("https://archive.org/details/tema-item", metadata).title is None
+
+
+@pytest.mark.parametrize(
+    "license_url",
+    [
+        "https://creativecommons.org/licenses/by/4.0/xyz-inventada",
+        "https://creativecommons.org/licenses/by/4.0/../by-nd/4.0/",
+        "https://creativecommons.org/licenses/by/4.0/./",
+        "https://creativecommons.org/licenses/by/4.0/legalcode/extra",
+        "https://evil.example\\@creativecommons.org/licenses/by/4.0/",
+        "https://user@creativecommons.org/licenses/by/4.0/",
+    ],
+)
+def test_ia_license_with_invented_relative_or_backslash_parts_is_not_a_license(license_url):
+    assert ia_license_name(license_url) is None
+
+
+@pytest.mark.parametrize(
+    ("license_url", "expected"),
+    [
+        ("https://creativecommons.org/licenses/by/4.0/legalcode", "CC BY 4.0"),
+        ("https://creativecommons.org/licenses/by/4.0/deed.es", "CC BY 4.0"),
+        ("https://creativecommons.org/publicdomain/zero/1.0/legalcode", "CC0 1.0 (dominio público)"),
+    ],
+)
+def test_ia_license_accepts_the_usual_suffixes_of_creative_commons_urls(license_url, expected):
+    assert ia_license_name(license_url) == expected

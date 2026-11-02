@@ -23,6 +23,7 @@ import re
 import unicodedata
 from collections.abc import Mapping
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from sonidos import catalog
 from sonidos.sources import SourceError, classify, ia_identifier, resolve_direct_file
@@ -166,11 +167,11 @@ def write_github_env(path: str | Path, env: Mapping[str, str]) -> None:
 
 
 def summarize(request: Mapping) -> dict:
-    """Resumen para el registro del workflow: nunca los valores del payload."""
+    """Resumen para el registro del workflow: nunca los valores del payload ni la query de la URL (firmas)."""
     payload = request.get("payload") or {}
     return {
         "action": request["action"],
-        "url": request.get("url"),
+        "url": _url_sin_datos(request.get("url")),
         "title": request.get("title"),
         "op": payload.get("op"),
         "campos": sorted(key for key in payload if key != "op"),
@@ -359,8 +360,17 @@ def _compact_json(payload: Mapping) -> str:
 
 
 def _has_control(text: str) -> bool:
-    """Caracteres de control, separadores de línea y surrogates: nunca van en una petición."""
-    return any(unicodedata.category(char) in ("Cc", "Zl", "Zp", "Cs") for char in text)
+    """Caracteres de control, separadores de línea, surrogates y caracteres de formato (bidi, ancho cero):
+    nunca van en una petición, porque suavizan o esconden lo que se lee."""
+    return any(unicodedata.category(char) in ("Cc", "Zl", "Zp", "Cs", "Cf") for char in text)
+
+
+def _url_sin_datos(url: str | None) -> str | None:
+    """La URL sin query, fragmento ni credenciales. Las firmas temporales no deben salir en el registro."""
+    if not url:
+        return url
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", ""))
 
 
 def _shown(text: str, limit: int = 40) -> str:

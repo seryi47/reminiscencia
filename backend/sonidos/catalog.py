@@ -115,8 +115,8 @@ def update_song(data: dict, song_id: str, fields: dict) -> dict:
         fields["year"] = int(fields["year"])
     elif "year" in fields:
         fields["year"] = None
-    if "public" in fields:
-        fields["public"] = bool(fields["public"])
+    if "public" in fields and not isinstance(fields["public"], bool):
+        raise CatalogError("public debe ser true o false (booleano, no texto ni número)")
     if "folder_id" in fields and not fields["folder_id"]:
         fields["folder_id"] = None
     song.update(fields)

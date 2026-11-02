@@ -43,9 +43,10 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | Módulo | Estado | Pruebas |
 |---|---|---|
 | Catálogo versionado (`backend/sonidos/catalog.py`) | Implementado; fuente de verdad | 8 pruebas |
-| Importación por URL (`pipeline.py`, `intake.py`, `sources.py`) | Implementado; corre en GitHub Actions; cada redirección de una descarga se revisa (corrección de 2026-11-02) | 94 pruebas de fuentes, 11 de descargas y 5 de importación; 2 importaciones reales en CI con `library.yml` |
+| Importación por URL (`pipeline.py`, `intake.py`, `sources.py`) | Implementado; corre en GitHub Actions; cada redirección y cada conexión validan la dirección (corrección de 2026-11-02, segunda ronda) | 123 pruebas de fuentes, 25 de descargas y 8 de importación; 2 importaciones reales en CI con `library.yml` |
 | Publicación y sincronización con la web (`publish.py`) | Implementado; `catalog.json` solo lista las canciones públicas | 4 pruebas |
-| Workflow `biblioteca.yml` (importar, publicar, organizar desde incidencias; ADR-0008) | Implementado; sustituye a `library.yml` (4 ejecuciones reales en CI de la versión anterior); sin ejecutar todavía con una incidencia real | 11 guardas del workflow y 96 casos del contrato de peticiones |
+| Workflow `biblioteca.yml` (importar, publicar, organizar desde incidencias; ADR-0008 y ADR-0009) | Implementado en dos jobs, con el paquete de cambios validado antes de publicar; sustituye a `library.yml` (4 ejecuciones reales en CI de la versión anterior); sin ejecutar todavía con una incidencia real | 20 guardas del workflow y 98 casos del contrato de peticiones |
+| Paquete entre procesado y publicación (`backend/sonidos/paquete.py`, `scripts/empaquetar_cambios.py`, `scripts/aplicar_paquete.py`) | Implementado; probado con git real y con una simulación local procesado → publicación; sin ejecutar todavía en GitHub | 57 pruebas |
 | Administración en Vercel (`/admin/`) | **Retirada** en esta rama (ADR-0008): no hay panel ni `ADMIN_PASSWORD` | Guarda: `test_web_has_no_administration_code` |
 | Funciones de Vercel (`api/`) | **Retiradas** en esta rama (ADR-0008) | Guarda: `test_web_has_no_administration_code` |
 | Web pública de escucha (`frontend/web`) | **Pública** en https://reminiscencia.vercel.app; 9 pistas | Probada en escritorio y teléfono contra la URL pública |

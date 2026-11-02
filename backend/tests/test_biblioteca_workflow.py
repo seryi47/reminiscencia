@@ -4,6 +4,7 @@ Sin dependencias de YAML: se leen los bloques 'run:' por indentación. Lo que es
 incidencia no debe llegar nunca a un intérprete de shell por interpolación de ${{ }}.
 """
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -131,3 +132,80 @@ def test_permissions_are_declared_on_the_job_not_on_the_whole_workflow():
 def test_web_has_no_administration_code():
     for folder in ("admin", "api", "lib"):
         assert not (ROOT / "frontend" / "web" / folder).exists()
+
+
+# --- Corrección de la ronda 2 (2026-11-02): procesado separado de la publicación -----------------
+
+
+def _jobs(text: str) -> tuple[str, str]:
+    """Bloques de los dos jobs: 'procesar' (sin escritura ni token) y 'publicar' (último job)."""
+    _, _, jobs = text.partition("\njobs:\n")
+    procesar, marker, publicar = jobs.partition("\n  publicar:\n")
+    assert marker and procesar.startswith("  procesar:\n")
+    return procesar, publicar
+
+
+OWNER_CONDITION = "github.event.issue.user.login == github.repository_owner"
+LABEL_CONDITION = "contains(github.event.issue.labels.*.name, 'biblioteca')"
+
+
+def test_processing_job_only_reads_and_never_receives_the_token():
+    procesar, _ = _jobs(_workflow_text())
+
+    assert "contents: read" in procesar
+    assert "contents: write" not in procesar and "issues: write" not in procesar
+    assert "GH_TOKEN" not in procesar
+    assert "persist-credentials: false" in procesar
+
+
+def test_publishing_job_depends_on_processing_and_runs_no_processing_tool():
+    _, publicar = _jobs(_workflow_text())
+
+    assert "needs: procesar" in publicar
+    for processing_tool in ("ffmpeg", "ci_library.py", "issue_request.py", "sonidos.pipeline", "pip install"):
+        assert processing_tool not in publicar
+    assert "scripts/aplicar_paquete.py" in publicar
+    assert "contents: write" in publicar and "issues: write" in publicar
+
+
+def test_processing_passes_its_changes_on_as_an_artifact_that_publishing_downloads():
+    procesar, publicar = _jobs(_workflow_text())
+
+    assert "actions/upload-artifact" in procesar and "scripts/empaquetar_cambios.py" in procesar
+    assert "actions/download-artifact" in publicar
+
+
+def test_both_jobs_keep_the_owner_and_label_condition():
+    procesar, publicar = _jobs(_workflow_text())
+
+    for block in (procesar, publicar):
+        assert OWNER_CONDITION in block and LABEL_CONDITION in block
+        assert "github.event_name == 'workflow_dispatch'" in block
+
+
+def test_branch_guard_runs_before_any_code_of_the_tree_is_installed_or_run():
+    procesar, _ = _jobs(_workflow_text())
+
+    assert procesar.index('"$GITHUB_REF_NAME" != "main"') < procesar.index("pip install")
+
+
+def test_persist_credentials_is_off_in_both_checkouts_of_the_library_workflow():
+    text = _workflow_text()
+
+    assert text.count("uses: actions/checkout") == text.count("persist-credentials: false") == 2
+
+
+def test_actions_of_the_library_workflow_are_pinned_to_a_commit():
+    for line in _workflow_text().splitlines():
+        if "uses: " in line:
+            assert re.search(r"@[0-9a-f]{40}\b", line), line
+
+
+def test_step_summary_does_not_wrap_untrusted_json_in_a_code_fence():
+    assert "```json" not in _workflow_text()
+
+
+def test_backend_workflow_checkouts_do_not_persist_credentials():
+    text = (ROOT / ".github" / "workflows" / "backend.yml").read_text(encoding="utf-8")
+
+    assert text.count("uses: actions/checkout") == text.count("persist-credentials: false") == 3

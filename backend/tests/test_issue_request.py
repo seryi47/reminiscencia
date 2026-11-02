@@ -10,6 +10,7 @@ from sonidos.issue_request import (
     RequestError,
     parse_request,
     request_from_env,
+    summarize,
     to_github_env,
     validate_payload,
     write_github_env,
@@ -103,12 +104,18 @@ def test_blocked_subdomain_is_refused(url):
         "www.youtube.com.",
         "ｙｏｕｔｕｂｅ.com",
         "youtube。com",
-        "youtu­.be",
     ],
 )
 def test_blocked_platform_is_refused_whatever_the_spelling_of_the_host(host):
     with pytest.raises(RequestError, match="no se puede importar"):
         parse_request(body("action: import", f"url: https://{host}/tema.mp3", "license: CC0 1.0"))
+
+
+def test_soft_hyphen_in_a_request_is_refused_as_a_format_character():
+    # El guion blando es un carácter de formato: una petición no lo admite (el caso de plataforma con
+    # guion blando se prueba con classify en test_sources.py).
+    with pytest.raises(RequestError, match="caracteres de control"):
+        parse_request(body("action: import", "url: https://youtu­.be/tema.mp3", "license: CC0"))
 
 
 def test_lookalike_host_is_not_blocked_but_is_unsupported():
@@ -491,3 +498,24 @@ def test_script_refuses_to_run_without_github_env():
 
     assert result.returncode == 1
     assert "GITHUB_ENV" in json.loads(result.stdout)["error"]
+
+
+# --- Corrección de la ronda 2 (2026-11-02) -----------------------------------------------------
+
+
+def test_title_with_bidi_override_or_zero_width_characters_is_refused():
+    for title in ("Hola‮mundo", "Hola​mundo"):
+        with pytest.raises(RequestError, match="caracteres de control"):
+            parse_request(body("action: import", f"url: {MP3_URL}", "license: CC0", f"title: {title}"))
+
+
+def test_summary_never_shows_the_query_of_the_url():
+    # Las firmas temporales de un enlace no deben salir en el registro del workflow ni en el comentario.
+    request = parse_request(
+        body("action: import", "url: https://files.example/a.mp3?X-Amz-Signature=SECRETO123", "license: CC0")
+    )
+
+    summary = summarize(request)
+
+    assert summary["url"] == "https://files.example/a.mp3"
+    assert "SECRETO123" not in json.dumps(summary)

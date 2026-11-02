@@ -26,7 +26,7 @@ def test_song_without_license_is_refused():
 def test_update_song_validates_and_normalizes():
     data = catalog.empty()
     song, _ = _song(data)
-    updated = catalog.update_song(data, song["id"], {"tags": "Jazz, jazz , años 20", "year": "1925", "public": 1})
+    updated = catalog.update_song(data, song["id"], {"tags": "Jazz, jazz , años 20", "year": "1925", "public": True})
     assert updated["tags"] == ["jazz", "años 20"]
     assert updated["year"] == 1925
     assert updated["public"] is True
@@ -89,3 +89,14 @@ def test_same_folder_name_under_another_parent_is_another_folder():
 
     assert child["parent_id"] == parent["id"]
     assert len(data["folders"]) == 3
+
+
+@pytest.mark.parametrize("public", ["false", "true", 1, 0, None])
+def test_update_song_public_must_be_a_json_boolean(public):
+    # bool("false") es True: el texto no puede llegar nunca al catálogo como publicación.
+    data = catalog.empty()
+    song, _ = _song(data)
+
+    with pytest.raises(CatalogError, match="public"):
+        catalog.update_song(data, song["id"], {"public": public})
+    assert song["public"] is False
