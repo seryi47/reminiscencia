@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copia en la nube y traspaso entre dispositivos (API 31 y posteriores). Mismo criterio que backup_rules.xml:
-     el audio subido desde este teléfono no sale del dispositivo; solo los metadatos. -->
+     las canciones subidas desde este teléfono (audio y metadatos) no salen del dispositivo (ADR-0012 y ADR-0013). -->
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="root" path="app_flutter/biblioteca-local/audio/" />
+        <exclude domain="root" path="app_flutter/biblioteca-local/" />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="root" path="app_flutter/biblioteca-local/audio/" />
+        <exclude domain="root" path="app_flutter/biblioteca-local/" />
     </device-transfer>
 </data-extraction-rules>

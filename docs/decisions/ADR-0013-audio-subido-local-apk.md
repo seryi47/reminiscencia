@@ -14,7 +14,7 @@ El cuidador quiere escuchar con el paciente canciones que tiene en el teléfono 
 2. **Título.** El nombre del archivo sin la última extensión. Sin nombre útil, «Sin título». Máximo 200 caracteres.
 3. **Almacenamiento.** `biblioteca-local/` dentro del almacenamiento privado de la app: `audio/<id>.opus` para el audio y `pistas.json` para los metadatos. Los ids empiezan por `L`, así no chocan con el catálogo (`S`). Nada de esto se sube a GitHub, a Vercel ni a ningún servidor.
 4. **Límites.** 60 MB por archivo y 20 minutos de duración. Sin comprobación de espacio libre: Flutter no tiene una API equivalente a `navigator.storage.estimate()` sin un plugin adicional. Es una diferencia respecto a la web.
-5. **Copia de seguridad del sistema.** La carpeta `audio/` queda excluida de la copia automática de Android y de la copia en la nube y el traspaso entre dispositivos (`backup_rules.xml` y `data_extraction_rules.xml`). El índice `pistas.json` sí se copia: al restaurar, las entradas sin fichero se omiten y no aparecen. **Diferencia con la web:** ADR-0012 excluye también los metadatos de la copia cifrada; aquí se incluyen, porque la APK no tiene copia cifrada propia y el encargo lo pedía así. Pendiente de confirmar por el propietario.
+5. **Copia de seguridad.** Igual que la web (ADR-0012, punto 6): la copia no incluye ni el audio ni los metadatos de las canciones subidas desde este teléfono. En Android, toda la carpeta `biblioteca-local/` queda excluida de la copia automática (`backup_rules.xml`), de la copia en la nube y del traspaso entre dispositivos (`data_extraction_rules.xml`). Se prueba en `test/backup_rules_test.dart`, que lee ambos ficheros y el manifiesto.
 6. **Borrado.** Cada canción local se borra desde su fila («Borrar de este teléfono») con confirmación. Sale del índice y después se borra el fichero. Las canciones del catálogo no tienen esa opción.
 7. **Reproducción.** Las canciones locales entran en la lista y en la cola como cualquier otra. Su `audio` es la ruta del fichero, así que suenan sin red y en segundo plano.
 8. **Sincronización sin temporizadores (ahorro de batería).** La biblioteca se sincroniza al abrir la app, al refrescar a mano y al volver a primer plano solo si han pasado 10 minutos desde la última vez. No hay sondeos ni tareas periódicas. Sin red se usa la copia guardada y no hay error bloqueante.
@@ -29,15 +29,15 @@ El cuidador quiere escuchar con el paciente canciones que tiene en el teléfono 
 - La APK pesa más: el paquete mínimo de FFmpeg añade sus bibliotecas nativas (`libffmpegkit.so`, `libswscale`, `libswresample` y otras por arquitectura). La APK de depuración pesa 223 MB con todas las arquitecturas, sin reducir. No hay medida previa a la incorporación de FFmpeg, así que el impacto exacto no se midió.
 - Permisos: `INTERNET` (ya existía), `ACCESS_NETWORK_STATE` (nuevo, para saber si hay Wi-Fi). No hay permisos de almacenamiento: el selector del sistema da acceso a los archivos elegidos.
 - Wakelocks: la app no pide ninguno. `audio_service` y `just_audio` mantienen el bloqueo solo mientras suena música. Sin reproducción no queda trabajo en segundo plano.
-- Las canciones locales viven en un teléfono. Desinstalar la app o borrar sus datos las elimina.
+- Las canciones locales viven en un teléfono. Desinstalar la app, borrar sus datos o cambiar de teléfono las elimina; no hay copia de estos audios ni de sus metadatos.
 
 ## Verificación
 
-- Pruebas unitarias Flutter de la lógica (título, tasas, límites, identificadores, índice, alta, borrado, poda protegida por la cola, sincronización por tiempo, descarga solo en Wi-Fi, cancelación de la conversión).
+- Pruebas unitarias Flutter de la lógica (título, tasas, límites, identificadores, índice, alta, borrado, poda protegida por la cola, sincronización por tiempo, descarga solo en Wi-Fi, cancelación de la conversión) y de las reglas de copia de Android.
 - `flutter analyze` sin avisos y `flutter build apk --debug` correcto.
-- Sin verificar en dispositivo: reproducción real con la pantalla bloqueada, el salto de canciones no descargadas sin red y el comportamiento de la copia de Android. Eso requiere un teléfono.
+- Sin verificar en dispositivo: reproducción real con la pantalla bloqueada y el salto de canciones no descargadas sin red. Eso requiere un teléfono. La copia de Android solo se comprueba en el contenido de sus reglas, no en una copia real.
 
 ## Cuándo cambiar
 
-- Si se quiere copia de estas canciones o sincronizarlas entre dispositivos, hace falta una decisión de almacenamiento (ADR-0003) y de privacidad.
+- Si se quiere copia de estas canciones o sincronizarlas entre dispositivos, hace falta una decisión de almacenamiento (ADR-0003) y de privacidad, igual que en ADR-0012.
 - Si se quiere desactivar «escuchar sin conexión» desde la interfaz, falta un control; hoy la opción se recuerda y no se puede quitar desde la app.
