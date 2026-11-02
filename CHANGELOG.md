@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## Sin publicar (2026-11-02)
+
+### Añadido
+- Datos locales del cuidador (almacén IndexedDB, copia cifrada y validación) y PWA con service worker, manifiesto e iconos para escuchar sin conexión (`8a19a09`).
+- Integración continua de la web en `.github/workflows/web.yml`: sintaxis y pruebas con `node:test` (`7f93756`).
+- Investigación verificada (`4b79df2`): bibliografía maestra en `BIBLIOGRAPHY.md`, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`.
+- Documentación técnica (`43034bc`): ADR-0009 de interfaz única y datos locales, `docs/audio-processing/AUDIO_ENGINE.md`, `docs/datos/DATABASE.md` y `docs/user-experience/PLAYER.md`.
+- Backend de la biblioteca por incidencias y paquete de cambios (`b6c986b`; ADR-0008): el procesado deja un paquete de cambios y la publicación lo valida y lo aplica por separado. El paquete solo admite rutas de audio con identificador y de los tres JSON públicos, y solo puede borrar audio; el catálogo y los datos públicos se reescriben. El workflow `library` pasa a `biblioteca`.
+- Web con gestión por incidencias y la misma lista de bloqueo que el backend (42 entradas), con rechazo de caracteres de formato (`14dbe82`).
+- Prueba real de importar, publicar y despublicar «Tell me pretty maiden» con las incidencias #1, #2 y #3, todas cerradas. La pista queda en el catálogo con `public: false`.
+
+### Retirado
+- Administración de la web pública (`0fa6ed3`): se borran `frontend/web/admin/`, las funciones `api/` (catálogo, despacho y ejecuciones) y `lib/` (autenticación, GitHub y validación).
+
+### En curso
+- Interfaz única en `feat/ui-publica` (`index.html`, `js/app.js`, `js/paciente/`, `js/cuidador/` y `css/`, tres commits sobre main) y contrato de colaboradores e Internet Archive `/download/` en `feat/contrato-colaboradores`, que todavía no tiene commits propios.
+
 ## Integrado: app Android y entrega de APK (2026-10-31)
 
 ### Añadido
