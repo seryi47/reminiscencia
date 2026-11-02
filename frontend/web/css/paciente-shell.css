@@ -1,0 +1,738 @@
+/* Marco del modo paciente (DESIGN 6.1 P-1 a P-3, P-17 a P-19 y 3.1): cabecera, navegación, mini reproductor,
+   banda sin conexión, botones, diálogos y teclado de PIN. Solo tokens de tokens.css y base.css (sección 4 del
+   contrato); nada de colores fijos.
+   Estructura, como una aplicación de música en web:
+   - Teléfono (menos de 600 px): cabecera de 64 px, contenido, mini reproductor de 64 px y barra de pestañas
+     inferior de 64 px con los cuatro destinos.
+   - Tableta (de 600 a 1023 px): riel de 72 px a la izquierda con iconos. El nombre de cada destino queda accesible
+     y aparece como tooltip al pasar el puntero o al enfocarlo. El mini reproductor de 76 px ocupa todo el ancho.
+   - Escritorio (desde 1024 px): barra lateral de 240 px con grupos, cabecera de 88 px y título de 40 px.
+   El texto escala con --escala; por eso las alturas mínimas se escriben en px multiplicados por --escala. */
+
+/* ---------- Rejilla del marco ----------
+   Teléfono: cabecera, banda, contenido, mini reproductor y barra inferior en columna.
+   Desde 600 px: la navegación ocupa la columna izquierda y el mini reproductor, todo el ancho abajo. */
+.p-shell {
+  /* Contiene los elementos absolutos (por ejemplo, el aviso del volumen para lectores de pantalla): sin esto, su
+     bloque de contención es el documento y el marco no los recorta, y la página gana un desplazamiento vertical. */
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--alto-cabecera, 64px) auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "cabecera"
+    "banda"
+    "principal"
+    "mini"
+    "navegacion";
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--fondo);
+  color: var(--texto);
+}
+
+@media (min-width: 600px) {
+  .p-shell {
+    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-rows: var(--alto-cabecera, 64px) auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "navegacion cabecera"
+      "navegacion banda"
+      "navegacion principal"
+      "mini mini";
+  }
+}
+
+@media (min-width: 1024px) {
+  .p-shell {
+    --alto-cabecera: 88px;
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+}
+
+/* ---------- Cabecera (P-1): 64 px en teléfono y tableta, 88 px en escritorio; H1 a la izquierda y botón Cuidador a la derecha ---------- */
+.p-header {
+  grid-area: cabecera;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 0 var(--margen-pagina, 16px);
+  background: var(--superficie-1);
+  border-bottom: 1px solid var(--borde-suave);
+}
+
+@media (min-width: 600px) {
+  .p-header {
+    background: transparent;
+    border-bottom: 0;
+  }
+}
+
+.p-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--tipo-h1);
+  color: var(--texto);
+}
+
+@media (min-width: 1024px) {
+  .p-title {
+    font: 700 calc(40px * var(--escala, 1)) / calc(48px * var(--escala, 1)) var(--familia-base);
+  }
+}
+
+/* Botón Cuidador: 56 px de alto y 120 px de ancho mínimo; candado de 24 px solo si hay PIN. */
+.p-cuidador {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: calc(56px * var(--escala, 1));
+  min-width: 120px;
+  padding: 0 20px;
+  border: 2px solid var(--borde-control);
+  border-radius: var(--radio-control, 16px);
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: 700 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+  cursor: pointer;
+}
+
+.p-cuidador:active {
+  background: var(--superficie-3);
+}
+
+/* ---------- Iconos (DESIGN 5.4): 28 px en el paciente; el candado, 24 px ---------- */
+.p-icono {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+}
+
+.p-candado {
+  width: 24px;
+  height: 24px;
+}
+
+/* ---------- Banda sin conexión (P-19): 48 px bajo la cabecera ---------- */
+.p-offline {
+  grid-area: banda;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px var(--margen-pagina, 16px);
+  background: var(--superficie-3);
+  color: var(--texto);
+  font: var(--tipo-meta);
+}
+
+.p-offline p {
+  margin: 0;
+}
+
+.p-offline .p-icono {
+  width: 24px;
+  height: 24px;
+}
+
+/* ---------- Zona de la pantalla activa (app-main) ----------
+   El desplazamiento es de esta zona, no de la página: la cabecera, el mini reproductor y la navegación quedan fijos. */
+.p-main {
+  grid-area: principal;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px var(--margen-pagina, 16px);
+}
+
+/* La zona recibe el foco al saltar al contenido: no se dibuja un anillo alrededor de toda la pantalla. */
+.p-main:focus {
+  outline: none;
+}
+
+/* ---------- Navegación (P-2 y P-3) ----------
+   Teléfono: barra de pestañas inferior con los cuatro destinos en columnas. Los grupos son contenedores sin
+   semántica (display: contents) para que cada destino sea una columna. Los títulos de grupo solo se ven desde 1024 px. */
+.p-nav {
+  grid-area: navegacion;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  min-height: calc(64px * var(--escala, 1) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--superficie-1);
+  border-top: 1px solid var(--borde-suave);
+}
+
+.p-nav-grupo {
+  display: contents;
+}
+
+.p-nav-titulo {
+  display: none;
+}
+
+.p-nav-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: calc(64px * var(--escala, 1));
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--texto);
+  font: 700 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+  cursor: pointer;
+}
+
+.p-nav-item .p-icono {
+  width: 28px;
+  height: 28px;
+}
+
+.p-nav-texto {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.p-nav-item:active {
+  background: var(--superficie-3);
+}
+
+/* Destino activo en la barra: fondo acento-suave e indicador superior de 4 px en acento (P-2). */
+.p-nav-item[aria-current="page"] {
+  background: var(--acento-suave);
+}
+
+.p-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--acento);
+}
+
+/* Desde 600 px la navegación es una columna: en tableta, un riel de iconos; en escritorio, una barra lateral. */
+@media (min-width: 600px) {
+  .p-nav {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    min-height: 0;
+    padding: 12px 8px;
+    background: var(--fondo);
+    border-top: 0;
+    border-right: 1px solid var(--borde-suave);
+  }
+
+  /* El título de cada grupo queda solo para lectores de pantalla. */
+  .p-nav-titulo {
+    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .p-nav-item {
+    flex: none;
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+    border-radius: 16px;
+    gap: 0;
+  }
+
+  .p-nav-item[aria-current="page"]::before {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: 4px;
+    height: auto;
+  }
+
+  .p-nav-item[aria-current="page"] {
+    background: var(--superficie-2);
+  }
+}
+
+/* Tableta (riel de 72 px): solo iconos. El nombre queda accesible y se muestra como tooltip. */
+@media (min-width: 600px) and (max-width: 1023.98px) {
+  .p-nav-item {
+    height: 64px;
+  }
+
+  .p-nav-texto {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .p-nav-item::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: calc(100% + 8px);
+    top: 50%;
+    z-index: 70;
+    display: none;
+    padding: 6px 12px;
+    border: 1px solid var(--borde-control);
+    border-radius: 8px;
+    background: var(--superficie-3);
+    color: var(--texto);
+    font: var(--tipo-meta);
+    white-space: nowrap;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .p-nav-item:focus-visible::after {
+    display: block;
+  }
+
+  @media (hover: hover) {
+    .p-nav-item:hover::after {
+      display: block;
+    }
+  }
+}
+
+/* Escritorio (barra lateral de 240 px): grupos con título visible, destinos con icono y nombre en fila. */
+@media (min-width: 1024px) {
+  .p-nav {
+    gap: 0;
+    padding: 20px 12px;
+    overflow-y: auto;
+  }
+
+  .p-nav-grupo {
+    display: block;
+  }
+
+  .p-nav-grupo + .p-nav-grupo {
+    margin-top: 20px;
+  }
+
+  .p-nav-titulo {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0 0 6px;
+    padding: 0 12px;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+    white-space: normal;
+    font: var(--tipo-meta);
+    font-weight: 600;
+    color: var(--texto-3);
+  }
+
+  .p-nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    min-height: calc(56px * var(--escala, 1));
+    margin-bottom: 4px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font: var(--tipo-etiqueta);
+  }
+
+  .p-nav-texto {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    clip: auto;
+    clip-path: none;
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .p-nav-item[aria-current="page"]::before {
+    top: 10px;
+    bottom: 10px;
+    left: 0;
+    width: 4px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .p-nav-item::after {
+    content: none;
+  }
+}
+
+/* ---------- Mini reproductor (P-18): título que abre Escuchar y botón de 56 px. 64 px en teléfono, 76 px desde 600 px ---------- */
+.p-mini {
+  grid-area: mini;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: calc(64px * var(--escala, 1));
+  padding: 0 var(--margen-pagina, 16px);
+  background: var(--superficie-1);
+  border-top: 1px solid var(--borde-suave);
+}
+
+@media (min-width: 600px) {
+  .p-mini {
+    min-height: 76px;
+  }
+}
+
+.p-mini-titulo {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--texto);
+  text-align: left;
+  font: 600 calc(20px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
+  cursor: pointer;
+}
+
+.p-mini-texto {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.p-mini-boton {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--acento);
+  color: var(--sobre-acento);
+  cursor: pointer;
+}
+
+.p-mini-boton .p-icono {
+  width: 28px;
+  height: 28px;
+}
+
+.p-mini-boton:active {
+  background: var(--acento-fuerte);
+}
+
+.p-mini-titulo:active {
+  background: var(--superficie-3);
+}
+
+/* ---------- Botones del paciente (P-13): 56 px, 64 px para el primario y 48 px para los auxiliares ---------- */
+.p-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: calc(56px * var(--escala, 1));
+  padding: 0 24px;
+  border: 2px solid var(--borde-control);
+  border-radius: var(--radio-control, 16px);
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-etiqueta);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.p-boton:active {
+  background: var(--superficie-3);
+}
+
+.p-boton--primario {
+  border-color: var(--acento);
+  background: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.p-boton--primario:active {
+  border-color: var(--acento-fuerte);
+  background: var(--acento-fuerte);
+}
+
+.p-boton--grande {
+  min-height: calc(64px * var(--escala, 1));
+}
+
+.p-boton--compacto {
+  min-height: calc(48px * var(--escala, 1));
+}
+
+/* Deshabilitado con aria-disabled: el control sigue enfocable, pero no actúa (DESIGN 6.1 P-7). */
+.p-boton[aria-disabled="true"],
+.p-boton:disabled {
+  border-color: var(--borde-suave);
+  background: var(--superficie-3);
+  color: var(--deshabilitado);
+}
+
+/* ---------- Diálogos (P1b, P5, P6) ----------
+   Capa a pantalla completa con el fondo atenuado y un panel con borde, sin sombras (DESIGN 5.4 en paciente). */
+.p-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--fondo);
+  background: color-mix(in srgb, var(--fondo) 88%, transparent);
+}
+
+.p-dialogo {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: min(100%, 560px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
+  border: 2px solid var(--borde-control);
+  border-radius: var(--radio-tarjeta, 20px);
+  background: var(--superficie-2);
+  color: var(--texto);
+}
+
+.p-dialogo:focus {
+  outline: none;
+}
+
+/* ---------- Aviso de apagado (P6): «Seguir 15 minutos más» (64 px) y «Parar ahora» (64 px) ---------- */
+.p6-titulo {
+  margin: 0;
+  font: var(--tipo-seccion);
+  color: var(--texto);
+}
+
+.p6-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.p6-acciones .p-boton {
+  width: 100%;
+  min-height: 64px;
+}
+
+/* ---------- Salida al modo cuidador (P5, P-16 y P-17) ---------- */
+.p5-titulo {
+  margin: 0;
+  font: var(--tipo-seccion);
+  color: var(--texto);
+}
+
+.p5-texto {
+  margin: 0;
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+}
+
+.p5-teclado {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Indicadores de 20 px: lleno en acento y vacío con borde de 2 px (contraste de no texto 3:1). */
+.p5-indicadores {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 28px;
+}
+
+.p5-indicador {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--borde-control);
+  border-radius: 999px;
+}
+
+.p5-indicador.is-lleno {
+  border-color: var(--acento);
+  background: var(--acento);
+}
+
+/* Con «Mostrar PIN», el dígito sustituye al punto y el indicador queda sin borde. */
+.p5-indicador.is-mostrando {
+  width: auto;
+  min-width: 20px;
+  height: auto;
+  border: 0;
+  background: transparent;
+  color: var(--texto);
+  font: 600 calc(24px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
+}
+
+/* Teclas de 72 px en teléfono y de 80 px desde 768 px, separadas 16 px. */
+.p5-teclas {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 16px;
+  justify-content: center;
+}
+
+.p5-tecla,
+.p5-hueco {
+  width: 72px;
+  height: 72px;
+}
+
+.p5-tecla {
+  box-sizing: border-box;
+  padding: 0;
+  border: 2px solid var(--borde-control);
+  border-radius: var(--radio-control, 16px);
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: 600 calc(32px * var(--escala, 1)) / calc(40px * var(--escala, 1)) var(--familia-base);
+  cursor: pointer;
+}
+
+.p5-tecla:active {
+  background: var(--superficie-3);
+}
+
+.p5-tecla:disabled {
+  border-color: var(--borde-suave);
+  background: var(--superficie-3);
+  color: var(--deshabilitado);
+  cursor: default;
+}
+
+.p5-tecla-borrar {
+  font: 700 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+}
+
+.p5-auxiliares {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.p5-auxiliar {
+  min-height: calc(48px * var(--escala, 1));
+  padding: 0 16px;
+  font: 700 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+}
+
+.p5-mensaje {
+  min-height: 24px;
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+  text-align: center;
+}
+
+.p5-mensaje.is-error {
+  color: var(--peligro);
+  font-weight: 700;
+}
+
+.p5-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.p5-acciones .p-boton {
+  width: 100%;
+  min-height: 64px;
+}
+
+@media (min-width: 768px) {
+  .p-cuidador {
+    padding: 0 20px;
+  }
+
+  .p5-teclas {
+    grid-template-columns: repeat(3, 80px);
+  }
+
+  .p5-tecla,
+  .p5-hueco {
+    width: 80px;
+    height: 80px;
+  }
+
+  .p5-acciones {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .p5-acciones .p-boton {
+    width: 280px;
+  }
+
+  .p6-acciones {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .p6-acciones .p-boton {
+    width: 280px;
+  }
+}

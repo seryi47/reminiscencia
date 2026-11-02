@@ -1,0 +1,55 @@
+name: web-e2e
+
+on:
+  push:
+    paths:
+      - "frontend/web/**"
+      - "tests/web-e2e/**"
+  pull_request:
+    paths:
+      - "frontend/web/**"
+      - "tests/web-e2e/**"
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas-e2e:
+    runs-on: ubuntu-latest
+    # Con la interfaz incompleta, cada prueba falla tras esperar el elemento que falta: el job puede tardar bastante.
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: tests/web-e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Node LTS 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias de las pruebas
+        run: npm ci
+
+      - name: Localizar Chrome
+        run: |
+          RUTA="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          if [ -z "$RUTA" ]; then
+            # Si el runner no trae Chrome, se descarga la versión estable con @puppeteer/browsers.
+            RUTA="$(npx --yes @puppeteer/browsers install chrome@stable | tail -n 1 | awk '{print $NF}')"
+          fi
+          echo "CHROME_PATH=$RUTA" >> "$GITHUB_ENV"
+          echo "Chrome: $RUTA"
+
+      - name: Ejecutar pruebas (node --test)
+        run: npm test
+
+      - name: Subir capturas de pantalla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-web-e2e
+          path: tests/web-e2e/capturas/
+          if-no-files-found: ignore
+          retention-days: 14

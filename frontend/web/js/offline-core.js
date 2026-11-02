@@ -3,10 +3,10 @@
 // No usa DOM ni APIs del navegador, así que se prueba directamente en node
 // (tests/web-unit/offline-core.test.mjs).
 
-/** Versión del shell (HTML, CSS, JS, datos e iconos). Súbela cuando cambie el shell
+/** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 1;
+export const SHELL_VERSION = 2;
 
 /** Prefijo de las cachés del shell; sirve para reconocer las antiguas al limpiar. */
 export const SHELL_CACHE_PREFIX = 'reminiscencia-shell-';
@@ -19,37 +19,76 @@ const BASE = 'http://localhost/';
 // Canciones: el id va en el nombre del fichero, así que solo se admiten caracteres seguros.
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 
-const SHELL_PATHS = new Set([
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/listen.css',
-  '/app.js',
-  '/gestion.js',
-  '/manifest.webmanifest',
-]);
-const SHELL_PATTERNS = [/^\/js\/[^/]+\.js$/, /^\/data\/[^/]+\.json$/, /^\/icons\/[^/]+\.png$/];
+const SHELL_PATHS = new Set(['/', '/index.html', '/manifest.webmanifest']);
+const SHELL_PATTERNS = [
+  /^\/js\/(?:[^/]+\/)*[^/]+\.js$/, // módulos, también los de js/paciente/ y js/cuidador/
+  /^\/css\/[^/]+\.css$/,
+  /^\/fonts\/[^/]+\.woff2$/,
+  /^\/data\/[^/]+\.json$/,
+  /^\/icons\/[^/]+\.png$/,
+];
 const DATA_PATTERN = /^\/data\/[^/]+\.json$/;
 const AUDIO_PATTERN = /^\/audio\/[^/]+\.opus$/;
 
 /** Rutas desde la raíz del sitio que el service worker precarga al instalarse. Las que
- *  no existen (por ejemplo, ficheros de otras ramas) se omiten sin error. */
+ *  no existen (por ejemplo, ficheros de otras ramas) se omiten sin error. Al añadir una hoja,
+ *  una fuente, un módulo, un dato o un icono, añádelo aquí: la prueba de cobertura de
+ *  tests/web-unit/offline-core.test.mjs falla si falta alguno. */
 export const SHELL_ASSETS = Object.freeze([
   '/',
   '/index.html',
-  '/styles.css',
-  '/listen.css',
-  '/app.js',
-  '/gestion.js',
-  '/js/intake.js',
+  '/manifest.webmanifest',
+  '/css/tokens.css',
+  '/css/base.css',
+  '/css/paciente-shell.css',
+  '/css/paciente-escuchar.css',
+  '/css/paciente-listas.css',
+  '/css/cuidador-shell.css',
+  '/css/cuidador-biblioteca.css',
+  '/css/cuidador-perfiles.css',
+  '/css/cuidador-contenido.css',
+  '/fonts/atkinson-next-400.woff2',
+  '/fonts/atkinson-next-600.woff2',
+  '/fonts/atkinson-next-700.woff2',
+  '/js/app.js',
   '/js/offline-core.js',
   '/js/pwa.js',
+  '/js/backup.js',
+  '/js/crypto.js',
+  '/js/player.js',
+  '/js/prefs.js',
+  '/js/schema.js',
+  '/js/store.js',
+  '/js/intake.js',
+  '/data/catalog.json',
+  '/js/paciente/buscar.js',
+  '/js/paciente/carpetas.js',
+  '/js/paciente/escuchar.js',
+  '/js/paciente/listas.js',
+  '/js/paciente/salida.js',
+  '/js/paciente/shell.js',
+  '/js/cuidador/ajustes.js',
+  '/js/cuidador/asistente.js',
+  '/js/cuidador/biblioteca.js',
+  '/js/cuidador/incidencias.js',
+  '/js/cuidador/inicio.js',
+  '/js/cuidador/lista-editor.js',
+  '/js/cuidador/listas-perfil.js',
+  '/js/cuidador/observacion-hoja.js',
+  '/js/cuidador/observaciones.js',
+  '/js/cuidador/opciones-paciente.js',
+  '/js/cuidador/panel.js',
+  '/js/cuidador/perfil.js',
+  '/js/cuidador/perfiles.js',
+  '/js/cuidador/recuerdo-editor.js',
+  '/js/cuidador/recuerdos.js',
+  '/js/cuidador/sesion.js',
+  '/js/cuidador/shell.js',
   '/data/songs.json',
   '/data/folders.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/icon-maskable-512.png',
-  '/manifest.webmanifest',
 ]);
 
 /** Nombre de la caché del shell para una versión: 'reminiscencia-shell-v<N>'. */
@@ -74,7 +113,7 @@ function pathOf(url) {
   }
 }
 
-/** ¿Es una petición del shell (páginas, CSS, JS, datos o iconos)? Mira solo la ruta:
+/** ¿Es una petición del shell (páginas, CSS, fuentes, JS, datos o iconos)? Mira solo la ruta:
  *  el service worker filtra antes el origen. */
 export function isShellRequest(url) {
   const path = pathOf(url);

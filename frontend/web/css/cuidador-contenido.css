@@ -1,0 +1,958 @@
+/* Contenido del perfil del cuidador y ajustes: listas, recuerdos y observaciones, sus editores y hojas (DESIGN C3a a
+   C3d, C-14 a C-23), y la pantalla Ajustes (C5). Todas las clases llevan el prefijo cc- (los ajustes, .c-settings).
+   Estilo de Apple Music (web) en la estructura: filas con línea de separación en lugar de tarjetas, títulos de sección
+   de 22 px, pastillas de acento para las acciones y campos redondeados de 12 px.
+   Solo usa tokens de tokens.css y base.css: sin colores fijos. Breakpoints del contrato (sección 6):
+   menos de 600 px (teléfono), de 600 a 1279 px (una columna) y desde 1280 px (dos columnas en el editor de recuerdo). */
+
+/* ---------- Secciones y listas ---------- */
+
+.cc-seccion {
+  display: grid;
+  gap: var(--separacion-campo, 16px);
+  min-width: 0;
+}
+
+.cc-seccion-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espacio-2, 8px) var(--espacio-3, 12px);
+}
+
+.cc-seccion-titulo {
+  margin: 0;
+  font: 700 calc(22px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
+  color: var(--texto);
+}
+
+.cc-lista,
+.cc-lista-simple,
+.cc-lista-canciones,
+.cc-observaciones,
+.cc-miniaturas,
+.cc-selector-lista {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--borde-suave);
+}
+
+/* Fila: texto, pulsable en su título, con la línea que la separa de la siguiente. */
+.cc-fila,
+.cc-fila-simple,
+.cc-fila-cancion,
+.cc-observacion,
+.cc-miniatura {
+  display: grid;
+  gap: var(--espacio-1, 4px);
+  min-width: 0;
+  padding: var(--espacio-3, 12px) 0;
+  border-bottom: 1px solid var(--borde-suave);
+  background: transparent;
+}
+
+/* Recuerdo: franja cálida a la izquierda y la palabra «Recuerdo» (DESIGN D30). */
+.cc-fila-recuerdo {
+  padding-inline-start: var(--espacio-3, 12px);
+  border-inline-start: 4px solid var(--recuerdo);
+}
+
+/* La última fila no lleva línea: la separa del bloque siguiente la línea de ese bloque. */
+.cc-lista > :last-child,
+.cc-lista-simple > :last-child,
+.cc-lista-canciones > :last-child,
+.cc-observaciones > :last-child,
+.cc-miniaturas > :last-child,
+.cc-selector-lista > :last-child {
+  border-bottom: 0;
+}
+
+.cc-marca-recuerdo {
+  margin: 0;
+  font: var(--tipo-meta);
+  font-weight: 600;
+  color: var(--recuerdo);
+}
+
+.cc-fila-titulo {
+  margin: 0;
+  font: var(--tipo-fila);
+  color: var(--texto);
+}
+
+.cc-fila-texto {
+  display: grid;
+  gap: var(--espacio-1, 4px);
+  min-width: 0;
+}
+
+.cc-fila-texto > p {
+  margin: 0;
+}
+
+/* Título pulsable de una fila: ocupa toda la anchura para ser un objetivo amplio. */
+.cc-fila-enlace {
+  display: block;
+  width: 100%;
+  min-height: var(--objetivo-minimo, 40px);
+  padding: var(--espacio-1, 4px) 0;
+  border: 0;
+  background: none;
+  color: var(--texto);
+  font: 600 calc(17px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .cc-fila-enlace:hover {
+    color: var(--acento);
+  }
+}
+
+.cc-fila-enlace:active {
+  color: var(--acento);
+}
+
+.cc-meta {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+.cc-estado {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+.cc-vacio {
+  margin: 0;
+  padding: var(--espacio-4, 16px) var(--espacio-5, 24px);
+  border-radius: 16px;
+  background: var(--superficie-2);
+  font: var(--tipo-cuerpo);
+  color: var(--texto-2);
+}
+
+.cc-alerta {
+  margin: 0;
+  padding: var(--espacio-3, 12px) var(--espacio-4, 16px);
+  border: 2px solid var(--peligro);
+  border-radius: 12px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-cuerpo);
+}
+
+/* Aviso de «Deshacer» tras quitar una canción (DESIGN C-17). */
+.cc-aviso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espacio-2, 8px) var(--espacio-3, 12px);
+  padding: var(--espacio-2, 8px) var(--espacio-3, 12px) var(--espacio-2, 8px) var(--espacio-4, 16px);
+  border-radius: 16px;
+  background: var(--superficie-3);
+  color: var(--texto);
+  box-shadow: var(--sombra-2);
+}
+
+.cc-aviso-texto {
+  margin: 0;
+  font: var(--tipo-cuerpo);
+}
+
+/* ---------- Botones: pastillas (DESIGN C-9) ---------- */
+
+.cc-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--espacio-2, 8px);
+  min-height: var(--objetivo-minimo, 40px);
+  padding: 0 var(--espacio-5, 20px);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: var(--tipo-etiqueta);
+  text-align: center;
+  cursor: pointer;
+}
+
+.cc-boton--primario {
+  background: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.cc-boton--primario:active {
+  background: var(--acento-fuerte);
+}
+
+.cc-boton--secundario {
+  background: var(--superficie-3);
+  color: var(--texto);
+}
+
+.cc-boton--secundario:active {
+  background: var(--superficie-2);
+}
+
+/* Peligro: solo tras un diálogo de confirmación (DESIGN C-9). */
+.cc-boton--peligro {
+  background: transparent;
+  color: var(--peligro);
+  border-color: var(--peligro);
+}
+
+.cc-boton--compacto {
+  padding: 0 var(--espacio-4, 16px);
+}
+
+.cc-boton:disabled {
+  background: var(--superficie-2);
+  color: var(--deshabilitado);
+  border-color: transparent;
+  cursor: default;
+}
+
+/* Enlace de vuelta («‹ Volver a …»): sin caja, con la altura mínima del objetivo. */
+.cc-enlace {
+  min-height: var(--objetivo-minimo, 40px);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acento);
+  font: var(--tipo-etiqueta);
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  .cc-boton,
+  .cc-enlace {
+    min-height: var(--objetivo-tactil, 44px);
+  }
+}
+
+/* Teléfono: objetivos de 48 px (DESIGN 5.4). */
+@media (max-width: 599px) {
+  .cc-boton,
+  .cc-enlace {
+    min-height: 48px;
+  }
+}
+
+/* ---------- Campos (DESIGN C-11, C-12, C-13): redondeados de 12 px ---------- */
+
+.cc-campo {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cc-campo-etiqueta {
+  font: var(--tipo-etiqueta);
+  color: var(--texto);
+}
+
+.cc-campo-ayuda,
+.cc-contador {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+.cc-contador {
+  justify-self: end;
+}
+
+.cc-campo-error {
+  margin: 0;
+  font: var(--tipo-meta);
+  font-weight: 600;
+  color: var(--peligro);
+}
+
+.cc-control {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--objetivo-minimo, 40px);
+  padding: var(--espacio-2, 8px) 14px;
+  border: 1px solid var(--borde-control);
+  border-radius: 12px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-cuerpo);
+}
+
+.cc-control:focus {
+  border-color: var(--acento);
+}
+
+.cc-control-corto {
+  max-width: 9em;
+}
+
+textarea.cc-control {
+  min-height: 120px;
+  max-height: 320px;
+  resize: vertical;
+}
+
+/* Error: borde de 2 px en peligro y texto con la corrección (DESIGN C-11). */
+.cc-control-error {
+  border: 2px solid var(--peligro);
+}
+
+@media (max-width: 599px) {
+  .cc-control {
+    min-height: 48px;
+  }
+}
+
+/* Teléfono: objetivos de 44 px para casillas, pastillas de etiqueta y título pulsable (especificación). */
+@media (max-width: 599px) {
+  .cc-casilla,
+  .cc-casilla-etiqueta,
+  .cc-chip,
+  .cc-chip-quitar {
+    min-height: 44px;
+  }
+
+  .cc-fila-enlace {
+    min-height: 48px;
+  }
+}
+
+.cc-casilla {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-2, 8px);
+  min-height: var(--objetivo-minimo, 40px);
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.cc-casilla input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--acento);
+}
+
+/* Etiquetas de la observación: pastillas con casilla; marcada = borde y fondo de acento (no solo color: hay casilla). */
+.cc-casilla-etiqueta {
+  min-height: 44px;
+  padding: var(--espacio-1, 4px) var(--espacio-4, 16px);
+  border: 1px solid var(--borde-control);
+  border-radius: 999px;
+  background: var(--superficie-2);
+}
+
+.cc-casilla-etiqueta:has(input:checked) {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+}
+
+.cc-casilla-fila {
+  align-items: flex-start;
+  min-height: 44px;
+}
+
+.cc-grupo {
+  display: grid;
+  gap: var(--espacio-2, 8px);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cc-grupo > legend {
+  margin-bottom: var(--espacio-1, 4px);
+  padding: 0;
+  font: var(--tipo-etiqueta);
+  color: var(--texto);
+}
+
+.cc-etiquetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--espacio-2, 8px);
+}
+
+.cc-fila-campos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--espacio-2, 8px) var(--espacio-3, 12px);
+}
+
+.cc-fila-campos > .cc-campo {
+  flex: 1 1 200px;
+}
+
+/* ---------- Personas (fichas) ---------- */
+
+.cc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-2, 8px);
+  min-height: 36px;
+  padding: 0 var(--espacio-2, 8px) 0 var(--espacio-4, 16px);
+  border-radius: 999px;
+  background: var(--acento-suave);
+  color: var(--texto);
+  font: var(--tipo-meta);
+}
+
+.cc-chip-quitar {
+  min-height: 28px;
+  padding: 0 var(--espacio-3, 12px);
+  border: 0;
+  border-radius: 999px;
+  background: var(--superficie-3);
+  color: var(--texto);
+  font: var(--tipo-meta);
+  cursor: pointer;
+}
+
+/* ---------- Editores de recuerdo y de lista ---------- */
+
+.cc-editor {
+  display: grid;
+  gap: var(--separacion-bloque, 24px);
+  min-width: 0;
+}
+
+.cc-editor-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2, 8px) var(--espacio-4, 16px);
+}
+
+.cc-editor-perfil {
+  margin: 0;
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+/* Estado del borrador: a la derecha de la cabecera (DESIGN C-21). */
+.cc-estado-borrador {
+  margin: 0 0 0 auto;
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+.cc-editor-cuerpo {
+  display: grid;
+  gap: var(--espacio-6, 32px);
+  align-items: start;
+  min-width: 0;
+}
+
+.cc-formulario {
+  display: grid;
+  gap: var(--separacion-campo, 16px);
+  align-content: start;
+  min-width: 0;
+}
+
+.cc-columna-lateral {
+  display: grid;
+  gap: var(--espacio-6, 32px);
+  align-content: start;
+  min-width: 0;
+}
+
+.cc-pie {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--espacio-2, 8px);
+  padding-top: var(--espacio-4, 16px);
+  border-top: 1px solid var(--borde-suave);
+}
+
+.cc-zona-peligro {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: var(--espacio-4, 16px);
+  border-top: 1px solid var(--borde-suave);
+}
+
+/* Desde 1280 px: formulario (hasta 560 px) y columna de 320 px con fotografías y canciones (DESIGN C-21). Con el
+   panel de canción abierto a 1440 px, el formulario se encoge en lugar de tapar la columna lateral. */
+@media (min-width: 1280px) {
+  .cc-editor-cuerpo {
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+    column-gap: var(--espacio-5, 24px);
+  }
+
+  .cc-formulario {
+    max-width: 560px;
+  }
+}
+
+/* Teléfono: pie fijo con «Cancelar» y «Guardar» por encima de la barra inferior y del mini reproductor.
+   --cc-pie-bottom suma la barra inferior (64 px) y el mini reproductor (64 px); si el shell oculta el mini, se ajusta. */
+.cc-editor-recuerdo,
+.cc-editor-lista {
+  --cc-pie-bottom: calc(var(--alto-barra-inferior, 64px) + 64px);
+}
+
+@media (max-width: 599px) {
+  .cc-editor-recuerdo > .cc-pie,
+  .cc-editor-lista > .cc-pie {
+    position: fixed;
+    inset-inline: 0;
+    bottom: var(--cc-pie-bottom);
+    z-index: 20;
+    box-sizing: border-box;
+    height: 72px;
+    margin: 0;
+    padding: var(--espacio-2, 8px) var(--margen-pagina, 16px);
+    align-items: center;
+    flex-wrap: nowrap;
+    background: var(--superficie-1);
+    border-top: 1px solid var(--borde-suave);
+  }
+
+  .cc-editor-recuerdo > .cc-pie > .cc-boton,
+  .cc-editor-lista > .cc-pie > .cc-boton {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .cc-editor-recuerdo,
+  .cc-editor-lista {
+    padding-bottom: calc(var(--cc-pie-bottom) + 72px + var(--espacio-4, 16px));
+  }
+}
+
+/* ---------- Fotografías (DESIGN C-22) ---------- */
+
+.cc-zona-fotos {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--espacio-2, 8px);
+  min-height: 160px;
+  padding: var(--espacio-4, 16px);
+  border: 2px dashed var(--borde-control);
+  border-radius: 16px;
+  background: var(--superficie-2);
+  text-align: center;
+}
+
+/* Arrastrando sobre la zona: borde de 3 px en acento. */
+.cc-zona-fotos--activa {
+  border: 3px solid var(--acento);
+}
+
+.cc-zona-fotos > p {
+  margin: 0;
+}
+
+.cc-zona-texto {
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+}
+
+.cc-miniaturas {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cc-miniatura {
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--espacio-2, 8px) var(--espacio-3, 12px);
+}
+
+.cc-miniatura-imagen {
+  grid-row: 1 / span 2;
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--superficie-3);
+}
+
+.cc-miniatura > .cc-campo,
+.cc-miniatura > .cc-acciones-fila {
+  grid-column: 2;
+}
+
+.cc-acciones-fila {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--espacio-2, 8px);
+}
+
+@media (max-width: 599px) {
+  .cc-miniatura {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+
+  .cc-miniatura-imagen {
+    width: 80px;
+    height: 80px;
+  }
+}
+
+/* ---------- Canciones: filas de la lista, del recuerdo y del selector (como la biblioteca) ---------- */
+
+.cc-fila-cancion {
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--espacio-3, 12px);
+  min-height: 56px;
+  padding: var(--espacio-2, 8px) 0;
+}
+
+.cc-fila-simple {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--espacio-3, 12px);
+  min-height: 48px;
+  padding: var(--espacio-2, 8px) 0;
+}
+
+.cc-posicion {
+  font: var(--tipo-etiqueta);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-2);
+  text-align: center;
+}
+
+@media (max-width: 599px) {
+  .cc-fila-cancion {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .cc-fila-cancion > .cc-acciones-fila {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+/* Selector de canciones (hoja): casillas con el título, el artista y la duración. */
+.cc-selector-fila {
+  min-width: 0;
+}
+
+.cc-selector-texto {
+  display: grid;
+  gap: var(--espacio-1, 4px);
+  min-width: 0;
+}
+
+.cc-selector-lista {
+  max-height: 50dvh;
+  overflow: auto;
+}
+
+/* ---------- Hojas y diálogos (DESIGN C-16) ---------- */
+
+.cc-hoja-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: color-mix(in srgb, var(--fondo) 80%, transparent);
+}
+
+/* Teléfono y tableta vertical: hoja inferior con radio de 20 px arriba, asa de 40×4 px y altura máxima del 90 %. */
+.cc-hoja {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  max-height: 90dvh;
+  overflow: hidden;
+  border-radius: 20px 20px 0 0;
+  background: var(--superficie-2);
+  color: var(--texto);
+  box-shadow: var(--sombra-3);
+}
+
+.cc-hoja::before {
+  content: '';
+  position: absolute;
+  top: var(--espacio-2, 8px);
+  left: 50%;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 999px;
+  background: var(--borde-control);
+}
+
+.cc-hoja-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espacio-3, 12px);
+  padding: var(--espacio-6, 28px) var(--espacio-5, 24px) var(--espacio-3, 12px);
+}
+
+.cc-hoja-titulo {
+  margin: 0;
+  font: 700 calc(20px * var(--escala, 1)) / calc(26px * var(--escala, 1)) var(--familia-base);
+  color: var(--texto);
+}
+
+.cc-hoja-cuerpo {
+  display: grid;
+  align-content: start;
+  gap: var(--separacion-campo, 16px);
+  min-height: 0;
+  padding: 0 var(--espacio-5, 24px);
+  overflow: auto;
+}
+
+.cc-hoja-pie {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--espacio-2, 8px);
+  padding: var(--espacio-4, 16px) var(--espacio-5, 24px);
+  border-top: 1px solid var(--borde-suave);
+}
+
+/* Desde 600 px: diálogo centrado de 480 px (sin asa). */
+@media (min-width: 600px) {
+  .cc-hoja-fondo {
+    align-items: center;
+    padding: var(--espacio-4, 16px);
+  }
+
+  .cc-hoja {
+    width: min(480px, 100%);
+    border-radius: 20px;
+  }
+
+  .cc-hoja::before {
+    display: none;
+  }
+}
+
+/* ---------- Observaciones (DESIGN C-23) ---------- */
+
+.cc-observacion-fecha {
+  display: block;
+  font: var(--tipo-etiqueta);
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-2);
+}
+
+.cc-observacion-nota {
+  margin: 0;
+  font: var(--tipo-cuerpo);
+  color: var(--texto);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.cc-etiquetas-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cc-etiqueta {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--superficie-3);
+  color: var(--texto);
+  font: var(--tipo-meta);
+}
+
+/* ---------- Ajustes (C5): grupos de filas como en Apple Music (web) ----------
+   Cada sección es una tarjeta redondeada con su título; las opciones son filas con línea de separación. Son reglas
+   con .c-settings delante para no cambiar las primitivas que comparten el marco y las hojas. */
+
+.c-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--separacion-bloque, 24px);
+  max-width: 720px;
+}
+
+.c-settings .c-settings-section {
+  gap: var(--espacio-2, 8px);
+  padding: var(--espacio-4, 16px) var(--espacio-5, 20px) var(--espacio-4, 16px);
+  border-top: 0;
+  border-radius: 16px;
+  background: var(--superficie-2);
+}
+
+.c-settings .c-settings-section > .c-section-title {
+  font: 700 calc(20px * var(--escala, 1)) / calc(26px * var(--escala, 1)) var(--familia-base);
+}
+
+.c-settings .c-panel-subtitle {
+  margin-top: var(--espacio-2, 8px);
+  font: 600 calc(16px * var(--escala, 1)) / calc(22px * var(--escala, 1)) var(--familia-base);
+  color: var(--texto);
+}
+
+.c-settings .c-fieldset {
+  margin: 0;
+}
+
+.c-settings .c-fieldset + .c-fieldset {
+  margin-top: var(--espacio-4, 16px);
+}
+
+.c-settings .c-fieldset > .c-label {
+  margin-bottom: var(--espacio-1, 4px);
+  font: var(--tipo-meta);
+  font-weight: 600;
+  color: var(--texto-2);
+}
+
+.c-settings .c-choices {
+  gap: 0;
+  border-top: 1px solid var(--borde-suave);
+}
+
+.c-settings .c-choice {
+  min-height: 48px;
+  padding: 0;
+  border-bottom: 1px solid var(--borde-suave);
+}
+
+.c-settings .c-choice input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--acento);
+}
+
+.c-settings .c-switch-row {
+  min-height: 56px;
+  padding: var(--espacio-2, 8px) 0;
+  border-bottom: 1px solid var(--borde-suave);
+}
+
+.c-settings .c-switch {
+  min-height: 44px;
+}
+
+.c-settings .c-switch-track {
+  width: 51px;
+  height: 31px;
+  border: 0;
+  background: var(--superficie-3);
+}
+
+.c-settings .c-switch-thumb {
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  background: var(--texto-2);
+  box-shadow: var(--sombra-1);
+}
+
+.c-settings .c-switch[aria-checked="true"] .c-switch-track {
+  border: 0;
+}
+
+.c-settings .c-switch[aria-checked="true"] .c-switch-thumb {
+  transform: translateX(20px);
+}
+
+.c-settings .c-field {
+  gap: 6px;
+}
+
+.c-settings .c-input {
+  min-height: 44px;
+  border-radius: 12px;
+  border-color: var(--borde-control);
+}
+
+.c-settings .c-btn {
+  min-height: var(--objetivo-minimo, 40px);
+  padding: 0 var(--espacio-5, 20px);
+  border-radius: 999px;
+}
+
+.c-settings .c-btn--primary {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.c-settings .c-btn--secondary {
+  background: var(--superficie-3);
+  border-color: transparent;
+  color: var(--texto);
+}
+
+.c-settings .c-btn--danger {
+  background: transparent;
+  border-color: var(--peligro);
+  color: var(--peligro);
+}
+
+.c-settings .c-btn:disabled {
+  background: var(--superficie-2);
+  border-color: transparent;
+  color: var(--deshabilitado);
+}
+
+.c-settings .c-preview-box {
+  border: 0;
+  border-radius: 16px;
+  background: var(--superficie-3);
+}
+
+.c-settings .c-file {
+  min-height: 44px;
+}
+
+.c-settings .c-settings-section .c-check {
+  min-height: 40px;
+}
+
+@media (max-width: 599px) {
+  .c-settings .c-btn {
+    min-height: 48px;
+  }
+
+  .c-settings .c-input {
+    min-height: 48px;
+  }
+
+  .c-settings .c-switch-row,
+  .c-settings .c-choice {
+    min-height: 52px;
+  }
+}

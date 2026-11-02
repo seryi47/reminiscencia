@@ -1,11 +1,12 @@
 // Pruebas del modo sin conexión (node:test, sin navegador).
-// Cubren la lógica pura de offline-core.js, el manifiesto y sus iconos, y el comportamiento de
-// sw.js y pwa.js sobre cachés y red simuladas. Todos los datos son ficticios.
+// Cubren la lógica pura de offline-core.js, la cobertura de la lista del shell (SHELL_ASSETS),
+// el manifiesto y sus iconos, y el comportamiento de sw.js y pwa.js sobre cachés y red simuladas.
+// Todos los datos son ficticios.
 // Ejecución: node --test tests/web-unit/offline-core.test.mjs
 
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join, sep } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -96,7 +97,10 @@ function resetEnvironment() {
     if (env.offline) throw new TypeError('Sin conexión');
     const route = env.routes.get(urlOf(input));
     if (!route) return new Response('No encontrado', { status: 404 });
-    return new Response(route.body, { status: route.status ?? 200, headers: route.headers ?? {} });
+    const response = new Response(route.body, { status: route.status ?? 200, headers: route.headers ?? {} });
+    // Como tras seguir una redirección en un fetch real (p. ej. /index.html → /).
+    if (route.redirected) Object.defineProperty(response, 'redirected', { value: true });
+    return response;
   };
 }
 
@@ -155,16 +159,26 @@ function restoreNavigator() {
   if (originals.navigator) Object.defineProperty(globalThis, 'navigator', originals.navigator);
 }
 
-beforeEach(resetEnvironment);
-
-after(() => {
+/** Devuelve a su valor original los globales que usan sw.js y pwa.js. Solo lo llaman los bloques
+ *  que los preparan, así que al ejecutar todas las suites en un proceso (index.mjs) no afecta
+ *  a las demás. */
+function restoreGlobals() {
   globalThis.fetch = originals.fetch;
   if (originals.caches === undefined) delete globalThis.caches;
   else globalThis.caches = originals.caches;
   if (originals.self === undefined) delete globalThis.self;
   else globalThis.self = originals.self;
   restoreNavigator();
-});
+}
+
+/** Rutas desde la raíz del sitio (p. ej. '/js/paciente/shell.js') de los ficheros de una carpeta
+ *  de frontend/web con una extensión, a cualquier profundidad. */
+function sitePaths(folder, extension) {
+  return readdirSync(join(WEB_DIR, folder), { recursive: true })
+    .map((name) => name.split(sep).join('/'))
+    .filter((name) => name.endsWith(extension))
+    .map((name) => `/${folder}/${name}`);
+}
 
 // ---------------------------------------------------------------------------------------------
 // offline-core.js: lógica pura
@@ -194,18 +208,32 @@ describe('clasificación de peticiones', () => {
     const shellUrls = [
       '/',
       '/index.html',
-      '/app.js',
-      `${ORIGIN}styles.css?v=3`,
+      '/manifest.webmanifest',
+      `${ORIGIN}js/app.js?v=3`,
       '/js/pwa.js',
+      '/js/paciente/shell.js',
+      '/js/cuidador/sesion.js',
+      '/css/base.css',
+      '/css/cuidador-shell.css',
+      '/fonts/atkinson-next-400.woff2',
       '/data/songs.json',
       '/icons/icon-512.png',
-      '/manifest.webmanifest',
     ];
     for (const url of shellUrls) assert.equal(isShellRequest(url), true, url);
   });
 
-  test('no trata como shell la API, el panel, el propio worker ni el audio', () => {
-    const notShell = ['/api/catalog', '/admin/index.html', '/lib/auth.js', '/sw.js', '/audio/demo-1.opus'];
+  test('no trata como shell la API, el panel, el worker, el audio ni la página retirada de la raíz', () => {
+    const notShell = [
+      '/api/catalog',
+      '/admin/index.html',
+      '/lib/auth.js',
+      '/sw.js',
+      '/audio/demo-1.opus',
+      '/app.js',
+      '/styles.css',
+      '/listen.css',
+      '/gestion.js',
+    ];
     for (const url of notShell) assert.equal(isShellRequest(url), false, url);
   });
 
@@ -357,10 +385,68 @@ describe('manifiesto e iconos', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
+// Cobertura de SHELL_ASSETS: lo que hay en frontend/web debe estar precargado
+// ---------------------------------------------------------------------------------------------
+
+describe('cobertura de SHELL_ASSETS', () => {
+  test('incluye la página, el manifiesto, los datos y los iconos', () => {
+    for (const path of ['/', '/index.html', '/manifest.webmanifest', '/data/songs.json', '/data/folders.json']) {
+      assert.ok(SHELL_ASSETS.includes(path), path);
+    }
+  });
+
+  test('incluye todas las hojas, fuentes, módulos (también los de js/paciente y js/cuidador), datos e iconos', () => {
+    const files = [
+      ...sitePaths('css', '.css'),
+      ...sitePaths('fonts', '.woff2'),
+      ...sitePaths('js', '.js'),
+      ...sitePaths('data', '.json'),
+      ...sitePaths('icons', '.png'),
+    ];
+    assert.ok(files.includes('/js/cuidador/shell.js'), 'el recorrido debe entrar en las subcarpetas');
+    assert.deepEqual(files.filter((path) => !SHELL_ASSETS.includes(path)), []);
+  });
+
+  test('incluye lo que carga la página (hojas, módulo de entrada, manifiesto e iconos)', () => {
+    const html = readFileSync(join(WEB_DIR, 'index.html'), 'utf8');
+    const refs = [...html.matchAll(/\b(?:href|src)="([^"#?:]+)"/g)].map((match) => `/${match[1]}`);
+    assert.ok(refs.includes('/js/app.js'), 'la página debe cargar el módulo de entrada');
+    assert.deepEqual(refs.filter((path) => !SHELL_ASSETS.includes(path)), []);
+  });
+
+  test('incluye lo que referencian las hojas con url(), como las fuentes', () => {
+    const referenced = [];
+    for (const sheet of sitePaths('css', '.css')) {
+      const css = readFileSync(join(WEB_DIR, sheet), 'utf8');
+      for (const [, ref] of css.matchAll(/url\(\s*["']?([^"')]+?)["']?\s*\)/g)) {
+        if (/^(data:|https?:)/.test(ref)) continue;
+        referenced.push(new URL(ref, `https://reminiscencia.test${sheet}`).pathname);
+      }
+    }
+    assert.ok(referenced.includes('/fonts/atkinson-next-400.woff2'), 'las hojas deben enlazar las fuentes');
+    assert.deepEqual(referenced.filter((path) => !SHELL_ASSETS.includes(path)), []);
+  });
+
+  test('no vuelve a precargar los ficheros de la página de escucha retirada', () => {
+    for (const path of ['/styles.css', '/listen.css', '/app.js', '/gestion.js']) {
+      assert.equal(SHELL_ASSETS.includes(path), false, path);
+    }
+  });
+
+  test('no repite rutas y la lista está congelada', () => {
+    assert.equal(Object.isFrozen(SHELL_ASSETS), true);
+    assert.equal(new Set(SHELL_ASSETS).size, SHELL_ASSETS.length);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
 // sw.js con cachés y red simuladas
 // ---------------------------------------------------------------------------------------------
 
 describe('service worker (sw.js)', () => {
+  beforeEach(resetEnvironment);
+  after(restoreGlobals);
+
   before(async () => {
     globalThis.self = {
       location: new URL(ORIGIN),
@@ -381,27 +467,49 @@ describe('service worker (sw.js)', () => {
 
   test('install precarga el shell y omite los recursos que no existen', async () => {
     env.routes.set(ORIGIN, { body: '<!doctype html>' });
-    env.routes.set(`${ORIGIN}app.js`, { body: 'console.log(1);' });
+    env.routes.set(`${ORIGIN}js/app.js`, { body: 'console.log(1);' });
     env.routes.set(`${ORIGIN}data/songs.json`, { body: '[]' });
     await runLifecycle('install');
     const urls = await urlsIn(SHELL);
     assert.ok(urls.includes(ORIGIN));
-    assert.ok(urls.includes(`${ORIGIN}app.js`));
+    assert.ok(urls.includes(`${ORIGIN}js/app.js`));
     assert.ok(urls.includes(`${ORIGIN}data/songs.json`));
-    assert.equal(urls.includes(`${ORIGIN}gestion.js`), false);
+    assert.equal(urls.includes(`${ORIGIN}css/base.css`), false);
+  });
+
+  test('install guarda todo el shell y, sin red, lo sirve desde la caché', async () => {
+    for (const path of SHELL_ASSETS) env.routes.set(new URL(path, ORIGIN).href, { body: `contenido de ${path}` });
+    await runLifecycle('install');
+    assert.deepEqual(await urlsIn(SHELL), SHELL_ASSETS.map((path) => new URL(path, ORIGIN).href).sort());
+
+    env.offline = true;
+    for (const path of SHELL_ASSETS) {
+      const { response } = dispatchFetch(new Request(new URL(path, ORIGIN)));
+      assert.ok(response, `el worker no intercepta ${path}`);
+      assert.equal(await (await response).text(), `contenido de ${path}`, path);
+    }
+  });
+
+  test('install no guarda respuestas redirigidas, que el navegador no acepta como navegación', async () => {
+    env.routes.set(ORIGIN, { body: '<!doctype html>' });
+    env.routes.set(`${ORIGIN}index.html`, { body: '<!doctype html>', redirected: true });
+    await runLifecycle('install');
+    const urls = await urlsIn(SHELL);
+    assert.ok(urls.includes(ORIGIN));
+    assert.equal(urls.includes(`${ORIGIN}index.html`), false);
   });
 
   test('el shell responde con la copia guardada y la actualiza en segundo plano', async () => {
-    env.routes.set(`${ORIGIN}app.js`, { body: 'version 1' });
+    env.routes.set(`${ORIGIN}js/app.js`, { body: 'version 1' });
     await runLifecycle('install');
-    env.routes.set(`${ORIGIN}app.js`, { body: 'version 2' });
+    env.routes.set(`${ORIGIN}js/app.js`, { body: 'version 2' });
 
-    const pending = dispatchFetch(new Request(`${ORIGIN}app.js`));
+    const pending = dispatchFetch(new Request(`${ORIGIN}js/app.js`));
     assert.equal(await (await pending.response).text(), 'version 1');
     await Promise.all(pending.waits);
 
     const cache = await caches.open(SHELL);
-    assert.equal(await (await cache.match(`${ORIGIN}app.js`)).text(), 'version 2');
+    assert.equal(await (await cache.match(`${ORIGIN}js/app.js`)).text(), 'version 2');
   });
 
   test('la raíz del sitio se sirve desde la copia del shell', async () => {
@@ -468,19 +576,19 @@ describe('service worker (sw.js)', () => {
   });
 
   test('un fallo al escribir en caché no rompe la respuesta de red', async () => {
-    env.routes.set(`${ORIGIN}app.js`, { body: 'nuevo' });
+    env.routes.set(`${ORIGIN}js/app.js`, { body: 'nuevo' });
     const cache = await caches.open(SHELL);
     cache.put = async () => {
       throw new Error('Cuota llena');
     };
-    const pending = dispatchFetch(new Request(`${ORIGIN}app.js`));
+    const pending = dispatchFetch(new Request(`${ORIGIN}js/app.js`));
     assert.equal(await (await pending.response).text(), 'nuevo');
     await Promise.all(pending.waits);
   });
 
   test('no intercepta otro origen, las peticiones POST ni la API', async () => {
     const foreign = dispatchFetch(new Request('https://otro.test/app.js'));
-    const post = dispatchFetch(new Request(`${ORIGIN}app.js`, { method: 'POST', body: 'x' }));
+    const post = dispatchFetch(new Request(`${ORIGIN}js/app.js`, { method: 'POST', body: 'x' }));
     const api = dispatchFetch(new Request(`${ORIGIN}api/catalog`));
     assert.equal(foreign.response, undefined);
     assert.equal(post.response, undefined);
@@ -502,6 +610,9 @@ describe('service worker (sw.js)', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('guardado sin conexión (pwa.js)', () => {
+  beforeEach(resetEnvironment);
+  after(restoreGlobals);
+
   test('saveLibraryOffline descarga solo lo pendiente e informa del progreso', async () => {
     env.routes.set(`${ORIGIN}audio/demo-1.opus`, { body: 'aaaa' });
     env.routes.set(`${ORIGIN}audio/demo-3.opus`, { body: 'cccc' });

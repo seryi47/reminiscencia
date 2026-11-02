@@ -1,0 +1,5 @@
+# Dependencias instaladas por npm ci (el package-lock.json sí se versiona).
+node_modules/
+
+# Capturas de pantalla de las pruebas: se generan en cada ejecución y no se versionan.
+capturas/

@@ -1,0 +1,569 @@
+/* Listas, carpetas, búsqueda y estantes del modo paciente (DESIGN 3.1, 4, 6.1: P-11 a P-15, y 5.4), con la
+   estructura de una app de música: cabecera de sección con «Ver todas», cuadrículas de portadas, cabecera de lista
+   o carpeta con su botón principal, filas de canción y búsqueda en forma de pastilla.
+   Solo usa tokens de tokens.css y tipos de base.css. Las alturas de los controles crecen con --escala.
+   El anillo de foco lo pone base.css (:focus-visible); aquí no se quita ningún contorno. */
+
+/* ---------- Estructura de la pantalla ---------- */
+
+.screen-stack {
+  display: grid;
+  gap: var(--separacion-bloque, 32px);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  /* El margen lateral (16 px en teléfono, 24 px desde 768 px) ya lo pone .p-main. */
+  padding: var(--espacio-4, 16px) 0 var(--espacio-7, 48px);
+}
+
+.section {
+  display: grid;
+  gap: var(--espacio-4, 16px);
+  min-width: 0;
+}
+
+/* Cabecera de sección: el título a la izquierda y, a la derecha, «Ver todas» (botón de 56 px).
+   Si no cabe en una línea, el botón baja debajo del título. */
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espacio-3, 12px) var(--espacio-4, 16px);
+  min-width: 0;
+}
+
+.section-head h2 {
+  min-width: 0;
+  margin: 0;
+}
+
+.section-head .action {
+  flex: 0 0 auto;
+}
+
+.meta-text {
+  font: var(--tipo-meta);
+  color: var(--texto-3);
+  margin: 0;
+}
+
+.empty-text,
+.loading-text {
+  font: var(--tipo-cuerpo);
+  color: var(--texto-2);
+  margin: 0;
+}
+
+.error-text {
+  font: var(--tipo-cuerpo);
+  color: var(--peligro);
+  margin: 0;
+}
+
+/* Icono decorativo con trazo de 2 px (los trazados los pone listas.js). */
+.icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- Cuadrículas de portadas (estantes, listas y carpetas; P-11) ----------
+   Teléfono: dos columnas. Desde 768 px, mosaicos que caben según el ancho (unos 160 a 204 px), de modo que un
+   estante de seis portadas cabe en una sola fila en escritorio. */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--espacio-4, 16px);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+@media (min-width: 768px) {
+  .tiles {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: var(--espacio-5, 24px);
+  }
+}
+
+/* Con escala de texto de 1,50 o más, una columna. Va después de las reglas de columnas para ganarlas. */
+.tiles.escala-grande {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tile-item {
+  min-width: 0;
+}
+
+/* El H3 envuelve el botón; el botón es todo el mosaico. */
+.tile-heading {
+  margin: 0;
+}
+
+/* El mosaico no tiene caja propia: la portada es la tarjeta. Toda la superficie es el botón. */
+.tile {
+  display: grid;
+  gap: var(--espacio-3, 12px);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radio-tarjeta, 20px);
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* Pulsado (P-11): la portada se tiñe de acento-suave. */
+.tile:active .tile-cover {
+  background: var(--acento-suave);
+}
+
+/* «Vacía»: no se abre y no cambia al pulsar. La palabra «Vacía» lo dice; el color no es lo único. */
+.tile.is-empty {
+  cursor: default;
+}
+
+.tile.is-empty .tile-cover,
+.tile.is-empty:active .tile-cover {
+  background: var(--superficie-2);
+  box-shadow: inset 0 0 0 2px var(--borde-suave);
+  color: var(--texto-3);
+}
+
+.tile-cover {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radio-tarjeta, 20px);
+  background: var(--superficie-3);
+  color: var(--texto-2);
+  font: 700 calc(64px * var(--escala, 1)) / 1 var(--familia-base);
+}
+
+/* Título de 22/30 700 con dos líneas como máximo; se reservan dos líneas para que las filas cuadren. */
+.tile-title {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: calc(60px * var(--escala, 1));
+  font: var(--tipo-fila);
+  color: var(--texto);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tile-meta {
+  font: var(--tipo-meta);
+  color: var(--texto-3);
+}
+
+/* ---------- Cabecera de lista y de carpeta (P2b y P3b) ----------
+   Portada con la inicial, número de canciones y «Reproducir» (64 px). Teléfono: todo centrado. Desde 768 px: la
+   portada a la izquierda y los datos a su derecha, alineados abajo. */
+
+.detalle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: var(--espacio-4, 16px);
+  text-align: center;
+}
+
+.detalle-portada {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: min(200px, 56vw);
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radio-portada, 24px);
+  background: var(--superficie-3);
+  color: var(--texto-2);
+  font: 700 calc(96px * var(--escala, 1)) / 1 var(--familia-base);
+}
+
+.detalle-info {
+  display: grid;
+  justify-items: center;
+  gap: var(--espacio-3, 12px);
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .detalle {
+    grid-template-columns: 200px minmax(0, 1fr);
+    justify-items: start;
+    align-items: end;
+    gap: var(--espacio-5, 24px);
+    text-align: start;
+  }
+
+  .detalle-portada {
+    width: 200px;
+  }
+
+  .detalle-info {
+    justify-items: start;
+  }
+}
+
+/* ---------- Filas de canción (P-12) ----------
+   Alto de 88 px sin relleno vertical: un título de dos líneas (2 × 30 px), 2 px de separación y la segunda línea
+   (26 px) suman 88 px. Sin fondo propio: un separador fino entre filas y, si suena, fondo de acento-suave. */
+
+.song-rows {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.song-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--espacio-4, 16px);
+  box-sizing: border-box;
+  min-height: calc(88px * var(--escala, 1));
+  padding: 0 var(--espacio-3, 12px);
+  border-radius: var(--radio-miniatura, 12px);
+  background: transparent;
+  /* Separador fino entre filas. Es decorativo: no transmite información (DESIGN 5.1). */
+  box-shadow: inset 0 -1px 0 var(--borde-suave);
+}
+
+@media (min-width: 768px) {
+  .song-row {
+    padding-inline: var(--espacio-4, 16px);
+  }
+}
+
+/* Barra izquierda de 6 px de la fila que suena. Sin overflow: el anillo de foco de los botones no debe recortarse. */
+.song-row::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 0;
+  border-start-start-radius: var(--radio-miniatura, 12px);
+  border-end-start-radius: var(--radio-miniatura, 12px);
+  background: var(--acento);
+}
+
+.song-row.is-active {
+  background: var(--acento-suave);
+}
+
+.song-row.is-active::before {
+  width: 6px;
+}
+
+.song-row-cover {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radio-miniatura, 12px);
+  background: var(--superficie-3);
+  color: var(--texto-2);
+}
+
+.song-row-cover .icon {
+  width: 32px;
+  height: 32px;
+}
+
+@media (min-width: 768px) {
+  .song-row-cover {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+.song-row-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.song-row-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font: var(--tipo-fila);
+  color: var(--texto);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Segunda línea: artista, «Suena: [artista]» o «No disponible sin internet» (con icono). */
+.song-row-line {
+  overflow: hidden;
+  font: var(--tipo-meta);
+  color: var(--texto-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.song-row-line .icon {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  margin-inline-end: var(--espacio-1, 4px);
+  vertical-align: -4px;
+}
+
+.song-row.is-unavailable .song-row-line {
+  color: var(--texto-2);
+}
+
+/* Botón de reproducir de 48 × 48 a la derecha. */
+.song-row-play {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-width: 48px;
+  min-height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radio-chip, 999px);
+  background: var(--acento);
+  color: var(--sobre-acento);
+  cursor: pointer;
+}
+
+.song-row-play .icon {
+  width: 28px;
+  height: 28px;
+}
+
+.song-row-play:active {
+  background: var(--acento-fuerte);
+}
+
+/* Sin copia sin conexión: el botón queda apagado y no reproduce. */
+.song-row-play[aria-disabled="true"],
+.song-row-play[aria-disabled="true"]:active {
+  background: var(--superficie-3);
+  color: var(--deshabilitado);
+  cursor: default;
+}
+
+/* ---------- Botones de acción (P-13) ---------- */
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--espacio-2, 8px);
+  box-sizing: border-box;
+  min-height: calc(56px * var(--escala, 1));
+  margin: 0;
+  padding: 0 var(--espacio-5, 24px);
+  border: 2px solid var(--borde-control);
+  border-radius: var(--radio-control, 16px);
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-etiqueta);
+  text-align: center;
+  cursor: pointer;
+}
+
+.action:active {
+  background: var(--superficie-3);
+}
+
+/* Primario: 64 px, fondo de acento. */
+.action-primary {
+  min-height: calc(64px * var(--escala, 1));
+  border-color: var(--acento);
+  background: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.action-primary:active {
+  border-color: var(--acento-fuerte);
+  background: var(--acento-fuerte);
+}
+
+.action-primary:disabled {
+  border-color: var(--borde-control);
+  background: var(--superficie-3);
+  color: var(--deshabilitado);
+  cursor: default;
+}
+
+/* Secundario: 56 px, superficie con borde de control (la clase base es .action). */
+.action-secondary {
+  min-height: calc(56px * var(--escala, 1));
+}
+
+/* Ancho completo en teléfono; en tableta y escritorio, ancho del contenido con un mínimo de 280 px. */
+.action-wide {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .action-wide {
+    width: auto;
+    min-width: 280px;
+  }
+}
+
+/* ---------- Búsqueda (P4, P-14 y P-15) ----------
+   El campo es una pastilla de 64 px con la lupa decorativa dentro. La etiqueta visible «Buscar» va encima. */
+
+.search-form {
+  display: grid;
+  gap: var(--espacio-3, 12px);
+  margin: 0;
+}
+
+.search-label {
+  font: var(--tipo-etiqueta);
+  color: var(--texto);
+}
+
+.search-help {
+  font: var(--tipo-meta);
+  color: var(--texto-2);
+}
+
+/* Campo y «Buscar»: uno debajo de otro en teléfono y a la derecha desde 768 px. */
+.search-row {
+  display: grid;
+  gap: var(--espacio-3, 12px);
+}
+
+@media (min-width: 768px) {
+  .search-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}
+
+.search-campo {
+  position: relative;
+  min-width: 0;
+}
+
+.search-campo .icon {
+  position: absolute;
+  top: 50%;
+  left: 20px;
+  width: 28px;
+  height: 28px;
+  transform: translateY(-50%);
+  color: var(--texto-2);
+  pointer-events: none;
+}
+
+.search-field {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: calc(64px * var(--escala, 1));
+  margin: 0;
+  padding: 0 var(--espacio-5, 24px) 0 56px;
+  border: 2px solid var(--borde-control);
+  border-radius: 999px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: var(--tipo-busqueda);
+}
+
+/* Un solo botón de borrar: el de «Borrar búsqueda» de la propia pantalla. */
+.search-field::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+.search-clear {
+  justify-self: start;
+}
+
+/* Categorías grandes: 64 px de alto, radio 999 y etiqueta 22/28 600. Dos columnas en teléfono. */
+.chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--espacio-4, 16px);
+  margin: 0;
+  padding: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--espacio-2, 8px);
+  box-sizing: border-box;
+  min-height: calc(64px * var(--escala, 1));
+  margin: 0;
+  padding: 0 var(--espacio-4, 16px);
+  border: 2px solid var(--borde-control);
+  border-radius: var(--radio-chip, 999px);
+  background: var(--superficie-2);
+  color: var(--texto);
+  font: 600 calc(22px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
+  text-align: center;
+  cursor: pointer;
+}
+
+.chip:active {
+  background: var(--acento-suave);
+}
+
+/* Seleccionada: acento suave, borde de acento y comprobación (el estado no depende solo del color). */
+.chip[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+}
+
+.chip .icon {
+  display: none;
+  width: 20px;
+  height: 20px;
+}
+
+.chip[aria-pressed="true"] .icon {
+  display: inline-grid;
+}
+
+/* ---------- Resultados ---------- */
+
+.results {
+  display: grid;
+  gap: var(--espacio-4, 16px);
+  min-width: 0;
+}
+
+.results-title {
+  font: var(--tipo-seccion);
+  color: var(--texto);
+  margin: 0;
+}
+
+.group-title {
+  margin-block-start: var(--espacio-3, 12px);
+  font: var(--tipo-fila);
+  color: var(--texto);
+}

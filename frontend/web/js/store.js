@@ -1,42 +1,61 @@
-// Almacén local de Reminiscencia sobre IndexedDB (base 'reminiscencia', versión 1).
+// Almacén local de Reminiscencia sobre IndexedDB (base 'reminiscencia', versión 3).
 // Los datos no salen del navegador. Cada escritura se valida con schema.js antes de tocar la base,
 // y los cambios que afectan a varios almacenes van en una sola transacción: o se hacen todos o ninguno.
 // Dentro de una transacción solo se espera a peticiones de IndexedDB. El cifrado y los hashes se calculan
 // antes de abrirla, porque la transacción se cierra sola si se espera a otra cosa.
+// Las preferencias de pantalla no están aquí: van en prefs.js (localStorage).
 
 import { hashPin, randomId, verifyPin } from './crypto.js';
 import {
+  DEFAULT_PRESENTATION,
+  isCalendarDay,
   isId,
   isPlainObject,
   isSongId,
+  OBSERVATION_OTHER_TAG,
   PHOTO_MAX_BYTES,
   PHOTO_TYPES,
+  SETTING_KEYS,
+  STUDY_PRESENTATIONS,
   validateAlias,
   validateHistoryEntry,
+  validateLastTrack,
   validateMemory,
+  validateMemoryDraft,
   validateObservation,
   validatePatientOptions,
   validatePhotoMeta,
-  validatePin,
+  validatePin as validatePinFormat,
   validatePlaylist,
   validateProfile,
   validateSettings,
   validateSongLink,
+  validateStudyEvent,
+  validateStudyRecord,
 } from './schema.js';
 import { buildBackup, previewBackup as previewBackupFile, restoreBackup } from './backup.js';
 
-export { validateAlias, validatePin } from './schema.js';
+export { validateAlias } from './schema.js';
+
+// Contrato 2.3: null si el PIN es válido (de 4 a 6 dígitos) o el mensaje en español.
+export function validatePin(pin) {
+  return validatePinFormat(pin)[0] ?? null;
+}
 
 export const DB_NAME = 'reminiscencia';
-export const DB_VERSION = 1;
+export const DB_VERSION = 3;
 
+// Bloqueo del PIN (DESIGN D12): cinco fallos seguidos bloquean 60 segundos. El bloqueo no borra nada.
+export const PIN_MAX_FAILURES = 5;
+export const PIN_LOCK_MS = 60 * 1000;
+
+// Ajustes del dispositivo (IndexedDB). Las preferencias de pantalla están en prefs.js.
 export const DEFAULT_SETTINGS = Object.freeze({
-  textScale: 1,
-  highContrast: false,
-  reduceMotion: false,
-  theme: 'auto',
   sleepTimerMinutes: null,
   alwaysPatientMode: false,
+  wakeLock: true,
+  // Registro del estudio: activado por defecto (DESIGN 8.4).
+  studyRecording: true,
 });
 
 export const DEFAULT_PATIENT_OPTIONS = Object.freeze({
@@ -46,8 +65,16 @@ export const DEFAULT_PATIENT_OPTIONS = Object.freeze({
   seekOnTap: false,
 });
 
-const DATA_STORES = Object.freeze(['profiles', 'songLinks', 'memories', 'photos', 'playlists', 'observations', 'history']);
-const CHILD_STORES = Object.freeze(['songLinks', 'memories', 'photos', 'playlists', 'observations', 'history']);
+const DATA_STORES = Object.freeze([
+  'profiles', 'songLinks', 'memories', 'photos', 'playlists', 'observations', 'history', 'studyEvents',
+]);
+// Borradores de recuerdo (DESIGN C-21): viven en IndexedDB, no van en las copias y se borran con su perfil.
+const DRAFT_STORES = Object.freeze(['memoryDrafts']);
+const CHILD_STORES = Object.freeze([
+  'songLinks', 'memories', 'photos', 'playlists', 'observations', 'history', 'studyEvents', ...DRAFT_STORES,
+]);
+// Almacenes que una copia anterior a su creación no trae: se importan vacíos.
+const OPTIONAL_STORES = Object.freeze(['studyEvents']);
 const RECORD_VALIDATORS = Object.freeze({
   profiles: validateProfile,
   songLinks: validateSongLink,
@@ -56,10 +83,15 @@ const RECORD_VALIDATORS = Object.freeze({
   playlists: validatePlaylist,
   observations: validateObservation,
   history: validateHistoryEntry,
+  studyEvents: validateStudyRecord,
 });
-const SONG_LINK_FIELDS = Object.freeze(['familiarity', 'preference', 'notes']);
-const MEMORY_FIELDS = Object.freeze(['title', 'text', 'year', 'people', 'songIds', 'photoIds']);
+const SONG_LINK_FIELDS = Object.freeze(['familiarity', 'preference', 'notes', 'presentation']);
+const MEMORY_FIELDS = Object.freeze(['title', 'text', 'year', 'yearApproximate', 'people', 'songIds', 'photoIds']);
+// Clave del borrador de un recuerdo nuevo. Ningún identificador de recuerdo es vacío, así que no hay colisiones.
+const NEW_MEMORY_KEY = '';
 const PLAYLIST_FIELDS = Object.freeze(['name', 'songIds']);
+const FIRST_DAY = '0000-01-01';
+const LAST_DAY = '9999-12-31';
 
 // Fecha que decide qué versión gana al combinar copias: la más reciente.
 const defaultStamp = (record) => record.updatedAt ?? record.at ?? record.createdAt ?? 0;
@@ -79,7 +111,8 @@ export function planMerge(existing, incoming, keyFn = (record) => record.id, sta
   });
 }
 
-const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+const byId = (a, b) => compareText(a.id, b.id);
 const oldestFirst = (field) => (a, b) => a[field] - b[field] || byId(a, b);
 const newestFirst = (field) => (a, b) => b[field] - a[field] || byId(a, b);
 
@@ -115,6 +148,241 @@ function normalizeMemoryChanges(input) {
       .filter((person) => person !== '');
   }
   return changes;
+}
+
+// Solo las claves de ajustes del dispositivo: los restos de versiones anteriores se ignoran.
+const pickSettings = (source) => Object.fromEntries(
+  SETTING_KEYS.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]),
+);
+
+// Una asociación anterior a la presentación por canción se lee con el valor inicial (C0).
+const withLinkDefaults = (link) => (link ? { presentation: DEFAULT_PRESENTATION, ...link } : null);
+
+// Identificador de recuerdo para la clave de su borrador: null o undefined es el recuerdo nuevo.
+function memoryDraftKey(memoryId) {
+  if (memoryId === null || memoryId === undefined) return NEW_MEMORY_KEY;
+  if (!isId(memoryId)) throw new Error('Recuerdo: identificador no válido.');
+  return memoryId;
+}
+
+// ---------------------------------------------------------------------------
+// Registro del estudio: funciones puras (sin IndexedDB), probadas por separado.
+// ---------------------------------------------------------------------------
+
+// Día de un evento: la fecha tal como se registró, con su zona (AAAA-MM-DD).
+export const studyDayOf = (at) => at.slice(0, 10);
+
+const orNull = (value) => (value === undefined ? null : value);
+const roundIfNumber = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : value);
+
+// Prepara un evento que llega de la interfaz: rellena con null lo que no aplica y redondea los segundos.
+// Lanza el primer error de validación si el evento no es válido.
+export function normalizeStudyEvent(event) {
+  if (!isPlainObject(event)) throw new Error('El evento del estudio no es válido.');
+  const normalized = {
+    type: event.type,
+    at: event.at,
+    sessionId: event.sessionId,
+    profileId: event.profileId,
+    songId: orNull(event.songId),
+    presentation: orNull(event.presentation),
+    condition: orNull(event.condition),
+    origin: orNull(event.origin),
+    seconds: event.seconds === undefined || event.seconds === null ? null : roundIfNumber(event.seconds),
+    completed: orNull(event.completed),
+    trackSeconds: event.trackSeconds === undefined || event.trackSeconds === null
+      ? null
+      : roundIfNumber(event.trackSeconds),
+  };
+  const errors = validateStudyEvent(normalized);
+  if (errors.length > 0) throw new Error(errors[0]);
+  return normalized;
+}
+
+// Última pista de un perfil: redondea la posición y valida el conjunto.
+export function normalizeLastTrack(track) {
+  if (!isPlainObject(track)) throw new Error('La última pista no es válida.');
+  const normalized = {
+    songId: track.songId,
+    position: roundIfNumber(track.position),
+    origin: track.origin,
+    at: track.at,
+  };
+  const errors = validateLastTrack(normalized);
+  if (errors.length > 0) throw new Error(errors[0]);
+  return normalized;
+}
+
+// Filtros del registro. Las fechas son días AAAA-MM-DD e incluyen el día inicial y el final.
+export function normalizeStudyFilters(filters = {}) {
+  if (!isPlainObject(filters)) throw new Error('El filtro del registro no es válido.');
+  const query = {};
+  for (const key of ['from', 'to']) {
+    if (filters[key] !== undefined) {
+      if (!isCalendarDay(filters[key])) throw new Error('Las fechas del filtro deben tener el formato AAAA-MM-DD.');
+      query[key] = filters[key];
+    }
+  }
+  if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
+    throw new Error('El rango de fechas no es válido.');
+  }
+  if (filters.sessionId !== undefined) {
+    if (!isId(filters.sessionId)) throw new Error('Sesión no válida.');
+    query.sessionId = filters.sessionId;
+  }
+  if (filters.profileId !== undefined) {
+    if (!isId(filters.profileId)) throw new Error('Perfil no válido.');
+    query.profileId = filters.profileId;
+  }
+  if (filters.presentation !== undefined) {
+    if (!STUDY_PRESENTATIONS.includes(filters.presentation)) throw new Error('Presentación no válida.');
+    query.presentation = filters.presentation;
+  }
+  return query;
+}
+
+// Orden cronológico: por hora, luego por clave local y por identificador.
+const byTime = (a, b) => Date.parse(a.at) - Date.parse(b.at)
+  || (a.seq ?? 0) - (b.seq ?? 0)
+  || compareText(a.id ?? '', b.id ?? '');
+
+// Filtra y ordena los eventos. Función pura: los filtros de sesión, perfil y presentación se aplican aquí
+// aunque el índice ya haya acotado la lectura, para que el resultado no dependa de qué índice se usó.
+export function selectStudyEvents(records, query = {}) {
+  return records
+    .filter((record) => {
+      const day = record.day ?? studyDayOf(record.at);
+      return (query.from === undefined || day >= query.from)
+        && (query.to === undefined || day <= query.to)
+        && (query.sessionId === undefined || record.sessionId === query.sessionId)
+        && (query.profileId === undefined || record.profileId === query.profileId)
+        && (query.presentation === undefined || record.presentation === query.presentation);
+    })
+    .sort(byTime);
+}
+
+// Una fila del historial (DESIGN C-24). «Fotografía mostrada» y «recuerdo mostrado» salen de la presentación
+// efectiva: C2 muestra foto y recuerdo; C1, solo recuerdo; C0, nada.
+function toHistoryRow(event) {
+  const percent = event.trackSeconds
+    ? Math.min(100, Math.round(((event.seconds ?? 0) / event.trackSeconds) * 100))
+    : null;
+  return {
+    id: event.id,
+    at: event.at,
+    time: event.at.slice(11, 16),
+    songId: event.songId,
+    seconds: event.seconds,
+    percent,
+    completed: event.completed,
+    photoShown: event.presentation === 'C2',
+    memoryShown: event.presentation === 'C1' || event.presentation === 'C2',
+    presentation: event.presentation,
+    origin: event.origin,
+    condition: event.condition,
+    sessionId: event.sessionId,
+  };
+}
+
+// Historial de escuchas agrupado por día, el más reciente primero. Cada fin de pista es una escucha.
+// El resumen cuenta escuchas, minutos (redondeados) y saltadas (final no completo). Función pura.
+export function buildListeningHistory(events) {
+  const byDay = new Map();
+  for (const event of events) {
+    if (event.type !== 'track-end') continue;
+    const day = event.day ?? studyDayOf(event.at);
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(event);
+  }
+  return [...byDay.keys()].sort(compareText).reverse().map((day) => {
+    const plays = byDay.get(day).sort(byTime).reverse();
+    const rows = plays.map(toHistoryRow);
+    const seconds = plays.reduce((total, play) => total + (play.seconds ?? 0), 0);
+    return {
+      day,
+      summary: {
+        listens: rows.length,
+        minutes: Math.round(seconds / 60),
+        skipped: rows.filter((row) => row.completed === false).length,
+      },
+      rows,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Bloqueo del PIN: funciones puras. El estado es { failures, lockedUntil } (lockedUntil en milisegundos o null).
+// ---------------------------------------------------------------------------
+
+// Estado vigente: un bloqueo que ya caducó se trata como si no hubiera existido, y el recuento empieza de cero.
+export function activePinLockout(state, now) {
+  const failures = isPlainObject(state) && Number.isSafeInteger(state.failures) && state.failures >= 0
+    ? state.failures
+    : 0;
+  const lockedUntil = isPlainObject(state) && typeof state.lockedUntil === 'number' ? state.lockedUntil : null;
+  if (lockedUntil === null) return { failures, lockedUntil: null };
+  if (lockedUntil > now) return { failures, lockedUntil };
+  return { failures: 0, lockedUntil: null };
+}
+
+// Estado siguiente tras un intento. Durante el bloqueo el intento no cuenta y no cambia nada.
+export function nextPinLockout(state, ok, now) {
+  if (typeof ok !== 'boolean') throw new Error('El resultado del intento no es válido.');
+  const current = activePinLockout(state, now);
+  if (current.lockedUntil !== null) return current;
+  if (ok) return { failures: 0, lockedUntil: null };
+  const failures = current.failures + 1;
+  return failures >= PIN_MAX_FAILURES
+    ? { failures, lockedUntil: now + PIN_LOCK_MS }
+    : { failures, lockedUntil: null };
+}
+
+// ---------------------------------------------------------------------------
+// Migraciones de esquema: cada versión solo crea lo que falta y nunca borra ni recrea almacenes con datos.
+// ---------------------------------------------------------------------------
+
+const INDEX_KEY_PATHS = Object.freeze({ byProfile: 'profileId', bySession: 'sessionId', byDay: 'day' });
+
+function createStoreIfMissing(db, name, options, indexNames = []) {
+  if (db.objectStoreNames.contains(name)) return;
+  const store = db.createObjectStore(name, options);
+  for (const indexName of indexNames) store.createIndex(indexName, INDEX_KEY_PATHS[indexName]);
+}
+
+// Versión 1: el esquema original.
+function createBaseSchema(db) {
+  createStoreIfMissing(db, 'meta', { keyPath: 'key' });
+  createStoreIfMissing(db, 'profiles', { keyPath: 'id' });
+  createStoreIfMissing(db, 'songLinks', { keyPath: ['profileId', 'songId'] }, ['byProfile']);
+  for (const name of ['memories', 'photos', 'playlists', 'observations', 'history']) {
+    createStoreIfMissing(db, name, { keyPath: 'id' }, ['byProfile']);
+  }
+}
+
+// Versión 2: registro del estudio. La clave local (seq) es autoincremental; el identificador (id) une copias sin duplicar.
+function createStudySchema(db) {
+  createStoreIfMissing(db, 'studyEvents', { keyPath: 'seq', autoIncrement: true }, ['bySession', 'byProfile', 'byDay']);
+}
+
+// Versión 3: borradores de recuerdo. Clave [perfil, recuerdo]; el recuerdo nuevo usa '' como recuerdo.
+function createDraftSchema(db) {
+  createStoreIfMissing(db, 'memoryDrafts', { keyPath: ['profileId', 'memoryId'] }, ['byProfile']);
+}
+
+export const SCHEMA_MIGRATIONS = Object.freeze([
+  Object.freeze({ version: 1, apply: createBaseSchema }),
+  Object.freeze({ version: 2, apply: createStudySchema }),
+  Object.freeze({ version: 3, apply: createDraftSchema }),
+]);
+
+// Migraciones que faltan para pasar de una versión a otra. Función pura sobre la tabla de migraciones.
+export function pendingMigrations(oldVersion, newVersion = DB_VERSION) {
+  return SCHEMA_MIGRATIONS.filter((migration) => migration.version > oldVersion && migration.version <= newVersion);
+}
+
+// Aplica en orden las migraciones pendientes sobre la base (se llama desde onupgradeneeded).
+export function runMigrations(db, oldVersion, newVersion = DB_VERSION) {
+  for (const migration of pendingMigrations(oldVersion, newVersion)) migration.apply(db);
 }
 
 function storageError(error) {
@@ -166,15 +434,6 @@ async function inTransaction(db, names, mode, work) {
   }
 }
 
-function createSchema(db) {
-  db.createObjectStore('meta', { keyPath: 'key' });
-  db.createObjectStore('profiles', { keyPath: 'id' });
-  db.createObjectStore('songLinks', { keyPath: ['profileId', 'songId'] }).createIndex('byProfile', 'profileId');
-  for (const name of ['memories', 'photos', 'playlists', 'observations', 'history']) {
-    db.createObjectStore(name, { keyPath: 'id' }).createIndex('byProfile', 'profileId');
-  }
-}
-
 // Abre (o crea) el almacén. La fábrica de IndexedDB se puede inyectar para pruebas.
 export function openStore({ indexedDB: factory = globalThis.indexedDB, name = DB_NAME } = {}) {
   return new Promise((resolve, reject) => {
@@ -191,7 +450,7 @@ export function openStore({ indexedDB: factory = globalThis.indexedDB, name = DB
       return;
     }
     opening.onupgradeneeded = (event) => {
-      if (event.oldVersion < 1) createSchema(opening.result);
+      runMigrations(opening.result, event.oldVersion, DB_VERSION);
     };
     opening.onsuccess = () => {
       const db = opening.result;
@@ -243,10 +502,26 @@ function createStore(db) {
     if (!isSongId(songId)) throw new Error('Canción no válida.');
   };
 
+  // Lee los candidatos con el índice más útil; el filtro completo se aplica después en memoria.
+  const readStudyCandidates = (t, query) => {
+    const store = t.objectStore('studyEvents');
+    if (query.sessionId !== undefined) return request(store.index('bySession').getAll(query.sessionId));
+    if (query.profileId !== undefined) return request(store.index('byProfile').getAll(query.profileId));
+    if (query.from !== undefined || query.to !== undefined) {
+      return request(store.index('byDay').getAll(IDBKeyRange.bound(query.from ?? FIRST_DAY, query.to ?? LAST_DAY)));
+    }
+    return request(store.getAll());
+  };
+  const readStudyEvents = async (filters) => {
+    const query = normalizeStudyFilters(filters);
+    const records = await run(['studyEvents'], 'readonly', (t) => readStudyCandidates(t, query));
+    return selectStudyEvents(records, query);
+  };
+
   const api = {
-    // Ajustes del cuidador y del dispositivo.
+    // Ajustes del dispositivo (IndexedDB). Las preferencias de pantalla están en prefs.js.
     async getSettings() {
-      return { ...DEFAULT_SETTINGS, ...((await metaValue('settings')) ?? {}) };
+      return { ...DEFAULT_SETTINGS, ...pickSettings((await metaValue('settings')) ?? {}) };
     },
 
     async saveSettings(patch) {
@@ -255,7 +530,7 @@ function createStore(db) {
       return run(['meta'], 'readwrite', async (t) => {
         const meta = t.objectStore('meta');
         const record = await request(meta.get('settings'));
-        const next = { ...DEFAULT_SETTINGS, ...(record?.value ?? {}), ...patch };
+        const next = { ...DEFAULT_SETTINGS, ...pickSettings(record?.value ?? {}), ...patch };
         meta.put({ key: 'settings', value: next });
         return next;
       });
@@ -341,10 +616,36 @@ function createStore(db) {
       });
     },
 
+    // Última pista del perfil (en el propio registro del perfil). null la quita.
+    // No cambia updatedAt: guardar la pista no debe ganar a una edición del perfil al combinar copias.
+    async saveLastTrack(profileId, track) {
+      assertProfileId(profileId);
+      const next = track === null ? null : normalizeLastTrack(track);
+      return run(['profiles'], 'readwrite', async (t) => {
+        const store = t.objectStore('profiles');
+        const current = await ensureProfile(t, profileId);
+        const updated = { ...current };
+        if (next === null) delete updated.lastTrack;
+        else updated.lastTrack = next;
+        const errors = validateProfile(updated);
+        if (errors.length > 0) throw new Error(errors[0]);
+        store.put(updated);
+        return next;
+      });
+    },
+
+    async getLastTrack(profileId) {
+      assertProfileId(profileId);
+      return run(['profiles'], 'readonly', async (t) => {
+        const profile = await request(t.objectStore('profiles').get(profileId));
+        return profile?.lastTrack ?? null;
+      });
+    },
+
     // Borra el perfil y todo lo que cuelga de él (en cascada), en una sola transacción.
     async deleteProfile(profileId) {
       if (!isId(profileId)) return;
-      await run([...DATA_STORES, 'meta'], 'readwrite', async (t) => {
+      await run([...DATA_STORES, ...DRAFT_STORES, 'meta'], 'readwrite', async (t) => {
         t.objectStore('profiles').delete(profileId);
         for (const name of CHILD_STORES) {
           const store = t.objectStore(name);
@@ -357,11 +658,11 @@ function createStore(db) {
       });
     },
 
-    // Asociación perfil–canción: familiaridad 0–5, preferencia −2 a 2 y notas.
+    // Asociación perfil–canción: familiaridad 0–5, preferencia −2 a 2, notas y presentación (C0, C1 o C2; inicial C0).
     async getSongLink(profileId, songId) {
       assertSongLinkKey(profileId, songId);
       return run(['songLinks'], 'readonly',
-        async (t) => (await request(t.objectStore('songLinks').get([profileId, songId]))) ?? null);
+        async (t) => withLinkDefaults(await request(t.objectStore('songLinks').get([profileId, songId]))));
     },
 
     async setSongLink(profileId, songId, patch = {}) {
@@ -376,6 +677,7 @@ function createStore(db) {
           familiarity: 0,
           preference: 0,
           notes: '',
+          presentation: DEFAULT_PRESENTATION,
           ...(current ?? {}),
           ...changes,
           profileId,
@@ -389,9 +691,17 @@ function createStore(db) {
       });
     },
 
+    // Quita la asociación del perfil (familiaridad, preferencia, notas y presentación). La canción sigue en la biblioteca.
+    async deleteSongLink(profileId, songId) {
+      assertSongLinkKey(profileId, songId);
+      await run(['songLinks'], 'readwrite', (t) => {
+        t.objectStore('songLinks').delete([profileId, songId]);
+      });
+    },
+
     async listSongLinks(profileId) {
       assertProfileId(profileId);
-      return (await listByProfile('songLinks', profileId)).sort(newestFirst('updatedAt'));
+      return (await listByProfile('songLinks', profileId)).map(withLinkDefaults).sort(newestFirst('updatedAt'));
     },
 
     // Recuerdos: crea o actualiza. Al actualizar se conserva createdAt y se pone updatedAt.
@@ -406,7 +716,9 @@ function createStore(db) {
       const id = input.id ?? randomId();
       if (!isId(id)) throw new Error('Recuerdo: identificador no válido.');
       const changes = normalizeMemoryChanges(input);
-      return run(['profiles', 'memories', 'photos'], 'readwrite', async (t) => {
+      // Guardar borra el borrador del propio recuerdo; un recuerdo nuevo (sin identificador) borra el de clave ''.
+      const draftKey = input.id === undefined || input.id === null ? NEW_MEMORY_KEY : id;
+      return run(['profiles', 'memories', 'photos', 'memoryDrafts'], 'readwrite', async (t) => {
         await ensureProfile(t, input.profileId);
         const memories = t.objectStore('memories');
         const existing = await request(memories.get(id));
@@ -418,6 +730,7 @@ function createStore(db) {
           title: '',
           text: '',
           year: null,
+          yearApproximate: false,
           people: [],
           songIds: [],
           photoIds: [],
@@ -428,6 +741,8 @@ function createStore(db) {
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         };
+        // Sin año no puede haber año aproximado: al quitar el año, la marca activa se apaga (un valor que no es sí o no se rechaza).
+        if (next.year === null && next.yearApproximate === true) next.yearApproximate = false;
         const errors = validateMemory(next);
         if (errors.length > 0) throw new Error(errors[0]);
         const photos = t.objectStore('photos');
@@ -438,14 +753,65 @@ function createStore(db) {
           }
         }
         memories.put(next);
+        t.objectStore('memoryDrafts').delete([input.profileId, draftKey]);
         return next;
       });
     },
 
+    // Borra el recuerdo y su borrador, si lo tiene.
     async deleteMemory(memoryId) {
       if (!isId(memoryId)) return;
-      await run(['memories'], 'readwrite', (t) => {
-        t.objectStore('memories').delete(memoryId);
+      await run(['memories', 'memoryDrafts'], 'readwrite', async (t) => {
+        const memories = t.objectStore('memories');
+        const memory = await request(memories.get(memoryId));
+        memories.delete(memoryId);
+        if (memory) t.objectStore('memoryDrafts').delete([memory.profileId, memoryId]);
+      });
+    },
+
+    // Borrador de un recuerdo (DESIGN C-21): lo escrito y aún no guardado. Sustituye al anterior. memoryId null
+    // es el borrador de un recuerdo nuevo. El texto puede estar incompleto; el recuerdo solo se crea al guardarlo.
+    async saveMemoryDraft(profileId, memoryId, fields) {
+      assertProfileId(profileId);
+      const key = memoryDraftKey(memoryId);
+      if (!isPlainObject(fields)) throw new Error('El borrador no es válido.');
+      const record = {
+        profileId,
+        memoryId: key,
+        title: fields.title,
+        text: fields.text,
+        yearText: fields.yearText,
+        yearApproximate: fields.yearApproximate,
+        people: fields.people,
+        songIds: fields.songIds,
+        updatedAt: Date.now(),
+      };
+      const errors = validateMemoryDraft(record);
+      if (errors.length > 0) throw new Error(errors[0]);
+      return run(['profiles', 'memories', 'memoryDrafts'], 'readwrite', async (t) => {
+        await ensureProfile(t, profileId);
+        if (key !== NEW_MEMORY_KEY) {
+          const memory = await request(t.objectStore('memories').get(key));
+          if (!memory || memory.profileId !== profileId) throw new Error('Ese recuerdo no existe en este perfil.');
+        }
+        t.objectStore('memoryDrafts').put(record);
+        return record;
+      });
+    },
+
+    // Borrador guardado de un recuerdo (null para el recuerdo nuevo), o null si no hay ninguno.
+    async getMemoryDraft(profileId, memoryId) {
+      assertProfileId(profileId);
+      const key = memoryDraftKey(memoryId);
+      return run(['memoryDrafts'], 'readonly',
+        async (t) => (await request(t.objectStore('memoryDrafts').get([profileId, key]))) ?? null);
+    },
+
+    async deleteMemoryDraft(profileId, memoryId) {
+      assertProfileId(profileId);
+      const key = memoryDraftKey(memoryId);
+      await run(['memoryDrafts'], 'readwrite', (t) => {
+        t.objectStore('memoryDrafts').delete([profileId, key]);
       });
     },
 
@@ -506,6 +872,22 @@ function createStore(db) {
       });
     },
 
+    // Cambia solo la descripción de una fotografía. Pone updatedAt para que una copia más antigua no la pise al combinar.
+    async updatePhotoCaption(photoId, caption) {
+      if (!isId(photoId)) throw new Error('Fotografía: identificador no válido.');
+      if (typeof caption !== 'string') throw new Error('La descripción de la fotografía debe ser texto.');
+      return run(['photos'], 'readwrite', async (t) => {
+        const photos = t.objectStore('photos');
+        const current = await request(photos.get(photoId));
+        if (!current) throw new Error('La fotografía no existe.');
+        const next = { ...current, caption: caption.trim(), updatedAt: Date.now() };
+        const errors = validatePhotoMeta(next);
+        if (errors.length > 0) throw new Error(errors[0]);
+        photos.put(next);
+        return next;
+      });
+    },
+
     // Listas de canciones del perfil.
     async listPlaylists(profileId) {
       assertProfileId(profileId);
@@ -551,16 +933,21 @@ function createStore(db) {
       });
     },
 
-    // Observaciones del cuidador, con canción opcional.
+    // Observaciones del cuidador (DESIGN 8.5): texto, etiquetas cerradas, canción opcional y fecha (por defecto, ahora).
+    // «Otra» guarda su texto en otherTag; sin «Otra», otherTag queda en null.
     async addObservation(profileId, input) {
       assertProfileId(profileId);
       if (!isPlainObject(input)) throw new Error('La observación no es válida.');
+      const tags = input.tags === undefined ? [] : input.tags;
+      const hasOther = Array.isArray(tags) && tags.includes(OBSERVATION_OTHER_TAG);
       const record = {
         id: randomId(),
         profileId,
-        at: Date.now(),
+        at: input.at === undefined ? Date.now() : input.at,
         text: typeof input.text === 'string' ? input.text.trim() : input.text,
         songId: input.songId ?? null,
+        tags: Array.isArray(tags) ? [...tags] : tags,
+        otherTag: hasOther ? (typeof input.otherTag === 'string' ? input.otherTag.trim() : input.otherTag) : null,
       };
       const errors = validateObservation(record);
       if (errors.length > 0) throw new Error(errors[0]);
@@ -576,7 +963,7 @@ function createStore(db) {
       return (await listByProfile('observations', profileId)).sort(newestFirst('at'));
     },
 
-    // Historial de escuchas. Orden descendente por fecha; límite por defecto 200.
+    // Historial de escuchas (almacén history, previo al registro del estudio). Orden descendente por fecha; límite por defecto 200.
     async addHistory(profileId, input) {
       assertProfileId(profileId);
       if (!isPlainObject(input)) throw new Error('La escucha no es válida.');
@@ -605,18 +992,57 @@ function createStore(db) {
       return (await listByProfile('history', profileId)).sort(newestFirst('at')).slice(0, limit);
     },
 
-    // PIN: solo se guarda el hash PBKDF2 (nunca el PIN).
-    async setPin(pin) {
-      const errors = validatePin(pin);
-      if (errors.length > 0) throw new Error(errors[0]);
-      const record = await hashPin(pin);
-      await run(['meta'], 'readwrite', (t) => {
-        t.objectStore('meta').put({ key: 'pin', value: record });
+    // Registro del estudio: un evento por cada hecho de la escucha. Devuelve la clave local (número), o null si el
+    // registro está desactivado en Ajustes (studyRecording = false): entonces no se escribe nada.
+    // El código del participante se copia al evento: si después cambia en el perfil, el evento conserva el suyo.
+    async recordStudyEvent(event) {
+      const normalized = normalizeStudyEvent(event);
+      return run(['profiles', 'studyEvents', 'meta'], 'readwrite', async (t) => {
+        const profile = await ensureProfile(t, normalized.profileId);
+        // Solo un «no» explícito desactiva el registro; sin valor guardado vale el por defecto (activado).
+        const settings = pickSettings((await request(t.objectStore('meta').get('settings')))?.value ?? {});
+        if (settings.studyRecording === false) return null;
+        const record = {
+          ...normalized,
+          participantCode: profile.code,
+          id: randomId(),
+          day: studyDayOf(normalized.at),
+        };
+        return request(t.objectStore('studyEvents').add(record));
       });
     },
 
+    // Eventos del registro, en orden cronológico. Filtros opcionales: from, to (AAAA-MM-DD, incluidos),
+    // sessionId, profileId y presentation.
+    listStudyEvents(filters = {}) {
+      return readStudyEvents(filters);
+    },
+
+    // Historial de escuchas para la pantalla de historial (C-24): agrupado por día. Requiere perfil.
+    async listListeningHistory(filters = {}) {
+      if (!isPlainObject(filters)) throw new Error('El filtro del historial no es válido.');
+      assertProfileId(filters.profileId);
+      return buildListeningHistory(await readStudyEvents(filters));
+    },
+
+    // PIN: solo se guarda el hash PBKDF2 (nunca el PIN).
+    async setPin(pin) {
+      const errors = validatePinFormat(pin);
+      if (errors.length > 0) throw new Error(errors[0]);
+      const record = await hashPin(pin);
+      await run(['meta'], 'readwrite', (t) => {
+        const meta = t.objectStore('meta');
+        meta.put({ key: 'pin', value: record });
+        // Un PIN nuevo empieza sin fallos ni bloqueo.
+        meta.delete('pinLockout');
+      });
+    },
+
+    // Verifica el PIN. Durante el bloqueo devuelve false sin comprobar nada.
     async checkPin(pin) {
-      if (validatePin(pin).length > 0) return false;
+      if (validatePinFormat(pin).length > 0) return false;
+      const lockout = activePinLockout(await metaValue('pinLockout'), Date.now());
+      if (lockout.lockedUntil !== null) return false;
       const record = await metaValue('pin');
       return record ? verifyPin(pin, record) : false;
     },
@@ -625,10 +1051,29 @@ function createStore(db) {
       return (await metaValue('pin')) !== null;
     },
 
-    // Quita solo el PIN. Los datos se conservan.
+    // Registra un intento (true = acierto). Cinco fallos bloquean 60 s. Devuelve el estado resultante.
+    async registerPinAttempt(ok) {
+      if (typeof ok !== 'boolean') throw new Error('El resultado del intento no es válido.');
+      return run(['meta'], 'readwrite', async (t) => {
+        const meta = t.objectStore('meta');
+        const record = await request(meta.get('pinLockout'));
+        const next = nextPinLockout(record?.value, ok, Date.now());
+        meta.put({ key: 'pinLockout', value: next });
+        return next;
+      });
+    },
+
+    // Estado del bloqueo: { failures, lockedUntil }. lockedUntil es null o una marca de tiempo en milisegundos.
+    async getPinLockout() {
+      return activePinLockout(await metaValue('pinLockout'), Date.now());
+    },
+
+    // Quita solo el PIN (y su bloqueo). Los datos se conservan.
     async removePin() {
       await run(['meta'], 'readwrite', (t) => {
-        t.objectStore('meta').delete('pin');
+        const meta = t.objectStore('meta');
+        meta.delete('pin');
+        meta.delete('pinLockout');
       });
     },
 
@@ -663,32 +1108,53 @@ function createStore(db) {
     async importAll(content, { mode = 'merge' } = {}) {
       if (mode !== 'merge' && mode !== 'replace') throw new Error('Modo de importación no válido.');
       if (!isPlainObject(content)) throw new Error('El contenido a importar no es válido.');
+      const incomingByStore = {};
       for (const name of DATA_STORES) {
-        const records = content[name];
+        const records = content[name] ?? (OPTIONAL_STORES.includes(name) ? [] : undefined);
         if (!Array.isArray(records)) throw new Error(`Falta la lista de ${name} en el contenido a importar.`);
         for (const record of records) {
           const errors = RECORD_VALIDATORS[name](record);
           if (errors.length > 0) throw new Error(errors[0]);
           if (name === 'photos' && !(record.blob instanceof Blob)) throw new Error('Una fotografía no tiene datos.');
         }
+        incomingByStore[name] = records;
       }
-      return run([...DATA_STORES, 'meta'], 'readwrite', async (t) => {
+      return run([...DATA_STORES, ...DRAFT_STORES, 'meta'], 'readwrite', async (t) => {
         const written = {};
         const skipped = {};
         for (const name of DATA_STORES) {
           const store = t.objectStore(name);
-          const incoming = content[name];
+          const incoming = incomingByStore[name];
           let existing = [];
           if (mode === 'replace') {
             store.clear();
           } else {
             existing = await request(store.getAll());
           }
+          if (name === 'studyEvents') {
+            // Los eventos no se corrigen: se añaden los que no existen (por identificador) y el resto se descarta.
+            // La clave local (seq) la asigna el almacén; la de la copia no se usa.
+            const known = new Set(existing.map((record) => record.id));
+            let count = 0;
+            for (const record of incoming) {
+              if (known.has(record.id)) continue;
+              known.add(record.id);
+              const fields = { ...record, day: studyDayOf(record.at) };
+              delete fields.seq;
+              store.add(fields);
+              count += 1;
+            }
+            written[name] = count;
+            skipped[name] = incoming.length - count;
+            continue;
+          }
           const toWrite = planMerge(existing, incoming, keyOf(name));
           for (const record of toWrite) store.put(record);
           written[name] = toWrite.length;
           skipped[name] = incoming.length - toWrite.length;
         }
+        // Sustituir también borra los borradores: apuntan a recuerdos que la copia reemplaza.
+        if (mode === 'replace') t.objectStore('memoryDrafts').clear();
         // Si el perfil activo ya no existe tras la importación, se desactiva.
         const meta = t.objectStore('meta');
         const active = await request(meta.get('activeProfile'));
