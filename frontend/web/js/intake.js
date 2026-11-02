@@ -35,6 +35,15 @@ export const BLOCKED_HOSTS = Object.freeze([
   "facebook.com", "fbcdn.net", "bandcamp.com", "bcbits.com",
   "deezer.com", "dzcdn.net", "tidal.com", "mixcloud.com", "dailymotion.com", "dmcdn.net",
   "twitch.tv", "jtvnw.net", "ttvnw.net",
+  "dai.ly",
+  "fb.watch",
+  "instagr.am",
+  "x.com",
+  "twitter.com",
+  "twimg.com",
+  "reddit.com",
+  "redd.it",
+  "rumble.com",
 ]);
 
 export const AUDIO_EXTENSIONS = Object.freeze([".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav"]);
@@ -49,9 +58,9 @@ const IA_KINDS = Object.freeze(["details", "download"]);
 // Host en ASCII con puerto opcional. Lo que no encaja (IPv6, usuario, caracteres codificados) se rechaza.
 const AUTHORITY = /^([A-Za-z0-9.-]+)(?::[0-9]*)?$/;
 // Espacios Unicode (los que Python llama isspace) y caracteres de control: no pueden estar en una dirección.
-const URL_SPACE_OR_CONTROL = /[\p{Zs}\p{Cc}\p{Zl}\p{Zp}\p{Cs}]/u;
+const URL_SPACE_OR_CONTROL = /[\p{Zs}\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
 // Caracteres que el backend rechaza en cualquier texto (issue_request.py, _has_control).
-const CONTROL = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}]/u;
+const CONTROL = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
 // Lo que Python (str.splitlines) trata como salto de línea.
 const LINE_BREAK = /[\n\r\v\f\u001c-\u001e\u0085\u2028\u2029]/;
 // Propietario/nombre. "." y ".." no sirven: la URL de la incidencia los resolvería como rutas.
