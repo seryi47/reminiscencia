@@ -61,6 +61,12 @@ BLOCKED_HOSTS = frozenset(
         "dai.ly",
         "fb.watch",
         "instagr.am",
+        "x.com",
+        "twitter.com",
+        "twimg.com",
+        "reddit.com",
+        "redd.it",
+        "rumble.com",
     }
 )
 
