@@ -4,9 +4,10 @@ name: biblioteca
 # (cuerpo con líneas 'clave: valor') o el formulario manual. Solo envían incidencias las personas con permiso de
 # escritura en el repositorio (admin, maintain o write); a las demás, 'autorizar' solo les responde en la incidencia.
 # Tres jobs con distintos permisos. 'autorizar' comprueba el permiso del autor. 'procesar' descarga y convierte sin
-# token ni permisos de escritura, y deja en un artefacto solo los ficheros que cambió. 'publicar' valida ese
-# artefacto (rutas de la biblioteca, sin enlaces simbólicos, base igual a main), lo aplica, confirma, sube a main y
-# responde a la incidencia. Publicar no ejecuta ffmpeg ni código del árbol de trabajo del procesado.
+# token ni permisos de escritura, y deja en un artefacto solo los ficheros de la biblioteca que cambió (el catálogo y
+# el audio, sin la parte pública). 'publicar' valida ese artefacto (rutas de la biblioteca, sin enlaces simbólicos,
+# base igual a main), lo aplica, regenera la parte pública desde el catálogo, confirma, sube a main y responde a la
+# incidencia. Publicar no ejecuta ffmpeg ni código del árbol de trabajo del procesado.
 # Ningún texto de la incidencia ni de los campos se interpola en un script: todo pasa por variables de entorno.
 
 on:
@@ -211,8 +212,9 @@ jobs:
           name: biblioteca-paquete
           path: ${{ runner.temp }}/paquete
 
-      # Solo si el procesado terminó bien. El paquete se valida antes de tocar el repositorio.
-      - name: Validar y aplicar el paquete
+      # Solo si el procesado terminó bien. El paquete se valida antes de tocar el repositorio, y la parte pública se
+      # regenera desde el catálogo: no se acepta la que el paquete pudiera traer.
+      - name: Validar, aplicar y regenerar la parte pública
         id: aplicar_paquete
         if: needs.procesar.result == 'success' && steps.descargar.outcome == 'success'
         run: python scripts/aplicar_paquete.py --paquete "$RUNNER_TEMP/paquete"

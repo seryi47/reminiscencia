@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from sonidos import paquete
+from sonidos import catalog, paquete
 from sonidos.paquete import Change, PaqueteError
 
 HEAD_SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -340,3 +340,102 @@ def test_untracked_files_left_by_publishing_are_not_committed_nor_refused(librar
 
     assert result["aplicados"] == 3
     assert "egg-info" not in _git_output(library_repo, "diff", "--cached", "--name-only")
+
+
+# --- Parte pública: la regenera publicar desde el catálogo (ADR-0010, corrección de 2026-11-02) ---------
+
+SONG_ID = "Sabababababababab"  # la misma canción pública que prepara la fixture main_publicado
+SONGS_JSON = "frontend/web/data/songs.json"
+SONG_WEB_AUDIO = f"frontend/web/audio/{SONG_ID}.opus"
+FORGED_TITLE = "<img src=x onerror=alert(1)>"
+
+
+def _index_bytes(repo: Path, ruta: str) -> bytes:
+    return subprocess.run(["git", "-C", str(repo), "show", f":{ruta}"], check=True, capture_output=True).stdout
+
+
+def test_processing_leaves_the_public_part_out_of_the_package(library_repo, tmp_path):
+    _change_like_the_processing_job(library_repo)
+    package = tmp_path / "paquete"
+
+    summary = paquete.package_processing_changes(library_repo, package, action="import")
+
+    assert summary == {"accion": "import", "cambios": 2}
+    manifest = json.loads((package / "manifiesto.json").read_text(encoding="utf-8"))
+    assert {entry["ruta"] for entry in manifest["cambios"]} == {CATALOG, "audio-library/audio/S1111111111111111.opus"}
+
+
+def test_publishing_replaces_a_forged_public_data_file_with_the_regenerated_one(main_publicado, tmp_path):
+    repo = main_publicado
+    head = paquete.head_commit(repo)
+    legitimo = (repo / SONGS_JSON).read_bytes()
+    forjado = json.dumps([{"id": SONG_ID, "title": FORGED_TITLE}]).encode("utf-8")
+    package = _package(tmp_path, files={SONGS_JSON: forjado}, changes=[{"ruta": SONGS_JSON, "estado": "M"}], base=head)
+
+    result = paquete.publish_package(package, repo, head=head)
+
+    assert _index_bytes(repo, SONGS_JSON) == legitimo
+    assert (repo / SONGS_JSON).read_bytes() == legitimo
+    assert result["parte_publica"]["sustituidos_del_paquete"] == [SONGS_JSON]
+
+
+def test_publishing_reports_the_public_files_the_package_did_not_bring(main_publicado, tmp_path):
+    repo = main_publicado
+    (repo / SONGS_JSON).write_text("[]\n", encoding="utf-8")
+    _git(repo, "-c", "user.name=prueba", "-c", "user.email=prueba@example.invalid", "commit", "-qam", "desfasado")
+    head = paquete.head_commit(repo)
+    package = _package(tmp_path, changes=[], base=head)
+
+    result = paquete.publish_package(package, repo, head=head)
+
+    assert [song["title"] for song in json.loads(_index_bytes(repo, SONGS_JSON))] == ["Tema público"]
+    assert result["parte_publica"]["regenerados"] == [SONGS_JSON]
+    assert result["parte_publica"]["sustituidos_del_paquete"] == []
+
+
+def test_publishing_replaces_a_forged_public_audio_of_the_same_size(main_publicado, tmp_path):
+    repo = main_publicado
+    head = paquete.head_commit(repo)
+    real = (repo / SONG_WEB_AUDIO).read_bytes()
+    forjado = b"X" * len(real)
+    package = _package(
+        tmp_path, files={SONG_WEB_AUDIO: forjado}, changes=[{"ruta": SONG_WEB_AUDIO, "estado": "M"}], base=head,
+    )
+
+    result = paquete.publish_package(package, repo, head=head)
+
+    assert _index_bytes(repo, SONG_WEB_AUDIO) == real
+    assert result["parte_publica"]["sustituidos_del_paquete"] == [SONG_WEB_AUDIO]
+
+
+def test_publishing_refuses_a_catalog_whose_public_songs_cannot_be_regenerated(main_publicado, tmp_path):
+    repo = main_publicado
+    head = paquete.head_commit(repo)
+    data = catalog.load(repo / CATALOG)
+    data["songs"][0]["title"] = None
+    catalogo = tmp_path / "catalogo.json"
+    catalog.save(catalogo, data)
+    package = _package(
+        tmp_path, files={CATALOG: catalogo.read_bytes()}, changes=[{"ruta": CATALOG, "estado": "M"}], base=head,
+    )
+
+    with pytest.raises(PaqueteError, match="no se puede regenerar"):
+        paquete.publish_package(package, repo, head=head)
+
+
+def test_publishing_refuses_a_catalog_whose_song_id_is_not_a_library_id(main_publicado, tmp_path):
+    repo = main_publicado
+    head = paquete.head_commit(repo)
+    (repo / "escape.opus").write_bytes(b"fuera de la carpeta de audio")  # lo que un id con '../' alcanzaría
+    data = catalog.load(repo / CATALOG)
+    data["songs"][0]["id"] = "../../escape"
+    catalogo = tmp_path / "catalogo.json"
+    catalog.save(catalogo, data)
+    package = _package(
+        tmp_path, files={CATALOG: catalogo.read_bytes()}, changes=[{"ruta": CATALOG, "estado": "M"}], base=head,
+    )
+
+    with pytest.raises(PaqueteError, match="no se puede regenerar"):
+        paquete.publish_package(package, repo, head=head)
+
+    assert not (repo / "frontend" / "escape.opus").exists()

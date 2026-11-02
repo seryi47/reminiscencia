@@ -265,3 +265,26 @@ def test_backend_workflow_checkouts_do_not_persist_credentials():
     text = (ROOT / ".github" / "workflows" / "backend.yml").read_text(encoding="utf-8")
 
     assert text.count("uses: actions/checkout") == text.count("persist-credentials: false") == 3
+
+
+# --- Parte pública: publicar la regenera antes de confirmar (ADR-0010, corrección de 2026-11-02) ----------
+
+
+def test_publishing_regenerates_the_public_part_before_it_commits():
+    _, _, publicar = _jobs(_workflow_text())
+    steps = _steps(publicar)
+    aplicar = next(index for index, step in enumerate(steps) if "scripts/aplicar_paquete.py" in step)
+    confirmar = next(index for index, step in enumerate(steps) if "git commit" in step)
+
+    assert aplicar < confirmar
+    assert "steps.aplicar_paquete.outcome == 'success'" in steps[confirmar]
+    script = (ROOT / "scripts" / "aplicar_paquete.py").read_text(encoding="utf-8")
+    assert "publish_package(" in script
+
+
+def test_processing_packages_without_the_public_part_it_regenerates():
+    _, procesar, _ = _jobs(_workflow_text())
+
+    assert "scripts/empaquetar_cambios.py" in procesar
+    script = (ROOT / "scripts" / "empaquetar_cambios.py").read_text(encoding="utf-8")
+    assert "package_processing_changes(" in script

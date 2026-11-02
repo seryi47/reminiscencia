@@ -68,14 +68,14 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 
 1. **Petición.** El propietario abre una incidencia con la etiqueta `biblioteca`. Su cuerpo son líneas `clave: valor` (`action: import` con `url`, `license` y `title`, o `action: organize` con un `payload` en JSON de una línea). La web prepara el texto y abre el formulario de nueva incidencia de GitHub con el texto ya escrito; lo envía el propietario. El workflow solo actúa si el autor es el propietario y la etiqueta está al crear la incidencia: si se añade después, no se lanza (ADR-0008).
 2. **Validación.** `scripts/issue_request.py` valida la petición con `sonidos/issue_request.py`: claves y operaciones en lista blanca, identificadores con formato fijo, límites de longitud y booleanos JSON estrictos.
-3. **Procesado (`procesar`, sin token).** `scripts/ci_library.py` aplica la petición: importa (`pipeline.py`) o organiza (crea, renombra o borra carpetas, y edita canciones). Después regenera los datos públicos. `scripts/empaquetar_cambios.py` deja en el artefacto `biblioteca-paquete` solo lo que cambió, con un día de retención.
+3. **Procesado (`procesar`, sin token).** `scripts/ci_library.py` aplica la petición: importa (`pipeline.py`) o organiza (crea, renombra o borra carpetas, y edita canciones). Después regenera los datos públicos en su copia, pero no los empaqueta. `scripts/empaquetar_cambios.py` deja en el artefacto `biblioteca-paquete` solo el catálogo y el audio que cambiaron, con un día de retención.
 4. **Publicación (`publicar`, con token solo para subir).** Descarga el paquete y lo valida (`backend/sonidos/paquete.py`) antes de tocar el repositorio:
    - el manifiesto tiene la forma exacta, y su base es el HEAD de `main`; si `main` cambió, la petición se rechaza y hay que reenviarla;
    - solo se admiten rutas de la biblioteca: el catálogo, el audio con identificador (`S` + 16 hexadecimales + `.opus`) en las dos carpetas de audio, y los tres JSON públicos;
    - solo se pueden borrar ficheros de audio (al despublicar o retirar); nunca el catálogo ni los datos públicos;
    - ningún enlace simbólico ni fichero que no sea regular.
 
-   Después aplica el paquete (`scripts/aplicar_paquete.py`), comprueba los límites, confirma con `github-actions[bot]` y sube a `main`.
+   Después aplica el paquete y regenera la parte pública desde el catálogo (`scripts/aplicar_paquete.py`, con `sonidos.publish`; ADR-0010), comprueba los límites, confirma con `github-actions[bot]` y sube a `main`.
 5. **Respuesta.** `scripts/responder_incidencia.py` comenta en la incidencia. Si todo salió bien, la cierra. Si algo falló, le añade la etiqueta `error`.
 
 **Garantías y límites.** Un único grupo de concurrencia (`library-catalog`) evita dos escrituras a la vez, y las peticiones en espera no se cancelan (ADR-0008). La validación comprueba rutas y tipos de fichero, no el contenido: un procesado comprometido podría escribir contenido indebido en las rutas permitidas (riesgo residual de ADR-0010).
@@ -86,7 +86,6 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 
 **Pendiente:**
 
-- Hacer que `publicar` regenere `frontend/web/data/` desde el catálogo, en lugar de aceptar los JSON del paquete (`paquete.py`, `DATA_FILES`).
 - El campo `source` de `catalog.json` público incluye, en las URL directas, el host y el nombre del fichero de origen. Decidir si se publica.
 - Verificar en las políticas de GitHub que el audio versionado es admisible (ADR-0003).
 - Colaboradores con permiso de escritura: en curso en la rama `feat/contrato-colaboradores`.

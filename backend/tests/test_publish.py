@@ -1,6 +1,8 @@
 import json
 import shutil
 
+import pytest
+
 from sonidos import catalog
 from sonidos.publish import sync_public
 
@@ -90,3 +92,26 @@ def test_public_flag_must_be_a_json_boolean(tmp_path):
 
     assert result["public"] == 0
     assert list((web / "audio").glob("*.opus")) == []
+
+
+def test_public_audio_with_the_same_size_but_other_content_is_copied_again(tmp_path):
+    path, audio = _catalog_with(tmp_path, [True])
+    web = tmp_path / "web"
+    sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
+    song_id = catalog.load(path)["songs"][0]["id"]
+    real = (audio / f"{song_id}.opus").read_bytes()
+    (web / "audio" / f"{song_id}.opus").write_bytes(b"x" * len(real))  # mismo tamaño, otro contenido
+
+    sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
+
+    assert (web / "audio" / f"{song_id}.opus").read_bytes() == real
+
+
+def test_public_song_id_that_is_not_a_library_id_is_refused(tmp_path):
+    path, audio = _catalog_with(tmp_path, [True])
+    data = catalog.load(path)
+    data["songs"][0]["id"] = "../../escape"  # el id da nombre al fichero: no puede salir de la carpeta de audio
+    catalog.save(path, data)
+
+    with pytest.raises(ValueError, match="identificador"):
+        sync_public(catalog_path=path, audio_dir=audio, web_dir=tmp_path / "web")

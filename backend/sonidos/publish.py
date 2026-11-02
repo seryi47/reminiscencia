@@ -11,7 +11,9 @@ la web es pública y catalog.json forma parte de ella (ADR-0008).
 
 from __future__ import annotations
 
+import filecmp
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -21,6 +23,8 @@ PUBLIC_FIELDS = ("id", "title", "artist", "year", "tags", "folder_id", "duration
 CATALOG_SONG_FIELDS = (
     "id", "title", "artist", "year", "tags", "folder_id", "license", "source", "duration_s", "public",
 )
+# El identificador da nombre al fichero de audio: solo el formato de la biblioteca, nunca una ruta (ADR-0010).
+SONG_ID = re.compile(r"S[0-9a-f]{16}")
 
 
 def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path) -> dict:
@@ -31,6 +35,9 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path) -> dict:
     web_data.mkdir(parents=True, exist_ok=True)
 
     public = [song for song in data["songs"] if song.get("public") is True]
+    for song in public:
+        if not isinstance(song.get("id"), str) or not SONG_ID.fullmatch(song["id"]):
+            raise ValueError(f"identificador de canción no válido en la parte pública: {song.get('id')!r}")
     public_names = {f"{song['id']}.opus" for song in public}
 
     for name in public_names:
@@ -38,7 +45,8 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path) -> dict:
         if not source.exists():
             raise FileNotFoundError(f"falta el audio de {name} en {audio_dir}")
         target = web_audio / name
-        if not target.exists() or target.stat().st_size != source.stat().st_size:
+        # Se compara el contenido y no solo el tamaño: un audio de otro contenido y mismo tamaño se vuelve a copiar.
+        if not target.exists() or not filecmp.cmp(source, target, shallow=False):
             shutil.copyfile(source, target)
     for stale in web_audio.glob("*.opus"):
         if stale.name not in public_names:

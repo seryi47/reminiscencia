@@ -1,10 +1,11 @@
-"""Paquete de cambios entre el procesado y la publicación de la biblioteca (ADR-0008).
+"""Paquete de cambios entre el procesado y la publicación de la biblioteca (ADR-0008, ADR-0010).
 
 El procesado (job 'procesar') no tiene permisos de escritura ni token: ejecuta la petición, deja en un paquete
-los ficheros que cambió y lo sube como artefacto. La publicación (job 'publicar') descarga el paquete, lo valida
-y solo entonces lo aplica sobre main, confirma y sube. Validar significa: el manifiesto parte de la base que
-está en main, cada ruta es de la biblioteca, cada cambio es un fichero regular (sin enlaces simbólicos) y el
-índice de git resultante solo contiene esas rutas.
+los ficheros de la biblioteca que cambió (el catálogo y el audio, sin la parte pública) y lo sube como artefacto.
+La publicación (job 'publicar') descarga el paquete, lo valida, lo aplica sobre main y regenera la parte pública
+(datos de la web y audio publicado) desde el catálogo: no confía en la que pudiera traer el paquete. Validar
+significa: el manifiesto parte de la base que está en main, cada ruta es de la biblioteca, cada cambio es un
+fichero regular (sin enlaces simbólicos) y el índice de git resultante solo contiene esas rutas.
 
 Estructura del paquete:
   peticion.json, resultado.json   salida de issue_request y ci_library (para responder a la incidencia)
@@ -15,6 +16,7 @@ Estructura del paquete:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -24,15 +26,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sonidos.issue_request import ACTIONS
+from sonidos.publish import sync_public
 
 MANIFEST = "manifiesto.json"
 CHANGES_DIR = "cambios"
 METADATA_FILES = ("peticion.json", "resultado.json")
 # Lo que escribe la biblioteca: el catálogo, el audio y los datos públicos de la web.
-ALLOWED_FILES = frozenset({"audio-library/indexes/catalog.json"})
+CATALOG_FILE = "audio-library/indexes/catalog.json"
+ALLOWED_FILES = frozenset({CATALOG_FILE})
+SOURCE_AUDIO_DIRECTORY = "audio-library/audio"
+WEB_DIRECTORY = "frontend/web"
+WEB_AUDIO_DIRECTORY = "frontend/web/audio"
 # Solo audio con identificador de canción, y solo los tres datos públicos de la web. Nunca HTML, SVG ni JS:
 # la web es estática y se sirve tal cual.
-AUDIO_DIRECTORIES = ("audio-library/audio", "frontend/web/audio")
+AUDIO_DIRECTORIES = (SOURCE_AUDIO_DIRECTORY, WEB_AUDIO_DIRECTORY)
 DATA_DIRECTORY = "frontend/web/data"
 DATA_FILES = frozenset({"songs.json", "folders.json", "catalog.json"})
 AUDIO_NAME = re.compile(r"S[0-9a-f]{16}\.opus")
@@ -79,13 +86,23 @@ def borrado_permitido(ruta: str) -> bool:
     return directory in AUDIO_DIRECTORIES and AUDIO_NAME.fullmatch(name) is not None
 
 
+def ruta_derivada(ruta: str) -> bool:
+    """La parte pública que sale del catálogo y del audio: los tres datos de la web y el audio publicado. El procesado
+    no la empaqueta, y la publicación la regenera con sonidos.publish.sync_public (ADR-0010)."""
+    directory, _, name = ruta.rpartition("/")
+    if directory == WEB_AUDIO_DIRECTORY:
+        return AUDIO_NAME.fullmatch(name) is not None
+    return directory == DATA_DIRECTORY and name in DATA_FILES
+
+
 def head_commit(repo: Path) -> str:
     return _git(repo, "rev-parse", "HEAD").strip()
 
 
-def package_changes(repo: Path, package: Path, *, action: str) -> dict:
+def package_changes(repo: Path, package: Path, *, action: str, sin_derivados: bool = False) -> dict:
     """Lo que el procesado dejó en el repositorio, en un paquete. Falla si cambió una ruta fuera de la biblioteca
-    o un elemento que no es un fichero regular (un enlace simbólico, por ejemplo)."""
+    o un elemento que no es un fichero regular (un enlace simbólico, por ejemplo). Con 'sin_derivados', deja fuera
+    la parte pública (ver package_processing_changes)."""
     if action not in ACTIONS:
         raise PaqueteError("acción no admitida al empaquetar")
     head = head_commit(repo)
@@ -95,6 +112,8 @@ def package_changes(repo: Path, package: Path, *, action: str) -> dict:
             if code == "??":
                 continue  # restos que no son de la biblioteca (una carpeta de compilación): no se publican
             raise PaqueteError(f"el procesado cambió una ruta no permitida: {path}")
+        if sin_derivados and ruta_derivada(path):
+            continue  # la parte pública la regenera la publicación desde el catálogo
         if "D" in code:
             if not borrado_permitido(path):
                 raise PaqueteError(f"el procesado intentó borrar una ruta protegida: {path}")
@@ -120,6 +139,13 @@ def package_changes(repo: Path, package: Path, *, action: str) -> dict:
     }
     (package / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"accion": action, "cambios": len(changes)}
+
+
+def package_processing_changes(repo: Path, package: Path, *, action: str) -> dict:
+    """Lo que empaqueta el procesado (job 'procesar'): el catálogo y el audio de la biblioteca, sin la parte pública.
+    Los datos de la web y el audio publicado salen de esos dos: la publicación los regenera después de aplicar el
+    paquete (ADR-0010). Así el paquete no lleva nada que la publicación no vuelva a generar."""
+    return package_changes(repo, package, action=action, sin_derivados=True)
 
 
 def read_manifest(package: Path, *, head: str) -> tuple[str, list[Change]]:
@@ -208,9 +234,8 @@ def check_index(raw: str, expected: set[str]) -> set[str]:
     return staged
 
 
-def apply_package(package: Path, repo: Path, *, head: str) -> dict:
-    """Valida el paquete y lo aplica sobre el checkout de main, dejando los cambios en el índice. No confirma
-    ni sube: eso lo hace el workflow, después de comprobar que hay algo que guardar."""
+def _apply(package: Path, repo: Path, *, head: str) -> tuple[str, list[Change]]:
+    """Valida el paquete y lo copia sobre el checkout de main, dejando en el índice exactamente sus rutas."""
     action, changes = read_manifest(package, head=head)
     check_package(package, changes)
     for change in changes:
@@ -237,12 +262,100 @@ def apply_package(package: Path, repo: Path, *, head: str) -> dict:
     if removed:
         _git(repo, "rm", "-q", "--cached", "--ignore-unmatch", "--", *removed)
     check_index(_git(repo, "diff", "--cached", "--raw", "-z", "--no-renames"), paths)
-    for code, path in _status_entries(repo):
-        # Lo que no está en el índice no se confirma: los ficheros sin rastrear que deja el propio proceso
-        # (la caché de Python, por ejemplo) no son un cambio pendiente.
-        if path not in paths and code != "??":
-            raise PaqueteError(f"quedan cambios fuera del paquete: {path}")
+    _check_only_expected(repo, paths, "quedan cambios fuera del paquete")
+    return action, changes
+
+
+def apply_package(package: Path, repo: Path, *, head: str) -> dict:
+    """Valida el paquete y lo aplica sobre el checkout de main, dejando los cambios en el índice. No confirma
+    ni sube: eso lo hace el workflow, después de comprobar que hay algo que guardar."""
+    action, changes = _apply(package, repo, head=head)
+    return _summary(action, changes)
+
+
+def publish_package(package: Path, repo: Path, *, head: str) -> dict:
+    """Lo que hace el job 'publicar' (ADR-0010): aplica el paquete sobre main y, después, regenera la parte pública
+    desde el catálogo ya aplicado. Lo que la regeneración cambia se añade al índice junto con el paquete.
+    'regenerados' son los ficheros que la regeneración escribió y el paquete no traía. 'sustituidos_del_paquete'
+    son los que el paquete traía y la regeneración ha reemplazado (un paquete forjado o desfasado).
+    No confirma ni sube."""
+    action, changes = _apply(package, repo, head=head)
+    package_paths = {change.path for change in changes}
+    if not (repo / CATALOG_FILE).is_file():
+        # Sin catálogo, sync_public lo tomaría por vacío y borraría toda la parte pública.
+        raise PaqueteError("falta el catálogo en main")
+    _refuse_links(repo, CATALOG_FILE, DATA_DIRECTORY, WEB_AUDIO_DIRECTORY, SOURCE_AUDIO_DIRECTORY)
+    before = _public_digests(repo)
+    try:
+        web = sync_public(
+            catalog_path=repo / CATALOG_FILE, audio_dir=repo / SOURCE_AUDIO_DIRECTORY, web_dir=repo / WEB_DIRECTORY,
+        )
+    except (KeyError, TypeError, AttributeError, ValueError) as error:
+        raise PaqueteError(f"el catálogo no se puede regenerar la parte pública: {error!r}") from error
+    after = _public_digests(repo)
+    changed = {ruta for ruta in before.keys() | after.keys() if before.get(ruta) != after.get(ruta)}
+    present = sorted(ruta for ruta in changed if ruta in after)
+    gone = sorted(ruta for ruta in changed if ruta not in after)
+    if present:
+        _git(repo, "add", "--", *present)
+    if gone:
+        _git(repo, "rm", "-q", "--cached", "--ignore-unmatch", "--", *gone)
+    expected = package_paths | changed
+    check_index(_git(repo, "diff", "--cached", "--raw", "-z", "--no-renames"), expected)
+    _check_only_expected(repo, expected, "quedan cambios fuera de la parte pública")
+    summary = _summary(action, changes)
+    summary["parte_publica"] = {
+        "web": web,
+        "regenerados": sorted(changed - package_paths),
+        "sustituidos_del_paquete": sorted(changed & package_paths),
+    }
+    return summary
+
+
+def _summary(action: str, changes: list[Change]) -> dict:
+    added = [change for change in changes if change.state != "D"]
+    removed = [change for change in changes if change.state == "D"]
     return {"accion": action, "aplicados": len(added), "eliminados": len(removed)}
+
+
+def _check_only_expected(repo: Path, expected: set[str], message: str) -> None:
+    """Lo que no está en 'expected' no se confirma. Los ficheros sin rastrear que deja el propio proceso (la caché de
+    Python, por ejemplo) no son un cambio pendiente, pero un cambio rastreado fuera de lo esperado sí lo es."""
+    for code, path in _status_entries(repo):
+        if path not in expected and code != "??":
+            raise PaqueteError(f"{message}: {path}")
+
+
+def _public_digests(repo: Path) -> dict[str, str]:
+    """Huella de cada fichero de la parte pública del checkout: los datos de la web y el audio publicado."""
+    rutas = [f"{DATA_DIRECTORY}/{name}" for name in sorted(DATA_FILES)]
+    audio = repo / WEB_AUDIO_DIRECTORY
+    if audio.is_dir():
+        rutas += [f"{WEB_AUDIO_DIRECTORY}/{file.name}" for file in sorted(audio.glob("*.opus"))]
+    digests = {}
+    for ruta in rutas:
+        path = repo / ruta
+        if path.is_symlink():
+            raise PaqueteError(f"enlace simbólico en la parte pública: {ruta}")
+        if path.is_file():
+            digests[ruta] = _sha256(path)
+    return digests
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _refuse_links(repo: Path, *rutas: str) -> None:
+    """La regeneración escribe en estas rutas: ninguna puede ser un enlace simbólico ni estar dentro de uno."""
+    for ruta in rutas:
+        _no_links_above(repo, ruta)
+        if (repo / ruta).is_symlink():
+            raise PaqueteError(f"enlace simbólico en la biblioteca: {ruta}")
 
 
 def _status_entries(repo: Path) -> list[tuple[str, str]]:

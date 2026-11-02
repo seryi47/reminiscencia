@@ -67,7 +67,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 
 1. El propietario rellena un formulario de la web. `js/intake.js` valida la petición con las mismas reglas que el backend, y el enlace abre una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito. La envía el propietario en GitHub.
 2. `biblioteca.yml`, job `procesar`, descarga y convierte, o aplica la operación de organización al catálogo, y deja un paquete de cambios como artefacto. No tiene token.
-3. `biblioteca.yml`, job `publicar`, valida el paquete contra `main`, confirma, sube a `main` y responde a la incidencia. La incidencia se cierra, o recibe la etiqueta `error`.
+3. `biblioteca.yml`, job `publicar`, valida el paquete contra `main`, lo aplica, regenera la parte pública desde el catálogo, confirma, sube a `main` y responde a la incidencia. La incidencia se cierra, o recibe la etiqueta `error`.
 4. Vercel redespliega `main`.
 
 **Pruebas en cada cambio.** `backend.yml` corre en cada push a `main` y en cada pull request. `web.yml` corre solo si cambian `frontend/web/**` o `tests/web-unit/**`. `android.yml` corre a mano o con una etiqueta `android-v*` (ver `docs/android/RELEASE.md`).
@@ -106,7 +106,6 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 
 **Código y documentación:**
 
-- `publicar` acepta los datos públicos que trae el paquete (`frontend/web/data/*.json`, en `paquete.py`) en lugar de regenerarlos desde el catálogo. Debería regenerarlos.
 - El job de pruebas web está duplicado: `web-unit` en `backend.yml` y `pruebas-web` en `web.yml`.
 - Conectar la PWA a la página: registrar el service worker y enlazar el manifiesto.
 - Hay dos ficheros ADR con el número 0009 en `docs/decisions/`. Hay que renumerar uno.
