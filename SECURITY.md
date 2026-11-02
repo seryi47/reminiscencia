@@ -19,10 +19,10 @@ Este documento describe lo que el código de esta rama hace hoy, separa lo imple
 | Id | Norma | Estado de la verificación | Hipótesis afectadas |
 |---|---|---|---|
 | [legal-01] | RGPD, Reglamento (UE) 2016/679 | Parcial; título corregido (EUR-Lex no consultado; se usó la copia del BOE) | H1 a H4 (datos de los participantes) |
-| [legal-02] | LOPDGDD, LO 3/2018, disposición adicional decimoséptima | Parcial; se cita la versión corregida | H1 a H4 |
+| [legal-02] | LOPDGDD, LO 3/2018, disposición adicional decimoséptima | Verificada con correcciones; queda el dictamen (§5) | H1 a H4 |
 | [legal-03] | Ley 14/2007, de Investigación biomédica | Verificada | H1, H2 y H4 si hay intervención en personas con deterioro cognitivo; alcance para H5 a valorar |
 | [legal-04] | Declaración de Helsinki (WMA, 2024) | Verificada en inglés; traducción no verificada | H1 a H4 |
-| [legal-05] | TRLPI (RDL 1/1996), arts. 112 y 119, según la Ley 21/2014 | Parcial; se cita la versión corregida | H1, H2 y H4 |
+| [legal-05] | TRLPI (RDL 1/1996), arts. 112 y 119, según la Ley 21/2014 | Verificada con correcciones; se cita la versión corregida | H1, H2 y H4 |
 | [legal-06] | Directiva (UE) 2019/790, arts. 2 a 4 | Parcial; se cita la versión corregida | Metodología (minería de textos) |
 
 ### 1.2 RGPD [legal-01]
@@ -59,7 +59,7 @@ Ley 14/2007, de 3 de julio (BOE-A-2007-12945; BOE de 4.7.2007).
 - **Publicación (art. 5.5).** Los resultados identificables solo se publican con consentimiento previo y expreso.
 - **Personas que no pueden consentir (art. 20).** Solo con beneficio directo para su salud o, de forma excepcional, con riesgo y carga mínimos. El art. 20.2.c prevé la comunicación al Ministerio Fiscal.
 - **Referencias vigentes.** El art. 5.1 cita la LO 15/1999, derogada por la LOPDGDD (disposición derogatoria única, apartado 1).
-- **Terminología.** Los arts. 4.2 y 20 hablan de «incapacitada legalmente» e «incapacitación». Según la verificación, la Ley 8/2021 (BOE-A-2021-9233) sustituyó la incapacitación judicial por medidas de apoyo; esa norma no consta en los registros verificados y debe confirmarse en el BOE. Se cita el texto literal con esta nota, a confirmar por un jurista.
+- **Terminología.** Los arts. 4.2 y 20 hablan de «incapacitada legalmente» e «incapacitación». La Ley 8/2021 (BOE-A-2021-9233) reforma la legislación civil para el apoyo a las personas con discapacidad; su preámbulo describe el cambio de la incapacitación por medidas de apoyo, y no cita la Ley 14/2007 (consulta del 2-nov-2026). Se cita el texto literal con esta nota, a confirmar por un jurista.
 
 ### 1.5 Declaración de Helsinki [legal-04]
 
@@ -79,7 +79,7 @@ Real Decreto Legislativo 1/1996, de 12 de abril (TRLPI), arts. 112 y 119, en la 
 
 - **Art. 112 (artistas intérpretes).** 50 años desde el 1 de enero del año siguiente a la interpretación. Si dentro de ese período la grabación se publica o se comunica lícitamente por medio distinto del fonograma, 50 años desde el 1 de enero del año siguiente a esa primera publicación o comunicación. Si es en fonograma, 70 años con el mismo cómputo.
 - **Art. 119 (productores de fonogramas).** 50 años desde la grabación. Si hay publicación lícita dentro de ese plazo, 70 años desde la primera publicación lícita; sin publicación lícita, 70 años desde la primera comunicación lícita al público. Todos los plazos se computan desde el 1 de enero del año siguiente.
-- **Disposición transitoria vigésima primera, apartado 3, de la Ley 21/2014.** Los arts. 110 bis, 112 y 119 se aplican también a grabaciones y fonogramas protegidos a 1 de noviembre de 2013. Según la corrección de la verificación; no está confirmado en el texto del BOE (§5, pendiente 5).
+- **Disposición transitoria vigésima primera, apartado 3, de la Ley 21/2014.** Según el texto consolidado del BOE (consulta del 2-nov-2026), los arts. 110 bis, 112 y 119 se aplican a las grabaciones y fonogramas que gozan de protección a 1 de noviembre de 2013 conforme a la legislación anterior, y a los posteriores. Su aplicación a cada pista queda para dictamen (§5, pendiente 5).
 - **Obras.** Tienen otro plazo: vida del autor más 70 años (art. 26).
 
 Consecuencia: el estado de cada pista depende de su fecha de grabación y de su primera publicación lícita. Este documento no declara el estado de protección de ninguna pista (§5).
@@ -165,14 +165,14 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 - No hay campos de contraseña de administración en la web pública. La única contraseña de la aplicación es la de la copia cifrada (§3.2).
 - La documentación todavía describe la administración retirada (§5, C).
 
-### 3.5 Incidencias de GitHub solo para el propietario: Previsto
+### 3.5 Incidencias de GitHub con permiso de escritura: Implementado, con pendientes
 
-- CHANGELOG.md, línea 19, prevé la gestión pública mediante incidencias de GitHub, solo del propietario y con revisión de seguridad.
-- Ningún workflow se dispara con incidencias. Los únicos disparadores son `workflow_dispatch`, `push` y `pull_request`.
-- Condiciones antes de implementarlo:
-  1. Comprobar en el propio workflow que el autor de la incidencia es el propietario, no solo en la interfaz.
-  2. Tratar el título y el cuerpo como datos: pasarlos por variables de entorno y nunca interpolarlos en `run:`. `library.yml` ya pasa sus entradas por `env` (líneas 66 a 73).
-  3. Permisos mínimos en ese job (§3.7).
+- `biblioteca.yml` se dispara al abrir una incidencia (`issues: opened`). En incidencias, el job `procesar` solo corre si el job `autorizar` comprueba que el autor tiene permiso de escritura (`admin`, `maintain` o `write`). Es la enmienda de ADR-0008 (2026-11-02) a su decisión 3, que hablaba solo del propietario.
+- Condiciones que cumple el workflow:
+  1. El permiso del autor se consulta en el propio workflow, con la API de GitHub, no en la interfaz.
+  2. El cuerpo de la incidencia y los campos pasan por variables de entorno (`env`); ningún texto se interpola en `run:`.
+  3. Permisos mínimos por job (§3.7): `autorizar` solo tiene `issues: write`.
+- Pendiente: la ejecución real de esta versión en GitHub Actions no está verificada (ADR-0010).
 
 ### 3.6 Secretos fuera del repositorio: Implementado, con pendiente
 
@@ -186,10 +186,10 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 | Workflow | Permisos declarados | Estado |
 |---|---|---|
 | `android.yml` | `contents: read` a nivel de workflow. El job de producción hace checkout con `persist-credentials: false`. Solo el job de publicación de la release (etiquetas `android-v*`) tiene `contents: write`. | Implementado. Es el modelo a seguir. |
-| `library.yml` | `contents: write` a nivel de workflow. Un único job hace la descarga, el procesado con ffmpeg y el push a `main`. | Pendiente (R1 y R2). |
+| `biblioteca.yml` | Sin bloque de permisos a nivel de workflow. `autorizar`: `issues: write`. `procesar`: `contents: read`, sin token y con `persist-credentials: false`. `publicar`: `contents: write` e `issues: write`; el token solo llega a los pasos que suben a `main` y responden. | Implementado (ADR-0010). Sin verificar en GitHub Actions. |
 | `backend.yml` | Sin bloque `permissions`. Hereda el valor por defecto del repositorio. | Pendiente: declarar `contents: read`. |
 
-- `library.yml` solo tiene `workflow_dispatch`. Lo puede lanzar quien tenga permiso de escritura en el repositorio. Es el comportamiento habitual de GitHub, no comprobado con otra cuenta.
+- `biblioteca.yml` se lanza con `workflow_dispatch` (quien tenga permiso de escritura en el repositorio) y al abrirse una incidencia (§3.5). Es el comportamiento habitual de GitHub, no comprobado con otra cuenta.
 - Ningún workflow usa `pull_request_target`.
 
 ### 3.8 Web pública: terceros y cabeceras: Parcial
@@ -215,18 +215,18 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 
 ## 4. Amenazas y riesgos residuales
 
-**R1. Procesado de ficheros externos con ffmpeg en el mismo job con permiso de escritura.**
+**R1. Procesado de ficheros externos con ffmpeg y escritura en el repositorio.** Mitigado con dos jobs (ADR-0010); sin verificar en GitHub Actions.
 
-- Evidencia: `library.yml` declara `contents: write` a nivel de workflow. En el mismo job, `intake.py` descarga la URL, `compression.py` ejecuta ffmpeg y, en el paso siguiente, se hace `git push` a `main`.
-- Mitigación actual: solo Internet Archive con licencia declarada, o ficheros directos con licencia declarada (ADR-0005). Bloqueo de plataformas en `sources.py` (`BLOCKED_HOSTS`). Descarga limitada a 200 MiB y escritura solo dentro del directorio de destino (`intake.py`). ffmpeg se llama con una lista de argumentos, con `-map 0:a:0` y `-vn` (`compression.py`). `check_repo_limits.py` se ejecuta antes del commit.
-- Riesgo residual: un fichero preparado para explotar el decodificador de ffmpeg podría ejecutar código en el runner, que tiene permiso de escritura y el token de R2. Además, `git add -A frontend/web` incluye cualquier fichero que deje el procesado. Como Vercel sirve esa carpeta, ese fichero se publicaría.
-- Propuesta, no implementada: dos jobs. El procesado, con `contents: read` y `persist-credentials: false`, entrega los ficheros validados como artefacto. El job de escritura solo añade rutas concretas y hace el push.
+- Evidencia: en `biblioteca.yml`, el job `procesar` (`contents: read`) descarga la URL con `intake.py` y ejecuta ffmpeg con `compression.py`; lo que cambia sale como artefacto `biblioteca-paquete`. El job `publicar` (`contents: write`, `needs: procesar`) valida el paquete por ruta y tipo de fichero (`backend/sonidos/paquete.py`), lo aplica sobre `main` y confirma.
+- Mitigación actual: solo Internet Archive con licencia declarada, o ficheros directos con licencia declarada (ADR-0005). Bloqueo de plataformas en `sources.py` (`BLOCKED_HOSTS`). Descarga limitada a 200 MiB y escritura solo dentro del directorio de destino (`intake.py`). ffmpeg se llama con una lista de argumentos, con `-map 0:a:0` y `-vn` (`compression.py`). `check_repo_limits.py` se ejecuta antes del commit. `publicar` regenera la parte pública desde el catálogo y no acepta la que trae el paquete (ADR-0011).
+- Riesgo residual: un fichero preparado para explotar el decodificador de ffmpeg podría ejecutar código en `procesar`, que no tiene token ni permiso de escritura. Ese código sí puede alterar el catálogo y el audio de `audio-library/`, que son las fuentes de la parte pública, porque la validación comprueba rutas y tipos, no el contenido (ADR-0010).
+- Pendiente: la ejecución real en GitHub Actions (artefacto entre jobs, `queue: max` y permisos efectivos).
 
-**R2. Token de GitHub disponible en los pasos del procesado.**
+**R2. Token de GitHub disponible en los pasos del procesado.** Mitigado en el workflow (ADR-0010); sin verificar en GitHub Actions.
 
-- Evidencia: el checkout de `library.yml` (línea 53) no fija `persist-credentials: false`. Por defecto, `actions/checkout` deja las credenciales en la configuración local de git del espacio de trabajo. Ese espacio lo usan el paso «Aplicar la acción» (línea 65), que procesa las URL, y «Comprobar límites y guardar cambios» (línea 83), que hace el push.
-- Riesgo: el código que corre en el paso de procesado (R1) podría leer el token y escribir en `main`.
-- Mitigación: ninguna todavía. Propuesta: `persist-credentials: false`, token solo en el paso de push, o separación en un job aparte (R1).
+- Evidencia: `procesar` tiene `persist-credentials: false` en el checkout y ningún paso usa `github.token`. El token solo llega a los pasos de `publicar` que suben a `main` y responden (`GH_TOKEN`).
+- Riesgo residual: `publicar` ejecuta scripts del checkout de `main` con permiso de escritura, pero no ejecuta nada del paquete (`scripts/aplicar_paquete.py`; ADR-0010).
+- Pendiente: la prueba en GitHub Actions, igual que en R1.
 
 **R3. Publicación accidental del repositorio.**
 
@@ -275,11 +275,11 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 - Riesgo: bajo hoy, porque no hay terceros. Crece si se añade un script externo o contenido sin escapar.
 - Propuesta: Content-Security-Policy que solo permita el origen propio; `X-Content-Type-Options: nosniff`; `Referrer-Policy`; `frame-ancestors 'none'`.
 
-**R10. Documentación desactualizada.**
+**R10. Documentación desactualizada.** Resuelta en lo principal (2-nov-2026).
 
-- Evidencia: CLAUDE.md, PROJECT_MASTER.md, ROADMAP.md, ADR-0005 (actualización del 31-oct-2026), ADR-0007 y la cabecera de `library.yml` describen la administración en Vercel, `ADMIN_PASSWORD`, `GITHUB_TOKEN` en Vercel y `frontend/web/lib/validate.js`. Ninguno existe ya en la rama.
+- Evidencia: CLAUDE.md, PROJECT_MASTER.md, ROADMAP.md, ADR-0005 y ADR-0007 ya indican que la administración está retirada; ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02. Ningún fichero del repositorio lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. Queda una descripción antigua de la administración en `docs/audio-processing/AUDIO_ENGINE.md` (líneas 305 y 306), fuera de este fichero.
 - Riesgo: que alguien dé por protegida una vía que no existe, o mantenga una lista de bloqueo duplicada que ya no existe.
-- Propuesta: corregir los documentos (§5, C).
+- Propuesta: borrar `ADMIN_PASSWORD` y `GITHUB_TOKEN` de Vercel si siguen configuradas (ROADMAP.md, «Pendiente»), y corregir `AUDIO_ENGINE.md` (§5, C).
 
 **R11. Pérdida de la clave de firma de Android.**
 
@@ -309,7 +309,7 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 13. PIN: alinear la longitud (de 4 a 12 en `schema.js`, de 4 a 6 en DESIGN §9) y decidir el bloqueo tras cinco fallos (60 s en §9, 45 s en P-16).
 14. Registro del estudio: decidir el almacén (DESIGN §8.4 y §9), porque `store.js` no tiene uno propio.
 15. Gestión por incidencias de GitHub, solo del propietario (CHANGELOG.md, línea 19), con las condiciones de §3.5.
-16. Workflows: separar procesado y escritura (R1 y R2), `persist-credentials: false` en el checkout del procesado y `permissions: contents: read` en `backend.yml`.
+16. Workflows: la separación de procesado y escritura, y `persist-credentials: false` en el procesado, están hechos en `biblioteca.yml` (R1 y R2; sin verificar en GitHub Actions). Pendiente: `permissions: contents: read` en `backend.yml`.
 17. Cabeceras y CSP en `vercel.json` (R9).
 18. Fuentes: añadir los ficheros WOFF2 autoalojados o corregir DESIGN §5.3.
 19. `android:allowBackup`: decidir el valor y declararlo en `AndroidManifest.xml`.
@@ -319,9 +319,9 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 
 **C. Documentación obsoleta (fuera de este fichero, sin modificar)**
 
-23. CLAUDE.md: la sección de Restricciones (secretos de Vercel, `ADMIN_PASSWORD`, `GITHUB_TOKEN`, lista de bloqueo duplicada en `validate.js`) y la de Arquitectura (`admin/`, `api/`, `lib/`). CHANGELOG.md, línea 23, indica que la administración ya se retiró.
-24. PROJECT_MASTER.md: fila «Administración en Vercel (`/admin/`)» de la tabla de módulos.
-25. ROADMAP.md: líneas 28 y 49 (`ADMIN_PASSWORD` y administración sin usar).
-26. ADR-0005: sección «Actualización (2026-10-31)». ADR-0007: puntos 4 y 5.
-27. `.github/workflows/library.yml`: comentario de cabecera (líneas 3 y 4).
+23. Resuelto: CLAUDE.md ya no describe la administración ni la lista de bloqueo duplicada en `validate.js` (comprobado el 2-nov-2026).
+24. Resuelto: la fila de administración de PROJECT_MASTER.md figura como retirada (ADR-0008).
+25. Resuelto en lo referente a la administración. Queda la acción del propietario de borrar `ADMIN_PASSWORD` y `GITHUB_TOKEN` en Vercel (ROADMAP.md, «Pendiente»).
+26. Resuelto: ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02, y los puntos 4 y 5 de ADR-0007 están superados por ADR-0008.
+27. Resuelto: `.github/workflows/library.yml` ya no existe en `main`; su comentario obsoleto salió con el fichero.
 28. DESIGN.md: longitud del PIN, bloqueo (60 s en §9 frente a 45 s en P-16), tamaño de fotografía y §1 (la app Android no es la PWA).

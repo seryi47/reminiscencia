@@ -108,7 +108,7 @@ Arjol et al. (2026) realizaron una revisión sistemática con metaanálisis y me
 
 Nasreddine et al. (2005) describen el MoCA como instrumento de cribado del deterioro cognitivo leve. Con punto de corte 26 detecta el 90 % de los casos de deterioro cognitivo leve, con una especificidad del 87 % [escalas-01].
 
-La validación primaria en adultos españoles es de Arjol et al. (2026), publicada en Psicothema 38(3):161-172 [escalas-01]. Es un estudio de estructura interna en 1.767 adultos de 18 a 89 años sin deterioro cognitivo, de muestra comunitaria (la comprobación describe además atención primaria; ver sección 5.2). No es un estudio de precisión diagnóstica. Lectura nuestra: no sirve por sí solo para fijar un punto de corte en pacientes.
+La validación primaria en adultos españoles es de Arjol et al. (2026), publicada en Psicothema 38(3):161-172 [escalas-01]. Es un estudio de estructura interna en 1.767 adultos de 18 a 89 años sin deterioro cognitivo, de muestra comunitaria evaluada en centros de atención primaria, según el resumen de PubMed (PMID 42528410, consulta del 2-nov-2026). No es un estudio de precisión diagnóstica. Lectura nuestra: no sirve por sí solo para fijar un punto de corte en pacientes.
 
 ### 4.3 MMSE y su versión española (MEC-30)
 
@@ -126,7 +126,7 @@ Los autores concluyen que el instrumento parece fiable y válido para pacientes 
 
 León-Salas et al. (2011) validaron la versión española del QoL-AD en 101 pacientes institucionalizados con demencia (82 con enfermedad de Alzheimer y 19 con demencia mixta) y en sus cuidadores [escalas-06]. El α fue de 0,90 en pacientes y 0,86 en cuidadores. La estabilidad, medida con ICC, fue de 0,83 en pacientes y 0,51 en cuidadores. El MMSE medio de la muestra fue de 7,2 ± 6,1. La versión para pacientes tiene menor validez de constructo, y hay que tenerlo en cuenta al usarla.
 
-Para pacientes de centros de día, la alternativa es la validación de Gómez-Gallego et al. (2012), publicada en Neurología 27(1):4-10 (PMID 21570161; el DOI 10.1016/j.nrl.2011.03.006 no consta confirmado), con el título «Validación de la versión española de la escala QoL-AD en pacientes con enfermedad de Alzheimer, cuidadores y profesionales sanitarios». Reclutaron en centros de día a 102 pacientes con enfermedad de Alzheimer, sus cuidadores y 25 profesionales, con deterioro cognitivo leve a moderado [escalas-06].
+Para pacientes de centros de día, la alternativa es la validación de Gómez-Gallego et al. (2012), publicada en Neurología 27(1):4-10 (PMID 21570161; DOI 10.1016/j.nrl.2011.03.006, confirmado en Crossref y PubMed el 2-nov-2026), con el título «Validación de la versión española de la escala QoL-AD en pacientes con enfermedad de Alzheimer, cuidadores y profesionales sanitarios». Reclutaron en centros de día a 102 pacientes con enfermedad de Alzheimer, sus cuidadores y 25 profesionales, con deterioro cognitivo leve a moderado [escalas-06].
 
 ### 4.6 Lectura de conjunto
 
@@ -144,26 +144,26 @@ Estos temas no tienen registro verificado en este documento. No se incluyen cifr
 
 ### 5.2 Registros con confirmación pendiente
 
-- **B6, sexto autor.** Crossref añade a Brodaty H; PubMed y Europe PMC no lo listan. No se pudo consultar la primera página en Cambridge. Mientras tanto, la cita usa cinco autores.
+- **B6, sexto autor. Resuelto (2-nov-2026).** La página del artículo en Cambridge Core lista cinco autores, como PubMed y Europe PMC. Crossref añade a Brodaty H, que no figura en la revista; no se cita.
 - **B4, tamaño y diseño.** El tamaño muestral y el diseño proceden de un resumen de OpenAlex. La verificación de [clinica-03] no encontró resumen accesible. Confirmar en el texto completo, incluido si el diseño no se confunde con el del estudio de 2015.
 - **escalas-04, texto completo.** No consultado. La atribución del CMAI se apoya en el manual del instrumento.
 - **IAACM (Cervilla et al., 1995).** Validación de la versión española del CMAI. No verificada.
 - **escalas-05, cita de 1999.** Logsdon et al., J Ment Health Aging 5:21-32, con el título candidato «Quality of life in Alzheimer's disease: patient and caregiver reports». No verificada en fuente primaria. El registro PsycTests (doi 10.1037/t03352-000) confirma autores y año.
 - **escalas-02, texto completo.** Folstein et al. (1975) no tiene resumen en PubMed. Lobo et al. (1999) se confirmó por su resumen, no por el texto completo.
 - **escalas-01, volumen y páginas.** Pendientes de la publicación anticipada de Neuropsychology Review.
-- **escalas-01, alcance de la muestra de Psicothema.** La comprobación describe la muestra como de atención primaria y la corrección como de muestra comunitaria. Confirmar en el texto del artículo.
-- **clinica-04, barreras del ensayo.** La idea de que el propio ensayo señala como barreras la implicación del personal de enfermería y la identificación de la música preferida no está verificada.
+- **escalas-01, alcance de la muestra de Psicothema. Resuelto (2-nov-2026).** El resumen de PubMed (PMID 42528410) describe una muestra comunitaria sin deterioro cognitivo, evaluada en centros de atención primaria; las dos descripciones son compatibles.
+- **clinica-04, barreras del ensayo. Resuelto (2-nov-2026).** El resumen de PubMed (PMID 35038407) menciona como barreras de implantación implicar al personal de enfermería e identificar la música preferida de los residentes.
 - **clinica-01, separación de tipos de música.** Confirmar en el texto completo si la revisión separa la música personalizada de la música genérica. Es la comparación que necesita H1 y no está verificada.
 
 ### 5.3 Pistas verificadas sin registro propio
 
 Estas referencias aparecen dentro de una verificación, pero no tienen registro propio. No se citan en el texto hasta tener registro.
 
-- Baird et al. (2018), J Alzheimers Dis, PMID 30320586 (el DOI 10.3233/JAD-180627 no consta confirmado). Pista de [clinica-02].
-- Garrido et al. (2018), J Alzheimers Dis, PMID 29966193 (el DOI 10.3233/JAD-180084 no consta confirmado). Pista de [clinica-02].
+- Baird et al. (2018), J Alzheimers Dis, PMID 30320586 (DOI 10.3233/JAD-180627, confirmado en Crossref y PubMed el 2-nov-2026). Pista de [clinica-02].
+- Garrido et al. (2018), J Alzheimers Dis, PMID 29966193 (DOI 10.3233/JAD-180084, confirmado en Crossref y PubMed el 2-nov-2026). Pista de [clinica-02].
 - Simmons-Stern et al. (2012), Neuropsychologia, doi 10.1016/j.neuropsychologia.2012.09.019; PMID 23000133. Pista de [clinica-05].
-- Moreira et al. (2018), PMID 29988347 (el DOI 10.1590/1980-57642018dn12-020005 no consta confirmado). Pista de [clinica-05].
-- Moreira et al. (2023), PMID 37998404 (el DOI 10.3390/healthcare11222912 no consta confirmado). Pista de [clinica-05].
+- Moreira et al. (2018), PMID 29988347 (DOI 10.1590/1980-57642018dn12-020005, confirmado en Crossref y PubMed el 2-nov-2026). Pista de [clinica-05].
+- Moreira et al. (2023), PMID 37998404 (DOI 10.3390/healthcare11222912, confirmado en Crossref y PubMed el 2-nov-2026). Pista de [clinica-05].
 - Moltrasio y Rubinstein (2025), PMID 41105815. Pista de [clinica-05].
 - Gaviola et al. (2020), Australas J Ageing, doi 10.1111/ajag.12642; PMID 30912616. Pista de [clinica-01].
 - MATCH (2025), PMID 41041461. Pista de [clinica-04].
@@ -180,7 +180,7 @@ Solo se listan las citadas en el texto. Cada entrada lleva su identificador de v
 - [B1] van der Steen JT, Smaling HJA, van der Wouden JC, Bruinsma MS, Scholten RJPM, Vink AC. Music-based therapeutic interventions for people with dementia. Cochrane Database of Systematic Reviews 2018, n.º 7, CD003477. doi 10.1002/14651858.CD003477.pub4 (PMID 30033623).
 - [clinica-02] Kaiser AP, Berntsen D. The cognitive characteristics of music-evoked autobiographical memories: Evidence from a systematic review of clinical investigations. WIREs Cognitive Science. 2023;14(3):e1627. doi 10.1002/wcs.1627 (PMID 36223919).
 - [clinica-03, B6] El Haj M, Antoine P, Nandrino JL, Gély-Nargeot MC, Raffard S. Self-defining memories during exposure to music in Alzheimer's disease. International Psychogeriatrics. 2015;27(10):1719-1730. doi 10.1017/S1041610215000812 (PMID 26018841). Sexto autor pendiente (sección 5.2).
-- [clinica-04] McCreedy EM, Sisti A, Gutman R, Dionne L, Rudolph JL, Baier R, et al. Pragmatic Trial of Personalized Music for Agitation and Antipsychotic Use in Nursing Home Residents With Dementia. Journal of the American Medical Directors Association. 2022;23(7):1171-1177. doi 10.1016/j.jamda.2021.12.030 (PMID 35038407).
+- [clinica-04] McCreedy EM, Sisti A, Gutman R, Dionne L, Rudolph JL, Baier R, Thomas KS, Olson MB, Zediker EE, Uth R, Shield RR, Mor V. Pragmatic Trial of Personalized Music for Agitation and Antipsychotic Use in Nursing Home Residents With Dementia. Journal of the American Medical Directors Association. 2022;23(7):1171-1177. doi 10.1016/j.jamda.2021.12.030 (PMID 35038407).
 - [clinica-05, P2] Simmons-Stern NR, Budson AE, Ally BA. Music as a memory enhancer in patients with Alzheimer's disease. Neuropsychologia. 2010;48(10):3164-3167. doi 10.1016/j.neuropsychologia.2010.04.033 (PMID 20452365).
 - [clinica-06, B2] Jacobsen JH, Stelzer J, Fritz TH, Chételat G, La Joie R, Turner R. Why musical memory can be preserved in advanced Alzheimer's disease. Brain. 2015;138(8):2438-2450. doi 10.1093/brain/awv135 (PMID 26041611).
 - [B3] Baird A, Samson S. Memory for music in Alzheimer's disease: unforgettable? Neuropsychology Review. 2009;19(1):85-101. doi 10.1007/s11065-009-9085-2 (PMID 19214750).
@@ -188,10 +188,10 @@ Solo se listan las citadas en el texto. Cada entrada lleva su identificador de v
 - [B5] Irish M, Cunningham CJ, Walsh JB, Coakley D, Lawlor BA, Robertson IH, Coen RF. Investigating the enhancing effect of music on autobiographical memory in mild Alzheimer's disease. Dementia and Geriatric Cognitive Disorders. 2006;22(1):108-120. doi 10.1159/000093487 (PMID 16717466).
 - [P1] Cuddy LL, Duffin J. Music, memory, and Alzheimer's disease: is music recognition spared in dementia, and how can it be assessed? Medical Hypotheses. 2005;64(2):229-235. doi 10.1016/j.mehy.2004.09.005 (PMID 15607545).
 - [P3] Matziorinis AM, Koelsch S. The promise of music therapy for Alzheimer's disease: a review. Annals of the New York Academy of Sciences. 2022;1516(1):11-17. doi 10.1111/nyas.14864 (PMID 35851957).
-- [escalas-01] Arjol D, Unzueta-Arce J, Mora-Simón S, et al. Use and Psychometric Properties of the MoCA in Spain: a Systematic Review With Meta-Analysis and Meta-Regression. Neuropsychology Review, publicación anticipada en línea, 1 de julio de 2026. doi 10.1007/s11065-026-09703-y (PMID 42380691). Volumen y páginas pendientes.
-  - Cita secundaria: Arjol et al. (2026), Psicothema 38(3):161-172 (PMID 42528410). El DOI 10.70478/psicothema.2026.38.15 no consta confirmado.
+- [escalas-01] Arjol D, Unzueta-Arce J, Mora-Simón S, Ferasati M, Rodríguez-Sánchez E, Gómez-Marcos MA, García-Ortiz L, Maderuelo-Fernández JA, Lugones-Sánchez C. Use and Psychometric Properties of the MoCA in Spain: a Systematic Review With Meta-Analysis and Meta-Regression. Neuropsychology Review, publicación anticipada en línea, 1 de julio de 2026. doi 10.1007/s11065-026-09703-y (PMID 42380691). Volumen y páginas pendientes.
+  - Cita secundaria: Arjol et al. (2026), Psicothema 38(3):161-172 (PMID 42528410). El DOI 10.70478/psicothema.2026.38.15 consta en Crossref y PubMed (consulta del 2-nov-2026).
   - Cita secundaria: Nasreddine et al. (2005), Journal of the American Geriatrics Society 53(4):695-699. doi 10.1111/j.1532-5415.2005.53221.x (PMID 15817019).
-- [escalas-02] Lobo A, Saz P, Marcos G, et al. Revalidation and standardization of the cognition mini-exam (first Spanish version of the Mini-Mental Status Examination) in the general geriatric population. Medicina Clínica (Barcelona). 1999;112(20):767-774 (PMID 10422057). Título en inglés según PubMed; el artículo está en español.
+- [escalas-02] Lobo A, Saz P, Marcos G, Día JL, de la Cámara C, Ventura T, Morales Asín F, Fernando Pascual L, Montañés JA, Aznar S. Revalidation and standardization of the cognition mini-exam (first Spanish version of the Mini-Mental Status Examination) in the general geriatric population. Medicina Clínica (Barcelona). 1999;112(20):767-774 (PMID 10422057). Título en inglés según PubMed; el artículo está en español.
   - Cita del MMSE original: Folstein MF, Folstein SE, McHugh PR. «Mini-mental state». A practical method for grading the cognitive state of patients for the clinician. Journal of Psychiatric Research. 1975;12(3):189-198. doi 10.1016/0022-3956(75)90026-6 (PMID 1202204).
 - [escalas-03] Cummings JL, Mega M, Gray K, Rosenberg-Thompson S, Carusi DA, Gornbein J. The Neuropsychiatric Inventory: comprehensive assessment of psychopathology in dementia. Neurology. 1994;44(12):2308-2314. doi 10.1212/wnl.44.12.2308 (PMID 7991117).
   - Boada et al. (2002), NPI-Q. Neurología 17(6):317-323 (PMID 12084358).
@@ -200,4 +200,4 @@ Solo se listan las citadas en el texto. Cada entrada lleva su identificador de v
   - Precursor de 1986: Cohen-Mansfield J. Agitated Behaviors in the Elderly: II. Preliminary Results in the Cognitively Deteriorated. Journal of the American Geriatrics Society. 1986;34(10):722-727. doi 10.1111/j.1532-5415.1986.tb04303.x.
 - [escalas-05] Logsdon RG, Gibbons LE, McCurry SM, Teri L. Assessing quality of life in older adults with cognitive impairment. Psychosomatic Medicine. 2002;64(3):510-519. doi 10.1097/00006842-200205000-00016 (PMID 12021425).
 - [escalas-06] León-Salas B, Logsdon RG, Olazarán J, Martínez-Martín P, The MSU-ADRU. Psychometric properties of the Spanish QoL-AD with institutionalized dementia patients and their family caregivers in Spain. Aging & Mental Health. 2011;15(6):775-783. doi 10.1080/13607863.2011.562183 (PMID 21547751).
-  - Cita secundaria: Gómez-Gallego et al. (2012), Neurología 27(1):4-10 (PMID 21570161). El DOI 10.1016/j.nrl.2011.03.006 no consta confirmado.
+  - Cita secundaria: Gómez-Gallego et al. (2012), Neurología 27(1):4-10 (PMID 21570161). El DOI 10.1016/j.nrl.2011.03.006 consta en Crossref y PubMed (consulta del 2-nov-2026).
