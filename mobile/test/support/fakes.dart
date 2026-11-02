@@ -49,11 +49,22 @@ class FakeLibrarySource implements LibrarySource {
     return LibraryData(songs: songs, folders: folders, fromNetwork: true);
   }
 
+  final List<List<Song>> downloadCalls = [];
+
   @override
   Future<int> downloadAll(
     List<Song> songs,
     void Function(int done, int total) onProgress,
-  ) async => 0;
+  ) async {
+    downloadCalls.add(songs);
+    return 0;
+  }
+
+  @override
+  Future<Set<String>> cachedAudioIds() async => {};
+
+  @override
+  Future<void> deleteCachedAudio(String id) async {}
 }
 
 /// Reproductor falso: registra las órdenes y expone el mismo contrato que el real.
@@ -71,6 +82,11 @@ class FakePlaybackPort implements PlaybackPort {
 
   final List<String> log = [];
 
+  final Set<String> _queue = {};
+
+  @override
+  Set<String> get queueSongIds => Set<String>.of(_queue);
+
   @override
   ValueListenable<NowPlaying> get nowPlaying => _now;
 
@@ -82,6 +98,9 @@ class FakePlaybackPort implements PlaybackPort {
     log.add('load:${songs.length}');
     final failure = loadError;
     if (failure != null) throw failure;
+    _queue
+      ..clear()
+      ..addAll(songs.map((song) => song.id));
     if (songs.isEmpty) {
       _now.value = NowPlaying.none;
       return;
@@ -100,6 +119,13 @@ class FakePlaybackPort implements PlaybackPort {
     final failure = playError;
     if (failure != null) throw failure;
     final song = songs[index];
+    // Como el reproductor real: si la lista no es la cola cargada, la cola se rehace.
+    final wanted = songs.map((item) => item.id).toSet();
+    if (!(wanted.length == _queue.length && wanted.containsAll(_queue))) {
+      _queue
+        ..clear()
+        ..addAll(wanted);
+    }
     _now.value = NowPlaying(
       songId: song.id,
       title: song.title,

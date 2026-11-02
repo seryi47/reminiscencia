@@ -1,6 +1,8 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../library_controller.dart';
+import '../local_audio.dart';
 import '../services.dart';
 import '../song.dart';
 import '../theme.dart';
@@ -45,6 +47,14 @@ class LibraryPage extends StatelessWidget {
                 actionLabel: 'Reintentar',
                 onAction: () => library.retryAudio(),
               ),
+            if (library.loadError != null && library.songs.isNotEmpty)
+              InlineBanner(
+                icon: Icons.cloud_off_outlined,
+                message: library.loadError!,
+                actionLabel: 'Reintentar',
+                onAction: () => library.load(),
+              ),
+            if (!patient) _ImportBar(library: library),
             if (!patient && library.folders.isNotEmpty)
               _FolderChips(library: library),
             Expanded(child: _body(context)),
@@ -84,31 +94,37 @@ class LibraryPage extends StatelessWidget {
     // En el teléfono con modo paciente, el reproductor grande es la primera fila de la lista:
     // así nunca se sale de la pantalla aunque el texto esté muy ampliado.
     final header = inlinePlayer ? 1 : 0;
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 8),
-      itemCount: visible.length + header,
-      itemBuilder: (context, index) {
-        if (index < header) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: PatientPlayer(playback: services.playback, artworkSize: 120),
+    return RefreshIndicator(
+      onRefresh: () => library.load(),
+      child: ListView.builder(
+        padding: const EdgeInsets.only(bottom: 8),
+        itemCount: visible.length + header,
+        itemBuilder: (context, index) {
+          if (index < header) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: PatientPlayer(
+                playback: services.playback,
+                artworkSize: 120,
+              ),
+            );
+          }
+          final i = index - header;
+          final song = visible[i];
+          return SongTile(
+            song: song,
+            playback: services.playback,
+            position: i + 1,
+            large: patient,
+            onTap: () => runWithNotice(
+              context,
+              () => library.playSong(song),
+              failurePrefix: 'No se pudo reproducir «${song.title}»',
+            ),
+            trailing: patient ? const [] : _secondaryActions(context, song),
           );
-        }
-        final i = index - header;
-        final song = visible[i];
-        return SongTile(
-          song: song,
-          playback: services.playback,
-          position: i + 1,
-          large: patient,
-          onTap: () => runWithNotice(
-            context,
-            () => library.playSong(song),
-            failurePrefix: 'No se pudo reproducir «${song.title}»',
-          ),
-          trailing: patient ? const [] : _secondaryActions(context, song),
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -116,6 +132,12 @@ class LibraryPage extends StatelessWidget {
     final collections = services.collections;
     final favorite = collections.isFavorite(song.id);
     return [
+      if (song.local)
+        IconButton(
+          tooltip: 'Borrar de este teléfono',
+          icon: const Icon(Icons.delete_outline),
+          onPressed: () => _confirmDeleteLocal(context, services.library, song),
+        ),
       IconButton(
         tooltip: favorite ? 'Quitar de favoritos' : 'Añadir a favoritos',
         icon: Icon(favorite ? Icons.star : Icons.star_border),
@@ -129,6 +151,91 @@ class LibraryPage extends StatelessWidget {
         onPressed: () => showAddToPlaylistDialog(context, services, song),
       ),
     ];
+  }
+}
+
+/// Borra una canción local tras pedir confirmación. Las canciones del catálogo público no llegan aquí.
+Future<void> _confirmDeleteLocal(
+  BuildContext context,
+  LibraryController library,
+  Song song,
+) async {
+  final confirmed = await showConfirmDialog(
+    context,
+    title: 'Borrar canción',
+    message: '¿Borrar esta canción de este teléfono? No se puede deshacer.',
+    confirmLabel: 'Borrar',
+  );
+  if (!confirmed || !context.mounted) return;
+  await runWithNotice(
+    context,
+    () => library.deleteLocal(song),
+    failurePrefix: 'No se pudo borrar «${song.title}»',
+  );
+}
+
+/// Botón «Añadir audio de este teléfono» y, mientras convierte, el progreso.
+class _ImportBar extends StatelessWidget {
+  const _ImportBar({required this.library});
+
+  final LibraryController library;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // Wrap: en pantallas estrechas o con texto grande, el progreso baja a otra línea en vez de desbordar.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          OutlinedButton.icon(
+            onPressed: library.importing
+                ? null
+                : () => _pickAndAdd(context, library),
+            icon: const Icon(Icons.library_add_outlined),
+            label: const Text('Añadir audio de este teléfono'),
+          ),
+          if (library.importing)
+            Text(library.importProgress, style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _pickAndAdd(
+  BuildContext context,
+  LibraryController library,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  // Sin allowMultiple: pickFiles ya admite varios archivos (el parámetro está obsoleto).
+  final picked = await FilePicker.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: kLocalAudioExtensions,
+  );
+  if (picked.isEmpty) return;
+  final files = [
+    for (final file in picked)
+      if (file.path != null) PickedAudioFile(name: file.name, path: file.path!),
+  ];
+  if (files.isEmpty) {
+    messenger.showSnackBar(
+      const SnackBar(content: Text('No se pudo leer ninguno de los archivos.')),
+    );
+    return;
+  }
+  try {
+    final result = await library.addLocalFiles(files);
+    messenger.showSnackBar(SnackBar(content: Text(describeAddResult(result))));
+  } catch (error) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('No se pudo añadir el audio: ${describeError(error)}'),
+      ),
+    );
   }
 }
 

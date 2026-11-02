@@ -1,6 +1,6 @@
 # ADR-0012: Audio subido desde este dispositivo, solo en el navegador
 
-- Estado: aceptada
+- Estado: aceptada (ampliada a la APK por ADR-0013)
 - Fecha: 2026-11-02
 - Relaciona: ADR-0003 (audio en GitHub), ADR-0006 (audio publicado en la web), ADR-0007 (catálogo), ADR-0008 (entrada por incidencias) y ADR-0009 (interfaz única y datos locales del cuidador)
 

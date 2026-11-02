@@ -10,6 +10,7 @@ class Song {
     required this.durationS,
     required this.license,
     required this.audio,
+    this.local = false,
   });
 
   final String id;
@@ -21,8 +22,11 @@ class Song {
   final double durationS;
   final String license;
 
-  /// Ruta relativa a la web, por ejemplo "audio/S123.opus".
+  /// Ruta relativa a la web, por ejemplo "audio/S123.opus". En una canción local (ADR-0013) es la ruta absoluta del fichero.
   final String audio;
+
+  /// True si la canción se subió desde este teléfono. Nunca viene del catálogo público.
+  final bool local;
 
   factory Song.fromJson(Map<String, dynamic> json) {
     return Song(

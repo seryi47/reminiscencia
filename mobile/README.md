@@ -2,9 +2,10 @@
 
 App Flutter que escucha la biblioteca publicada en https://reminiscencia.vercel.app.
 
-- Lee el catálogo de la web y guarda una copia para usarla sin conexión.
+- Lee el catálogo de la web y guarda una copia para usarla sin conexión. Se sincroniza al abrir la app, al refrescar y al volver a primer plano si pasaron 10 minutos.
+- Sube audio desde el teléfono (WAV, MP3, M4A, FLAC, OGG): se convierte a Opus con FFmpeg y se guarda solo en el dispositivo (ADR-0013).
 - Reproducción en segundo plano, con notificación y controles de auriculares (`audio_service`).
-- Decisiones y pruebas: ver [ADR-0004](../docs/decisions/ADR-0004-app-android-flutter.md).
+- Decisiones y pruebas: ver [ADR-0004](../docs/decisions/ADR-0004-app-android-flutter.md) y [ADR-0013](../docs/decisions/ADR-0013-audio-subido-local-apk.md).
 
 ## Compilar
 
