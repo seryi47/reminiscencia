@@ -32,12 +32,12 @@ Resultado: `build/app/outputs/flutter-apk/app-debug.apk`. Va firmado con la clav
 flutter build apk --release
 ```
 
-Resultado: `build/app/outputs/flutter-apk/app-release.apk`. Necesita dos ficheros locales que nunca se versionan: `android/key.properties` y `android/app/upload.jks`. Si faltan, Gradle firma con la clave de depuración y el APK no sirve para distribuir.
+Resultado: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`, `app-armeabi-v7a-release.apk` y `app-x86_64-release.apk` (`--split-per-abi`, uno por arquitectura). Necesita dos ficheros locales que nunca se versionan: `android/key.properties` y `android/app/upload.jks`. Si faltan, Gradle firma con la clave de depuración y el APK no sirve para distribuir.
 
 Comprueba la firma antes de publicar:
 
 ```
-../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-release.apk <huella-de-produccion>
+../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-arm64-v8a-release.apk <huella-de-produccion>
 ```
 
 La huella de producción y el resto del procedimiento de publicación (versión, etiqueta, secretos y copia de la clave) están en [docs/android/RELEASE.md](../docs/android/RELEASE.md).

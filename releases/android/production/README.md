@@ -4,20 +4,20 @@ Aquí van los APK firmados con la clave de publicación de la app Android (`es.o
 
 ## Qué contiene
 
-- `reminiscencia-<versión>.apk`: resultado de `flutter build apk --release`, firmado con la clave de producción.
+- `reminiscencia-<versión>-<arquitectura>.apk`: resultado de `flutter build apk --release --split-per-abi`, uno por arquitectura (`arm64-v8a`, `armeabi-v7a`, `x86_64`), firmados con la clave de producción.
 
 ## Reglas
 
 - Todas las versiones van firmadas con la misma clave. Android solo instala una actualización si su firma coincide con la de la versión ya instalada.
 - Huella SHA-256 del certificado de producción (referencia): `8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c`.
-- Los APK no se versionan en Git (`.gitignore` excluye `releases/**/*.apk`). Se publican en la release `android-vX.Y.Z` y como artefacto `apk-produccion` del workflow [android](../../../.github/workflows/android.yml).
+- Los APK no se versionan en Git (`.gitignore` excluye `releases/**/*.apk`). Se publican en la release `android-vX.Y.Z` y como artefactos `apk-produccion-<arquitectura>` del workflow [android](../../../.github/workflows/android.yml).
 
 ## Comprobar la firma
 
 Desde la raíz del repositorio:
 
 ```
-scripts/android/verify_apk.sh releases/android/production/reminiscencia-<versión>.apk 8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c
+scripts/android/verify_apk.sh releases/android/production/reminiscencia-<versión>-arm64-v8a.apk 8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c
 ```
 
 El script falla si la huella del certificado no es esa. Un APK firmado con la clave de depuración tampoco la cumple.

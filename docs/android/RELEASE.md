@@ -35,11 +35,15 @@ Todo debe terminar sin errores antes de seguir.
 flutter build apk --debug
 ../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-debug.apk
 
-flutter build apk --release
-../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-release.apk 8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c
+flutter build apk --release --split-per-abi
+../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-arm64-v8a-release.apk 8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c
+../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk 8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c
+../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-x86_64-release.apk 8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c
 ```
 
 La compilación de producción necesita las dos copias locales de la firma (no versionadas): `mobile/android/key.properties` y `mobile/android/app/upload.jks`. Si faltan, Gradle firma con la clave de depuración; el segundo `verify_apk.sh` lo detecta y falla. No uses ese APK.
+
+`--split-per-abi` genera un APK por arquitectura: `app-arm64-v8a-release.apk` (la mayoría de teléfonos), `app-armeabi-v7a-release.apk` y `app-x86_64-release.apk`. Los tres van firmados con la misma clave.
 
 El contenido de `key.properties` tiene este formato (los valores reales están en la copia de seguridad):
 
@@ -73,7 +77,7 @@ Al subir una etiqueta `android-v*`, el workflow `android`:
 1. Comprueba que la etiqueta coincide con la versión de `mobile/pubspec.yaml`.
 2. Ejecuta `flutter analyze` y `flutter test`, compila el APK de depuración y lo verifica.
 3. Compila el APK de producción con la clave de los secretos y comprueba que su huella coincide con la de referencia. Si no coincide, no publica nada. **Hoy este paso no puede completarse**: los secretos de firma no están cargados en GitHub (ver el estado al principio).
-4. Crea la release `android-v1.2.0` con `reminiscencia-1.2.0.apk`, `reminiscencia-1.2.0-debug.apk` y `SHA256SUMS.txt`.
+4. Crea la release `android-v1.2.0` con `reminiscencia-1.2.0-arm64-v8a.apk`, `reminiscencia-1.2.0-armeabi-v7a.apk`, `reminiscencia-1.2.0-x86_64.apk`, `reminiscencia-1.2.0-debug.apk` y `SHA256SUMS.txt`. Cada teléfono descarga solo el suyo.
 
 Para probar sin publicar, lanza el workflow a mano desde la pestaña Actions de GitHub (botón Run workflow). Compila y verifica, pero no crea ninguna release. Sin secretos de firma, esa ejecución solo avisa y omite el APK de producción.
 
@@ -112,7 +116,7 @@ Hay dos vías. Mientras la clave no esté en GitHub, solo sirve la primera.
 3. Verificar el APK contra la huella de referencia:
 
    ```
-   ../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-release.apk 8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c
+   ../scripts/android/verify_apk.sh build/app/outputs/flutter-apk/app-arm64-v8a-release.apk 8f305105155f87056d858948614bfc4e114d9dc67a6e3e57dbb4679de46b657c
    ```
 
 4. Es correcto si termina con «Verificación correcta» y con «OK: la huella del certificado coincide con la esperada». Si el APK sale firmado con la clave de depuración, el script avisa y falla: ese APK no sirve.
@@ -123,8 +127,8 @@ Esta vía comprueba que el APK sale firmado con la clave de producción. No ejec
 
 1. Cargar los cuatro secretos de la sección [Secretos del repositorio](#secretos-del-repositorio). Requiere la decisión de subir la clave a GitHub, que hoy no está tomada.
 2. Lanzar el workflow `android` a mano desde `main` (pestaña Actions, Run workflow). Esa ejecución analiza, prueba y compila la depuración y, con secretos, compila y verifica el APK de producción. No crea ninguna release.
-3. Es correcto si el job **Producción** termina en verde, en particular el paso «Verificar firma del APK de producción», y el artefacto `apk-produccion` contiene el APK y `SHA256SUMS.txt`.
-4. Solo después, una etiqueta `android-v*` crea la release, con sus dos APK y `SHA256SUMS.txt`.
+3. Es correcto si el job **Producción** termina en verde, en particular el paso «Verificar firma de cada APK de producción», y hay tres artefactos (`apk-produccion-arm64-v8a`, `apk-produccion-armeabi-v7a` y `apk-produccion-x86_64`), cada uno con su APK y su `SHA256SUMS.txt`.
+4. Solo después, una etiqueta `android-v*` crea la release, con sus cuatro APK (tres de producción y uno de depuración) y `SHA256SUMS.txt`.
 
 ## Clave de firma
 
