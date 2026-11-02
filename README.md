@@ -2,23 +2,20 @@
 
 Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado:** la plataforma funciona en la web y en la app Android. La biblioteca se gestiona desde Vercel. Estudios con personas, pendientes.
+**Estado:** la plataforma funciona en la web y en la app Android. La biblioteca se gestiona desde la propia web, con incidencias de GitHub (ADR-0008). Estudios con personas, pendientes.
 
 | Qué | Dónde |
 |---|---|
-| Escuchar (público) | https://reminiscencia.vercel.app |
-| Administrar (contraseña) | https://reminiscencia.vercel.app/admin/ |
+| Escuchar y gestionar (público) | https://reminiscencia.vercel.app, sección «Gestionar» |
 | App Android | `mobile/` (lee la biblioteca de la web) |
-| Trabajos de importación y edición | GitHub Actions: workflow `library` |
+| Procesado de los cambios | Workflow `biblioteca`: lee las incidencias con la etiqueta `biblioteca` |
 
 ## Cómo se usa
 
-1. Entra en **/admin/** con la contraseña de administración.
-2. **Añadir audio:** pega una dirección de Internet Archive (`archive.org/details/…`) o un enlace directo a un fichero de audio con su licencia. YouTube y las plataformas de streaming no se admiten.
-3. El trabajo se ejecuta en GitHub (descarga, conversión y guardado en el repositorio). Tarda 1-3 minutos y la web se actualiza sola.
-4. Organiza en carpetas, edita título, artista, año y etiquetas, y **publica** las canciones que quieras en la web.
-
-Las canciones nuevas quedan **privadas** hasta que las publicas.
+1. Abre la sección **Gestionar** de la web. Cada formulario comprueba la petición y abre una incidencia nueva en GitHub con el texto ya escrito: solo queda pulsar «Submit new issue». El formato de las peticiones está en ADR-0008.
+2. **Añadir audio:** pega una dirección de Internet Archive (`archive.org/details/…`) o un enlace directo a un fichero de audio con su licencia, que es obligatoria. YouTube y las plataformas de streaming no se admiten.
+3. Solo el propietario procesa las peticiones. El workflow descarga, convierte y guarda el resultado en el repositorio, responde en la incidencia y la cierra. Tarda unos minutos y la web se actualiza sola.
+4. Organiza en carpetas y edita título, artista, año, etiquetas y carpeta de las canciones publicadas. Las canciones nuevas quedan **privadas** y la web solo lista las públicas: para publicarlas hace falta su identificador (`song_id`) en `audio-library/indexes/catalog.json` (ADR-0008).
 
 ## Documentación
 

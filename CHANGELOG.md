@@ -4,14 +4,17 @@
 
 - Auditoría del brief contra el repositorio y la web publicada.
 - Panel de diseño para la nueva interfaz de escucha y del cuidador.
-- Administración en Vercel sin usar por decisión del investigador (sin `ADMIN_PASSWORD`).
+- Gestión de la biblioteca en la página pública («Gestionar»): cada formulario comprueba la petición y prepara una incidencia con la etiqueta `biblioteca` (ADR-0008).
+- Administración retirada (ADR-0008): sin `/admin/`, sin funciones `api/` ni `lib/`, y sin `ADMIN_PASSWORD`.
+- Content-Security-Policy en la web pública (`vercel.json`).
+- Lista de bloqueo de `intake.js` igual que la de `sources.py`, con las plataformas de vídeo y de streaming y sus dominios de ficheros.
 
 ## Administración en Vercel, catálogo versionado y app 1.1.0
 
 ### Añadido
 - Catálogo `audio-library/indexes/catalog.json` como fuente de verdad (ADR-0007): carpetas, metadatos, licencia, hash y estado público.
 - Workflow `library` en GitHub Actions: importar por URL, publicar/despublicar, crear/renombrar/borrar carpetas y editar metadatos. Probado en GitHub con ítems reales de Internet Archive.
-- Administración en `/admin/` de la web de Vercel, con contraseña (`ADMIN_PASSWORD`) y falla cerrada. Funciones `api/catalog`, `api/dispatch` y `api/runs`, con validación de entradas y permisos mínimos.
+- Administración en `/admin/` de la web de Vercel, con contraseña (`ADMIN_PASSWORD`) y falla cerrada. Funciones `api/catalog`, `api/dispatch` y `api/runs`, con validación de entradas y permisos mínimos. Retirada en ADR-0008.
 - Web de escucha rediseñada: lista densa, carpetas, búsqueda, reproductor fijo y vista a pantalla completa en el teléfono.
 - App Android 1.1.0: biblioteca desde Vercel, copia para escuchar sin conexión y reproducción probada con la red apagada.
 - ADR-0005 (entrada por URL con licencia), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo desde Vercel).
@@ -29,7 +32,7 @@
 - Audio empaquetado dentro de la APK.
 
 ### Pendiente
-- Configurar `ADMIN_PASSWORD` en Vercel (Production) y probar el panel de extremo a extremo.
+- ~~Configurar `ADMIN_PASSWORD` en Vercel (Production) y probar el panel de extremo a extremo.~~ Retirado con la administración (ADR-0008).
 - Pruebas de la app en dispositivo físico (llamadas, Bluetooth, TalkBack).
 - Copia de seguridad de la clave de firma de Android fuera de este equipo.
 

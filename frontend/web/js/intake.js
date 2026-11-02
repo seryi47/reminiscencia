@@ -24,10 +24,17 @@ export const LIMITS = Object.freeze({
   issueTitle: 120,
 });
 
-// Igual que BLOCKED_HOSTS en backend/sonidos/sources.py. Cada entrada bloquea también sus subdominios.
+// Igual que BLOCKED_HOSTS en backend/sonidos/sources.py (ADR-0005): plataformas de vídeo y de streaming, y los dominios
+// de sus ficheros. Cada entrada bloquea también sus subdominios. Si una lista cambia, hay que cambiar la otra.
 export const BLOCKED_HOSTS = Object.freeze([
-  "youtube.com", "youtu.be", "spotify.com", "open.spotify.com", "music.apple.com",
-  "soundcloud.com", "vimeo.com", "tiktok.com", "instagram.com", "facebook.com", "bandcamp.com",
+  "youtube.com", "youtu.be", "youtube-nocookie.com", "googlevideo.com", "ytimg.com",
+  "spotify.com", "open.spotify.com", "scdn.co", "spotifycdn.com",
+  "music.apple.com", "itunes.apple.com", "mzstatic.com",
+  "soundcloud.com", "sndcdn.com", "vimeo.com", "vimeocdn.com",
+  "tiktok.com", "tiktokcdn.com", "instagram.com", "cdninstagram.com",
+  "facebook.com", "fbcdn.net", "bandcamp.com", "bcbits.com",
+  "deezer.com", "dzcdn.net", "tidal.com", "mixcloud.com", "dailymotion.com", "dmcdn.net",
+  "twitch.tv", "jtvnw.net", "ttvnw.net",
 ]);
 
 export const AUDIO_EXTENSIONS = Object.freeze([".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav"]);
@@ -47,10 +54,13 @@ const URL_SPACE_OR_CONTROL = /[\p{Zs}\p{Cc}\p{Zl}\p{Zp}\p{Cs}]/u;
 const CONTROL = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}]/u;
 // Lo que Python (str.splitlines) trata como salto de línea.
 const LINE_BREAK = /[\n\r\v\f\u001c-\u001e\u0085\u2028\u2029]/;
-const REPO_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+// Propietario/nombre. "." y ".." no sirven: la URL de la incidencia los resolvería como rutas.
+const REPO_NAME = /^(?!\.\.?\/)[A-Za-z0-9_.-]+\/(?!\.\.?$)[A-Za-z0-9_.-]+$/;
 
 const BLOCKED_MESSAGE = "Esta plataforma no se puede importar: sus condiciones de uso no permiten descargar el contenido. Usa un fichero de audio con licencia o un ítem de Internet Archive.";
 const IA_FORM_MESSAGE = "En Internet Archive usa archive.org/details/<identificador> o archive.org/download/<identificador>.";
+// Igual que el backend (sources.py, IA_FILE_SERVER_MESSAGE): un fichero de ia800100.us.archive.org no es un fichero directo.
+const IA_FILE_SERVER_MESSAGE = "Un fichero de Internet Archive se importa desde la página de su ítem (archive.org/details/<identificador>), donde figura la licencia.";
 const HOST_MESSAGE = "La dirección no es válida: revisa el dominio (solo letras ASCII, cifras, puntos y guiones).";
 
 // Campos permitidos por operación (además de "op"). Cualquier otro campo es un error.
@@ -64,9 +74,16 @@ const OPERATIONS = Object.freeze({
 const len = (text) => [...text].length;
 const hasText = (value) => typeof value === "string" && value.trim() !== "";
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+// Espacios de los extremos como str.strip() de Python, que es lo que mide el backend. No incluye U+FEFF, que trim() sí quita.
+const PY_SPACE_EDGES = /^[\t\n\v\f\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/gu;
+// Longitud de una etiqueta como la mide el backend (_tags): sin espacios de los extremos y en minúsculas.
+const tagLength = (tag) => len(tag.replace(PY_SPACE_EDGES, "").toLowerCase());
 
 export const isFolderId = (value) => typeof value === "string" && FOLDER_ID.test(value);
 export const isSongId = (value) => typeof value === "string" && SONG_ID.test(value);
+
+// Canciones que la sección muestra y cuenta: publicadas (ADR-0008) y con un identificador de canción válido.
+export const selectableSongs = (songs) => songs.filter((song) => song && song.public === true && isSongId(song.id));
 
 // JSON en una sola línea. JSON.stringify escapa los saltos de línea, pero no U+0085, U+2028 ni U+2029,
 // que Python también trata como saltos: se escapan para que la línea de "payload" siga siendo única.
@@ -88,6 +105,12 @@ function splitUrl(url) {
   const tail = cut === -1 ? "" : rest.slice(cut);
   const end = tail.search(/[?#]/);
   return { authority, path: end === -1 ? tail : tail.slice(0, end) };
+}
+
+// Ruta sin parámetros, como urlparse(url).path del backend: el primer ";" del último segmento empieza los parámetros.
+function pathWithoutParams(path) {
+  const semicolon = path.indexOf(";", Math.max(path.lastIndexOf("/"), 0));
+  return semicolon === -1 ? path : path.slice(0, semicolon);
 }
 
 // Host en minúsculas como lo canoniza el backend (canonical_host): sin punto final ni "www.".
@@ -114,15 +137,17 @@ function isIaItemPath(path) {
   return parts.length === 2 && IA_KINDS.includes(parts[0]) && IA_IDENTIFIER.test(parts[1]);
 }
 
-// "blocked", "archive", "archive-path", "direct", "other" o "invalid". Sigue el orden de sources.classify:
-// primero las plataformas, después Internet Archive y por último la extensión de audio.
+// "blocked", "archive", "archive-path", "archive-file", "direct", "other" o "invalid". Sigue el orden de sources.classify:
+// primero las plataformas, después Internet Archive (un ítem no admite parámetros) y por último la extensión de audio,
+// leída sin los parámetros de la ruta.
 function classify(url) {
   const { authority, path } = splitUrl(url);
   const host = canonicalHost(authority);
   if (host === null) return "invalid";
   if (isBlockedHost(host)) return "blocked";
   if (host === IA_HOST) return isIaItemPath(path) ? "archive" : "archive-path";
-  const lower = path.toLowerCase();
+  if (host.endsWith(`.${IA_HOST}`)) return "archive-file";
+  const lower = pathWithoutParams(path).toLowerCase();
   return AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext)) ? "direct" : "other";
 }
 
@@ -132,11 +157,11 @@ export function needsLicense(url) {
 }
 
 // Texto de una sola línea. Con required, no puede quedar en blanco.
-function checkText(value, { name, max, required = false }) {
+function checkText(value, { name, max, required = false, measure = len }) {
   if (typeof value !== "string") return `${name} debe ser texto.`;
   if (CONTROL.test(value)) return `${name} no puede tener saltos de línea ni caracteres de control.`;
   if (required && value.trim() === "") return `${name} no puede quedar en blanco.`;
-  if (len(value) > max) return `${name} no puede tener más de ${max} caracteres.`;
+  if (measure(value) > max) return `${name} no puede tener más de ${max} caracteres.`;
   return null;
 }
 
@@ -150,6 +175,7 @@ export function validateImport({ url, license, title } = {}) {
   if (kind === "invalid") return HOST_MESSAGE;
   if (kind === "blocked") return BLOCKED_MESSAGE;
   if (kind === "archive-path") return IA_FORM_MESSAGE;
+  if (kind === "archive-file") return IA_FILE_SERVER_MESSAGE;
   if (kind === "other") {
     return "Admite un ítem de Internet Archive (archive.org/details/…) o un enlace directo a un fichero de audio (mp3, flac, ogg, opus, m4a o wav).";
   }
@@ -226,7 +252,7 @@ function checkEditFields(data) {
     if (!Array.isArray(data.tags)) return "Las etiquetas deben ser una lista.";
     if (data.tags.length > LIMITS.tags) return `No puede haber más de ${LIMITS.tags} etiquetas.`;
     for (const tag of data.tags) {
-      const problem = checkText(tag, { name: "Cada etiqueta", max: LIMITS.tag, required: true });
+      const problem = checkText(tag, { name: "Cada etiqueta", max: LIMITS.tag, required: true, measure: tagLength });
       if (problem) return problem;
     }
   }
@@ -256,12 +282,15 @@ function checkOperation(data) {
   }
 }
 
-// Devuelve el motivo en español si el payload no es válido, o null. Acepta el objeto o su texto JSON.
+// Devuelve el motivo en español si el payload no es válido, o null. Acepta el objeto o su texto JSON. Con texto se aplican
+// las mismas reglas, pero buildOrganizeBody envía siempre la forma normalizada (JSON.stringify): claves repetidas o números
+// como 1E3 pueden pasar aquí y no llegan al backend tal como se escribieron.
 export function validatePayload(payload) {
   let data = payload;
   if (typeof payload === "string") {
     if (len(payload) > LIMITS.payload) return `Los datos no pueden tener más de ${LIMITS.payload} caracteres.`;
     if (LINE_BREAK.test(payload)) return "Los datos deben ocupar una sola línea.";
+    if (CONTROL.test(payload)) return "Los datos no pueden tener caracteres de control.";
     try {
       data = JSON.parse(payload);
     } catch {

@@ -9,6 +9,7 @@ import {
   buildOrganizeBody,
   needsLicense,
   normalizeTags,
+  selectableSongs,
   validateImport,
   validatePayload,
 } from "../../frontend/web/js/intake.js";
@@ -321,5 +322,105 @@ describe("buildIssueUrl y buildIssueTitle", () => {
     assert.ok([...title].length <= 120);
     assert.equal(/[\n\r]/.test(title), false);
     assert.equal(buildIssueTitle("   "), "Petición de la biblioteca");
+  });
+});
+
+describe("buildIssueUrl: nombres de repositorio", () => {
+  it("rechaza . y .. como propietario o como nombre, porque suben de nivel en la ruta", () => {
+    assert.throws(() => buildIssueUrl("x", "t", "../.."), /propietario\/nombre/);
+    assert.throws(() => buildIssueUrl("x", "t", "./repo"), /propietario\/nombre/);
+    assert.throws(() => buildIssueUrl("x", "t", "seryi47/.."), /propietario\/nombre/);
+    assert.throws(() => buildIssueUrl("x", "t", "seryi47/."), /propietario\/nombre/);
+  });
+
+  it("acepta puntos dentro del nombre del repositorio", () => {
+    assert.match(buildIssueUrl("x", "t", "seryi47/repo.v2"), /^https:\/\/github\.com\/seryi47\/repo\.v2\/issues\/new\?/);
+  });
+});
+
+describe("validatePayload: etiquetas medidas como el backend (issue_request.py, _tags)", () => {
+  it("mide la etiqueta después de minusculizar: 21 veces İ son 42 caracteres", () => {
+    assert.notEqual(validatePayload({ op: "edit_song", song_id: SONG, tags: ["İ".repeat(21)] }), null);
+    assert.equal(validatePayload({ op: "edit_song", song_id: SONG, tags: ["İ".repeat(20)] }), null);
+  });
+
+  it("no cuenta los espacios de los extremos, como el strip del backend", () => {
+    assert.equal(validatePayload({ op: "edit_song", song_id: SONG, tags: [` ${"a".repeat(40)} `] }), null);
+  });
+
+  it("no quita U+FEFF al medir: str.strip() de Python no lo quita", () => {
+    assert.notEqual(validatePayload({ op: "edit_song", song_id: SONG, tags: [`\ufeff${"a".repeat(40)}`] }), null);
+  });
+});
+
+describe("validateImport: plataformas de vídeo, streaming y sus dominios de ficheros (sources.py)", () => {
+  it("rechaza las plataformas añadidas a la lista de bloqueo del backend", () => {
+    for (const url of [
+      "https://www.dailymotion.com/x.mp3",
+      "https://www.twitch.tv/x.mp3",
+      "https://www.deezer.com/x.mp3",
+      "https://tidal.com/x.mp3",
+      "https://www.mixcloud.com/x.mp3",
+    ]) {
+      assert.match(validateImport({ url, license: "CC0" }), /no se puede importar/, url);
+    }
+  });
+
+  it("rechaza los dominios de ficheros de esas plataformas, también como subdominios", () => {
+    for (const url of [
+      "https://r1---sn.googlevideo.com/x.mp3",
+      "https://i.ytimg.com/x.mp3",
+      "https://cdn.sndcdn.com/x.mp3",
+      "https://dzcdn.net/x.mp3",
+    ]) {
+      assert.match(validateImport({ url, license: "CC0" }), /no se puede importar/, url);
+    }
+  });
+});
+
+describe("validateImport: ';' en la ruta como urlparse del backend", () => {
+  it("un ';' en el último segmento corta la ruta: a.txt;x.mp3 no es un fichero de audio", () => {
+    assert.notEqual(validateImport({ url: "https://example.org/a.txt;x.mp3", license: "CC0" }), null);
+    assert.notEqual(validateImport({ url: "https://example.org/tema;.mp3", license: "CC0" }), null);
+    assert.notEqual(validateImport({ url: "https://example.org/x;.mp3", license: "CC0" }), null);
+  });
+
+  it("la extensión se lee antes del ';' del último segmento, y un ';' en un segmento anterior no cuenta", () => {
+    assert.equal(validateImport({ url: "https://example.org/tema.mp3;x", license: "CC0" }), null);
+    assert.equal(validateImport({ url: "https://example.org/a;b/tema.mp3", license: "CC0" }), null);
+  });
+
+  it("en Internet Archive el ';' sigue siendo un error: el backend tomaría otro identificador", () => {
+    assert.match(validateImport({ url: "https://archive.org/details/x;y" }), /archive\.org\/details/);
+  });
+});
+
+describe("validateImport: servidores de ficheros de Internet Archive", () => {
+  it("un fichero de ia800100.us.archive.org no se importa como directo: su licencia está en el ítem", () => {
+    assert.match(validateImport({ url: "https://ia800100.us.archive.org/1/items/x/tema.mp3", license: "CC0" }), /página de su ítem/);
+    assert.match(validateImport({ url: "https://ia800100.us.archive.org/1/items/x/tema.mp3" }), /página de su ítem/);
+  });
+});
+
+describe("selectableSongs: lo que la sección muestra y cuenta", () => {
+  it("solo quedan las canciones publicadas con un identificador válido", () => {
+    const songs = [
+      { id: SONG, public: true },
+      { id: "BAD", public: true },
+      { id: "S0123456789abcde", public: true },
+      { id: "S1123456789abcdef", public: false },
+      null,
+    ];
+    assert.deepEqual(selectableSongs(songs).map((song) => song.id), [SONG]);
+  });
+});
+
+describe("validatePayload: texto JSON sin caracteres de control, como en la línea payload del backend", () => {
+  it("rechaza un tabulador entre tokens del texto JSON", () => {
+    assert.notEqual(validatePayload(`{"op":"delete_folder",\t"folder_id":"${FOLDER}"}`), null);
+  });
+
+  it("rechaza un carácter de control escrito como escape JSON, como el backend al leer el título", () => {
+    assert.match(validatePayload(`{"op":"edit_song","song_id":"${SONG}","title":"a\\u0007b"}`), /caracteres de control/);
   });
 });

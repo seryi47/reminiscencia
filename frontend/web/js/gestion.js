@@ -10,6 +10,7 @@ import {
   isSongId,
   needsLicense,
   normalizeTags,
+  selectableSongs,
   validateImport,
 } from "./intake.js";
 
@@ -189,9 +190,9 @@ async function getJson(url) {
 async function loadData() {
   say(statusLine, "Cargando la biblioteca…");
   const [songs, folders] = await Promise.allSettled([getJson(SOURCES.songs), getJson(SOURCES.folders)]);
-  // La página solo lista las canciones publicadas (ADR-0008): las demás no aparecen aunque el catálogo las trajera.
+  // La página solo lista las canciones publicadas con un identificador válido (ADR-0008). La cabecera cuenta lo mismo que el selector.
   const list = songs.status === "fulfilled" ? listOf(songs.value) : null;
-  store.songs = list ? list.filter((song) => song && song.public === true) : null;
+  store.songs = list ? selectableSongs(list) : null;
   store.folders = folders.status === "fulfilled" && Array.isArray(folders.value) ? folders.value : null;
   fillSelects();
   reportStatus();
