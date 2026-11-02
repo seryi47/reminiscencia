@@ -1,7 +1,11 @@
-// Criterios de aceptación visual de DESIGN 15 en los cuatro anchos (390, 820, 1024 y 1440 px).
-// Tolerancia de medida: ±2 px («±2 px es la tolerancia de medición»). Los mínimos («o más») se miden con la misma
-// tolerancia; las áreas táctiles de 48 px del paciente tienen su propia prueba en paciente.e2e.mjs.
-// Además, cada ancho guarda capturas de las pantallas de ambos modos en tests/web-e2e/capturas.
+// Medidas del rediseño (estructura visual de Apple Music web) en los cinco anchos de referencia: 390, 600, 820, 1024 y 1440 px.
+// Valores de la especificación del rediseño:
+//   Escritorio (≥1024 px): barra lateral de 240 px; título de página de 40 px con peso 700; reproductor fijo de 76 px.
+//   Tableta (600–1023 px): riel lateral de 72 px; reproductor de 76 px.
+//   Teléfono (<600 px): barra de pestañas inferior con cinco destinos; minirreproductor de 64 px; objetivos táctiles de 44 px.
+// Tolerancia de medida: ±2 px («±2 px es la tolerancia de medición»). Los mínimos («o más») se miden con la misma tolerancia.
+// Las medidas que la especificación no fija no se comprueban aquí. Además, cada ancho guarda capturas de las pantallas
+// de ambos modos en tests/web-e2e/capturas.
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestCatalogOverrides } from "./helpers/catalogo-prueba.mjs";
@@ -9,16 +13,12 @@ import {
   caregiverNavBox,
   clickTestid,
   collectTabStops,
-  computedStyleOf,
-  countFullyVisibleRows,
+  countInteractive,
   elementsWithMotion,
-  expectInRange,
   expectSize,
-  fixedOrFooterBox,
   horizontalScrollState,
   measure,
   overlappingPairs,
-  scrollTestidIntoView,
   smallTextElements,
   TEST_TIMEOUT_MS,
   TOLERANCE_PX,
@@ -54,20 +54,38 @@ after(async () => {
 
 const prueba = (nombre, fn) => it(nombre, { timeout: TEST_TIMEOUT_MS }, fn);
 
-/** Cajas de los mosaicos de carpetas visibles (P-11: el mismo componente que las listas). */
-async function folderTileBoxes(page) {
-  await waitVisible(page, "p3-folders", { context: "cuadrícula de carpetas (P3)" });
-  return page.evaluate(() =>
-    [
-      ...document.querySelectorAll(
-        '[data-testid="p3-folders"] a, [data-testid="p3-folders"] button, [data-testid="p3-folders"] [role="button"]',
-      ),
-    ]
-      .filter((el) => window.__e2eIsShown(el))
-      .map((el) => {
-        const rect = el.getBoundingClientRect();
-        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-      }),
+/** Tamaño y peso de la letra del título de página del paciente (h1 de su cabecera). */
+async function tituloDePagina(page) {
+  const titulo = await waitVisible(page, "p-title", { context: "título de página del paciente" });
+  return titulo.evaluate((el) => {
+    const estilo = getComputedStyle(el);
+    return { fontSize: parseFloat(estilo.fontSize), fontWeight: estilo.fontWeight };
+  });
+}
+
+/**
+ * Controles táctiles visibles (enlaces, botones y elementos con role="button") dentro de un contenedor con data-testid
+ * que miden menos que el mínimo. Usa la misma tolerancia que el resto de las medidas mínimas.
+ */
+async function objetivosPorDebajoDe(page, testid, minimo) {
+  return page.evaluate(
+    (id, minimum, tolerancia) =>
+      [
+        ...document.querySelectorAll(
+          `[data-testid="${id}"] a, [data-testid="${id}"] button, [data-testid="${id}"] [role="button"]`,
+        ),
+      ]
+        .filter((el) => window.__e2eIsShown(el))
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          const nombre =
+            el.textContent.replace(/\s+/g, " ").trim() || el.getAttribute("aria-label") || el.tagName.toLowerCase();
+          return { nombre, ancho: rect.width, alto: rect.height };
+        })
+        .filter((caja) => caja.ancho < minimum - tolerancia || caja.alto < minimum - tolerancia),
+    testid,
+    minimo,
+    TOLERANCE_PX,
   );
 }
 
@@ -121,75 +139,53 @@ async function captureAllCaregiverScreens(page, ancho) {
 }
 
 // ---------------------------------------------------------------------------
-describe("DESIGN 15 · 390 × 844 px (teléfono)", () => {
+describe("Rediseño · 390 × 844 px (teléfono)", () => {
   const telefono = VIEWPORTS.telefono;
 
-  prueba("390 px · Escuchar: la cabecera mide 64 px de alto", () =>
-    withPage(browser, telefono, async (page) => {
-      await openPatientMode(page, server.url);
-      expectSize("Cabecera del paciente (alto)", (await measure(page, "p-header", "cabecera del paciente")).height, 64);
-    }),
-  );
-
-  prueba("390 px · Escuchar: el botón Cuidador mide 56 px o más de alto", () =>
+  prueba("390 px · Escuchar: el botón Cuidador mide 44 px o más de alto (objetivo táctil)", () =>
     withPage(browser, telefono, async (page) => {
       await openPatientMode(page, server.url);
       const caja = await measure(page, "p-caregiver", "botón Cuidador de la cabecera");
-      expectSize("Botón Cuidador (alto)", caja.height, 56, { minimum: true });
+      expectSize("Botón Cuidador (alto)", caja.height, 44, { minimum: true });
     }),
   );
 
-  prueba("390 px · Escuchar: la portada mide 232 × 232 px", () =>
-    withPage(browser, telefono, async (page) => {
-      await openPatientMode(page, server.url);
-      const caja = await measure(page, "p1-cover", "portada de P1");
-      expectSize("Portada (ancho)", caja.width, 232);
-      expectSize("Portada (alto)", caja.height, 232);
-    }),
-  );
-
-  prueba("390 px · Escuchar: Anterior 72, Reproducir 96 y Siguiente 72 px", () =>
+  prueba("390 px · Escuchar: Anterior, Reproducir y Siguiente miden 44 px o más (objetivos táctiles)", () =>
     withPage(browser, telefono, async (page) => {
       await openPatientMode(page, server.url);
       const anterior = await measure(page, "p1-prev", "botón Anterior de P1");
       const reproducir = await measure(page, "p1-toggle", "botón Reproducir de P1");
       const siguiente = await measure(page, "p1-next", "botón Siguiente de P1");
-      expectSize("Anterior", anterior.width, 72);
-      expectSize("Anterior (alto)", anterior.height, 72);
-      expectSize("Reproducir", reproducir.width, 96);
-      expectSize("Reproducir (alto)", reproducir.height, 96);
-      expectSize("Siguiente", siguiente.width, 72);
-      expectSize("Siguiente (alto)", siguiente.height, 72);
+      expectSize("Anterior", anterior.width, 44, { minimum: true });
+      expectSize("Anterior (alto)", anterior.height, 44, { minimum: true });
+      expectSize("Reproducir", reproducir.width, 44, { minimum: true });
+      expectSize("Reproducir (alto)", reproducir.height, 44, { minimum: true });
+      expectSize("Siguiente", siguiente.width, 44, { minimum: true });
+      expectSize("Siguiente (alto)", siguiente.height, 44, { minimum: true });
     }),
   );
 
-  prueba("390 px · Escuchar: la zona de progreso mide 56 px de alto", () =>
+  prueba("390 px · Escuchar: la zona de progreso mide 44 px o más de alto (objetivo táctil)", () =>
     withPage(browser, telefono, async (page) => {
       await openPatientMode(page, server.url);
-      expectSize("Zona de progreso (alto)", (await measure(page, "p1-progress", "zona de progreso de P1")).height, 56);
+      const progreso = await measure(page, "p1-progress", "zona de progreso de P1");
+      expectSize("Zona de progreso (alto)", progreso.height, 44, { minimum: true });
     }),
   );
 
-  prueba("390 px · Escuchar: los botones de volumen miden 56 px", () =>
+  prueba("390 px · Escuchar: los botones de volumen miden 44 px o más (objetivos táctiles)", () =>
     withPage(browser, telefono, async (page) => {
       await openPatientMode(page, server.url);
       const bajar = await measure(page, "p1-vol-down", "botón Bajar volumen de P1");
       const subir = await measure(page, "p1-vol-up", "botón Subir volumen de P1");
-      expectSize("Bajar volumen", bajar.width, 56);
-      expectSize("Bajar volumen (alto)", bajar.height, 56);
-      expectSize("Subir volumen", subir.width, 56);
-      expectSize("Subir volumen (alto)", subir.height, 56);
+      expectSize("Bajar volumen", bajar.width, 44, { minimum: true });
+      expectSize("Bajar volumen (alto)", bajar.height, 44, { minimum: true });
+      expectSize("Subir volumen", subir.width, 44, { minimum: true });
+      expectSize("Subir volumen (alto)", subir.height, 44, { minimum: true });
     }),
   );
 
-  prueba("390 px · Escuchar: la barra inferior mide 72 px de alto", () =>
-    withPage(browser, telefono, async (page) => {
-      await openPatientMode(page, server.url);
-      expectSize("Barra inferior del paciente (alto)", (await measure(page, "p-nav", "barra inferior del paciente")).height, 72);
-    }),
-  );
-
-  prueba("390 px · Escuchar: la barra inferior muestra sus cuatro destinos", () =>
+  prueba("390 px · Escuchar: la barra inferior muestra sus cinco destinos", () =>
     withPage(browser, telefono, async (page) => {
       await openPatientMode(page, server.url);
       await waitVisible(page, "p-nav", { context: "barra inferior del paciente" });
@@ -203,60 +199,17 @@ describe("DESIGN 15 · 390 × 844 px (teléfono)", () => {
         );
       });
       assert.deepEqual(faltan, [], "Destinos ausentes de la barra inferior:");
+      const destinos = await countInteractive(page, "p-nav", "barra inferior del paciente");
+      assert.equal(destinos, 5, `La barra inferior muestra ${destinos} destinos y la especificación fija cinco.`);
     }),
   );
 
-  prueba("390 px · Escuchar: la zona de fotografía empieza entre 728 y 736 px y se ve 40 px sobre la barra", () =>
+  prueba("390 px · paciente: los destinos de la barra inferior miden 44 px o más (objetivos táctiles)", () =>
     withPage(browser, telefono, async (page) => {
       await openPatientMode(page, server.url);
-      const foto = await measure(page, "p1-photo", "zona de fotografía de P1");
-      const barra = await measure(page, "p-nav", "barra inferior del paciente");
-      expectInRange("Inicio de la zona de fotografía (y)", foto.y, 728, 736);
-      const visibleSobreBarra = barra.y - foto.y;
-      assert.ok(
-        visibleSobreBarra >= 40 - TOLERANCE_PX,
-        `Se ven ${Math.round(visibleSobreBarra)} px de la fotografía sobre la barra y DESIGN 15 pide al menos 40 px.`,
-      );
-    }),
-  );
-
-  prueba("390 px · Escuchar tras desplazar: la fotografía mide 358 × 268 px", () =>
-    withPage(browser, telefono, async (page) => {
-      await openPatientMode(page, server.url);
-      await scrollTestidIntoView(page, "p1-photo", "zona de fotografía de P1");
-      const caja = await measure(page, "p1-photo", "zona de fotografía de P1");
-      expectSize("Fotografía (ancho)", caja.width, 358);
-      expectSize("Fotografía (alto)", caja.height, 268);
-    }),
-  );
-
-  prueba("390 px · Escuchar tras desplazar: el texto del recuerdo no pasa de cuatro líneas", () =>
-    withPage(browser, telefono, async (page) => {
-      await openPatientMode(page, server.url);
-      await scrollTestidIntoView(page, "p1-memory-text", "texto del recuerdo de P1");
-      const caja = await measure(page, "p1-memory-text", "texto del recuerdo de P1");
-      const estilo = await computedStyleOf(page, "p1-memory-text", "texto del recuerdo de P1");
-      // Con un recuerdo de texto largo, la zona debe medir 4 líneas (4 × 36 px). Sin recuerdo largo, solo se
-      // comprueba que no crece más de cuatro líneas de su interlínea actual. La comprobación completa necesita
-      // un recuerdo de prueba con texto largo (pendiente de datos de prueba).
-      assert.ok(
-        caja.height <= 4 * estilo.lineHeight + TOLERANCE_PX,
-        `El texto del recuerdo mide ${Math.round(caja.height)} px y no debe pasar de 4 líneas (${4 * estilo.lineHeight} px).`,
-      );
-    }),
-  );
-
-  prueba("390 px · Carpetas: los mosaicos miden 171 px en dos columnas", () =>
-    withPage(browser, telefono, async (page) => {
-      await openPatientMode(page, server.url);
-      await goPatientSection(page, "carpetas");
-      const tiles = await folderTileBoxes(page);
-      assert.ok(tiles.length >= 2, `Hacen falta al menos dos mosaicos para medir las columnas y hay ${tiles.length}.`);
-      expectSize("Mosaico de carpeta (ancho)", tiles[0].width, 171);
-      assert.ok(
-        Math.abs(tiles[1].y - tiles[0].y) <= TOLERANCE_PX && tiles[1].x > tiles[0].x,
-        "Los dos primeros mosaicos deben estar en la misma fila (dos columnas).",
-      );
+      await waitVisible(page, "p-nav", { context: "barra inferior del paciente" });
+      const pequeños = await objetivosPorDebajoDe(page, "p-nav", 44);
+      assert.deepEqual(pequeños, [], "Destinos de la barra inferior del paciente con menos de 44 px:");
     }),
   );
 
@@ -329,19 +282,12 @@ describe("DESIGN 15 · 390 × 844 px (teléfono)", () => {
     }),
   );
 
-  prueba("390 px · cuidador: las tarjetas de la tabla miden 72 px", () =>
+  prueba("390 px · cuidador: los destinos de la barra inferior miden 44 px o más (objetivos táctiles)", () =>
     withPage(browser, telefono, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      expectSize("Tarjeta de canción (alto)", (await measure(page, "c-biblioteca-row", "tarjeta de canción (C2)")).height, 72);
-    }),
-  );
-
-  prueba("390 px · cuidador: la barra inferior mide 64 px", () =>
-    withPage(browser, telefono, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      expectSize("Barra inferior del cuidador (alto)", (await caregiverNavBox(page)).height, 64);
+      const pequeños = await objetivosPorDebajoDe(page, "c-sidebar", 44);
+      assert.deepEqual(pequeños, [], "Destinos de la barra inferior del cuidador con menos de 44 px:");
     }),
   );
 
@@ -353,16 +299,6 @@ describe("DESIGN 15 · 390 × 844 px (teléfono)", () => {
       const barra = await caregiverNavBox(page);
       expectSize("Mini reproductor (alto)", mini.height, 64);
       expectSize("Separación entre el mini reproductor y la barra inferior", barra.top - mini.bottom, 0);
-    }),
-  );
-
-  prueba("390 px · cuidador: el pie fijo del editor de recuerdo mide 72 px", () =>
-    withPage(browser, telefono, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await openNewMemoryEditor(page);
-      const pie = await fixedOrFooterBox(page, "c-memory-save", "botón Guardar recuerdo (C3c)");
-      assert.ok(pie, "El botón Guardar recuerdo no está dentro de un pie fijo ni de un footer.");
-      expectSize("Pie fijo del editor de recuerdo (alto)", pie.height, 72);
     }),
   );
 
@@ -385,31 +321,65 @@ describe("DESIGN 15 · 390 × 844 px (teléfono)", () => {
 });
 
 // ---------------------------------------------------------------------------
-describe("DESIGN 15 · 820 × 1180 px (tableta vertical)", () => {
+describe("Rediseño · 600 × 960 px (tableta estrecha)", () => {
+  // Ancho de inicio de la tableta. VIEWPORTS (helpers/navegador.mjs) no lo incluye, así que se define aquí.
+  const tabletaEstrecha = Object.freeze({ width: 600, height: 960 });
+
+  prueba("600 px · paciente: el riel lateral mide 72 px de ancho", () =>
+    withPage(browser, tabletaEstrecha, async (page) => {
+      await openPatientMode(page, server.url);
+      expectSize("Riel lateral del paciente (ancho)", (await measure(page, "p-nav", "riel lateral del paciente")).width, 72);
+    }),
+  );
+
+  prueba("600 px · cuidador: el riel lateral mide 72 px de ancho", () =>
+    withPage(browser, tabletaEstrecha, async (page) => {
+      await openCaregiverHome(page, server.url);
+      await goCaregiverSection(page, "biblioteca");
+      expectSize("Riel lateral del cuidador (ancho)", (await caregiverNavBox(page)).width, 72);
+    }),
+  );
+
+  prueba("600 px · cuidador: la barra de reproducción mide 76 px", () =>
+    withPage(browser, tabletaEstrecha, async (page) => {
+      await openCaregiverHome(page, server.url);
+      await goCaregiverSection(page, "biblioteca");
+      expectSize("Barra de reproducción (alto)", (await measure(page, "c-now", "barra de reproducción")).height, 76);
+    }),
+  );
+
+  prueba("600 px · Escuchar: sin desplazamiento horizontal", () =>
+    withPage(browser, tabletaEstrecha, async (page) => {
+      await openPatientMode(page, server.url);
+      await assertNoHorizontalScroll(page, "Escuchar del paciente a 600 px");
+    }),
+  );
+
+  prueba("600 px · Biblioteca: sin desplazamiento horizontal", () =>
+    withPage(browser, tabletaEstrecha, async (page) => {
+      await openCaregiverHome(page, server.url);
+      await goCaregiverSection(page, "biblioteca");
+      await assertNoHorizontalScroll(page, "Biblioteca del cuidador a 600 px");
+    }),
+  );
+
+  prueba("Capturas a 600 px · pantallas del paciente", () =>
+    withPage(browser, tabletaEstrecha, (page) => captureAllPatientScreens(page, "600x960")),
+  );
+
+  prueba("Capturas a 600 px · pantallas del cuidador", () =>
+    withPage(browser, tabletaEstrecha, (page) => captureAllCaregiverScreens(page, "600x960")),
+  );
+});
+
+// ---------------------------------------------------------------------------
+describe("Rediseño · 820 × 1180 px (tableta vertical)", () => {
   const tableta = VIEWPORTS.tabletaVertical;
 
-  prueba("820 px · paciente: el raíl mide 112 px de ancho", () =>
+  prueba("820 px · paciente: el riel lateral mide 72 px de ancho", () =>
     withPage(browser, tableta, async (page) => {
       await openPatientMode(page, server.url);
-      expectSize("Raíl del paciente (ancho)", (await measure(page, "p-nav", "raíl del paciente")).width, 112);
-    }),
-  );
-
-  prueba("820 px · Escuchar en dos columnas: la portada mide 300 × 300 px", () =>
-    withPage(browser, tableta, async (page) => {
-      await openPatientMode(page, server.url);
-      const caja = await measure(page, "p1-cover", "portada de P1");
-      expectSize("Portada (ancho)", caja.width, 300);
-      expectSize("Portada (alto)", caja.height, 300);
-    }),
-  );
-
-  prueba("820 px · Escuchar en dos columnas: la fotografía mide 328 × 246 px", () =>
-    withPage(browser, tableta, async (page) => {
-      await openPatientMode(page, server.url);
-      const caja = await measure(page, "p1-photo", "zona de fotografía de P1");
-      expectSize("Fotografía (ancho)", caja.width, 328);
-      expectSize("Fotografía (alto)", caja.height, 246);
+      expectSize("Riel lateral del paciente (ancho)", (await measure(page, "p-nav", "riel lateral del paciente")).width, 72);
     }),
   );
 
@@ -420,42 +390,11 @@ describe("DESIGN 15 · 820 × 1180 px (tableta vertical)", () => {
     }),
   );
 
-  prueba("820 px · Carpetas: los mosaicos miden 204 px en tres columnas", () =>
-    withPage(browser, tableta, async (page) => {
-      await openPatientMode(page, server.url);
-      await goPatientSection(page, "carpetas");
-      const tiles = await folderTileBoxes(page);
-      assert.ok(tiles.length >= 3, `Hacen falta tres mosaicos para comprobar tres columnas y hay ${tiles.length}.`);
-      expectSize("Mosaico de carpeta (ancho)", tiles[0].width, 204);
-      assert.ok(
-        Math.abs(tiles[2].y - tiles[0].y) <= TOLERANCE_PX && tiles[2].x > tiles[0].x,
-        "Los tres primeros mosaicos deben estar en la misma fila (tres columnas).",
-      );
-    }),
-  );
-
-  prueba("820 px · cuidador: el raíl mide 88 px de ancho", () =>
+  prueba("820 px · cuidador: el riel lateral mide 72 px de ancho", () =>
     withPage(browser, tableta, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      expectSize("Raíl del cuidador (ancho)", (await caregiverNavBox(page)).width, 88);
-    }),
-  );
-
-  prueba("820 px · cuidador: las filas de la tabla miden 48 px", () =>
-    withPage(browser, tableta, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      expectSize("Fila de la tabla (alto)", (await measure(page, "c-biblioteca-row", "fila de la tabla (C2)")).height, 48);
-    }),
-  );
-
-  prueba("820 px · cuidador: el panel de canción mide 320 px de ancho al abrirse", () =>
-    withPage(browser, tableta, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      await clickTestid(page, "c-biblioteca-row", "fila de la tabla (C2)");
-      expectSize("Panel de canción (ancho)", (await measure(page, "c-panel", "panel de canción (C2b)")).width, 320);
+      expectSize("Riel lateral del cuidador (ancho)", (await caregiverNavBox(page)).width, 72);
     }),
   );
 
@@ -472,11 +411,11 @@ describe("DESIGN 15 · 820 × 1180 px (tableta vertical)", () => {
     }),
   );
 
-  prueba("820 px · cuidador: la barra de reproducción mide 72 px", () =>
+  prueba("820 px · cuidador: la barra de reproducción mide 76 px", () =>
     withPage(browser, tableta, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      expectSize("Barra de reproducción (alto)", (await measure(page, "c-now", "barra de reproducción")).height, 72);
+      expectSize("Barra de reproducción (alto)", (await measure(page, "c-now", "barra de reproducción")).height, 76);
     }),
   );
 
@@ -505,38 +444,22 @@ describe("DESIGN 15 · 820 × 1180 px (tableta vertical)", () => {
 });
 
 // ---------------------------------------------------------------------------
-describe("DESIGN 15 · 1024 × 768 px (tableta horizontal)", () => {
+describe("Rediseño · 1024 × 768 px (escritorio mínimo)", () => {
   const horizontal = VIEWPORTS.tabletaHorizontal;
 
-  prueba("1024 px · paciente: el raíl mide 112 px de ancho", () =>
+  prueba("1024 px · paciente: la barra lateral mide 240 px de ancho", () =>
     withPage(browser, horizontal, async (page) => {
       await openPatientMode(page, server.url);
-      expectSize("Raíl del paciente (ancho)", (await measure(page, "p-nav", "raíl del paciente")).width, 112);
+      expectSize("Barra lateral del paciente (ancho)", (await measure(page, "p-nav", "barra lateral del paciente")).width, 240);
     }),
   );
 
-  prueba("1024 px · paciente: la cabecera mide 64 px de alto", () =>
+  prueba("1024 px · paciente: el título de página mide 40 px y pesa 700", () =>
     withPage(browser, horizontal, async (page) => {
       await openPatientMode(page, server.url);
-      expectSize("Cabecera del paciente (alto)", (await measure(page, "p-header", "cabecera del paciente")).height, 64);
-    }),
-  );
-
-  prueba("1024 px · Escuchar: la portada mide 280 × 280 px", () =>
-    withPage(browser, horizontal, async (page) => {
-      await openPatientMode(page, server.url);
-      const caja = await measure(page, "p1-cover", "portada de P1");
-      expectSize("Portada (ancho)", caja.width, 280);
-      expectSize("Portada (alto)", caja.height, 280);
-    }),
-  );
-
-  prueba("1024 px · Escuchar: la fotografía mide 395 × 296 px", () =>
-    withPage(browser, horizontal, async (page) => {
-      await openPatientMode(page, server.url);
-      const caja = await measure(page, "p1-photo", "zona de fotografía de P1");
-      expectSize("Fotografía (ancho)", caja.width, 395);
-      expectSize("Fotografía (alto)", caja.height, 296);
+      const titulo = await tituloDePagina(page);
+      expectSize("Título de página (tamaño de letra)", titulo.fontSize, 40);
+      assert.equal(titulo.fontWeight, "700", `El título de página pesa ${titulo.fontWeight} y la especificación fija 700.`);
     }),
   );
 
@@ -547,36 +470,19 @@ describe("DESIGN 15 · 1024 × 768 px (tableta horizontal)", () => {
     }),
   );
 
-  prueba("1024 px · cuidador: el raíl mide 88 px de ancho", () =>
+  prueba("1024 px · cuidador: la barra lateral mide 240 px de ancho", () =>
     withPage(browser, horizontal, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      expectSize("Raíl del cuidador (ancho)", (await caregiverNavBox(page)).width, 88);
+      expectSize("Barra lateral del cuidador (ancho)", (await caregiverNavBox(page)).width, 240);
     }),
   );
 
-  prueba("1024 px · cuidador: la tabla muestra 14 filas completas con desplazamiento interno", () =>
+  prueba("1024 px · cuidador: la barra de reproducción mide 76 px", () =>
     withPage(browser, horizontal, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      const visibles = await countFullyVisibleRows(page, "c-biblioteca-row", "filas de la tabla (C2)");
-      assert.equal(visibles, 14, `Se ven ${visibles} filas completas y DESIGN 15 fija 14 a 1024 × 768.`);
-    }),
-  );
-
-  prueba("1024 px · cuidador: las filas de la tabla miden 40 px", () =>
-    withPage(browser, horizontal, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      expectSize("Fila de la tabla (alto)", (await measure(page, "c-biblioteca-row", "fila de la tabla (C2)")).height, 40);
-    }),
-  );
-
-  prueba("1024 px · cuidador: la barra de reproducción mide 72 px", () =>
-    withPage(browser, horizontal, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      expectSize("Barra de reproducción (alto)", (await measure(page, "c-now", "barra de reproducción")).height, 72);
+      expectSize("Barra de reproducción (alto)", (await measure(page, "c-now", "barra de reproducción")).height, 76);
     }),
   );
 
@@ -626,38 +532,22 @@ describe("DESIGN 15 · 1024 × 768 px (tableta horizontal)", () => {
 });
 
 // ---------------------------------------------------------------------------
-describe("DESIGN 15 · 1440 × 900 px (escritorio)", () => {
+describe("Rediseño · 1440 × 900 px (escritorio)", () => {
   const escritorio = VIEWPORTS.escritorio;
 
-  prueba("1440 px · paciente: el raíl mide 112 px de ancho", () =>
+  prueba("1440 px · paciente: la barra lateral mide 240 px de ancho", () =>
     withPage(browser, escritorio, async (page) => {
       await openPatientMode(page, server.url);
-      expectSize("Raíl del paciente (ancho)", (await measure(page, "p-nav", "raíl del paciente")).width, 112);
+      expectSize("Barra lateral del paciente (ancho)", (await measure(page, "p-nav", "barra lateral del paciente")).width, 240);
     }),
   );
 
-  prueba("1440 px · Escuchar: el contenedor mide 1120 px de ancho, centrado", () =>
+  prueba("1440 px · paciente: el título de página mide 40 px y pesa 700", () =>
     withPage(browser, escritorio, async (page) => {
       await openPatientMode(page, server.url);
-      expectSize("Contenedor de Escuchar (ancho)", (await measure(page, "p1-root", "pantalla Escuchar (P1)")).width, 1120);
-    }),
-  );
-
-  prueba("1440 px · Escuchar: la portada mide 360 × 360 px", () =>
-    withPage(browser, escritorio, async (page) => {
-      await openPatientMode(page, server.url);
-      const caja = await measure(page, "p1-cover", "portada de P1");
-      expectSize("Portada (ancho)", caja.width, 360);
-      expectSize("Portada (alto)", caja.height, 360);
-    }),
-  );
-
-  prueba("1440 px · Escuchar: la fotografía mide 480 × 360 px", () =>
-    withPage(browser, escritorio, async (page) => {
-      await openPatientMode(page, server.url);
-      const caja = await measure(page, "p1-photo", "zona de fotografía de P1");
-      expectSize("Fotografía (ancho)", caja.width, 480);
-      expectSize("Fotografía (alto)", caja.height, 360);
+      const titulo = await tituloDePagina(page);
+      expectSize("Título de página (tamaño de letra)", titulo.fontSize, 40);
+      assert.equal(titulo.fontWeight, "700", `El título de página pesa ${titulo.fontWeight} y la especificación fija 700.`);
     }),
   );
 
@@ -668,54 +558,19 @@ describe("DESIGN 15 · 1440 × 900 px (escritorio)", () => {
     }),
   );
 
-  prueba("1440 px · cuidador: la barra lateral mide 232 px de ancho", () =>
+  prueba("1440 px · cuidador: la barra lateral mide 240 px de ancho", () =>
     withPage(browser, escritorio, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      expectSize("Barra lateral del cuidador (ancho)", (await measure(page, "c-sidebar", "barra lateral del cuidador")).width, 232);
+      expectSize("Barra lateral del cuidador (ancho)", (await measure(page, "c-sidebar", "barra lateral del cuidador")).width, 240);
     }),
   );
 
-  prueba("1440 px · cuidador: el panel persistente mide 320 × 772 px", () =>
+  prueba("1440 px · cuidador: la barra de reproducción mide 76 px", () =>
     withPage(browser, escritorio, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      const caja = await measure(page, "c-panel", "panel de canción (C2b)");
-      expectSize("Panel (ancho)", caja.width, 320);
-      // 772 px = 900 (ventana) − 56 (cabecera del cuidador) − 72 (barra de reproducción).
-      expectSize("Panel (alto)", caja.height, 772);
-    }),
-  );
-
-  prueba("1440 px · cuidador: la tabla muestra 17 filas completas", () =>
-    withPage(browser, escritorio, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      const visibles = await countFullyVisibleRows(page, "c-biblioteca-row", "filas de la tabla (C2)");
-      assert.equal(visibles, 17, `Se ven ${visibles} filas completas y DESIGN 15 fija 17 a 1440 × 900.`);
-    }),
-  );
-
-  prueba("1440 px · cuidador: las filas de la tabla miden 40 px", () =>
-    withPage(browser, escritorio, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      expectSize("Fila de la tabla (alto)", (await measure(page, "c-biblioteca-row", "fila de la tabla (C2)")).height, 40);
-    }),
-  );
-
-  prueba("1440 px · cuidador: la barra de reproducción mide 72 px", () =>
-    withPage(browser, escritorio, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      expectSize("Barra de reproducción (alto)", (await measure(page, "c-now", "barra de reproducción")).height, 72);
-    }),
-  );
-
-  prueba("1440 px · cuidador: la cabecera mide 56 px de alto", () =>
-    withPage(browser, escritorio, async (page) => {
-      await openCaregiverHome(page, server.url);
-      expectSize("Cabecera del cuidador (alto)", (await measure(page, "c-header", "cabecera del cuidador")).height, 56);
+      expectSize("Barra de reproducción (alto)", (await measure(page, "c-now", "barra de reproducción")).height, 76);
     }),
   );
 
@@ -724,16 +579,6 @@ describe("DESIGN 15 · 1440 × 900 px (escritorio)", () => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
       await assertNoVerticalScroll(page, "Biblioteca a 1440 px");
-    }),
-  );
-
-  prueba("1440 px · cuidador: las tarjetas de perfil miden 264 × 132 px", () =>
-    withPage(browser, escritorio, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "perfiles");
-      const caja = await measure(page, "c-profile-card", "tarjeta de perfil (C3)");
-      expectSize("Tarjeta de perfil (ancho)", caja.width, 264);
-      expectSize("Tarjeta de perfil (alto)", caja.height, 132);
     }),
   );
 
