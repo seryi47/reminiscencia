@@ -96,6 +96,21 @@ def test_blocked_subdomain_is_refused(url):
         parse_request(body("action: import", f"url: {url}"))
 
 
+@pytest.mark.parametrize(
+    "host",
+    [
+        "youtube.com.",
+        "www.youtube.com.",
+        "ｙｏｕｔｕｂｅ.com",
+        "youtube。com",
+        "youtu­.be",
+    ],
+)
+def test_blocked_platform_is_refused_whatever_the_spelling_of_the_host(host):
+    with pytest.raises(RequestError, match="no se puede importar"):
+        parse_request(body("action: import", f"url: https://{host}/tema.mp3", "license: CC0 1.0"))
+
+
 def test_lookalike_host_is_not_blocked_but_is_unsupported():
     with pytest.raises(RequestError, match="no soportada"):
         parse_request(body("action: import", "url: https://youtube.com.ejemplo.org/tema.html", "license: CC0"))

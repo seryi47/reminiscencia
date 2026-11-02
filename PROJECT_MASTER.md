@@ -43,11 +43,11 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | Módulo | Estado | Pruebas |
 |---|---|---|
 | Catálogo versionado (`backend/sonidos/catalog.py`) | Implementado; fuente de verdad | 8 pruebas |
-| Importación por URL (`pipeline.py`, `intake.py`, `sources.py`) | Implementado; corre en GitHub Actions | 9 pruebas + 2 importaciones reales en CI |
-| Publicación y sincronización con la web (`publish.py`) | Implementado; probado en CI (publicar y despublicar) | 2 pruebas + CI |
-| Workflow `library.yml` (importar, publicar, organizar) | Implementado; probado en GitHub | 4 ejecuciones reales en CI |
-| Administración en Vercel (`/admin/`) | Implementado; **inactiva hasta que se configure `ADMIN_PASSWORD`** | Comprobada: falla cerrada (503) sin la variable |
-| Funciones de Vercel (`api/catalog`, `api/dispatch`, `api/runs`) | Implementado; validación y permisos mínimos | Comprobadas sin contraseña (503); con contraseña pendiente |
+| Importación por URL (`pipeline.py`, `intake.py`, `sources.py`) | Implementado; corre en GitHub Actions; cada redirección de una descarga se revisa (corrección de 2026-11-02) | 59 pruebas de fuentes, 4 de descargas y 5 de importación; 2 importaciones reales en CI con `library.yml` |
+| Publicación y sincronización con la web (`publish.py`) | Implementado; `catalog.json` solo lista las canciones públicas | 4 pruebas |
+| Workflow `biblioteca.yml` (importar, publicar, organizar desde incidencias; ADR-0008) | Implementado; sustituye a `library.yml` (4 ejecuciones reales en CI de la versión anterior); sin ejecutar todavía con una incidencia real | 7 guardas del workflow y 96 casos del contrato de peticiones |
+| Administración en Vercel (`/admin/`) | **Retirada** en esta rama (ADR-0008): no hay panel ni `ADMIN_PASSWORD` | Guarda: `test_web_has_no_administration_code` |
+| Funciones de Vercel (`api/`) | **Retiradas** en esta rama (ADR-0008) | Guarda: `test_web_has_no_administration_code` |
 | Web pública de escucha (`frontend/web`) | **Pública** en https://reminiscencia.vercel.app; 9 pistas | Probada en escritorio y teléfono contra la URL pública |
 | App Android (`mobile/`) | Versión 1.1.0: biblioteca desde Vercel, copia para escuchar sin conexión | Probada en emulador Android 15: en línea, streaming, descarga y sin conexión |
 | Límites de GitHub (`limits.py`, `check_repo_limits.py`) | Implementado y comprobado en CI | 6 pruebas + CI |
@@ -55,7 +55,7 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | Biblioteca publicada | 9 pistas de dominio público, todas con licencia declarada en su ítem | Verificada en la web |
 | Experimento de compresión perceptual | **No iniciado** | — |
 | Perfiles de pacientes y datos personales | **No iniciado** | — |
-| Integración continua (GitHub Actions) | Verde: pruebas Python, app Flutter y límites del repositorio | backend.yml + library.yml |
+| Integración continua (GitHub Actions) | Verde: pruebas Python, app Flutter y límites del repositorio | backend.yml; biblioteca.yml sin ejecutar todavía en GitHub |
 
 ## Presupuesto
 

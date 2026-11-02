@@ -97,30 +97,6 @@
       "public": true
     },
     {
-      "id": "S80253b94dd183be7",
-      "title": "Robin Redbreast",
-      "artist": "",
-      "year": null,
-      "tags": [],
-      "folder_id": null,
-      "license": "Dominio público (Creative Commons) (Internet Archive: robinredb)",
-      "source": "internet-archive:robinredb",
-      "duration_s": 173.113,
-      "public": false
-    },
-    {
-      "id": "Sd438472622f6173b",
-      "title": "Symphony No. 9 \"From the New World\"",
-      "artist": "",
-      "year": null,
-      "tags": [],
-      "folder_id": null,
-      "license": "Dominio público (Creative Commons) (Internet Archive: DvorakSymphonyNo.9fromTheNewWorld)",
-      "source": "internet-archive:DvorakSymphonyNo.9fromTheNewWorld",
-      "duration_s": 506.134,
-      "public": false
-    },
-    {
       "id": "Sf749859f9e2e7ec1",
       "title": "Whispering",
       "artist": "",

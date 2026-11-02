@@ -64,3 +64,16 @@ def test_permissions_and_concurrency_match_the_contract():
 
 def test_library_workflow_is_gone():
     assert not (ROOT / ".github" / "workflows" / "library.yml").exists()
+
+
+def test_checkout_does_not_keep_the_token_on_disk_and_push_receives_it_only_in_its_step():
+    text = _workflow_text()
+
+    assert "persist-credentials: false" in text
+    assert "GH_TOKEN: ${{ github.token }}" in text
+    assert "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" in text
+
+
+def test_web_has_no_administration_code():
+    for folder in ("admin", "api", "lib"):
+        assert not (ROOT / "frontend" / "web" / folder).exists()

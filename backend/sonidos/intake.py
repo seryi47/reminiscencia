@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 from sonidos.sources import (
     ResolvedSource,
     SourceError,
+    check_download_url,
     classify,
     ia_identifier,
     resolve_direct_file,
@@ -23,6 +24,18 @@ MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
 USER_AGENT = "reminiscencia-backend/0.2 (importacion con licencia)"
 
 
+class _CheckedRedirects(HTTPRedirectHandler):
+    """Cada salto de una descarga se revisa antes de seguirlo: una fuente con licencia no puede
+    llevar a una plataforma bloqueada (ADR-0005)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        check_download_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_DOWNLOADER = build_opener(_CheckedRedirects)
+
+
 def fetch_json(url: str) -> dict:
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with urlopen(request, timeout=30) as response:
@@ -30,11 +43,16 @@ def fetch_json(url: str) -> dict:
 
 
 def download(url: str, destination: Path) -> Path:
-    """Descarga un fichero con límite de tamaño. Escribe solo dentro de `destination`."""
+    """Descarga un fichero con límite de tamaño. Escribe solo dentro de `destination`.
+
+    La URL inicial y cada redirección pasan por check_download_url: nunca se descarga de una
+    plataforma bloqueada, aunque la fuente inicial sea válida.
+    """
+    check_download_url(url)
     destination.parent.mkdir(parents=True, exist_ok=True)
     request = Request(url, headers={"User-Agent": USER_AGENT})
     written = 0
-    with urlopen(request, timeout=120) as response, destination.open("wb") as handle:
+    with _DOWNLOADER.open(request, timeout=120) as response, destination.open("wb") as handle:
         while True:
             chunk = response.read(1 << 20)
             if not chunk:

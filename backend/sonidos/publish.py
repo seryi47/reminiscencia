@@ -3,9 +3,10 @@
 - Copia el audio de las canciones con public=true a frontend/web/audio/.
 - Borra de frontend/web/audio/ lo que ya no está publicado.
 - Regenera frontend/web/data/songs.json (solo públicas), folders.json (todas las carpetas)
-  y catalog.json (todas las canciones y carpetas, sin rutas de audio ni huellas SHA-256).
+  y catalog.json (solo las canciones públicas y todas las carpetas, sin rutas de audio ni huellas SHA-256).
 Vercel sirve solo frontend/web; el audio privado de audio-library/ nunca llega al público.
-catalog.json incluye los metadatos de las canciones no publicadas: decisión pendiente de confirmar (ADR-0008).
+Los metadatos de las canciones no publicadas (título, artista, origen...) tampoco salen de audio-library/:
+la web es pública y catalog.json forma parte de ella (ADR-0008).
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path) -> dict:
     (web_data / "folders.json").write_text(json.dumps(folders, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     catalog_songs = []
-    for song in data["songs"]:
+    for song in public:
         entry = {key: song.get(key) for key in CATALOG_SONG_FIELDS}
         entry["tags"] = list(song.get("tags") or [])
         catalog_songs.append(entry)

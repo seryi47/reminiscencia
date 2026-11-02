@@ -1,6 +1,14 @@
 import pytest
 
-from sonidos.sources import SourceError, classify, ia_identifier, resolve_direct_file, resolve_internet_archive
+from sonidos.sources import (
+    SourceError,
+    canonical_host,
+    classify,
+    ia_identifier,
+    ia_license_name,
+    resolve_direct_file,
+    resolve_internet_archive,
+)
 
 
 @pytest.mark.parametrize(
@@ -46,6 +54,47 @@ def test_streaming_platforms_are_refused_before_any_download(url):
         classify(url)
 
 
+# Las mismas plataformas escritas de otra forma: punto final, ancho completo, separador ideográfico
+# (U+3002) y guion blando (U+00AD). Lo que resuelve la conexión es el host de la lista.
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://youtube.com./audio/tema.mp3",
+        "https://www.youtube.com./audio/tema.mp3",
+        "https://soundcloud.com./track.mp3",
+        "https://ｙｏｕｔｕｂｅ.com/x.mp3",
+        "https://youtube。com/x.mp3",
+        "https://soundcloud。com/track.mp3",
+        "https://youtu­.be/x.mp3",
+    ],
+)
+def test_blocked_platform_is_refused_whatever_the_spelling_of_the_host(url):
+    with pytest.raises(SourceError, match="no se puede importar"):
+        classify(url)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://Www.Example.com./a.mp3", "example.com"),
+        ("https://ｙｏｕｔｕｂｅ.com/x.mp3", "youtube.com"),
+        ("https://youtube。com/x.mp3", "youtube.com"),
+        ("https://youtu­.be/x.mp3", "youtu.be"),
+    ],
+)
+def test_canonical_host_is_the_host_the_connection_would_use(url, expected):
+    assert canonical_host(url) == expected
+
+
+def test_url_without_host_is_refused():
+    with pytest.raises(SourceError, match="host"):
+        classify("https:///tema.mp3")
+
+
+def test_archive_with_trailing_dot_is_the_same_internet_archive_host():
+    assert classify("https://archive.org./details/charleston1925") == "internet-archive"
+
+
 def test_unknown_host_is_refused():
     with pytest.raises(SourceError, match="no soportada"):
         classify("https://ejemplo.com/pagina.html")
@@ -87,9 +136,51 @@ def test_internet_archive_prefers_flac_and_reads_license_from_item():
     assert resolved.title == "Un tema"
 
 
+@pytest.mark.parametrize(
+    ("license_url", "expected"),
+    [
+        ("https://creativecommons.org/licenses/by/4.0/", "CC BY 4.0"),
+        ("http://creativecommons.org/licenses/by-nc-sa/4.0/legalcode", "CC BY-NC-SA 4.0"),
+        ("https://creativecommons.org/publicdomain/zero/1.0/", "CC0 1.0 (dominio público)"),
+        ("http://creativecommons.org/publicdomain/mark/1.0/", "Dominio público (Public Domain Mark 1.0)"),
+        ("http://creativecommons.org/licenses/publicdomain/", "Dominio público (Creative Commons)"),
+    ],
+)
+def test_ia_license_is_read_from_the_creative_commons_path(license_url, expected):
+    assert ia_license_name(license_url) == expected
+
+
+@pytest.mark.parametrize(
+    "license_url",
+    [
+        "https://example.com/by/4.0/",
+        "https://evil.example/publicdomain/",
+        "https://example.com/all-rights-reserved?ref=by-nc/4.0",
+        "https://creativecommons.org.example.com/licenses/by/4.0/",
+        "https://creativecommons.org/licenses/by/3.0/",
+        "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+        "ftp://creativecommons.org/licenses/by/4.0/",
+        ["https://creativecommons.org/licenses/by/4.0/"],
+        None,
+    ],
+)
+def test_license_fragment_outside_creative_commons_is_not_a_license(license_url):
+    assert ia_license_name(license_url) is None
+
+
 def test_internet_archive_item_without_known_license_is_refused():
     metadata = _ia_metadata(
         "https://example.com/licencia-rara",
+        [{"name": "tema.mp3", "format": "VBR MP3"}],
+    )
+
+    with pytest.raises(SourceError, match="no declara una licencia reconocida"):
+        resolve_internet_archive("https://archive.org/details/tema-item", metadata)
+
+
+def test_internet_archive_item_with_a_fake_license_host_is_refused():
+    metadata = _ia_metadata(
+        "https://example.com/by/4.0/",
         [{"name": "tema.mp3", "format": "VBR MP3"}],
     )
 
@@ -105,6 +196,32 @@ def test_internet_archive_item_without_audio_is_refused():
 
     with pytest.raises(SourceError, match="no tiene un fichero de audio"):
         resolve_internet_archive("https://archive.org/details/tema-item", metadata)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["/tmp/escape.mp3", "../escape.mp3", "carpeta/tema.mp3", "..\\escape.mp3", "tema\n.mp3", "..", "tema.jpg"],
+)
+def test_internet_archive_file_name_must_be_a_plain_audio_name(name):
+    metadata = _ia_metadata(
+        "http://creativecommons.org/publicdomain/zero/1.0/",
+        [{"name": name, "format": "VBR MP3"}],
+    )
+
+    with pytest.raises(SourceError, match="nombre que no se puede usar"):
+        resolve_internet_archive("https://archive.org/details/tema-item", metadata)
+
+
+def test_internet_archive_file_name_is_quoted_in_the_download_url():
+    metadata = _ia_metadata(
+        "http://creativecommons.org/publicdomain/zero/1.0/",
+        [{"name": "tema uno (versión 2).mp3", "format": "VBR MP3"}],
+    )
+
+    resolved = resolve_internet_archive("https://archive.org/details/tema-item", metadata)
+
+    assert resolved.file_name == "tema uno (versión 2).mp3"
+    assert resolved.download_url == "https://archive.org/download/tema-item/tema%20uno%20%28versi%C3%B3n%202%29.mp3"
 
 
 def test_direct_file_requires_declared_license():
