@@ -4,7 +4,7 @@
 **Base:** propuesta A, la mejor valorada (66,5 de 75 puntos sumados por los tres jueces). Se incorporan los aportes de B (61,5) y C (65,5) que mejoran accesibilidad, tableta o funciones.
 **Ubicación prevista:** `docs/user-experience/DESIGN.md`
 
-> **Rediseño (2026-11-02, en `main`):** la interfaz replica la estructura de la web de Apple Music, decisión del propietario. Esta especificación se ha corregido solo donde contradecía el código de `main`: identidad (§2, principio 7; §13, D39), barras inferiores y mini reproductor (§3.1, §4, §5.4, §6, §15), bloqueo del PIN (P-16) y estado funcional (§17). En el resto (raíles y puntos de ruptura de §3 y §4, cabeceras y tokens de §5.4), manda el código: `frontend/web/css/paciente-shell.css` y `cuidador-shell.css`, con las medidas que comprueba `tests/web-e2e/medidas.e2e.mjs`. Pendiente: poner al día esas tablas con las medidas del rediseño.
+> **Rediseño (2026-11-02, en `main`):** la interfaz replica la estructura de la web de Apple Music, decisión del propietario. Esta especificación se ha corregido solo donde contradecía el código de `main`: identidad (§2, principio 7; §13, D39), barras inferiores y mini reproductor (§3.1, §4, §5.4, §6, §15), bloqueo del PIN (P-16) y estado funcional (§17). En el resto (raíles y puntos de ruptura de §3 y §4, cabeceras y tokens de §5.4), manda el código: `frontend/web/css/paciente-shell.css` y `cuidador-shell.css`, con las medidas que comprueba `tests/web-e2e/medidas.e2e.mjs`. Medidas de §3, §4, §5.3, §5.4, §6, §15 comprobadas en el navegador el 2026-11-02 (390, 600, 820, 1024 y 1440 px); lo que no está implementado o no se ha medido figura como «[pendiente]».
 
 ---
 
@@ -83,14 +83,17 @@ Cuatro destinos: **Inicio**, **Biblioteca**, **Perfiles** y **Ajustes**. El acce
 
 | Intervalo | Modo paciente | Modo cuidador |
 |---|---|---|
-| 360–767 px | Barra inferior de 64 px (65 con el borde). Escuchar en una columna. Mosaicos de 2 columnas. | Barra inferior de 64 px. Tarjetas de 72 px. Hojas inferiores. |
-| 768–1023 px | Raíl de 112 px. Escuchar en dos columnas (300 px y resto). Mosaicos de 3 columnas. | Raíl de 88 px (desde 600 px). Tabla sin preferencia ni presentación (van en el panel). Panel superpuesto de 320 px. |
-| 1024–1279 px | Raíl de 112 px. Escuchar en dos columnas (280 px y resto). Mosaicos de 4 columnas. | Raíl de 88 px. Tabla completa. Panel superpuesto de 320 px. |
-| ≥1280 px | Raíl de 112 px. Escuchar centrado en 1120 px (360 px y resto). Mosaicos de 4 columnas. | Barra lateral de 232 px con carpetas. Panel superpuesto de 320 px entre 1280 y 1439 px; persistente desde 1440 px. |
+| 360–599 px | Barra inferior de 64 px (65 con el borde). Escuchar en una columna. Mosaicos de 2 columnas. | Barra inferior de 64 px. Tarjetas de 72 px. Hojas inferiores. |
+| 600–767 px | Raíl de 72 px, solo iconos (nombre en tooltip; [pendiente] etiqueta visible). Escuchar en una columna. Mosaicos de 2 columnas. | Raíl de 72 px. Tabla sin carpeta, duración, preferencia ni presentación. Panel superpuesto de 320 px. |
+| 768–1023 px | Raíl de 72 px. Escuchar en dos columnas (300 px y resto). Mosaicos de 3 columnas. | Raíl de 72 px. Tabla sin carpeta, preferencia ni presentación (la duración aparece desde 820 px). Panel superpuesto de 320 px. |
+| 1024–1279 px | Barra lateral de 240 px con grupos. Escuchar en dos columnas (280 px y resto). Mosaicos de 4 columnas. | Barra lateral de 240 px. Tabla con carpeta y duración, sin preferencia ni presentación (hasta 1679 px). Panel superpuesto de 320 px. |
+| ≥1280 px | Barra lateral de 240 px. Escuchar centrado en 1120 px (360 px y resto). Mosaicos de 6 columnas a 1440 px (a 1280 px no medido). | Barra lateral de 240 px (carpetas: ver §17). Panel superpuesto de 320 px entre 600 y 1439 px; persistente desde 1440 px. |
+
+*Medidas de 2026-11-02 en el navegador. Antes el documento fijaba un raíl de 112 px desde 768 px y una barra lateral de 232 px desde 1280 px; el código manda (ver el encabezado). Se corrigen también los cortes de 600 px, que son los reales.*
 
 **Referencias de aceptación:** 390×844 (teléfono), 820×1180 (tableta vertical), 1024×768 (tableta horizontal) y 1440×900 (escritorio). Los dos primeros anchos caen en el intervalo de teléfono y de tableta vertical respectivamente; los dos últimos, en tableta horizontal y escritorio.
 
-**Presupuesto de altura de Escuchar (paciente).** Cabecera 64 + relleno 16 + portada + 16 + título 72 + artista 28 + 16 + progreso 56 + 8 + transporte 120 + 16 + volumen 56 + relleno 16 = 482 px + portada. La portada es 232 px en 390 px de ancho (786 px con la barra inferior, de 844), 300 px en 820 px (782 px de 1180), 280 px en 1024 px (762 px de 768) y entre 240 px y 360 px en escritorio (en 1440×900, 360 px: 842 px de 900).
+**Presupuesto de altura de Escuchar (paciente).** Cabecera 64 + relleno 16 + portada + 16 + título 72 + artista 28 + 16 + progreso 56 + 8 + transporte 120 + 16 + volumen 56 + relleno 16 = 482 px + portada. La portada es 232 px en 390 px de ancho (716 px de contenido y 65 de barra inferior, de 844), 300 px en 820 px (792 px de 1180; el título mide 80 px desde 768 px), 280 px en 1024 px (796 px de contenido con la cabecera de 88 px, y la zona principal se desplaza unos 90 px) y 360 px en 1440×900 (876 px con la cabecera de 88 px, y la zona principal se desplaza 14 px). Medido con una pista cargada: sin pista, Escuchar muestra el bloque «No suena nada». [pendiente] Ajustar Escuchar para que quepa sin desplazamiento en 1024×768 y 1440×900.
 
 ## 5. Tokens
 
@@ -138,7 +141,7 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 
 | Rol | px / interlínea | Peso |
 |---|---|---|
-| H1 de la cabecera | 28/36 (menos de 768 px); 32/40 (desde 768 px) | 700 |
+| H1 de la cabecera | 28/36 (menos de 768 px); 32/40 (desde 768 px); 40/48 (desde 1024 px, medido el 2026-11-02) | 700 |
 | Título de canción (H2 en Escuchar) | 28/36; 32/40 desde 768 px | 700 |
 | Sección (H2) | 28/36 | 700 |
 | Fila, tarjeta y título de recuerdo (H3) | 22/30 en filas y tarjetas; 28/36 en el título del recuerdo | 700 |
@@ -153,7 +156,7 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 
 | Rol | px / interlínea | Peso |
 |---|---|---|
-| H1 de pantalla | 24/30 | 700 |
+| H1 de pantalla | 24/30 (menos de 1024 px); 40/48 (desde 1024 px, medido el 2026-11-02) | 700 |
 | Sección (H2) | 18/24 | 700 |
 | Título de fila, tarjeta y panel | 15/22 | 600 |
 | Cuerpo | 15/22 | 400 |
@@ -168,18 +171,19 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 
 | Token | Valor |
 |---|---|
-| Cabecera del paciente | 64 |
-| Cabecera del cuidador | 56 |
+| Cabecera del paciente | 64 (menos de 1024 px); 88 (desde 1024 px; medido el 2026-11-02) |
+| Cabecera del cuidador | 56 (menos de 600 px); 64 (600–1023 px); 88 (desde 1024 px; medido el 2026-11-02) |
 | Barra inferior del paciente (menos de 600 px) | 64 de contenido más 1 px de borde y área segura (65 medidos a 390 px) |
 | Barra inferior del cuidador (menos de 600 px) | 64 |
-| Raíl del paciente (desde 768 px) | 112 |
-| Raíl del cuidador (600–1279 px) | 88 |
-| Barra lateral del cuidador (desde 1280 px) | 232 |
+| Raíl del paciente (600–1023 px) | 72, solo iconos (medido el 2026-11-02; [pendiente] etiqueta visible) |
+| Barra lateral del paciente (desde 1024 px) | 240 |
+| Raíl del cuidador (600–1023 px) | 72 (medido el 2026-11-02) |
+| Barra lateral del cuidador (desde 1024 px) | 240 (medido el 2026-11-02) |
 | Panel de canción | 320 |
-| Reproductor del cuidador | 72 (mini de 64 en teléfono) |
-| Fila de tabla del cuidador | 40 (desde 1024 px); 48 (600–1023 px); tarjeta de 72 (menos de 600 px) |
+| Reproductor del cuidador | 76 desde 600 px (mini de 64 en teléfono; medido el 2026-11-02) |
+| Fila de tabla del cuidador | 56 (desde 600 px, medido en 600, 820, 1024 y 1440 px); tarjeta de 72 (menos de 600 px) |
 | Cabecera de tabla | 32 |
-| Portada del paciente | 232 (teléfono; 216 a 360 px); 300 (768–1023 px); 280 (1024–1279 px); entre 240 y 360 (desde 1280 px, según la altura) |
+| Portada del paciente | 232 (teléfono; 216 a 360 px [pendiente de medir a 360 px]); 300 (768–1023 px); 280 (1024–1279 px); entre 240 y 360 (desde 1280 px, según la altura) |
 | Fotografía (4:3) | 358×268 en 390 px (tras desplazar); 328×246 en 820 px; 395×296 en 1024–1279 px; altura máxima de 360 en escritorio |
 | Objetivo táctil del paciente | 48 mínimo; controles principales de 56 a 96 |
 | Objetivo del cuidador | 40 con puntero; 44 táctil; 24 mínimo legal (2.5.8) |
@@ -200,9 +204,9 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 
 ### 6.1 Modo paciente
 
-- **P-1 Cabecera (64 px).** Fondo superficie-1 y borde inferior de 1 px borde-suave. H1 a la izquierda. Botón **Cuidador**: alto de 56 px, ancho mínimo de 120 px, icono de candado de 24 px (solo con PIN) y texto 18/24 700. Estados: normal (superficie-2 con borde de 2 px borde-control), enfoque (anillo de 4 px) y pulsado (superficie-3).
+- **P-1 Cabecera (64 px; 88 px desde 1024 px, medido el 2026-11-02).** Fondo superficie-1 y borde inferior de 1 px borde-suave. H1 a la izquierda. Botón **Cuidador**: alto de 56 px, ancho mínimo de 120 px, icono de candado de 24 px (solo con PIN) y texto 18/24 700. Estados: normal (superficie-2 con borde de 2 px borde-control), enfoque (anillo de 4 px) y pulsado (superficie-3).
 - **P-2 Barra inferior (menos de 600 px).** 64 px de contenido más 1 px de borde y área segura (65 px medidos a 390 px; `.p-nav`, `min-height`). Cuatro destinos iguales en columnas (mínimo 90 px), icono de 28 px y etiqueta 18/24 700. Activo: indicador superior de 4 px en acento, fondo acento-suave y `aria-current="page"`.
-- **P-3 Raíl (desde 768 px).** 112 px de ancho; destinos de 96 px de alto; icono de 36 px; etiqueta 18/24 700. Activo: fondo acento-suave y barra lateral de 6 px en acento.
+- **P-3 Raíl (desde 600 px).** Medido el 2026-11-02: 72 px de ancho entre 600 y 1023 px, con destinos de 64 px de alto, icono de 28 px y la etiqueta solo como tooltip ([pendiente]: la etiqueta debe verse, principio 1). Desde 1024 px, barra lateral de 240 px con destinos de 56 px, icono de 28 px y etiqueta 20/28 700. Activo: barra de 4 px en acento y fondo superficie-2 (CSS); [pendiente] decidir si el fondo activo debe ser acento-suave.
 - **P-4 Portada.** Cuadrada, radio 24 px, sin sombra (tamaños en 5.4). Sin portada: superficie-3 con la inicial en 96 px, peso 700 y color texto-2. No es interactiva. Texto alternativo «Portada de [álbum], [artista]»; vacío si el título ya aparece junto a ella.
 - **P-5 Título y artista.** Título en H2 (máximo dos líneas; se reservan 72 px). Artista en una línea, con puntos suspensivos si no cabe. Sin reproducción: «No suena nada. Elige una lista o una carpeta.», con «Ir a Listas» e «Ir a Carpetas» de 56 px.
 - **P-6 Progreso.** Zona de 56 px. Pista de 12 px (relleno en acento; resto en superficie-3 con borde de 1 px borde-control). Pulgar de 32 px (acento con borde de 2 px superficie-2). Tiempos 20/28 tabulares a los lados. Por defecto es informativo; si el cuidador activa «Saltar al tocar la barra» (C3f), un toque salta a ese punto y el arrastre queda como opción con alternativa de toque. Rol `slider` y `aria-valuetext` («1 minuto 12 segundos de 3 minutos 45 segundos»). Sin pista: deshabilitado en 0:00.
@@ -210,7 +214,7 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 - **P-8 Volumen.** Fila de 264 px: «Bajar volumen» (56 px), diez segmentos de 10×24 px separados 4 px (decorativos, `aria-hidden`, rellenos hasta el nivel actual) y «Subir volumen» (56 px). Paso del 10 %. No supera el límite del perfil. Al cambiar, `aria-live="polite"` anuncia «Volumen 6 de 10». Los botones se deshabilitan en el mínimo y en el límite.
 - **P-9 Fotografía.** Relación 4:3, radio 24 px, superficie-2 con borde de 1 px borde-suave. Sin fotografía: icono de 48 px (decorativo) y «Sin fotografía» 18/26 en texto-2. Varias fotografías: fila de 56 px bajo la imagen, con «Foto anterior», «1 de 3» y «Foto siguiente»; sin pase automático. Tocar la fotografía abre P1b y registra «fotografía ampliada». Cambio de foto: fundido de 300 ms. Texto alternativo: la descripción del cuidador; si falta, «Fotografía del recuerdo «[título]»».
 - **P-10 Tarjeta de recuerdo.** Fondo superficie-2, radio 20 px, relleno de 24 px (16 en teléfono) y franja izquierda de 6 px en `recuerdo`. En orden: etiqueta «Recuerdo» 20/28 600 en `recuerdo`; título (H3, 28/36 700); año y personas 18/26; texto 24/36 con cuatro líneas visibles (si es más largo, el área se desplaza con `tabindex="0"` y nombre «Texto del recuerdo»); «Leer todo» de 56 px (abre P1b) y «Otro recuerdo» de 56 px si hay más de uno (registra el evento). Sin recuerdo: «Sin recuerdo guardado» 18/26 en el lugar del título y del texto. La altura de la tarjeta es igual en todas las condiciones (354 px en tableta y escritorio con título de una línea).
-- **P-11 Mosaico de lista o carpeta.** Portada cuadrada de radio 20 px con el ancho de la columna; título 22/30 700 (máximo dos líneas); metadato 18/26 («12 canciones»). Columnas: 2 (menos de 768 px), 3 (768–1023 px) y 4 (desde 1024 px); separación de 16 o 24 px. Con escala de texto de 1,50 o más, una columna. Toda la tarjeta es el botón. Vacía: «Vacía» y no se abre. Pulsado: acento-suave. Enfoque: anillo de 4 px.
+- **P-11 Mosaico de lista o carpeta.** Portada cuadrada de radio 20 px con el ancho de la columna; título 22/30 700 (máximo dos líneas); metadato 18/26 («12 canciones»). Columnas: 2 (menos de 768 px), 3 (768–1023 px), 4 (1024 px) y 6 (1440 px, medido el 2026-11-02; a 1280 px no medido); separación de 16 o 24 px. Con escala de texto de 1,50 o más, una columna. Toda la tarjeta es el botón. Vacía: «Vacía» y no se abre. Pulsado: acento-suave. Enfoque: anillo de 4 px.
 - **P-12 Fila de canción.** Alto de 88 px; relleno horizontal de 16 px (teléfono) o 24 px. Portada de 64 px (teléfono) o 72 px (tableta), radio 12. Título 22/30 700 (máximo dos líneas); artista 18/26. Botón de reproducir de 48×48 a la derecha. Activa: fondo acento-suave, barra izquierda de 6 px en acento y subtítulo «Suena: [artista]». Sin copia sin conexión: «No disponible sin internet» en texto-2 con icono; fila con `aria-disabled`.
 - **P-13 Botones de acción.** Primario (Reproducir lista, Reproducir carpeta, Buscar): alto de 64 px, fondo acento y texto sobre-acento. Secundario (Ver todas, Leer todo, Otro recuerdo, Cerrar, Ir a Listas): alto de 56 px, superficie-2 y borde de 2 px borde-control. Etiqueta 20/28 700, relleno horizontal de 24 px, radio 16. Pulsado: acento-fuerte (primario) o superficie-3 (secundario). Enfoque: anillo de 4 px.
 - **P-14 Chips de categoría (Buscar).** Alto de 64 px, radio 999, ancho mínimo de 160 px (dos columnas en teléfono), etiqueta 22/28 600. Pulsado: acento-suave.
@@ -222,10 +226,10 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 
 ### 6.2 Modo cuidador
 
-- **C-1 Cabecera (56 px).** H1 24/30 700. Selector de perfil activo (chip de 36 px; alias truncado a 24 caracteres). «Vista previa» (secundario de 40 px) en Biblioteca y Perfiles. Búsqueda de 320 px en Biblioteca (Ctrl/Cmd+K).
-- **C-2 Navegación.** Barra lateral de 232 px (desde 1280 px): nombre de la app en texto (16/24 600, sin logotipo), destinos de 40 px (icono de 20 px y etiqueta 14/20 600), lista colapsable de carpetas (filas de 28 px con recuento) y «Abrir modo paciente» (40 px, primario) al pie. Raíl de 88 px (600–1279 px): cuatro destinos de 64 px (icono de 24 px, etiqueta 13/18 600). Barra inferior de 64 px (menos de 600 px): cuatro destinos iguales.
-- **C-3 Barra de reproducción.** 72 px (desde 600 px) o mini de 64 px encima de la barra inferior (menos de 600 px). Portada de 48 px; título 14/20 600 y artista 13/18 en una línea. Anterior y siguiente de 40 px (44 en teléfono); reproducir de 44 px (48 en teléfono); progreso con pista de 4 px dentro de una zona de 24 px; volumen de 120 px (desde 1024 px; actúa sobre el GainNode, sección 8). «Ahora suena» abre el panel (desde 1440 px, lo enfoca). Enfoque: anillo de 2 px. Sin pista: controles deshabilitados y fuera del orden de tabulación.
-- **C-4 Fila de canción (tabla).** Alto de 40 px (desde 1024 px), 48 px (600–1023 px) o tarjeta de 72 px (menos de 600 px). Columnas desde 1024 px, en este orden: casilla de 24 px; título y artista (flexible, mínimo 220 px; artista en texto-2 en la misma línea); duración (56 px, a la derecha); familiaridad (156 px); preferencia (120 px); presentación (120 px) y menú (40 px). Separación de 12 px. Entre 600 y 1023 px: título y artista, familiaridad y menú. En teléfono, tarjeta con título, artista, familiaridad («3 de 5») y botón «Ficha» (44 px). Cabecera de tabla de 32 px (12/16 600). Estados: normal; hover solo con puntero (superficie-2 a superficie-3); enfoque (anillo interior de 2 px); seleccionada (acento-suave, casilla con comprobación y texto «Seleccionada» para lectores de pantalla); sonando (icono de altavoz y «Suena»); sin conexión («No descargada», 13/18 en texto-2).
+- **C-1 Cabecera (56 px; 64 px desde 600 px y 88 px desde 1024 px, medido el 2026-11-02).** H1 24/30 700 (40/48 desde 1024 px). Selector de perfil activo (chip de 36 px; alias truncado a 24 caracteres). «Vista previa» (secundario de 40 px) en Biblioteca y Perfiles. Búsqueda de 320 px en Biblioteca (Ctrl/Cmd+K).
+- **C-2 Navegación.** Barra lateral de 240 px (desde 1024 px, medido el 2026-11-02): nombre de la app en texto (18/24 700, sin logotipo), destinos de 40 px (icono de 20 px y etiqueta 15/20 600), lista colapsable de carpetas (filas de 28 px con recuento) y «Abrir modo paciente» (40 px, primario) al pie. Raíl de 72 px (600–1023 px, medido el 2026-11-02): cuatro destinos de 56 px (icono de 24 px; la etiqueta queda solo como tooltip, [pendiente]). Barra inferior de 64 px (menos de 600 px): cuatro destinos iguales.
+- **C-3 Barra de reproducción.** 76 px (desde 600 px, medido el 2026-11-02) o mini de 64 px encima de la barra inferior (menos de 600 px). Portada de 56 px; título 14/20 600 (15/20 desde 1024 px) y artista 13/18 en una línea. Anterior y siguiente de 40 px (44 en teléfono; 36 px desde 1024 px); reproducir de 44 px (48 en teléfono; 40 px desde 1024 px); progreso con pista de 4 px dentro de una zona de 24 px; volumen de 120 px (desde 1024 px; actúa sobre el GainNode, sección 8). «Ahora suena» abre el panel (desde 1440 px, lo enfoca). Enfoque: anillo de 2 px. Sin pista: controles deshabilitados y fuera del orden de tabulación.
+- **C-4 Fila de canción (tabla).** Alto de 56 px (desde 600 px, medido el 2026-11-02) o tarjeta de 72 px (menos de 600 px). Columnas desde 1024 px, en este orden: casilla de 24 px; título y artista (flexible, mínimo 220 px; artista en texto-2 en la misma línea); duración (56 px, a la derecha); familiaridad (156 px); preferencia (120 px) y presentación (120 px), que según el CSS solo aparecen desde 1680 px (hasta entonces van en el panel; no medido a 1680 px); menú (40 px). Separación de 12 px. Carpeta visible desde 1024 px. Entre 600 y 819 px: título y artista, familiaridad y menú; de 820 a 1023 px se añade la duración. En teléfono, tarjeta con título, artista, familiaridad («3 de 5») y botón «Ficha» (44 px). Cabecera de tabla de 32 px (12/16 600). Estados: normal; hover solo con puntero (superficie-2 a superficie-3); enfoque (anillo interior de 2 px); seleccionada (acento-suave, casilla con comprobación y texto «Seleccionada» para lectores de pantalla); sonando (icono de altavoz y «Suena»); sin conexión («No descargada», 13/18 en texto-2).
 - **C-5 Familiaridad (1 a 5).** Cinco botones cuadrados con el número visible: 28 px en la tabla (excepción documentada: cumple 2.5.8 con separación de 4 px), 36 px en el panel y 44 px en teléfono. Patrón `radiogroup` con flechas. Seleccionado: fondo acento, número en sobre-acento y comprobación. No seleccionado: superficie-2 con borde de 1 px borde-control. Leyenda 13/18: «1 No la reconoce · 2 Le suena poco · 3 Le suena algo · 4 La reconoce · 5 La reconoce bien».
 - **C-6 Preferencia.** Segmentado de tres: «No le gusta» (−1), «Le da igual» (0) y «Le gusta» (+1). Alto de 36 px (panel y ficha) o 44 px (teléfono); mínimo de 96 px por segmento; etiqueta 14/20 600. Seleccionado: acento-suave, borde de 2 px en acento y comprobación. En la tabla (120 px), botón de 32 px que abre un menú con las tres opciones.
 - **C-7 Presentación.** Segmentado de tres: «Solo canción» (C0), «Canción y recuerdo» (C1) y «Canción, foto y recuerdo» (C2). Alto de 56 px en el panel (dos líneas de 13/18) y de 36 px en ficha y teléfono. Valor inicial de cada asociación nueva: C0. En la tabla, botón de 32 px con las etiquetas cortas «Solo canción», «Recuerdo» o «Foto y recuerdo».
@@ -236,7 +240,7 @@ Valores hexadecimales sRGB. Contraste calculado con luminancia relativa WCAG (5.
 - **C-12 Área de texto.** Alto mínimo de 120 px y máximo de 320 px. Contador 13/18 («812 de 1000»); desde el 90 % del límite muestra «Quedan 100 caracteres».
 - **C-13 Interruptor.** Pista de 44×24 px, pulgar de 20 px y área táctil de 48 px de alto. Etiqueta a la izquierda y estado escrito («Activado» o «Desactivado»). Enfoque: anillo de 2 px.
 - **C-14 Pestañas del perfil.** Alto de 40 px; indicador inferior de 2 px en acento; etiqueta 14/20 600. En teléfono, desplazables con áreas de 48 px.
-- **C-15 Tarjeta de perfil.** 264×132 px (tres columnas en escritorio) o ancho completo (teléfono). Avatar de 56 px con la inicial sobre superficie-3; alias 18/24 600; metadatos 13/18; botones de 40 px. Activo: borde de 2 px en acento y texto «En uso».
+- **C-15 Tarjeta de perfil.** 264 px de ancho y 338 px de alto (medido el 2026-11-02): tres columnas desde 1024 px, dos a 820 px y una a 600 px; ancho completo en teléfono (358×256). Avatar de 56 px con la inicial sobre superficie-3; alias 18/24 600; metadatos 13/18; botones de 40 px. Activo: borde de 2 px en acento y texto «En uso».
 - **C-16 Diálogo y hoja.** Diálogo de 480 px (escritorio) o ancho completo menos 32 px (teléfono); radio 16; relleno de 24 px; sh-3; título 18/24 600; cuerpo 15/22; botones de 40 px a la derecha (en teléfono, a ancho completo y apilados). El foco inicial va a la acción segura; Escape cierra y devuelve el foco. Hoja inferior (teléfono y tableta vertical): radio de 16 px arriba, asa de 40×4 px, altura máxima del 90 % y botón «Cerrar» siempre visible.
 - **C-17 Aviso.** Ancho de 360 px (esquina inferior izquierda en escritorio; encima de la barra en teléfono); alto mínimo de 48 px; radio 8; sh-2; texto 14/20; «Deshacer» de 40 px; visible 10 s y en pausa mientras tiene foco o puntero. `role="status"`. Los errores (`role="alert"`) no se cierran solos. El paciente no tiene avisos flotantes.
 - **C-18 Barra de selección múltiple.** Alto de 56 px, fija sobre la tabla: «3 seleccionadas» y acciones de 40 px (familiaridad y preferencia en lote, añadir a lista, quitar del perfil). Ctrl/Cmd+A selecciona las filas visibles.
@@ -596,23 +600,23 @@ Se comprueban con capturas de pantalla a los anchos 390, 820, 1024 y 1440 px, co
 
 **820×1180 (tableta vertical)**
 
-- Raíl de 112 px en el paciente y de 88 px en el cuidador.
+- Raíl de 72 px en el paciente y en el cuidador (medido el 2026-11-02).
 - Escuchar en dos columnas: portada de 300×300 px y fotografía de 328×246 px. Todo Escuchar se ve sin desplazamiento.
-- Listas en tres columnas de 204 px.
-- Cuidador: tabla con filas de 48 px y columnas de título, familiaridad y menú. Panel de 320 px superpuesto. Barra de reproducción de 72 px.
+- Mosaicos en tres columnas de 217 px (medido).
+- Cuidador: tabla con filas de 56 px y columnas de título, duración, familiaridad y menú. Panel de 320 px superpuesto. Barra de reproducción de 76 px.
 
 **1024×768 (tableta horizontal)**
 
-- Raíl de 112 px y cabecera de 64 px en el paciente.
-- Escuchar: portada de 280×280 px; fotografía de 395×296 px; cuatro líneas del recuerdo visibles. Sin desplazamiento de página.
-- Cuidador: raíl de 88 px; filas de 40 px; 14 filas visibles con desplazamiento interno de la tabla; barra de 72 px; sin desplazamiento de página.
+- Barra lateral de 240 px y cabecera de 88 px en el paciente.
+- Escuchar: portada de 280×280 px; fotografía de 395×296 px; cuatro líneas del recuerdo visibles. Sin desplazamiento de página del documento; [pendiente] la zona principal se desplaza unos 90 px (ver §4).
+- Cuidador: barra lateral de 240 px; filas de 56 px; 7 filas completas visibles con desplazamiento interno de la tabla (medido con 20 canciones de prueba); barra de 76 px; sin desplazamiento de página.
 - El panel de 320 px se superpone sin mover la tabla.
 
 **1440×900 (escritorio)**
 
-- Paciente: raíl de 112 px; Escuchar centrado en 1120 px; portada de 360×360 px; fotografía de 480×360 px; sin desplazamiento de página.
-- Cuidador: barra lateral de 232 px con carpetas; panel persistente de 320 px con 726 px de contenido; tabla con 17 filas de 40 px visibles; barra de 72 px; sin desplazamiento de página.
-- Perfiles: tarjetas de 264×132 px en tres columnas.
+- Paciente: barra lateral de 240 px; Escuchar centrado en 1120 px; portada de 360×360 px; fotografía de 480×360 px; sin desplazamiento de página del documento; [pendiente] la zona principal se desplaza 14 px (ver §4).
+- Cuidador: barra lateral de 240 px; panel persistente de 320 px [pendiente: 726 px de contenido sin medir]; tabla con 10 filas de 56 px completas visibles (medido con 20 canciones de prueba); barra de 76 px; sin desplazamiento de página.
+- Perfiles: tarjetas de 264×338 px en tres columnas (medido).
 
 **Criterios generales (todos los anchos)**
 
@@ -648,7 +652,7 @@ Verificado en el código de `main` (2026-11-02), que es la interfaz única de [A
 | P5 | Salida del modo paciente | Implementado | Con PIN, pide el PIN; sin PIN, confirma. «Olvidé el PIN» está aquí (discrepancia 6). |
 | P6 | Aviso de apagado | Implementado | |
 | C1 | Inicio | Implementado | Avisos de copia, cuota, persistencia, registro e iOS. El enlace de canciones sin familiaridad no filtra (discrepancia 1). |
-| C2 | Biblioteca | Parcial | Las carpetas no filtran y solo tienen barra lateral desde 1280 px (discrepancias 1 y 3). |
+| C2 | Biblioteca | Parcial | Las carpetas no filtran. La barra lateral mide 240 px desde 1024 px (medido el 2026-11-02; sus carpetas a 1024 px, [pendiente] de comprobar) (discrepancias 1 y 3). |
 | C2b | Panel de canción | Implementado | Escape lo cierra solo con el foco dentro del panel. |
 | C3, C3a | Perfiles y perfil | Implementado | Cinco pestañas; historial con filtros y exportación CSV. |
 | C3b | Editor de lista | Implementado | «Guardar sin conexión» copia el audio a la caché del navegador. |
