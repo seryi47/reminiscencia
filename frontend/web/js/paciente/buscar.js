@@ -237,10 +237,12 @@ export function mountSearch(root, services) {
     class: 'action action-secondary search-clear',
     hidden: true,
   }, ['Borrar búsqueda']);
+  // El campo es una pastilla con la lupa decorativa dentro; la etiqueta visible «Buscar» va encima (DESIGN P-15).
+  const field = createElement(doc, 'div', { class: 'search-campo' }, [createIcon(doc, 'search'), input]);
   const form = createElement(doc, 'form', { class: 'search-form', role: 'search' }, [
     createElement(doc, 'label', { class: 'search-label', for: 'p4-campo' }, ['Buscar']),
     createParagraph(doc, 'search-help', SEARCH_HELP_TEXT, { id: 'p4-ayuda' }),
-    createElement(doc, 'div', { class: 'search-row' }, [input, submitButton]),
+    createElement(doc, 'div', { class: 'search-row' }, [field, submitButton]),
     clearButton,
   ]);
 
