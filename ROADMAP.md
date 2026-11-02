@@ -2,7 +2,7 @@
 
 Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cuando sus pruebas pasan y la documentación está al día. La investigación y el desarrollo avanzan en paralelo.
 
-Estado a 2026-11-02, según `main`. Lo que solo existe en una rama aparece como «en curso».
+Estado a 2026-11-02, según `main`, con la interfaz única de [ADR-0009](docs/decisions/ADR-0009-interfaz-unica-y-datos-locales.md).
 
 ## Estado por fase
 
@@ -12,7 +12,7 @@ Estado a 2026-11-02, según `main`. Lo que solo existe en una rama aparece como 
 | 1. Base del proyecto | Hecho | Estructura, ADR-0001 a 0003, pruebas en CI, repositorio privado | — | — |
 | 2. Motor de audio | En curso | Experimento objetivo de compresión (cinco grabaciones, 2026-10-31) | — | Prueba perceptual MUSHRA; variantes en GitHub Releases; silencios, picos y calidad de señal |
 | 3. Servicio y administración | En curso | Catálogo; importación; publicación y despublicación por incidencias, probadas con incidencias reales; administración retirada | — | Borrado de canciones; residuos de seguridad (ver «Pendiente») |
-| 4. Web pública | En curso | Escucha, búsqueda y reproductor; gestión por incidencias desde la propia página; desplegada desde `main` | Interfaz única con el panel de cuidador (`feat/ui-publica`) | Repetir la prueba en navegador con `main`; panel de cuidador en `main` |
+| 4. Web pública | Implementada; pendiente de rediseño | Interfaz única (modo paciente y modo cuidador) con datos locales, copia cifrada, uso sin conexión y gestión de la biblioteca por incidencias; desplegada desde `main` | — | Rediseño visual (decisión del propietario, 2026-11-02); discrepancias funcionales de DESIGN §17; resultado de las pruebas e2e (CHANGELOG) |
 | 5. Android | En curso | App 1.1.0 con listas, favoritos, modo paciente y copia sin conexión; workflow `android.yml` en `main` | — | Primera ejecución de `android.yml`; firma de producción en CI; pruebas en dispositivo físico; copia de seguridad de la clave |
 | 6. Investigación de campo | Pendiente | — | — | Protocolo y aprobación ética; estudio piloto |
 
@@ -46,15 +46,15 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 | Frente | Qué entrega | Estado |
 |---|---|---|
 | Auditoría del brief | Matriz de requisitos con evidencia y verificación adversarial de lo marcado como hecho | Hecho (según CHANGELOG): 0 requisitos cumplidos del todo, 40 parciales, 8 pendientes y 1 descartado |
-| Panel de diseño | Especificación de diseño en `docs/user-experience/DESIGN.md` | Hecho: versión 1.0, cierre de diseño del 31-oct-2026 |
-| Web de escucha (modo paciente) | Interfaz nueva según el diseño, fotos y recuerdos del perfil activo, uso sin conexión (PWA) | En curso: la interfaz está en `feat/ui-publica`; la PWA está en `main` sin conectar a la página |
-| Datos locales del cuidador | Perfiles, fotos, recuerdos, listas, observaciones e historial en IndexedDB; copia cifrada con contraseña | En curso: almacén, copia cifrada y validación en `main`, sin conectar; la interfaz, en `feat/ui-publica` |
-| Panel del cuidador | Interfaz para gestionar todo lo anterior, con PIN local de ajustes | En curso: dentro de la interfaz única de `feat/ui-publica`. La ruta `/cuidar/` del plan original ya no aparece en la rama |
+| Panel de diseño | Especificación de diseño en `docs/user-experience/DESIGN.md` | Hecho: versión 1.0, cierre de diseño del 31-oct-2026. Rediseño visual pendiente (decisión del propietario, 2026-11-02) |
+| Web de escucha (modo paciente) | Interfaz nueva según el diseño, fotos y recuerdos del perfil activo, uso sin conexión (PWA) | Implementada en la interfaz única (ADR-0009); pendiente de rediseño visual y de las discrepancias de DESIGN §17 |
+| Datos locales del cuidador | Perfiles, fotos, recuerdos, listas, observaciones e historial en IndexedDB; copia cifrada con contraseña | Implementado en la interfaz única: IndexedDB (versión 3), copia cifrada `.rmc` y PIN local |
+| Panel del cuidador | Interfaz para gestionar todo lo anterior, con PIN local de ajustes | Implementado como modo cuidador de la interfaz única. La ruta `/cuidar/` del plan original no existe |
 | App Android | Listas, modo paciente con botones grandes, icono propio, tableta, ajustes persistentes, pruebas | En curso: lo implementado está en la fase 5; falta la prueba en dispositivo físico |
 | Compresión | Experimento reproducible con ffmpeg y métricas objetivas (sin pruebas perceptuales con personas) | En curso: la parte objetiva está hecha (2026-10-31); falta la prueba perceptual |
 | Investigación | Referencias verificadas por DOI y estado del arte; metodología del piloto; seguridad y RGPD | En curso: bibliografía, RESEARCH, METHODOLOGY y SECURITY en `main` como borradores; sin protocolo aprobado |
-| Documentación técnica | ARCHITECTURE, DATABASE (modelo entidad-relación), PLAYER, AUDIO_ENGINE, GITHUB_STORAGE | En curso: DATABASE, PLAYER y AUDIO_ENGINE están en `main` y en buena parte describen `feat/ui-publica`, pendiente de fusión. ARCHITECTURE y GITHUB_STORAGE no existen todavía |
-| Pruebas de extremo a extremo | Navegador: escucha, cuidador, copia cifrada, uso sin conexión | En curso: `tests/web-e2e/` en `feat/ui-publica`, con fallos abiertos; no está en `main` |
+| Documentación técnica | ARCHITECTURE, DATABASE (modelo entidad-relación), PLAYER, AUDIO_ENGINE, GITHUB_STORAGE | Parcial: ARCHITECTURE y GITHUB_STORAGE describen la interfaz (2026-11-02). Pendiente: revisar DATABASE (almacenes de IndexedDB), PLAYER y la parte 2 de AUDIO_ENGINE, que describen la rama antes de la integración |
+| Pruebas de extremo a extremo | Navegador: escucha, cuidador, copia cifrada, uso sin conexión | Implementadas en `tests/web-e2e/` y en el workflow `web-e2e.yml`. Resultado de la última ejecución en CHANGELOG |
 | Compilación de APK en GitHub Actions | Artefactos de depuración y producción; carpetas `releases/android/debug` y `production` | En curso: `android.yml` y las carpetas están en `main`; sin ninguna ejecución todavía |
 
 ## Fase 3: servicio y administración (en curso)
@@ -67,12 +67,15 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 - [ ] Borrado de canciones (hoy solo se despublican).
 - **Cierre:** una importación y una publicación probadas con incidencias reales. Este criterio está cumplido; la fase se marcará como terminada cuando la documentación esté al día, según la regla general de esta hoja.
 
-## Fase 4: web pública (en curso)
-- [x] Escucha por carpetas, búsqueda, reproductor y vista a pantalla completa en el teléfono.
+## Fase 4: web pública (implementada; pendiente de rediseño)
+- [x] Escucha por listas y carpetas, búsqueda y reproductor en el modo paciente (ADR-0009).
 - [x] Desplegada en https://reminiscencia.vercel.app (Git integration, Root Directory `frontend/web`).
-- [x] Sección «Gestionar» en la página: prepara las incidencias de la biblioteca y valida el formato en el navegador (en `main`).
-- [ ] Probada en escritorio y teléfono con la versión actual de `main`. La última prueba es de una versión anterior.
-- [ ] Panel de cuidador: perfiles, fotos y recuerdos (depende de la fase 6). En curso en `feat/ui-publica`.
+- [x] Gestión de la biblioteca por incidencias desde Biblioteca del modo cuidador («Gestionar la biblioteca»), que valida el formato en el navegador (ADR-0008).
+- [x] Panel de cuidador: perfiles, fotos, recuerdos, listas, observaciones, historial y copia cifrada, en la interfaz única.
+- [ ] Probada en escritorio y teléfono con la versión fusionada en `main`. La última prueba es de una versión anterior.
+- [ ] Pruebas de extremo a extremo: resultado en CHANGELOG.
+- [ ] Rediseño visual según la estructura de Apple Music web (decisión del propietario, 2026-11-02).
+- [ ] Discrepancias funcionales de DESIGN §17 (lista en «Pendiente»).
 - **Cierre:** panel de cuidador con perfiles.
 
 ## Fase 5: Android (en curso)
@@ -99,19 +102,40 @@ Del propietario (no lo puede hacer el repositorio):
 - Revocar el token de GitHub que usaba la administración retirada.
 - Clave de firma de Android: sin ella no se puede verificar la compilación de release.
 - Leer el texto completo de [B4] para resolver la discrepancia abierta con [clinica-03] (BIBLIOGRAPHY.md).
+- Rediseño visual de la interfaz según la estructura de Apple Music web (decisión del propietario, 2026-11-02). Hasta entonces, la parte visual de DESIGN no se actualiza.
+
+Interfaz única (ADR-0009; discrepancias funcionales en DESIGN §17):
+- Sesión al arrancar: con perfil y modo paciente se abre una sesión sin pasar por C4 (`frontend/web/js/app.js`, líneas 1076 a 1079), y el registro del estudio la recoge. Decidir y corregir.
+- Parámetros de ruta de la biblioteca: `mountLibrary` no los lee (`frontend/web/js/cuidador/biblioteca.js`, línea 309). El enlace de Inicio a «sin familiaridad» y las carpetas muestran todo el catálogo.
+- Lista de bloqueo de la web: `BLOCKED_HOSTS` en `frontend/web/js/cuidador/incidencias.js` tiene 11 dominios; la de `backend/sonidos/sources.py` tiene más. ADR-0008 exige que la web no acepte más que el backend. Igualarla.
+- «Terminar sesión» en el modo cuidador (DESIGN §8.2): no existe.
+- Borrador del recuerdo: se escribe cada 5 s y nunca se recupera al reabrir.
+- Atajos: ↑ y ↓ cambian el volumen en pasos de 10 % (DESIGN §7.4 dice 5 %). En el paciente, ←/→ mueven el progreso con «Saltar al tocar la barra» (`frontend/web/js/paciente/escuchar.js`, líneas 825 a 832), contra DESIGN §12.
+- «Olvidé el PIN» está en P5, y DESIGN §12 dice que ninguna acción destructiva está al alcance del paciente. La especificación debe decidir.
+- Bloqueo del PIN: DESIGN P-16 dice 45 s; D12 y §9 dicen 60 s. El código usa 60 s.
+- Registro del estudio: el resumen no incluye familiaridad ni preferencia, y el evento «observación registrada» no aparece en el código. Borrar un perfil borra también sus eventos; DESIGN §9 no lo precisa.
+- Validadores más laxos que la interfaz: familiaridad de 0 a 5, preferencia de −2 a 2 y nota de observación de 1000 caracteres (`frontend/web/js/schema.js`).
+- Carpetas del cuidador: sin menú por debajo de 1280 px, y el clic no filtra.
+- Primer uso: falta la elección entre modo cuidador y modo paciente (DESIGN §3.3).
+- Falta el texto «Suelta las fotografías aquí» (DESIGN C-22).
+- Deshacer en Biblioteca: restaura la asociación con `setSongLink` en lugar de `deleteSongLink` (`frontend/web/js/cuidador/biblioteca.js`, líneas 726 a 735). Pendiente de verificar en el navegador.
+- Pruebas e2e: el resultado de la última ejecución está en CHANGELOG. El comentario de `.github/workflows/web-e2e.yml` (línea 19) habla de una interfaz incompleta; revisarlo con ese resultado.
+- Cifras de pruebas web: las de `main` antes de la fusión (188 de 189) no valen para el código fusionado. Recalcular con `node --test`.
+- Documentación técnica: revisar `docs/user-experience/PLAYER.md`, `docs/datos/DATABASE.md` (almacenes de IndexedDB) y la parte 2 de `docs/audio-processing/AUDIO_ENGINE.md`.
+
+Antes de cerrar la fusión de `feat/ui-publica` en `main`:
+- Conflictos previstos (simulación de fusión del 2026-11-02): `frontend/web/index.html` (ambas ramas lo cambian) y `frontend/web/listen.css` (borrado en la rama, modificado en `main`).
+- Sin borrarlos, sobreviven a la fusión `frontend/web/js/gestion.js`, `frontend/web/js/intake.js`, `frontend/web/listen.css`, `tests/web-unit/gestion.test.mjs` y `tests/web-unit/intake.test.mjs`. Hay que retirarlos.
+- `frontend/web/vercel.json` de la rama no tiene la política de contenido (CSP) que sí tiene `main`. Conservarla y comprobarla después de la fusión.
 
 Residuos de seguridad y de código:
 - [x] `publicar` regenera los datos públicos desde el catálogo, en lugar de aplicar los que trae el paquete (hecho el 2026-11-02; ADR-0011).
-- El job de pruebas web está duplicado en `backend.yml` y en `web.yml`.
-- La prueba «la lista de la web es idéntica a la del backend» (`tests/web-unit/intake.test.mjs`) está marcada `todo` con una nota antigua («33 entradas»). Hoy las dos listas tienen 42 entradas y son iguales, así que la marca sobra.
-- Dos fallos de diseño de la interfaz única, señalados en la revisión del 2026-11-02 y pendientes de confirmar y corregir: no se pide el PIN al salir del modo paciente, y se crea una sesión implícita que contamina el registro del estudio.
-- Suite e2e de `feat/ui-publica`: fallos abiertos, sobre todo de medidas de diseño y de accesibilidad.
+- [x] Corregido en la documentación: `backend.yml` no ejecuta pruebas web. Las pruebas web las ejecutan `web.yml` (sintaxis y `node --test`) y `web-e2e.yml` (extremo a extremo).
 
 Colaboradores e Internet Archive:
 - Colaboradores con permiso de escritura: el contrato está en `feat/contrato-colaboradores`, con cambios sin confirmar. Nada de ese trabajo está en `main`.
 - Internet Archive `/download/`: en `main`, `sources.py` ya acepta `archive.org/download/<id>`. Queda por concretar qué falta en la rama de colaboradores.
 
 Documentación por actualizar:
-- CHANGELOG, ADR-0005, ADR-0007, ADR-0008 (sus cifras de pruebas están desactualizadas), RELEASE.md y DESIGN.md (su estado).
-- Las referencias a ARCHITECTURE y GITHUB_STORAGE, que todavía no existen.
+- ADR-0005, ADR-0007, ADR-0008 (sus cifras de pruebas están desactualizadas), RELEASE.md y DESIGN.md (sección 17 al día; la parte visual, pendiente de rediseño).
 - Numeración: `ADR-0009` es la interfaz única y `ADR-0010` el procesado y la publicación separados (renumerado el 2026-11-02).

@@ -1,6 +1,6 @@
 # Motor de audio de Reminiscencia
 
-Estado: la parte 1 describe `main` (8a19a09), ya fusionado (`main` está ahora en 7f93756, que solo añade `web.yml`, no descrito aquí). La parte 2 describe la rama feat/ui-publica pendiente de fusión (commit cc8ef01): `frontend/web/js/player.js` todavía no existe en `main`. La rama feat/gestion-backend (cabeza 22b444a, que incluye 679b11c) cambia el workflow y varios módulos de la parte 1; esos cambios no se describen aquí (ver Pendiente).
+Estado: la parte 1 describe `main` (8a19a09), ya fusionado (`main` está ahora en 7f93756, que solo añade `web.yml`, no descrito aquí). La parte 2 describe `frontend/web/js/player.js` de la interfaz única (feat/ui-publica, commit 9d4ae8f; ADR-0009). Las frases de la parte 2 que dicen que el reproductor no está conectado a la interfaz son anteriores a la integración y están pendientes de revisión (ver ROADMAP). La rama feat/gestion-backend (cabeza 22b444a, que incluye 679b11c) cambia el workflow y varios módulos de la parte 1; esos cambios no se describen aquí (ver Pendiente).
 
 Revisado con el código el 2026-11-02. Las constantes se toman del código. Lo que no se ha podido comprobar, o lo que sigue sin fusionar, está en [Pendiente](#pendiente).
 

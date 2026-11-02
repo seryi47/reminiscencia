@@ -1,6 +1,6 @@
 # Base de datos de Reminiscencia
 
-Estado: describe la rama feat/ui-publica pendiente de fusión. En `main` (8a19a09) el almacén del navegador está en la versión 1 y no tiene el registro del estudio. El catálogo (`catalog.json`) y el workflow `biblioteca.yml` ya están en `main` (ADR-0008 y ADR-0010). Los ficheros `songs.json` y `folders.json` ya están en `main`.
+Estado: describe el almacén de la interfaz única (feat/ui-publica, commit 9d4ae8f; ADR-0009), con la versión 3 de IndexedDB. Las secciones que dicen «pendiente de fusión», «versión 2» o que la página no usa el almacén son anteriores a la integración y están pendientes de revisión (ver ROADMAP). En la versión 1 de `main` no había registro del estudio. El catálogo (`catalog.json`) y el workflow `biblioteca.yml` ya están en `main` (ADR-0008 y ADR-0010). Los ficheros `songs.json` y `folders.json` ya están en `main`.
 
 Revisado: 2026-11-02, a partir del código de las ramas citadas y de `docs/user-experience/DESIGN.md`. Lo que el código no permite comprobar, o que contradice el diseño, está en la sección 7 («Pendiente»).
 

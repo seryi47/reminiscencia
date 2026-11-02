@@ -2,7 +2,7 @@
 
 Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado (2026-11-02):** la web pública de escucha y la app Android funcionan con la biblioteca publicada: 9 canciones públicas, y las privadas no se muestran. La biblioteca se gestiona con incidencias de GitHub (ADR-0008); no hay panel de administración. La interfaz única, con modo paciente y modo cuidador, está en la rama `feat/ui-publica`, pendiente de fusión. Estudios con personas, pendientes.
+**Estado (2026-11-02):** la web pública de escucha y la app Android funcionan con la biblioteca publicada: 9 canciones públicas, y las privadas no se muestran. La biblioteca se gestiona con incidencias de GitHub (ADR-0008); no hay panel de administración. La interfaz única, con modo paciente y modo cuidador, está implementada (ADR-0009); su parte visual está pendiente de rediseño. Estudios con personas, pendientes.
 
 | Qué | Dónde |
 |---|---|
@@ -12,9 +12,9 @@ Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la 
 
 ## Qué es la web pública
 
-https://reminiscencia.vercel.app es la página de escucha de la biblioteca: grabaciones de dominio público, organizadas por carpetas, con búsqueda y reproductor. Solo muestra las canciones publicadas. Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/` y `audio/`).
+https://reminiscencia.vercel.app es la interfaz pública de la biblioteca, en una sola página con dos modos. El **modo paciente** escucha las grabaciones de dominio público por listas y carpetas, con búsqueda y reproductor, y solo muestra las canciones publicadas. El **modo cuidador** guarda perfiles, recuerdos, fotografías, observaciones e historial solo en el navegador (IndexedDB); no hay cuentas ni sincronización, y la copia cifrada `.rmc` es la única vía para llevar los datos a otro dispositivo (ADR-0009). Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/` y `audio/`).
 
-La página tiene además una sección **Gestionar**. Valida la petición en el navegador y abre en GitHub una incidencia nueva con el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. La web no tiene contraseña ni token, y solo las cuentas con permiso de escritura procesan las peticiones (job `autorizar`).
+El modo cuidador tiene además **Gestionar la biblioteca**, en la sección Biblioteca. Valida la petición en el navegador y abre en GitHub una incidencia nueva con el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. La web no tiene contraseña ni token, y solo las cuentas con permiso de escritura procesan las peticiones (job `autorizar`).
 
 ## Cómo se usa
 
@@ -75,6 +75,12 @@ Web, desde la raíz:
 
 ```
 node --test "tests/web-unit/*.test.mjs"
+```
+
+Extremo a extremo y de accesibilidad (necesitan Chrome; si no está en una ruta habitual, indicarla en `CHROME_PATH`):
+
+```
+cd tests/web-e2e && npm ci && npm test
 ```
 
 ## Aviso

@@ -7,10 +7,10 @@ Documento central de estado. Se actualiza cuando cambia una decisión o el estad
 ## Estado general
 
 - **Biblioteca:** 12 canciones en el catálogo, 9 públicas y 3 privadas. La importación, la publicación y la despublicación por incidencias se probaron en GitHub con «Tell me pretty maiden» (incidencias #1 a #3, cerradas con respuesta automática del workflow).
-- **Web pública:** escucha y sección «Gestionar» en `main`, desplegadas desde `main`. No tiene administración.
-- **Interfaz única** (paciente y cuidador): en la rama `feat/ui-publica`, sin fusionar.
-- **Pruebas en `main`:** 400 de 400 en el backend (`pytest`); en la web, 188 de 189 pasan (`node --test`) y una está marcada como pendiente.
-- **Integración continua:** `backend.yml`, `web.yml` y `biblioteca.yml` en verde. `android.yml` no se ha ejecutado todavía.
+- **Web pública:** interfaz única (modo paciente y modo cuidador) desplegada desde `main`. No tiene administración.
+- **Interfaz única** (paciente y cuidador): implementada (ADR-0009). Pendiente de rediseño visual (decisión del propietario, 2026-11-02).
+- **Pruebas:** 400 de 400 en el backend (`pytest`), según la última ejecución registrada. Las pruebas web (`node --test`) y las e2e (`tests/web-e2e/`) hay que recalcularlas tras la fusión de la interfaz; el resultado e2e figura en CHANGELOG.
+- **Integración continua:** `backend.yml`, `web.yml` y `biblioteca.yml` en verde. `web-e2e.yml` es nuevo (resultado en CHANGELOG). `android.yml` no se ha ejecutado todavía.
 - **Repositorio:** privado (comprobado en GitHub el 2026-11-02).
 
 ## Visión
@@ -47,10 +47,10 @@ Detalle en [RESEARCH.md](RESEARCH.md).
 | [ADR-0006](docs/decisions/ADR-0006-audio-publicado-en-la-web.md) | Audio publicado dentro del repositorio para la web | Aceptada |
 | [ADR-0007](docs/decisions/ADR-0007-catalogo-y-flujo-desde-vercel.md) | Catálogo JSON versionado y flujo desde Vercel + GitHub Actions | Aceptada; sus puntos 4 y 5 (administración en Vercel) quedan sustituidos por ADR-0008 |
 | [ADR-0008](docs/decisions/ADR-0008-entrada-por-incidencias.md) | Entrada de la biblioteca por incidencias de GitHub; sin administración en la web | Aceptada (2026-10-31); en `main` |
-| [ADR-0009 (interfaz)](docs/decisions/ADR-0009-interfaz-unica-y-datos-locales.md) | Interfaz única para paciente y cuidador, y datos locales en el navegador | Aceptada; la implementación está en `feat/ui-publica`, pendiente de fusión |
+| [ADR-0009 (interfaz)](docs/decisions/ADR-0009-interfaz-unica-y-datos-locales.md) | Interfaz única para paciente y cuidador, y datos locales en el navegador | Aceptada e implementada (código en `feat/ui-publica`, commit 9d4ae8f) |
 | [ADR-0010 (procesado)](docs/decisions/ADR-0010-procesado-y-publicacion-separados.md) | Procesado y publicación separados, con paquete de cambios validado antes de publicar | Aceptada; en `main` |
 
-Hay dos ficheros con el número 0009. Pendiente de renumerar uno de ellos; ver [ROADMAP](ROADMAP.md).
+Numeración: `ADR-0009` es la interfaz única y `ADR-0010` el procesado y la publicación separados (renumerado el 2026-11-02).
 
 ## Estado de módulos
 
@@ -63,10 +63,10 @@ Hay dos ficheros con el número 0009. Pendiente de renumerar uno de ellos; ver [
 | Paquete entre `procesar` y `publicar` (`paquete.py`, `empaquetar_cambios.py`, `aplicar_paquete.py`) | Implementado y ejecutado en GitHub con la prueba real, antes de la corrección de 2026-11-02. Desde entonces el paquete lleva solo el catálogo y el audio, y `publicar` regenera la parte pública desde el catálogo (ADR-0010). Pendiente: probar esta versión en GitHub | 63 (`test_paquete.py`), 3 del script (`test_aplicar_paquete.py`) y 20 de seguridad (`test_paquete_seguridad.py`) |
 | Workflow `biblioteca.yml` (importar, publicar, despublicar desde incidencias; ADR-0008 y ADR-0010) | Implementado en tres jobs (`autorizar`, `procesar` y `publicar`). Probado con las incidencias reales #1 (importar), #2 y #3 (publicar y despublicar), las tres cerradas con respuesta automática. Sustituye al workflow anterior, ya retirado | 27 guardas (`test_biblioteca_workflow.py`); 8 de `ci_library` (`test_ci_library.py`) y 8 de la respuesta a la incidencia (`test_responder_incidencia.py`) |
 | Administración en Vercel (`/admin/`, funciones `api/`) | **Retirada** (ADR-0008): no hay panel, `ADMIN_PASSWORD` ni funciones de Vercel en el código | Guarda: `test_web_has_no_administration_code` (`test_biblioteca_workflow.py`) |
-| Web pública de escucha (`frontend/web`, `app.js`) | **Pública** en https://reminiscencia.vercel.app, con 9 pistas. Probada en escritorio y teléfono en una versión anterior; pendiente de repetir con la versión actual de `main` | Pruebas unitarias de la web (`tests/web-unit/`) |
-| Gestión de la biblioteca en la web (`js/gestion.js`, `js/intake.js`) | En `main`: el formulario valida la petición y abre la incidencia en GitHub. La lista de bloqueo es idéntica a la del backend (42 entradas) | `gestion.test.mjs` e `intake.test.mjs`; la prueba de paridad está marcada `todo` (ver ROADMAP) |
-| Almacén local, copia cifrada y PWA (`js/store.js`, `js/schema.js`, `js/crypto.js`, `js/backup.js`, `js/pwa.js`, `js/offline-core.js`, `sw.js`) | Módulos en `main` con pruebas. **La página todavía no los carga**: no registra el service worker ni enlaza el manifiesto | `backup`, `crypto`, `offline-core`, `schema` y `store-logic` en `tests/web-unit/` |
-| Interfaz única (`feat/ui-publica`) | En curso y sin fusionar: pantallas de paciente y cuidador en una sola página (ADR-0009) | Suite e2e `tests/web-e2e/` en la rama, con fallos abiertos |
+| Interfaz web (`frontend/web`: `index.html`, `js/app.js`, `js/paciente/`, `js/cuidador/`) | **Pública** en https://reminiscencia.vercel.app, con 9 pistas. Modo paciente y modo cuidador en una página (ADR-0009). Probada en escritorio y teléfono en una versión anterior; pendiente de repetirla | Pruebas unitarias (`tests/web-unit/`) y de extremo a extremo (`tests/web-e2e/`) |
+| Gestionar la biblioteca (`js/cuidador/incidencias.js`, en Biblioteca) | Valida la petición y abre la incidencia en GitHub. Su lista de bloqueo tiene 11 dominios; la del backend tiene más (pendiente de igualar, ver ROADMAP) | `cuidador-incidencias.test.mjs` |
+| Datos locales, copia cifrada y PWA (`js/store.js` versión 3, `js/schema.js`, `js/crypto.js`, `js/backup.js`, `js/pwa.js`, `js/offline-core.js`, `sw.js`) | Conectados a la interfaz: IndexedDB, copia `.rmc`, PIN local y uso sin conexión | `store-*`, `backup`, `crypto`, `offline-core`, `schema` y `player` en `tests/web-unit/` |
+| Interfaz única (ADR-0009) | Implementada: pantallas de paciente y cuidador en una sola página. Pendiente de rediseño visual y de las discrepancias de DESIGN §17 | Suite e2e `tests/web-e2e/` (resultado en CHANGELOG) |
 | App Android (`mobile/`) | Versión 1.1.0 (`pubspec.yaml`): biblioteca desde la web, listas, favoritos, modo paciente y copia para escuchar sin conexión | Probada en emulador Android 15 según la fase 5 del ROADMAP; pendiente en dispositivo físico |
 | Compilación y firma de Android (`.github/workflows/android.yml`) | Implementado en `main`, **sin ninguna ejecución en GitHub**. El APK de producción requiere cuatro secretos de firma, que hoy no existen en el repositorio | Análisis, pruebas y verificación del APK dentro del workflow |
 | Límites de GitHub (`limits.py`, `check_repo_limits.py`) | Implementado y comprobado en CI | 7 (`test_limits.py`) y el job `limites-repositorio` de `backend.yml` |
@@ -74,8 +74,8 @@ Hay dos ficheros con el número 0009. Pendiente de renumerar uno de ellos; ver [
 | Biblioteca publicada | 9 pistas públicas de dominio público, según la licencia declarada en su ítem de Internet Archive (`frontend/web/data/songs.json`) | Pendiente: repetir la comprobación en la web tras el despliegue de `main` |
 | Experimento de compresión objetivo (`scripts/compression/`, `research-data/compression/`) | Hecho el 2026-10-31 con cinco grabaciones de dominio público: tamaño, tasa, tiempos, SNR y LSD. Sin pruebas perceptuales | `scripts/compression/test_metrics.py`; no lo ejecuta el CI de `backend.yml` |
 | Prueba perceptual de compresión (MUSHRA) | **No iniciada** | — |
-| Perfiles de pacientes y datos personales | Parcial: modelo y almacén en `main`, sin conectar a la página; interfaz del cuidador en `feat/ui-publica` | — |
-| Integración continua (GitHub Actions) | En verde en `main`: `backend.yml` (Python 3.12 y 3.13, Flutter, límites y pruebas web), `web.yml` y `biblioteca.yml`. `android.yml` sin ejecutar | Ver los workflows |
+| Perfiles de pacientes y datos personales | Implementado en la interfaz del cuidador (IndexedDB, ADR-0009). Sin sincronización entre dispositivos | `store-*` y `cuidador-perfil` en `tests/web-unit/` |
+| Integración continua (GitHub Actions) | En verde en `main`: `backend.yml` (Python 3.12 y 3.13, Flutter y límites; sin pruebas web), `web.yml` y `biblioteca.yml`. `web-e2e.yml` (nuevo) y `android.yml` sin ejecutar | Ver los workflows |
 
 ## Presupuesto
 

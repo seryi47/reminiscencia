@@ -4,6 +4,8 @@
 **Base:** propuesta A, la mejor valorada (66,5 de 75 puntos sumados por los tres jueces). Se incorporan los aportes de B (61,5) y C (65,5) que mejoran accesibilidad, tableta o funciones.
 **Ubicación prevista:** `docs/user-experience/DESIGN.md`
 
+> **Pendiente de rediseño (2026-11-02):** replicar la estructura de Apple Music web, decisión del propietario. Hasta el rediseño, las secciones de identidad visual y de estado visual se dejan como estaban.
+
 ---
 
 ## 1. Objetivo y alcance
@@ -629,3 +631,49 @@ No bloquean el cierre del diseño, pero deben hacerse antes de la fase de estudi
 - Confirmar con el investigador: los textos de ausencia idénticos en C0 y C1; las carpetas completas para el paciente; repetir la lista y no usar orden aleatorio; la preferencia de tres niveles; el registro activado por defecto y su texto de consentimiento.
 - Verificar en iOS e iPadOS: GainNode, Wake Lock, Media Session y persistencia de almacenamiento.
 - Confirmar la fuente y la licencia de cada canción del catálogo para la ficha.
+
+## 17. Estado funcional de la implementación (2026-11-02)
+
+Verificado en el código de `feat/ui-publica` (commit 9d4ae8f), que es la interfaz única de [ADR-0009](../decisions/ADR-0009-interfaz-unica-y-datos-locales.md). Esta sección describe solo el comportamiento. El estado visual (identidad, tokens, tipografía, medidas y componentes) no se evalúa aquí y queda pendiente de rediseño.
+
+| ID | Pantalla o función | Estado | Notas |
+|---|---|---|---|
+| P1 | Escuchar | Implementado | Al abrir no suena nada; la última pista aparece en pausa. |
+| P1b | Recuerdo ampliado | Implementado | Al cerrar, el foco vuelve al disparador. |
+| P2, P2b | Listas | Implementado | |
+| P3, P3b | Carpetas | Implementado | |
+| P4 | Buscar | Parcial | Elegir una categoría muestra resultados sin pulsar «Buscar». |
+| P5 | Salida del modo paciente | Implementado | Con PIN, pide el PIN; sin PIN, confirma. «Olvidé el PIN» está aquí (discrepancia 6). |
+| P6 | Aviso de apagado | Implementado | |
+| C1 | Inicio | Implementado | Avisos de copia, cuota, persistencia, registro e iOS. El enlace de canciones sin familiaridad no filtra (discrepancia 1). |
+| C2 | Biblioteca | Parcial | Las carpetas no filtran y solo tienen barra lateral desde 1280 px (discrepancias 1 y 3). |
+| C2b | Panel de canción | Implementado | Escape lo cierra solo con el foco dentro del panel. |
+| C3, C3a | Perfiles y perfil | Implementado | Cinco pestañas; historial con filtros y exportación CSV. |
+| C3b | Editor de lista | Implementado | «Guardar sin conexión» copia el audio a la caché del navegador. |
+| C3c | Editor de recuerdo | Parcial | El borrador se guarda cada 5 s, pero no se recupera al reabrir (discrepancia 5). Falta el texto de arrastre de fotografías (discrepancia 11). |
+| C3d | Nueva observación | Implementado | Ver discrepancia 9 para la longitud de la nota. |
+| C3e | Asistente de primer perfil | Implementado | Tres pasos; el PIN viene activado por defecto. |
+| C3f | Opciones del paciente | Implementado | |
+| C4 | Empezar sesión | Parcial | No hay «Terminar sesión» y la sesión se abre al arrancar (discrepancia 2). |
+| C5 | Ajustes | Implementado | |
+| — | Arranque y primer uso (§3.3) | Parcial | Con un perfil, la app abre el último modo; sin elegir entre cuidador y paciente en el primer uso (discrepancia 10). |
+| — | Vista previa | Implementado | No crea sesión ni registra eventos (D37). |
+| — | Copia cifrada (§9) | Implementado | Combinar por defecto; sustituir exige la casilla. |
+| — | PIN (§9, D12) | Implementado | De 4 a 6 dígitos; bloqueo tras cinco fallos (discrepancia 4). |
+| — | Registro del estudio (§8.4) | Parcial | Ver discrepancia 7. |
+| — | Sin conexión (§8.1, §9) | Implementado | Caché del shell `reminiscencia-shell-v2` y del audio `reminiscencia-audio-v1`. |
+| — | Atajos de una tecla (§7.4) | Parcial | Ver discrepancia 8. |
+
+**Discrepancias funcionales con esta especificación.** No cambian ninguna decisión; quedan como pendientes en [ROADMAP](../../ROADMAP.md).
+
+1. **Parámetros de ruta de la biblioteca.** `mountLibrary` recibe `params` y no los lee (`frontend/web/js/cuidador/biblioteca.js`, línea 309). El enlace de Inicio a «sin familiaridad» y las carpetas muestran todo el catálogo.
+2. **Sesión de escucha (§8.2).** No hay «Terminar sesión» en el modo cuidador. Con perfil y modo paciente, la app abre una sesión al arrancar, sin pasar por C4 (`frontend/web/js/app.js`, líneas 1076 a 1079), con la última condición guardada.
+3. **Carpetas del cuidador (§3.2).** La especificación prevé la barra lateral en escritorio y un menú en el resto. Por debajo de 1280 px no hay menú, y el clic en una carpeta no filtra.
+4. **Bloqueo del PIN.** P-16 dice «Vuelve a intentarlo en 45 s», mientras que D12 y la sección 9 dicen 60 segundos. El código usa 60 s (`frontend/web/js/store.js`, líneas 49 y 50). La especificación se contradice; hay que fijar un valor.
+5. **Borrador del recuerdo.** El borrador se escribe cada 5 s en el almacén `memoryDrafts`, pero nada lo lee al reabrir. La especificación no dice si debe recuperarse.
+6. **«Olvidé el PIN».** P5 lo sitúa en la pantalla de salida del paciente, y la sección 12 dice que ninguna acción destructiva está al alcance del paciente. La especificación se contradice; el código sigue P5.
+7. **Registro del estudio (§8.4).** El resumen por reproducción no incluye familiaridad ni preferencia, y el evento «observación registrada» no aparece en el código. Además, borrar un perfil borra también sus eventos del registro (`CHILD_STORES` en `store.js`), algo que la sección 9 no precisa.
+8. **Atajos de una tecla (§7.4 y §12).** ↑ y ↓ cambian el volumen en pasos de 10 %, no de 5 % (`frontend/web/js/player.js`, línea 44). En el paciente, con «Saltar al tocar la barra» activo, ←/→ mueven el progreso (`frontend/web/js/paciente/escuchar.js`, líneas 825 a 832), y la sección 12 dice que el paciente no tiene atajos de una tecla.
+9. **Valores de los campos (D8, D9 y §8.5).** La familiaridad admite 0 («Sin valorar») además de 1 a 5. La preferencia admite de −2 a 2 en el validador, aunque la interfaz ofrece −1, 0 y +1. La nota de observación acepta 1000 caracteres en el validador, pero la interfaz aplica 500 (`frontend/web/js/schema.js`).
+10. **Primer uso (§3.3).** La especificación ofrece elegir entre «Modo cuidador» y «Modo paciente». La app lleva directamente al asistente de primer perfil (`frontend/web/js/app.js`, líneas 1081 y 1082).
+11. **Arrastre de fotografías (C-22).** Falta el texto «Suelta las fotografías aquí» (`frontend/web/js/cuidador/recuerdo-editor.js`, línea 402).

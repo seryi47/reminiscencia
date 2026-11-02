@@ -11,16 +11,20 @@
 - Web con gestión por incidencias y la misma lista de bloqueo que el backend (42 entradas), con rechazo de caracteres de formato (`14dbe82`).
 - Prueba real de importar, publicar y despublicar «Tell me pretty maiden» con las incidencias #1, #2 y #3, todas cerradas. La pista queda en el catálogo con `public: false`.
 - Prueba real de importación privada por incidencia (#5, 2026-11-02): la ejecución 41490773271 pasa por `autorizar`, `procesar` y `publicar` en success. El commit `e988292` del bot («biblioteca: import») añade el audio y el catálogo de la canción (+16 líneas en `catalog.json`), y la parte pública no cambia. Sin probar: publicar una canción (la parte pública cambia) y la concurrencia `queue: max`.
+- Interfaz única (ADR-0009): modo paciente (escucha, listas, carpetas, búsqueda y salida con PIN) y modo cuidador (inicio, biblioteca, perfiles, recuerdos, observaciones, copia cifrada, PIN local y ajustes) en una sola página (`frontend/web/index.html`, `js/app.js`, `js/paciente/`, `js/cuidador/` y `css/`). Los datos del cuidador están en IndexedDB (versión 3), con copia cifrada `.rmc` y uso sin conexión.
+- Pruebas de extremo a extremo y de accesibilidad en `tests/web-e2e/` (puppeteer-core y axe-core) y workflow `web-e2e.yml`. Resultado de la última ejecución: {{RESULTADO_E2E}}.
 
 ### Cambiado
+- «Gestionar la biblioteca» pasa de la página de escucha a Biblioteca del modo cuidador (`js/cuidador/incidencias.js`). La petición sigue siendo una incidencia de GitHub con la etiqueta `biblioteca` (ADR-0008).
 - Publicar regenera la parte pública desde el catálogo (`ba1825e`; ADR-0011). El paquete del procesado ya no lleva `frontend/web/data/*.json` ni el audio publicado: `publicar` los regenera con `sonidos.publish.sync_public` después de aplicar el paquete, compara el audio por contenido, valida el identificador de cada canción pública y avisa, sin fallar, de lo que la regeneración cambia fuera del paquete o sustituye.
 - Revisión de la bibliografía, consulta del 2026-11-02 (`61eb229`): quedan resueltos 17 de los 35 pendientes de `BIBLIOGRAPHY.md`, con Crossref y PubMed (y, según el caso, Europe PMC, la página de la revista en Cambridge Core y el manuscrito aceptado en PMC). Quedan 18 abiertos. Corregido: el resumen de Garrido et al. 2018 no comunica resultados sobre la ansiedad, y se retira esa atribución de `RESEARCH.md` y `METHODOLOGY.md`.
 
 ### Retirado
+- Página de escucha anterior (`app.js`, `styles.css` y `listen.css` de la raíz de `frontend/web/`) y la sección «Gestionar» de esa página (`js/gestion.js`, `js/intake.js` y sus pruebas), sustituidas por la interfaz única (ADR-0009).
 - Administración de la web pública (`0fa6ed3`): se borran `frontend/web/admin/`, las funciones `api/` (catálogo, despacho y ejecuciones) y `lib/` (autenticación, GitHub y validación).
 
 ### En curso
-- Interfaz única en `feat/ui-publica` (`index.html`, `js/app.js`, `js/paciente/`, `js/cuidador/` y `css/`, tres commits sobre main) y contrato de colaboradores e Internet Archive `/download/` en `feat/contrato-colaboradores`, que todavía no tiene commits propios.
+- Contrato de colaboradores e Internet Archive `/download/` en `feat/contrato-colaboradores`, que todavía no tiene commits propios.
 
 ## Integrado: app Android y entrega de APK (2026-10-31)
 
