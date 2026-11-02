@@ -77,13 +77,13 @@ describe("Biblioteca a 1440 × 900 px (escritorio)", () => {
     }),
   );
 
-  // Con filas de 56 px, a 1440 × 900 caben 11 filas completas (antes 17, con filas de 40 px).
-  prueba("Biblioteca a 1440 px: se ven 11 filas completas de la lista", () =>
+  // Con filas de 56 px, a 1440 × 900 caben 10 filas completas: el panel de subida de audio ocupa el alto de una fila (antes 17, con filas de 40 px).
+  prueba("Biblioteca a 1440 px: se ven 10 filas completas de la lista", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
       const visibles = await countFullyVisibleRows(page, "c-biblioteca-row", "filas de la lista (C2)");
-      assert.equal(visibles, 11, `Se ven ${visibles} filas completas y el rediseño mide 11 a 1440 × 900 con filas de 56 px.`);
+      assert.equal(visibles, 10, `Se ven ${visibles} filas completas y el rediseño mide 10 a 1440 × 900 con filas de 56 px y el panel de subida.`);
     }),
   );
 
