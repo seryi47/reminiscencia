@@ -194,17 +194,17 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 
 ### 3.8 Web pública: terceros y cabeceras: Parcial
 
-- Sin scripts, fuentes, analítica ni recursos de terceros. `index.html` carga solo `app.js` y las hojas de estilo locales. No hay SDK de analítica en `mobile/pubspec.yaml` ni en los ficheros Gradle.
+- Sin scripts, fuentes, analítica ni recursos de terceros. `index.html` carga solo `js/app.js` (módulo), el manifiesto y las hojas de estilo locales. No hay SDK de analítica en `mobile/pubspec.yaml` ni en los ficheros Gradle.
 - Los títulos y artistas se escriben con `textContent` (`app.js`, líneas 119 a 121), no con `innerHTML`.
-- `vercel.json` solo define el `Content-Type` del audio. No hay Content-Security-Policy ni otras cabeceras (R9).
-- DESIGN §5.3 prevé la tipografía autoalojada en WOFF2. La rama no contiene ficheros de fuente.
+- `vercel.json` define el `Content-Type` del audio y una Content-Security-Policy para todas las rutas (`default-src 'self'`, `frame-ancestors 'none'`, entre otras). No define `X-Content-Type-Options` ni `Referrer-Policy` (R9). La rama `feat/ui-publica` no tiene la CSP: al fusionarla hay que conservarla.
+- DESIGN §5.3 prevé la tipografía autoalojada en WOFF2. La rama la incluye en `frontend/web/fonts/` (pesos 400, 600 y 700).
 
-### 3.9 Fotografías y almacenamiento del navegador: Previsto
+### 3.9 Fotografías y almacenamiento del navegador: Implementado
 
 - Diseño: máximo 10 fotografías por recuerdo, reducción a 1600 px en el lado mayor (JPEG al 85 %) y eliminación de los metadatos EXIF, incluida la ubicación (DESIGN §9 y C-22).
-- En el código no hay reducción ni tratamiento de EXIF. `store.js` (línea 452) dice que la reducción la hace la interfaz, que todavía no existe.
-- Persistencia: DESIGN §9 prevé `navigator.storage.persist()` al crear el primer perfil. No aparece en el código. `pwa.js` sí consulta `navigator.storage.estimate()` (línea 74), para la caché.
-- El recordatorio de copia cada 14 días (DESIGN §9) no se ha localizado en el código de la rama.
+- La interfaz reduce las fotografías a 1600 px en el lado mayor (JPEG al 85 %) y elimina los metadatos EXIF, incluida la ubicación, al guardarlas (`js/cuidador/recuerdo-editor.js`).
+- Persistencia: se pide `navigator.storage.persist()` al crear el primer perfil (`js/cuidador/asistente.js`) y desde Ajustes. `pwa.js` consulta `navigator.storage.estimate()` (línea 74), para la caché y el aviso de cuota.
+- El aviso de copia con más de 14 días está en Inicio (`js/cuidador/inicio.js`).
 
 ### 3.10 Aplicación Android (`mobile/`): Implementado, sin datos del cuidador
 
@@ -269,11 +269,11 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 - Mitigación: alias y código. El registro no usa nombres (DESIGN §8.4).
 - Propuesta: texto de ayuda al crear el perfil («usa un alias, no un nombre»). Revisar los CSV antes de compartirlos.
 
-**R9. Sin cabeceras de seguridad en la web pública.**
+**R9. Cabeceras de seguridad incompletas en la web pública.**
 
-- Evidencia: `vercel.json` solo define el `Content-Type` del audio.
+- Evidencia: `vercel.json` define el `Content-Type` del audio y una Content-Security-Policy para todas las rutas. No define `X-Content-Type-Options` ni `Referrer-Policy`.
 - Riesgo: bajo hoy, porque no hay terceros. Crece si se añade un script externo o contenido sin escapar.
-- Propuesta: Content-Security-Policy que solo permita el origen propio; `X-Content-Type-Options: nosniff`; `Referrer-Policy`; `frame-ancestors 'none'`.
+- Propuesta: añadir `X-Content-Type-Options: nosniff` y `Referrer-Policy`. La CSP ya existe y ya incluye `frame-ancestors 'none'`.
 
 **R10. Documentación desactualizada.** Resuelta en lo principal (2-nov-2026).
 

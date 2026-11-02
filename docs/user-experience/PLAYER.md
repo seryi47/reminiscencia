@@ -1,6 +1,6 @@
 # Reproductor y registro del estudio
 
-**Estado:** describe la rama feat/ui-publica pendiente de fusión (commits 4d15379 y cc8ef01, sobre main 8a19a09). En main todavía no existe `frontend/web/js/player.js`.
+**Estado:** describe `frontend/web/js/player.js` tal como lo usa la interfaz única (feat/ui-publica, commit 9d4ae8f; ADR-0009). Las secciones que describen el reproductor como no conectado a la interfaz son anteriores a la integración y están pendientes de revisión (ver ROADMAP).
 
 **Base de diseño:** `docs/user-experience/DESIGN.md`, secciones 3.2, 6.1, 7.4 y 8.1 a 8.4.
 

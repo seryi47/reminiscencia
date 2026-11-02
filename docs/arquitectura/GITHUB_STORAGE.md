@@ -1,6 +1,6 @@
 # Almacenamiento en GitHub: audio, catálogo y límites
 
-- Estado: refleja `main` en el commit b3daf9f (2026-11-02).
+- Estado: 2026-11-02, con la interfaz única (ADR-0009).
 - Decisiones: ADR-0003 (almacenamiento en el ecosistema GitHub, parcialmente superada), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo), ADR-0008 (entrada por incidencias) y ADR-0010 (procesado y publicación separados).
 - Código: `backend/sonidos/` (`limits.py`, `catalog.py`, `pipeline.py`, `publish.py`, `paquete.py`) y `scripts/check_repo_limits.py`.
 
@@ -58,15 +58,15 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 |---|---|---|
 | Descarga de una fuente | 200 MiB | `intake.py`, `MAX_DOWNLOAD_BYTES` |
 | Metadatos de Internet Archive | 10 MiB | `intake.py`, `MAX_METADATA_BYTES` |
-| Petición de incidencia | 8000 caracteres | `issue_request.py`, igual en la web (`intake.js`) |
-| URL, licencia, título, datos JSON | 2048, 300, 200 y 4000 caracteres | igual |
-| Nombre de carpeta y artista | 80 y 200 caracteres | igual |
-| Etiquetas | 20 por canción, de 40 caracteres como máximo | igual |
+| Petición de incidencia | 8000 caracteres | `issue_request.py`; la web (`js/cuidador/incidencias.js`) no se ha comparado cifra a cifra |
+| URL, licencia, título, datos JSON | 2048, 300, 200 y 4000 caracteres | sin comparar en la web |
+| Nombre de carpeta y artista | 80 y 200 caracteres | sin comparar en la web |
+| Etiquetas | 20 por canción, de 40 caracteres como máximo | sin comparar en la web |
 | Cambios en un paquete | 2000 | `paquete.py`, `MAX_CHANGES` |
 
 ## 6. Flujo de incidencias (ADR-0008, ADR-0010)
 
-1. **Petición.** El propietario abre una incidencia con la etiqueta `biblioteca`. Su cuerpo son líneas `clave: valor` (`action: import` con `url`, `license` y `title`, o `action: organize` con un `payload` en JSON de una línea). La web prepara el texto y abre el formulario de nueva incidencia de GitHub con el texto ya escrito; lo envía el propietario. El workflow solo actúa si el autor es el propietario y la etiqueta está al crear la incidencia: si se añade después, no se lanza (ADR-0008).
+1. **Petición.** El propietario abre una incidencia con la etiqueta `biblioteca`. Su cuerpo son líneas `clave: valor` (`action: import` con `url`, `license` y `title`, o `action: organize` con un `payload` en JSON de una línea). La interfaz (Biblioteca del modo cuidador, «Gestionar la biblioteca») prepara el texto y abre el formulario de nueva incidencia de GitHub con el texto ya escrito; lo envía el propietario. El workflow solo actúa si el autor es el propietario y la etiqueta está al crear la incidencia: si se añade después, no se lanza (ADR-0008).
 2. **Validación.** `scripts/issue_request.py` valida la petición con `sonidos/issue_request.py`: claves y operaciones en lista blanca, identificadores con formato fijo, límites de longitud y booleanos JSON estrictos.
 3. **Procesado (`procesar`, sin token).** `scripts/ci_library.py` aplica la petición: importa (`pipeline.py`) o organiza (crea, renombra o borra carpetas, y edita canciones). Después regenera los datos públicos en su copia, pero no los empaqueta. `scripts/empaquetar_cambios.py` deja en el artefacto `biblioteca-paquete` solo el catálogo y el audio que cambiaron, con un día de retención.
 4. **Publicación (`publicar`, con token solo para subir).** Descarga el paquete y lo valida (`backend/sonidos/paquete.py`) antes de tocar el repositorio:
@@ -82,7 +82,7 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 
 ## 7. Prueba real y pendientes
 
-**Prueba real (2026-11-02).** La grabación «Tell me pretty maiden» se importó, se publicó y se despublicó con las incidencias #1, #2 y #3. Quedan en el historial los commits del bot `biblioteca: import` (630b6f5) y `biblioteca: organize` (8caeb45 y b3daf9f). La grabación está hoy en el catálogo como privada (`public: false`). ADR-0008 y ADR-0009 todavía dicen que el flujo no está verificado en GitHub Actions; esa prueba no está reflejada en ellas.
+**Prueba real (2026-11-02).** La grabación «Tell me pretty maiden» se importó, se publicó y se despublicó con las incidencias #1, #2 y #3. Quedan en el historial los commits del bot `biblioteca: import` (630b6f5) y `biblioteca: organize` (8caeb45 y b3daf9f). La grabación está hoy en el catálogo como privada (`public: false`). ADR-0008 todavía dice que el flujo no está verificado en GitHub Actions; esa prueba no está reflejada en él.
 
 **Pendiente:**
 
