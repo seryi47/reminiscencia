@@ -1,4 +1,4 @@
-# ADR-0009: Procesado y publicación separados en la biblioteca
+# ADR-0010: Procesado y publicación separados en la biblioteca
 
 - Estado: aceptada
 - Fecha: 2026-11-02

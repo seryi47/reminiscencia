@@ -2,8 +2,9 @@
 
 - Estado: aceptada
 - Fecha: 2026-10-31
+- Última revisión: 2026-11-02 (texto ajustado al código de main, commit b3daf9f)
 - Modifica: ADR-0002 (la regla general se mantiene; se añade una vía controlada)
-- Nota de estado (2026-10-31): **administración retirada.** La entrada por URL ya no pasa por `/admin/` en Vercel, sino por una petición en una incidencia del repositorio, procesada por el workflow `biblioteca.yml` (ADR-0008). Las reglas de esta decisión (plataformas bloqueadas, licencia obligatoria en ficheros directos, límite de 200 MB) siguen vigentes; la validación vive en `backend/sonidos/sources.py` y en `backend/sonidos/issue_request.py`. La sección «Actualización» de abajo queda superada: la lista de bloqueo ya no se duplica en la web.
+- Nota de estado (2026-11-02): la entrada por URL se hace con una petición en una incidencia del repositorio, procesada por el workflow `biblioteca.yml` (ADR-0008). Las reglas de esta decisión siguen vigentes. La validación vive en `backend/sonidos/sources.py`, `backend/sonidos/intake.py` y `backend/sonidos/issue_request.py`, y la web la repite en `frontend/web/js/intake.js`.
 
 ## Contexto
 
@@ -11,22 +12,20 @@ El usuario quiere pegar una URL y que el sistema obtenga el audio. Una URL de Yo
 
 ## Decisión
 
-1. **Plataformas bloqueadas por código.** YouTube, Spotify, Apple Music, SoundCloud, Vimeo, TikTok, Instagram, Facebook, Bandcamp, Deezer, Tidal, Mixcloud, Dailymotion y Twitch se rechazan antes de cualquier descarga, y también los dominios de sus ficheros (CDN, por ejemplo `sndcdn.com`, `dzcdn.net` o `bcbits.com`), incluidos como destino de una redirección. La lista completa está en `backend/sonidos/sources.py`. Sus condiciones de uso no permiten descargar el contenido y la mayoría de la música que alojan tiene derechos de autor.
-2. **Internet Archive, con licencia en los metadatos.** Se acepta una URL `archive.org/details/<id>` sólo si el ítem declara una licencia reconocida (dominio público o Creative Commons). La licencia se toma del propio ítem. Si no tiene licencia reconocida, se rechaza. Un fichero servido desde un servidor de Internet Archive (`*.archive.org`, como `ia800100.us.archive.org`) no se acepta como fichero directo: su licencia está en el ítem.
+1. **Plataformas bloqueadas por código.** YouTube, Spotify, Apple Music, SoundCloud, Vimeo, TikTok, Instagram, Facebook, Bandcamp, Deezer, Tidal, Mixcloud, Dailymotion y Twitch se rechazan antes de cualquier descarga. También se rechazan los dominios de sus ficheros (CDN, por ejemplo `sndcdn.com`, `dzcdn.net` o `bcbits.com`), incluidos como destino de una redirección. La lista también cubre X (`x.com`, `twitter.com`, `twimg.com`), Reddit (`reddit.com`, `redd.it`), Rumble (`rumble.com`) y los acortadores `dai.ly`, `fb.watch` e `instagr.am`. `BLOCKED_HOSTS` en `backend/sonidos/sources.py` tiene **42 entradas**. La lista de `frontend/web/js/intake.js` tiene las mismas 42, porque la web no puede aceptar más de lo que acepta el backend (ADR-0008). Sus condiciones de uso no permiten descargar el contenido y la mayoría de la música que alojan tiene derechos de autor.
+2. **Internet Archive, con licencia en los metadatos.** Se acepta una URL `archive.org/details/<identificador>` o `archive.org/download/<identificador>`, pero solo la forma de ítem: un fichero concreto dentro de `archive.org/download/<identificador>/<fichero>` se rechaza. Se acepta solo si el ítem declara una licencia reconocida en sus metadatos (`licenseurl`, que tiene que apuntar a creativecommons.org). La licencia se toma del propio ítem. Las licencias aceptadas (`IA_LICENSE_PATHS` en `sources.py`) son CC BY 4.0, CC BY-SA 4.0, CC BY-NC 4.0, CC BY-NC-SA 4.0, dominio público, CC0 1.0 y Public Domain Mark 1.0. Si el ítem no tiene una licencia reconocida, se rechaza.
+   Un fichero servido desde un servidor de Internet Archive (`*.archive.org`, como `ia800100.us.archive.org`) no se acepta como fichero directo: su licencia está en el ítem. Dentro de la importación de un ítem, la descarga sí puede seguir la redirección a su servidor de ficheros. Una URL directa que redirige a un servidor de Internet Archive se rechaza.
 3. **Fichero de audio directo, con licencia declarada por el usuario.** Se acepta una URL que apunte directamente a un fichero de audio (`.mp3`, `.flac`, `.ogg`, `.opus`, `.m4a`, `.wav`) sólo si el usuario indica la licencia. El sistema no puede verificarla, así que la responsabilidad es del usuario y queda registrada en la biblioteca.
 4. **Cualquier otra URL se rechaza** con un mensaje explicativo.
-5. **Límite de tamaño de descarga** (200 MB) y descarga a un directorio de trabajo, nunca al repositorio. No se descarga de direcciones de bucle local, de red privada ni de enlace local (metadatos de la nube), tampoco por redirección.
+5. **Límites y descarga segura.** El tamaño máximo de descarga es de **200 MiB** (`MAX_DOWNLOAD_BYTES` en `intake.py`; el mensaje al usuario dice «200 MB»). Los metadatos de Internet Archive tienen un límite de 10 MiB. La descarga va a un directorio de trabajo (`audio-library/staging/`, sin rastrear y borrado al terminar), nunca a `audio-library/audio/`. Se rechaza si el servidor no declara el tamaño ni usa codificación por trozos, y si la descarga se corta. No se usan proxies del entorno. No se descarga de direcciones de bucle local, de red privada ni de enlace local (metadatos de la nube), tampoco por redirección.
+6. **Dónde se comprueba cada cosa.** La web (`frontend/web/js/intake.js`) valida la petición antes de abrir la incidencia: el esquema, la forma del host, las plataformas bloqueadas, la forma de los ítems de Internet Archive, los servidores de ficheros de Internet Archive y las direcciones IP escritas en la URL que son privadas o de bucle local. **La web no resuelve nombres de dominio.** La comprobación de direcciones privadas por nombre la hace el backend al conectar (`resolve_public` y `_connect_public` en `intake.py`): cada conexión valida la dirección a la que conecta, también en cada redirección. Esa es la garantía real.
 
 ## Consecuencias
 
 - No se implementa ninguna extracción desde plataformas de vídeo ni de streaming, ni siquiera para uso privado. Si el usuario necesita música de esas plataformas, la vía legal es comprar o licenciar esa música, o usar un fichero propio con licencia.
-- Cualquier pista publicada en la web pública debe tener licencia registrada. La publicación es un paso separado que el usuario aprueba.
-- La regla es fácil de auditar: la lista de plataformas bloqueadas y las licencias aceptadas están en `backend/sonidos/sources.py`, con pruebas.
+- Cualquier pista publicada en la web pública debe tener licencia registrada. La publicación es un paso separado que el usuario aprueba (la operación `edit_song` con `public`, ADR-0008).
+- La regla es fácil de auditar: la lista de plataformas bloqueadas (42 entradas, la misma en la web) y las licencias aceptadas están en `backend/sonidos/sources.py`, con pruebas en `backend/tests/test_sources.py`.
 
 ## Pendiente de dictamen legal
 
 - Si la licencia declarada por el depositante en Internet Archive es suficiente para publicar la grabación en Europa. Para grabaciones antiguas puede depender de la fecha de fijación y del país.
-
-## Actualización (2026-10-31)
-
-El panel local con API se retiró. La entrada por URL ahora pasa por `/admin/` (Vercel), que valida la dirección, y la importación real corre en el workflow `library` de GitHub Actions (`backend/sonidos/pipeline.py`). La lista de plataformas bloqueadas está duplicada a propósito en `backend/sonidos/sources.py` y en `frontend/web/lib/validate.js`; si se cambia una, hay que cambiar la otra.
