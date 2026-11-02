@@ -1,11 +1,17 @@
 /* Marco del modo paciente (DESIGN 6.1 P-1 a P-3, P-17 a P-19 y 3.1): cabecera, navegación, mini reproductor,
    banda sin conexión, botones, diálogos y teclado de PIN. Solo tokens de tokens.css y base.css (sección 4 del
-   contrato); nada de colores fijos. Breakpoints (contrato 6): menos de 768 px, barra inferior; desde 768 px, raíl.
+   contrato); nada de colores fijos.
+   Estructura, como una aplicación de música en web:
+   - Teléfono (menos de 600 px): cabecera de 64 px, contenido, mini reproductor de 64 px y barra de pestañas
+     inferior de 64 px con los cuatro destinos.
+   - Tableta (de 600 a 1023 px): riel de 72 px a la izquierda con iconos. El nombre de cada destino queda accesible
+     y aparece como tooltip al pasar el puntero o al enfocarlo. El mini reproductor de 76 px ocupa todo el ancho.
+   - Escritorio (desde 1024 px): barra lateral de 240 px con grupos, cabecera de 88 px y título de 40 px.
    El texto escala con --escala; por eso las alturas mínimas se escriben en px multiplicados por --escala. */
 
 /* ---------- Rejilla del marco ----------
    Teléfono: cabecera, banda, contenido, mini reproductor y barra inferior en columna.
-   Desde 768 px: el raíl ocupa la columna izquierda (112 px) y la cabecera, el contenido y el mini van a la derecha. */
+   Desde 600 px: la navegación ocupa la columna izquierda y el mini reproductor, todo el ancho abajo. */
 .p-shell {
   /* Contiene los elementos absolutos (por ejemplo, el aviso del volumen para lectores de pantalla): sin esto, su
      bloque de contención es el documento y el marco no los recorta, y la página gana un desplazamiento vertical. */
@@ -26,19 +32,26 @@
   color: var(--texto);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 600px) {
   .p-shell {
-    grid-template-columns: 112px minmax(0, 1fr);
+    grid-template-columns: 72px minmax(0, 1fr);
     grid-template-rows: var(--alto-cabecera, 64px) auto minmax(0, 1fr) auto;
     grid-template-areas:
       "navegacion cabecera"
       "navegacion banda"
       "navegacion principal"
-      "navegacion mini";
+      "mini mini";
   }
 }
 
-/* ---------- Cabecera (P-1): 64 px, H1 a la izquierda y botón Cuidador a la derecha ---------- */
+@media (min-width: 1024px) {
+  .p-shell {
+    --alto-cabecera: 88px;
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+}
+
+/* ---------- Cabecera (P-1): 64 px en teléfono y tableta, 88 px en escritorio; H1 a la izquierda y botón Cuidador a la derecha ---------- */
 .p-header {
   grid-area: cabecera;
   display: flex;
@@ -51,6 +64,13 @@
   border-bottom: 1px solid var(--borde-suave);
 }
 
+@media (min-width: 600px) {
+  .p-header {
+    background: transparent;
+    border-bottom: 0;
+  }
+}
+
 .p-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -60,6 +80,12 @@
   white-space: nowrap;
   font: var(--tipo-h1);
   color: var(--texto);
+}
+
+@media (min-width: 1024px) {
+  .p-title {
+    font: 700 calc(40px * var(--escala, 1)) / calc(48px * var(--escala, 1)) var(--familia-base);
+  }
 }
 
 /* Botón Cuidador: 56 px de alto y 120 px de ancho mínimo; candado de 24 px solo si hay PIN. */
@@ -133,16 +159,26 @@
   outline: none;
 }
 
-/* ---------- Navegación (P-2 y P-3) ---------- */
+/* ---------- Navegación (P-2 y P-3) ----------
+   Teléfono: barra de pestañas inferior con los cuatro destinos en columnas. Los grupos son contenedores sin
+   semántica (display: contents) para que cada destino sea una columna. Los títulos de grupo solo se ven desde 1024 px. */
 .p-nav {
   grid-area: navegacion;
   display: grid;
-  grid-template-columns: repeat(4, minmax(90px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: stretch;
-  height: calc(72px + env(safe-area-inset-bottom, 0px));
+  min-height: calc(64px * var(--escala, 1) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: var(--superficie-1);
   border-top: 1px solid var(--borde-suave);
+}
+
+.p-nav-grupo {
+  display: contents;
+}
+
+.p-nav-titulo {
+  display: none;
 }
 
 .p-nav-item {
@@ -152,18 +188,28 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-height: 72px;
-  padding: 4px 8px;
+  min-width: 0;
+  min-height: calc(64px * var(--escala, 1));
+  padding: 4px 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--texto);
-  font: var(--tipo-etiqueta);
+  font: 700 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
   cursor: pointer;
 }
 
 .p-nav-item .p-icono {
   width: 28px;
   height: 28px;
+}
+
+.p-nav-texto {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .p-nav-item:active {
@@ -185,51 +231,192 @@
   background: var(--acento);
 }
 
-@media (min-width: 768px) {
+/* Desde 600 px la navegación es una columna: en tableta, un riel de iconos; en escritorio, una barra lateral. */
+@media (min-width: 600px) {
   .p-nav {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    height: auto;
-    padding: 16px 8px;
-    padding-bottom: 16px;
+    align-items: stretch;
+    gap: 6px;
+    min-height: 0;
+    padding: 12px 8px;
+    background: var(--fondo);
     border-top: 0;
     border-right: 1px solid var(--borde-suave);
   }
 
+  /* El título de cada grupo queda solo para lectores de pantalla. */
+  .p-nav-titulo {
+    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .p-nav-item {
+    flex: none;
     width: 100%;
-    height: 96px;
-    min-height: 96px;
-    gap: 4px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 16px;
+    gap: 0;
   }
 
-  .p-nav-item .p-icono {
-    width: 36px;
-    height: 36px;
-  }
-
-  /* Destino activo en el raíl: barra lateral de 6 px en acento (P-3). */
   .p-nav-item[aria-current="page"]::before {
     top: 0;
     bottom: 0;
     left: 0;
     right: auto;
-    width: 6px;
+    width: 4px;
     height: auto;
+  }
+
+  .p-nav-item[aria-current="page"] {
+    background: var(--superficie-2);
   }
 }
 
-/* ---------- Mini reproductor (P-18): 72 px, título que abre Escuchar y botón de 56 px ---------- */
+/* Tableta (riel de 72 px): solo iconos. El nombre queda accesible y se muestra como tooltip. */
+@media (min-width: 600px) and (max-width: 1023.98px) {
+  .p-nav-item {
+    height: 64px;
+  }
+
+  .p-nav-texto {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .p-nav-item::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: calc(100% + 8px);
+    top: 50%;
+    z-index: 70;
+    display: none;
+    padding: 6px 12px;
+    border: 1px solid var(--borde-control);
+    border-radius: 8px;
+    background: var(--superficie-3);
+    color: var(--texto);
+    font: var(--tipo-meta);
+    white-space: nowrap;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .p-nav-item:focus-visible::after {
+    display: block;
+  }
+
+  @media (hover: hover) {
+    .p-nav-item:hover::after {
+      display: block;
+    }
+  }
+}
+
+/* Escritorio (barra lateral de 240 px): grupos con título visible, destinos con icono y nombre en fila. */
+@media (min-width: 1024px) {
+  .p-nav {
+    gap: 0;
+    padding: 20px 12px;
+    overflow-y: auto;
+  }
+
+  .p-nav-grupo {
+    display: block;
+  }
+
+  .p-nav-grupo + .p-nav-grupo {
+    margin-top: 20px;
+  }
+
+  .p-nav-titulo {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0 0 6px;
+    padding: 0 12px;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+    white-space: normal;
+    font: var(--tipo-meta);
+    font-weight: 600;
+    color: var(--texto-3);
+  }
+
+  .p-nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    min-height: calc(56px * var(--escala, 1));
+    margin-bottom: 4px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font: var(--tipo-etiqueta);
+  }
+
+  .p-nav-texto {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    clip: auto;
+    clip-path: none;
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .p-nav-item[aria-current="page"]::before {
+    top: 10px;
+    bottom: 10px;
+    left: 0;
+    width: 4px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .p-nav-item::after {
+    content: none;
+  }
+}
+
+/* ---------- Mini reproductor (P-18): título que abre Escuchar y botón de 56 px. 64 px en teléfono, 76 px desde 600 px ---------- */
 .p-mini {
   grid-area: mini;
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 72px;
-  padding: 8px var(--margen-pagina, 16px);
+  box-sizing: border-box;
+  min-height: calc(64px * var(--escala, 1));
+  padding: 0 var(--margen-pagina, 16px);
   background: var(--superficie-1);
   border-top: 1px solid var(--borde-suave);
+}
+
+@media (min-width: 600px) {
+  .p-mini {
+    min-height: 76px;
+  }
 }
 
 .p-mini-titulo {

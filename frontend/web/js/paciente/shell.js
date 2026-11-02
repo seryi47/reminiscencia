@@ -18,6 +18,14 @@ export const NAV_DESTINATIONS = Object.freeze([
   Object.freeze({ key: 'buscar', label: 'Buscar', icon: 'lupa' }),
 ]);
 
+// Grupos de la navegación, solo para organizar la barra lateral de escritorio (títulos visibles desde 1024 px):
+// «Escuchar» y «Biblioteca» con título; «Buscar», suelto. Las claves coinciden con NAV_DESTINATIONS.
+const NAV_GROUPS = Object.freeze([
+  Object.freeze({ title: 'Escuchar', keys: Object.freeze(['escuchar']) }),
+  Object.freeze({ title: 'Biblioteca', keys: Object.freeze(['listas', 'carpetas']) }),
+  Object.freeze({ title: null, keys: Object.freeze(['buscar']) }),
+]);
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MINI_REFRESH_MS = 250;
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -301,22 +309,30 @@ export function mountShell(appRoot, services) {
     hidden: true,
   }, [miniTitleButton, miniToggle]);
 
-  // Navegación de cuatro destinos (P-2 y P-3). El destino activo lleva aria-current="page".
+  // Navegación de cuatro destinos (P-2 y P-3). El destino activo lleva aria-current="page". data-tip repite el
+  // nombre para el tooltip del riel de tableta (solo visual: el nombre accesible es el texto del botón).
   const navButtons = NAV_DESTINATIONS.map((destination) => {
     const button = element('button', {
       type: 'button',
       class: 'p-nav-item',
       'data-testid': `p-nav-${destination.key}`,
       'data-key': destination.key,
+      'data-tip': destination.label,
       on: { click: () => onNavigate(destination.key, button) },
     }, [icon(destination.icon), element('span', { class: 'p-nav-texto', text: destination.label })]);
     return button;
   });
+  // Cada grupo es un bloque con su título (si lo tiene) y sus destinos; la barra de teléfono los muestra en columnas.
+  const navByKey = new Map(navButtons.map((button) => [button.dataset.key, button]));
+  const navGroups = NAV_GROUPS.map((group) => element('div', { class: 'p-nav-grupo' }, [
+    group.title ? element('p', { class: 'p-nav-titulo', text: group.title }) : null,
+    ...group.keys.map((key) => navByKey.get(key)),
+  ]));
   const nav = element('nav', {
     class: 'p-nav',
     'data-testid': 'p-nav',
     'aria-label': 'Navegación del paciente',
-  }, navButtons);
+  }, navGroups);
 
   const shell = element('div', { class: 'p-shell', 'data-modo': 'paciente' }, [
     header,
