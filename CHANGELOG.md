@@ -83,6 +83,9 @@
 - Las canciones aparecen en la biblioteca y en el modo paciente como las del catálogo. No se suben a ningún servidor, no van a GitHub ni a la web pública y no entran en la copia cifrada.
 - Módulo `frontend/web/js/cuidador/subida-local.js`; `SHELL_VERSION` 3 con el módulo en `SHELL_ASSETS`.
 - Pruebas: `tests/web-unit/subida-local.test.mjs`. Conversión real probada en Chrome con WAV, MP3, FLAC y M4A.
+- Borrado de canciones subidas desde este navegador: «Borrar de este navegador» en el menú de la fila, con confirmación explícita. Solo para las locales; quita el registro de IndexedDB y el catálogo en memoria.
+- `SHELL_VERSION` 4 (la caché del shell cambia porque cambian `asistente.js`, `biblioteca.js` y `subida-local.js`).
+- Asistente de primer perfil: el título «Nuevo perfil» deja de repetirse a la vista (el marco ya lo muestra); el H2 sigue en el árbol de accesibilidad.
 
 ### Pendiente de confirmar
 - Si la copia cifrada debe llevar los metadatos de estas canciones (el encargo decía «solo metadatos»). Ahora no los lleva.

@@ -199,6 +199,33 @@ describe("Inicio, perfiles y asistente de primer perfil", () => {
       await waitVisible(page, "c-wizard-skip-pin", { context: "paso 3 del asistente: «Ahora no» (C3e)" });
     }),
   );
+
+  prueba("El asistente no repite «Nuevo perfil» a la vista: su H2 existe pero está oculto y el H1 del marco se ve", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await startFirstRun(page);
+      await waitVisible(page, "c-wizard", { context: "asistente de primer perfil (C3e)" });
+      const estado = await page.evaluate(() => {
+        const titulo = document.getElementById("cp-titulo-asistente");
+        const cabecera = [...document.querySelectorAll("h1")].filter((el) => window.__e2eIsShown(el));
+        return {
+          existe: Boolean(titulo),
+          etiqueta: titulo?.tagName ?? null,
+          // visually-hidden mide 1 px y va recortado: no se ve, aunque tenga rectángulo.
+          visible: titulo ? titulo.getBoundingClientRect().width > 1 && titulo.getBoundingClientRect().height > 1 : null,
+          nombraSeccion: document.querySelector('[data-testid="c-wizard"]')?.getAttribute("aria-labelledby"),
+          h1Visibles: cabecera.length,
+          textoH1: cabecera[0]?.textContent.trim() ?? "",
+        };
+      });
+      assert.equal(estado.existe, true, "El H2 del asistente (cp-titulo-asistente) debe seguir en el DOM para los lectores de pantalla.");
+      assert.equal(estado.etiqueta, "H2", "El título del asistente sigue siendo un H2 (DESIGN 3.1).");
+      assert.equal(estado.visible, false, "El título del asistente no debe verse: el marco ya muestra «Nuevo perfil».");
+      assert.equal(estado.nombraSeccion, "cp-titulo-asistente", "La sección del asistente sigue nombrada por su H2 oculto.");
+      assert.equal(estado.h1Visibles, 1, "Debe quedar un único H1 visible (cabecera del marco).");
+      assert.equal(estado.textoH1, "Nuevo perfil", "El H1 del marco muestra «Nuevo perfil».");
+    }),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -283,6 +310,111 @@ describe("Ajustes y atajos de teclado", () => {
       await pausa(300);
       const plays = await page.evaluate(() => window.__e2ePlayCalls ?? 0);
       assert.equal(plays, 0, "La vista previa no debe reproducir nada (DESIGN 3.2: no crea sesión ni registra eventos).");
+    }),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Biblioteca: borrar una canción subida desde este navegador (ADR-0012). Las públicas no ofrecen la opción.
+const ID_CANCION_LOCAL = "L0011223344556677";
+const TITULO_CANCION_LOCAL = "Canción local de prueba";
+const TEXTO_CONFIRMACION_BORRAR = "¿Borrar esta canción de este navegador? No se puede deshacer.";
+
+// Siembra un registro en la base de audio local del navegador (la misma que usa subida-local.js).
+async function sembrarCancionLocal(page) {
+  await page.evaluate(
+    async ({ id, title }) => {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open("reminiscencia-audio-local", 1);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains("pistas")) {
+            request.result.createObjectStore("pistas", { keyPath: "id" });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction("pistas", "readwrite");
+        tx.objectStore("pistas").put({
+          id,
+          title,
+          durationS: 60,
+          channels: 1,
+          bitrate: 32000,
+          bytes: 8,
+          createdAt: Date.now(),
+          blob: new Blob([new Uint8Array(8)], { type: "audio/ogg" }),
+        });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    },
+    { id: ID_CANCION_LOCAL, title: TITULO_CANCION_LOCAL },
+  );
+}
+
+// Cuántos registros hay en la base de audio local del navegador.
+async function contarCancionesLocales(page) {
+  return page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("reminiscencia-audio-local");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const total = await new Promise((resolve, reject) => {
+      const request = db.transaction("pistas", "readonly").objectStore("pistas").count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return total;
+  });
+}
+
+// Abre el menú «Más opciones» de una fila y devuelve el texto de sus opciones.
+async function abrirMenuDeFila(page, songId) {
+  const boton = `[data-testid="c-biblioteca-row"][data-song-id="${songId}"] [data-control="menu"]`;
+  await page.waitForSelector(boton, { timeout: 5000 });
+  await page.click(boton);
+  await page.waitForSelector(".c-biblioteca-menu [role='menuitem']", { timeout: 5000 });
+  return page.$$eval(".c-biblioteca-menu [role='menuitem']", (items) => items.map((item) => item.textContent.trim()));
+}
+
+describe("Biblioteca: borrar canciones subidas desde este navegador", () => {
+  prueba("El menú de una canción pública no ofrece «Borrar de este navegador»", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openCaregiverHome(page, server.url);
+      await goCaregiverSection(page, "biblioteca");
+      const idPublica = await page.$$eval('[data-testid="c-biblioteca-row"]', (filas) => filas.map((fila) => fila.dataset.songId).find((id) => id && id.startsWith("S")));
+      assert.ok(idPublica, "La biblioteca de prueba debe tener al menos una canción pública.");
+      const opciones = await abrirMenuDeFila(page, idPublica);
+      await page.keyboard.press("Escape");
+      assert.equal(opciones.includes("Borrar de este navegador"), false, `El menú de una canción pública muestra: ${opciones.join(", ")}`);
+    }),
+  );
+
+  prueba("Borrar una canción local pide confirmación y la quita de la lista y de este navegador", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openCaregiverHome(page, server.url);
+      await sembrarCancionLocal(page);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await goCaregiverSection(page, "biblioteca");
+      const opciones = await abrirMenuDeFila(page, ID_CANCION_LOCAL);
+      assert.ok(opciones.includes("Borrar de este navegador"), `El menú de la canción local no ofrece borrar: ${opciones.join(", ")}`);
+      // Por teclado: el foco inicial está en la primera opción; ArrowDown avanza hasta «Borrar de este navegador».
+      let enfocada = "";
+      for (let intento = 0; intento < 5 && enfocada !== "Borrar de este navegador"; intento += 1) {
+        await page.keyboard.press("ArrowDown");
+        enfocada = await page.evaluate(() => document.activeElement?.textContent.trim() ?? "");
+      }
+      assert.equal(enfocada, "Borrar de este navegador", "Con el teclado no se llega a la opción de borrar del menú.");
+      await page.keyboard.press("Enter");
+      await page.waitForFunction((texto) => document.body.innerText.includes(texto), { timeout: 5000 }, TEXTO_CONFIRMACION_BORRAR);
+      await clickTestid(page, "app-confirm-ok", "confirmación «Borrar» de la canción local");
+      await page.waitForFunction((id) => !document.querySelector(`[data-song-id="${id}"]`), { timeout: 5000 }, ID_CANCION_LOCAL);
+      assert.equal(await contarCancionesLocales(page), 0, "La canción borrada sigue en IndexedDB de este navegador.");
     }),
   );
 });

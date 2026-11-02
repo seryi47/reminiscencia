@@ -8,7 +8,9 @@
 
 import { audioCacheName, planOfflineDownload } from '../offline-core.js';
 import { openIncidentSheet } from './incidencias.js';
-import { addLocalFiles, LOCAL_AUDIO_ACCEPT, opusSupport, UNSUPPORTED_TEXT } from './subida-local.js';
+import {
+  addLocalFiles, deleteLocalSong, isDeletableSong, LOCAL_AUDIO_ACCEPT, opusSupport, UNSUPPORTED_TEXT,
+} from './subida-local.js';
 
 const NS_SVG = 'http://www.w3.org/2000/svg';
 const TITLE = 'Biblioteca';
@@ -319,6 +321,8 @@ export function mountLibrary(root, services, params = {}) {
   const store = services.store;
   const rowsById = new Map();
   const partsById = new Map();
+  // Canciones subidas desde este navegador (ADR-0012): las únicas que se pueden borrar desde aquí.
+  const localSongIds = new Set();
   const state = {
     rows: [],
     visible: [],
@@ -1002,10 +1006,13 @@ export function mountLibrary(root, services, params = {}) {
       items: [
         { value: 'ficha', label: 'Abrir la ficha' },
         { value: 'quitar', label: 'Quitar del perfil', disabled: !canRemove() },
+        // Solo las canciones subidas desde este navegador tienen esta opción; las públicas no se borran aquí.
+        ...(localSongIds.has(songId) ? [{ value: 'borrar', label: 'Borrar de este navegador' }] : []),
       ],
       onPick: (value) => {
         if (value === 'ficha') openPanelFor(songId);
         else if (value === 'quitar') removeFromProfile([songId]);
+        else if (value === 'borrar') deleteLocalSongFromBrowser(songId);
       },
     });
   }
@@ -1048,6 +1055,48 @@ export function mountLibrary(root, services, params = {}) {
     showNotice(removed === count
       ? `${plural(count, 'Canción quitada', 'Canciones quitadas')} del perfil.`
       : 'No se pudo quitar del perfil la canción.', { tone: removed === count ? 'status' : 'alert' });
+  }
+
+  // Borra una canción subida desde este navegador: pide confirmación explícita, la quita de IndexedDB, del catálogo
+  // en memoria y de la tabla. Si suena, se pausa antes. El foco pasa a la fila vecina (o al botón de subida).
+  async function deleteLocalSongFromBrowser(songId) {
+    if (disposed || !localSongIds.has(songId) || !rowsById.has(songId)) return;
+    const confirmed = await services.confirm({
+      title: 'Borrar canción',
+      body: '¿Borrar esta canción de este navegador? No se puede deshacer.',
+      confirmLabel: 'Borrar',
+      cancelLabel: 'Cancelar',
+      danger: true,
+    });
+    if (!confirmed || disposed) return;
+    if (readPlayerState(services.player).id === songId) services.player?.pause?.();
+    try {
+      await deleteLocalSong(songId);
+    } catch (error) {
+      if (!disposed) showNotice(error?.message ?? 'No se pudo borrar la canción de este navegador.', { tone: 'alert' });
+      return;
+    }
+    // El catálogo en memoria es compartido con el resto de la app: se quita también de ahí.
+    const catalogSongs = Array.isArray(services.catalog?.songs) ? services.catalog.songs : null;
+    if (catalogSongs) {
+      const index = catalogSongs.findIndex((song) => song?.id === songId);
+      if (index !== -1) catalogSongs.splice(index, 1);
+    }
+    if (disposed) return;
+    const position = state.visible.findIndex((row) => row.id === songId);
+    localSongIds.delete(songId);
+    rowsById.delete(songId);
+    folderIdBySong.delete(songId);
+    state.rows = state.rows.filter((row) => row.id !== songId);
+    state.selected = new Set([...state.selected].filter((id) => id !== songId));
+    const parts = partsById.get(songId);
+    partsById.delete(songId);
+    parts?.tr.remove();
+    applyView();
+    const neighbour = state.visible[Math.min(Math.max(position, 0), state.visible.length - 1)];
+    if (neighbour) focusRow(neighbour.id);
+    else localButton.focus();
+    showNotice('Canción borrada de este navegador.', { tone: 'status' });
   }
 
   // ---- Listas y lote ----
@@ -1176,7 +1225,10 @@ export function mountLibrary(root, services, params = {}) {
     if (!state.loaded) return;
     const fresh = songs.filter((song) => !rowsById.has(song.id));
     if (fresh.length === 0) return;
-    for (const song of fresh) folderIdBySong.set(song.id, song.folder_id ?? null);
+    for (const song of fresh) {
+      folderIdBySong.set(song.id, song.folder_id ?? null);
+      if (isDeletableSong(song)) localSongIds.add(song.id);
+    }
     for (const row of buildRows(fresh, { cachedIds: cachedSongIds(fresh) })) {
       rowsById.set(row.id, row);
       state.rows.push(row);
@@ -1244,6 +1296,9 @@ export function mountLibrary(root, services, params = {}) {
       if (disposed) return;
       state.profileId = profileId ?? null;
       const songs = Array.isArray(services.catalog?.songs) ? services.catalog.songs : [];
+      for (const song of songs) {
+        if (isDeletableSong(song)) localSongIds.add(song.id);
+      }
       const [links, memories, cachedUrls] = await Promise.all([
         state.profileId !== null ? store.listSongLinks(state.profileId) : [],
         state.profileId !== null ? store.listMemories(state.profileId) : [],
