@@ -1,0 +1,44 @@
+name: web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/web/**"
+      - "tests/web-unit/**"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "frontend/web/**"
+      - "tests/web-unit/**"
+      - ".github/workflows/web.yml"
+
+# Solo lectura: este flujo solo comprueba la web, no escribe nada en el repositorio.
+permissions:
+  contents: read
+
+jobs:
+  pruebas-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Una ejecución por ref: un envío nuevo cancela la comprobación anterior de la misma rama.
+    concurrency:
+      group: web-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Comprobar sintaxis de la web
+        run: |
+          set -eo pipefail
+          find frontend/web/js -name '*.js' -print0 | xargs -0 -r -n1 node --check
+          node --check frontend/web/sw.js
+
+      - name: Ejecutar pruebas de la web
+        run: node --test "tests/web-unit/*.test.mjs"
