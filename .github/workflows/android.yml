@@ -3,7 +3,9 @@ name: android
 # Analiza, prueba, compila y publica la app Android (mobile/). Procedimiento: docs/android/RELEASE.md.
 #   - Ejecución manual (workflow_dispatch): análisis, pruebas y APK de depuración. Si están los secretos
 #     de firma, también el APK de producción. No publica nada.
-#   - Etiqueta android-vX.Y.Z: lo anterior y, además, la release de GitHub con los dos APK y SHA256SUMS.txt.
+#   - Etiqueta android-vX.Y.Z: lo anterior y, además, la release de GitHub con el APK de depuración, los tres
+#     APK de producción (uno por arquitectura: arm64-v8a, armeabi-v7a y x86_64) y SHA256SUMS.txt.
+#     Cada teléfono solo necesita el suyo; arm64-v8a es el de la mayoría.
 # Secretos de firma (nombres exactos; los valores nunca van al repositorio):
 #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
 
@@ -185,30 +187,52 @@ jobs:
         working-directory: mobile
         run: flutter pub get
 
-      - name: Compilar APK de producción
+      - name: Compilar APK de producción (uno por arquitectura)
         if: steps.secretos.outputs.listo == 'true'
         working-directory: mobile
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
-      - name: Verificar firma del APK de producción
+      - name: Verificar firma de cada APK de producción
         if: steps.secretos.outputs.listo == 'true'
-        run: scripts/android/verify_apk.sh mobile/build/app/outputs/flutter-apk/app-release.apk "$HUELLA_CERTIFICADO_PRODUCCION"
+        run: |
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            scripts/android/verify_apk.sh "mobile/build/app/outputs/flutter-apk/app-${abi}-release.apk" "$HUELLA_CERTIFICADO_PRODUCCION"
+          done
 
-      - name: Preparar artefacto de producción
+      - name: Preparar artefactos de producción
         if: steps.secretos.outputs.listo == 'true'
         env:
           NOMBRE: ${{ needs.depurar.outputs.nombre }}
         run: |
-          mkdir -p dist
-          cp mobile/build/app/outputs/flutter-apk/app-release.apk "dist/reminiscencia-${NOMBRE}.apk"
-          (cd dist && sha256sum "reminiscencia-${NOMBRE}.apk" > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            mkdir -p "dist/${abi}"
+            cp "mobile/build/app/outputs/flutter-apk/app-${abi}-release.apk" "dist/${abi}/reminiscencia-${NOMBRE}-${abi}.apk"
+            (cd "dist/${abi}" && sha256sum "reminiscencia-${NOMBRE}-${abi}.apk" > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          done
 
-      - name: Subir artefacto apk-produccion
+      # Un artefacto por arquitectura: nombres distintos y sin choques al descargarlos en la publicación.
+      - name: Subir artefacto apk-produccion-arm64-v8a
         if: steps.secretos.outputs.listo == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: apk-produccion
-          path: dist/
+          name: apk-produccion-arm64-v8a
+          path: dist/arm64-v8a/
+          if-no-files-found: error
+
+      - name: Subir artefacto apk-produccion-armeabi-v7a
+        if: steps.secretos.outputs.listo == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-produccion-armeabi-v7a
+          path: dist/armeabi-v7a/
+          if-no-files-found: error
+
+      - name: Subir artefacto apk-produccion-x86_64
+        if: steps.secretos.outputs.listo == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-produccion-x86_64
+          path: dist/x86_64/
           if-no-files-found: error
 
       - name: Borrar material de firma
@@ -230,21 +254,35 @@ jobs:
           name: apk-depuracion
           path: entrega/depuracion
 
-      - name: Descargar apk-produccion
+      - name: Descargar apk-produccion-arm64-v8a
         uses: actions/download-artifact@v4
         with:
-          name: apk-produccion
-          path: entrega/produccion
+          name: apk-produccion-arm64-v8a
+          path: entrega/produccion/arm64-v8a
+
+      - name: Descargar apk-produccion-armeabi-v7a
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-produccion-armeabi-v7a
+          path: entrega/produccion/armeabi-v7a
+
+      - name: Descargar apk-produccion-x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-produccion-x86_64
+          path: entrega/produccion/x86_64
 
       - name: Reunir ficheros y comprobar sumas
         run: |
           mkdir -p entrega/ficheros
           find entrega/depuracion entrega/produccion -name '*.apk' -exec cp {} entrega/ficheros/ \;
-          if [ "$(find entrega/ficheros -name '*.apk' | wc -l)" -ne 2 ]; then
-            echo "::error::Se esperaban exactamente dos APK."
+          if [ "$(find entrega/ficheros -name '*.apk' | wc -l)" -ne 4 ]; then
+            echo "::error::Se esperaban cuatro APK: uno de depuración y tres de producción (uno por arquitectura)."
             exit 1
           fi
-          (cd entrega/ficheros && sha256sum -c ../depuracion/SHA256SUMS.txt ../produccion/SHA256SUMS.txt)
+          for sumas in entrega/depuracion/SHA256SUMS.txt entrega/produccion/*/SHA256SUMS.txt; do
+            (cd "$(dirname "$sumas")" && sha256sum -c SHA256SUMS.txt)
+          done
           (cd entrega/ficheros && sha256sum -- *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: Crear la release de GitHub
@@ -257,4 +295,4 @@ jobs:
             entrega/ficheros/*.apk entrega/ficheros/SHA256SUMS.txt \
             --verify-tag \
             --title "Reminiscencia Android ${TAG#android-v}" \
-            --notes "APK de producción firmado y APK de depuración de la app Android. Verifica la descarga con SHA256SUMS.txt. Procedimiento: docs/android/RELEASE.md."
+            --notes "APK de producción firmado, uno por arquitectura (arm64-v8a, armeabi-v7a y x86_64; arm64-v8a es el de la mayoría de teléfonos), y APK de depuración. Verifica la descarga con SHA256SUMS.txt. Procedimiento: docs/android/RELEASE.md."
