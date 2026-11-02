@@ -1,7 +1,7 @@
 // Incidencias de la biblioteca (ADR-0008). La web no escribe en el catálogo: cada cambio se prepara como una
-// incidencia de GitHub con la etiqueta «biblioteca», y solo la procesa el propietario. El cuerpo cumple el
-// contrato que lee el backend (backend/sonidos/issue_request.py): líneas «clave: valor» con las claves action,
-// url, license, title y payload; el payload de organize es un objeto JSON en una sola línea.
+// incidencia de GitHub con la etiqueta «biblioteca», y la procesan las cuentas con permiso de escritura. El cuerpo
+// cumple el contrato que lee el backend (backend/sonidos/issue_request.py): líneas «clave: valor» con las claves
+// action, url, license, title y payload; el payload de organize es un objeto JSON en una sola línea.
 //
 // Las validaciones reproducen las del backend con dos restricciones más estrictas que fija el contrato de la
 // interfaz: solo https, y en Internet Archive solo la forma archive.org/details/<identificador> (el backend
@@ -11,6 +11,8 @@
 
 export const REPO = 'seryi47/reminiscencia';
 export const ISSUE_LABEL = 'biblioteca';
+// Aviso de la hoja: quién procesa las incidencias.
+export const PROCESSING_NOTE = 'Se abrirá GitHub para que confirmes la incidencia. Solo la procesan las cuentas con permiso de escritura en el repositorio.';
 
 // Límites del backend (issue_request.py). Se miden en caracteres (puntos de código), como len() de Python.
 export const REQUEST_LIMITS = Object.freeze({
@@ -28,10 +30,18 @@ export const REQUEST_LIMITS = Object.freeze({
   issueTitle: 120,
 });
 
-// Igual que BLOCKED_HOSTS en backend/sonidos/sources.py (ADR-0005). Cada entrada bloquea también sus subdominios.
+// Copia de BLOCKED_HOSTS en backend/sonidos/sources.py (ADR-0005), la misma lista que intake.js de main. Cada entrada
+// bloquea también sus subdominios. Si la lista del backend cambia, hay que cambiarla aquí.
 export const BLOCKED_HOSTS = Object.freeze([
-  'youtube.com', 'youtu.be', 'spotify.com', 'open.spotify.com', 'music.apple.com',
-  'soundcloud.com', 'vimeo.com', 'tiktok.com', 'instagram.com', 'facebook.com', 'bandcamp.com',
+  'youtube.com', 'youtu.be', 'youtube-nocookie.com', 'googlevideo.com', 'ytimg.com',
+  'spotify.com', 'open.spotify.com', 'scdn.co', 'spotifycdn.com',
+  'music.apple.com', 'itunes.apple.com', 'mzstatic.com',
+  'soundcloud.com', 'sndcdn.com', 'vimeo.com', 'vimeocdn.com',
+  'tiktok.com', 'tiktokcdn.com', 'instagram.com', 'cdninstagram.com',
+  'facebook.com', 'fbcdn.net', 'bandcamp.com', 'bcbits.com',
+  'deezer.com', 'dzcdn.net', 'tidal.com', 'mixcloud.com', 'dailymotion.com', 'dmcdn.net',
+  'twitch.tv', 'jtvnw.net', 'ttvnw.net',
+  'dai.ly', 'fb.watch', 'instagr.am', 'x.com', 'twitter.com', 'twimg.com', 'reddit.com', 'redd.it', 'rumble.com',
 ]);
 
 export const AUDIO_EXTENSIONS = Object.freeze(['.mp3', '.flac', '.ogg', '.opus', '.m4a', '.wav']);
@@ -44,10 +54,23 @@ const AUTHORITY = /^([A-Za-z0-9.-]+)(?::[0-9]*)?$/;
 const IA_HOST = 'archive.org';
 // Igual que IA_IDENTIFIER en sources.py: sin barras, y sin punto ni guion al principio.
 const IA_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
-// Espacios Unicode y caracteres de control: no pueden aparecer en una dirección.
-const URL_SPACE_OR_CONTROL = /[\p{Zs}\p{Cc}\p{Zl}\p{Zp}\p{Cs}]/u;
-// Caracteres que el backend rechaza en cualquier texto (_has_control en issue_request.py).
-const CONTROL = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}]/u;
+// IPv4 con cuatro decimales y sin ceros a la izquierda: la única forma que cuenta como dirección IP (igual que intake.js).
+const IPV4_DOTTED = /^(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$/;
+// Último segmento numérico, decimal o hexadecimal: una IP escrita de otra forma (127.1, 2130706433, 0x7f000001).
+const NUMERIC_LABEL = /^(?:[0-9]+|0x[0-9a-f]*)$/;
+// Rangos IPv4 que Python (ipaddress.is_global) no considera globales. Son los que el backend rechaza al descargar.
+const NON_GLOBAL_IPV4 = Object.freeze([
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+  ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
+  ['203.0.113.0', 24], ['240.0.0.0', 4], ['255.255.255.255', 32],
+]);
+// Dentro de 192.0.0.0/24, Python las considera globales.
+const GLOBAL_IPV4_EXCEPTIONS = Object.freeze(['192.0.0.9', '192.0.0.10']);
+// Espacios Unicode, caracteres de control y de formato (ancho cero, bidi): no pueden aparecer en una dirección.
+const URL_SPACE_OR_CONTROL = /[\p{Zs}\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
+// Caracteres que el backend rechaza en cualquier texto (_has_control en issue_request.py): control, separadores de
+// línea, surrogates y de formato (Cf).
+const CONTROL = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
 
 // Operaciones de organize: campos obligatorios y opcionales, además de «op» (igual que OPERATIONS del backend).
 const OPERATIONS = Object.freeze({
@@ -69,6 +92,8 @@ const MESSAGES = Object.freeze({
   urlHost: 'La dirección no es válida: revisa el dominio (solo letras ASCII, cifras, puntos y guiones).',
   urlBlocked: 'Esta plataforma no se puede importar: sus condiciones de uso no permiten descargar el contenido. Usa un fichero de audio con licencia o un ítem de Internet Archive.',
   urlArchive: 'En Internet Archive usa archive.org/details/<identificador>.',
+  urlArchiveFile: 'Un fichero de Internet Archive no se importa directamente: usa la página de su ítem, archive.org/details/<identificador>, donde figura la licencia.',
+  urlPrivate: 'No se descarga desde una dirección de red privada, de bucle local o de enlace local.',
   urlOther: 'Admite un ítem de Internet Archive (archive.org/details/…) o un enlace directo a un fichero de audio (mp3, flac, ogg, opus, m4a o wav).',
   licenseRequired: 'Para un fichero directo indica la licencia de uso.',
   songIdEmpty: 'Escribe el identificador de la canción.',
@@ -151,15 +176,40 @@ function canonicalHost(authority) {
   return bare.startsWith('www.') ? bare.slice(4) : bare;
 }
 
-// Forma exacta /details/<identificador> (las barras sobrantes no cuentan, como strip('/') en el backend).
+// Identificador de ítem como en el backend (_is_plain_identifier): el patrón de IA_IDENTIFIER y sin "..".
+const isPlainIdentifier = (identifier) => IA_IDENTIFIER.test(identifier) && !identifier.includes('..');
+
+// Forma /details/<identificador> como en ia_identifier del backend: una barra final se tolera, pero una barra inicial
+// de más o una final doble dan un segmento vacío y la forma no vale.
 function isIaDetailsPath(path) {
-  const parts = path.replace(/^\/+|\/+$/g, '').split('/');
-  return parts.length === 2 && parts[0] === 'details' && IA_IDENTIFIER.test(parts[1]);
+  const segments = path.split('/');
+  if (segments.length > 1 && segments[segments.length - 1] === '') segments.pop();
+  return segments.length === 3 && segments[0] === '' && segments[1] === 'details' && isPlainIdentifier(segments[2]);
 }
 
-// Clasifica una dirección siguiendo el orden de sources.classify: primero las plataformas bloqueadas, después
-// Internet Archive y por último la extensión de audio. Devuelve invalid, blocked, archive, archive-path,
-// direct u other.
+// IPv4 como número, para compararla con los rangos de NON_GLOBAL_IPV4.
+const ipv4Value = (text) => text.split('.').reduce((value, octet) => value * 256 + Number(octet), 0);
+
+// Igual que is_global de Python para una IPv4 que ya cumple IPV4_DOTTED.
+function isIpv4Global(text) {
+  const value = ipv4Value(text);
+  if (GLOBAL_IPV4_EXCEPTIONS.some((exception) => ipv4Value(exception) === value)) return true;
+  return !NON_GLOBAL_IPV4.some(([base, prefix]) => value >= ipv4Value(base) && value < ipv4Value(base) + 2 ** (32 - prefix));
+}
+
+// Tipo de un host que no es de Internet Archive, como hostKind en intake.js: público, privado (bucle local, red privada
+// o enlace local) o no válido (una sola etiqueta, o una IP escrita de otra forma). Solo se decide lo que se ve sin DNS.
+function hostKind(host) {
+  if (host === 'localhost' || host.endsWith('.localhost')) return 'private';
+  if (IPV4_DOTTED.test(host)) return isIpv4Global(host) ? 'public' : 'private';
+  const labels = host.split('.');
+  if (NUMERIC_LABEL.test(labels[labels.length - 1])) return 'invalid';
+  return labels.length > 1 ? 'public' : 'invalid';
+}
+
+// Clasifica una dirección siguiendo el orden de sources.classify: primero las plataformas bloqueadas, después Internet
+// Archive (un servidor de ficheros de Internet Archive no vale), después la extensión de audio y por último el host.
+// Devuelve invalid, blocked, archive, archive-path, archive-file, direct, private u other.
 export function classifyUrl(url) {
   if (typeof url !== 'string' || !url.startsWith(HTTPS_PREFIX)) return 'invalid';
   const { authority, path } = splitUrl(url);
@@ -167,8 +217,11 @@ export function classifyUrl(url) {
   if (host === null) return 'invalid';
   if (BLOCKED_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`))) return 'blocked';
   if (host === IA_HOST) return isIaDetailsPath(path) ? 'archive' : 'archive-path';
+  if (host.endsWith(`.${IA_HOST}`)) return 'archive-file';
   const lower = path.toLowerCase();
-  return AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext)) ? 'direct' : 'other';
+  if (!AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext))) return 'other';
+  const kind = hostKind(host);
+  return kind === 'public' ? 'direct' : kind;
 }
 
 // Motivo en español si la dirección no sirve para importar, o null si sirve.
@@ -182,6 +235,8 @@ export function validateUrl(url) {
     case 'invalid': return MESSAGES.urlHost;
     case 'blocked': return MESSAGES.urlBlocked;
     case 'archive-path': return MESSAGES.urlArchive;
+    case 'archive-file': return MESSAGES.urlArchiveFile;
+    case 'private': return MESSAGES.urlPrivate;
     case 'other': return MESSAGES.urlOther;
     default: return null;
   }
@@ -190,8 +245,9 @@ export function validateUrl(url) {
 // Texto de una sola línea. Devuelve el motivo en español o null.
 function textProblem(value, { name, max, required = false }) {
   if (typeof value !== 'string') return `${name} debe ser texto.`;
+  // Como intake.js, el control se mira sobre el valor sin recortar: un BOM u otro carácter de formato al principio se rechaza.
+  if (CONTROL.test(value)) return `${name} no puede tener saltos de línea ni caracteres de control.`;
   const clean = value.trim();
-  if (CONTROL.test(clean)) return `${name} no puede tener saltos de línea ni caracteres de control.`;
   if (required && clean === '') return `${name} no puede quedar en blanco.`;
   if (lengthOf(clean) > max) return `${name} no puede tener más de ${max} caracteres.`;
   return null;
@@ -809,7 +865,7 @@ function renderIncidentForm(body, close, services, options) {
   closeButton.addEventListener('click', () => close(issueUrl));
 
   body.append(
-    el('p', { class: 'c-hoja-intro' }, 'Se abrirá GitHub para que confirmes la incidencia. Solo el propietario la procesa.'),
+    el('p', { class: 'c-hoja-intro' }, PROCESSING_NOTE),
     el('fieldset', { class: 'c-hoja-opciones' }, el('legend', { class: 'c-hoja-leyenda' }, '¿Qué quieres hacer?'), ...optionInputs),
     ...Object.values(sections),
     statusEl,
