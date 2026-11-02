@@ -1,5 +1,7 @@
-/* Contenido del perfil del cuidador: recuerdos, listas y observaciones, y sus editores y hojas (DESIGN C3a a C3d,
-   C-14 a C-23). Todas las clases llevan el prefijo cc- para no chocar con las demás hojas.
+/* Contenido del perfil del cuidador y ajustes: listas, recuerdos y observaciones, sus editores y hojas (DESIGN C3a a
+   C3d, C-14 a C-23), y la pantalla Ajustes (C5). Todas las clases llevan el prefijo cc- (los ajustes, .c-settings).
+   Estilo de Apple Music (web) en la estructura: filas con línea de separación en lugar de tarjetas, títulos de sección
+   de 22 px, pastillas de acento para las acciones y campos redondeados de 12 px.
    Solo usa tokens de tokens.css y base.css: sin colores fijos. Breakpoints del contrato (sección 6):
    menos de 600 px (teléfono), de 600 a 1279 px (una columna) y desde 1280 px (dos columnas en el editor de recuerdo). */
 
@@ -21,7 +23,7 @@
 
 .cc-seccion-titulo {
   margin: 0;
-  font: var(--tipo-seccion);
+  font: 700 calc(22px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
   color: var(--texto);
 }
 
@@ -32,13 +34,15 @@
 .cc-miniaturas,
 .cc-selector-lista {
   display: grid;
-  gap: var(--espacio-3, 12px);
+  gap: 0;
   min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
+  border-top: 1px solid var(--borde-suave);
 }
 
+/* Fila: texto, pulsable en su título, con la línea que la separa de la siguiente. */
 .cc-fila,
 .cc-fila-simple,
 .cc-fila-cancion,
@@ -47,16 +51,25 @@
   display: grid;
   gap: var(--espacio-1, 4px);
   min-width: 0;
-  padding: var(--espacio-4, 16px);
-  border: 1px solid var(--borde-suave);
-  border-radius: var(--radio-tarjeta, 12px);
-  background: var(--superficie-2);
-  box-shadow: var(--sombra-1);
+  padding: var(--espacio-3, 12px) 0;
+  border-bottom: 1px solid var(--borde-suave);
+  background: transparent;
 }
 
 /* Recuerdo: franja cálida a la izquierda y la palabra «Recuerdo» (DESIGN D30). */
 .cc-fila-recuerdo {
-  border-inline-start: 6px solid var(--recuerdo);
+  padding-inline-start: var(--espacio-3, 12px);
+  border-inline-start: 4px solid var(--recuerdo);
+}
+
+/* La última fila no lleva línea: la separa del bloque siguiente la línea de ese bloque. */
+.cc-lista > :last-child,
+.cc-lista-simple > :last-child,
+.cc-lista-canciones > :last-child,
+.cc-observaciones > :last-child,
+.cc-miniaturas > :last-child,
+.cc-selector-lista > :last-child {
+  border-bottom: 0;
 }
 
 .cc-marca-recuerdo {
@@ -91,12 +104,17 @@
   border: 0;
   background: none;
   color: var(--texto);
-  font: var(--tipo-fila);
+  font: 600 calc(17px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
   text-align: start;
   cursor: pointer;
 }
 
-.cc-fila-enlace:hover,
+@media (hover: hover) {
+  .cc-fila-enlace:hover {
+    color: var(--acento);
+  }
+}
+
 .cc-fila-enlace:active {
   color: var(--acento);
 }
@@ -115,9 +133,9 @@
 
 .cc-vacio {
   margin: 0;
-  padding: var(--espacio-4, 16px);
-  border: 1px dashed var(--borde-suave);
-  border-radius: var(--radio-tarjeta, 12px);
+  padding: var(--espacio-4, 16px) var(--espacio-5, 24px);
+  border-radius: 16px;
+  background: var(--superficie-2);
   font: var(--tipo-cuerpo);
   color: var(--texto-2);
 }
@@ -126,7 +144,7 @@
   margin: 0;
   padding: var(--espacio-3, 12px) var(--espacio-4, 16px);
   border: 2px solid var(--peligro);
-  border-radius: var(--radio-control, 8px);
+  border-radius: 12px;
   background: var(--superficie-2);
   color: var(--texto);
   font: var(--tipo-cuerpo);
@@ -139,8 +157,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--espacio-2, 8px) var(--espacio-3, 12px);
-  padding: var(--espacio-3, 12px) var(--espacio-4, 16px);
-  border-radius: var(--radio-control, 8px);
+  padding: var(--espacio-2, 8px) var(--espacio-3, 12px) var(--espacio-2, 8px) var(--espacio-4, 16px);
+  border-radius: 16px;
   background: var(--superficie-3);
   color: var(--texto);
   box-shadow: var(--sombra-2);
@@ -151,7 +169,7 @@
   font: var(--tipo-cuerpo);
 }
 
-/* ---------- Botones (DESIGN C-9) ---------- */
+/* ---------- Botones: pastillas (DESIGN C-9) ---------- */
 
 .cc-boton {
   display: inline-flex;
@@ -159,9 +177,9 @@
   justify-content: center;
   gap: var(--espacio-2, 8px);
   min-height: var(--objetivo-minimo, 40px);
-  padding: 0 var(--espacio-4, 16px);
+  padding: 0 var(--espacio-5, 20px);
   border: 1px solid transparent;
-  border-radius: var(--radio-control, 8px);
+  border-radius: 999px;
   font: var(--tipo-etiqueta);
   text-align: center;
   cursor: pointer;
@@ -177,28 +195,27 @@
 }
 
 .cc-boton--secundario {
-  background: var(--superficie-2);
+  background: var(--superficie-3);
   color: var(--texto);
-  border-color: var(--borde-control);
 }
 
 .cc-boton--secundario:active {
-  background: var(--superficie-3);
+  background: var(--superficie-2);
 }
 
 /* Peligro: solo tras un diálogo de confirmación (DESIGN C-9). */
 .cc-boton--peligro {
-  background: var(--superficie-2);
+  background: transparent;
   color: var(--peligro);
   border-color: var(--peligro);
 }
 
 .cc-boton--compacto {
-  padding: 0 var(--espacio-3, 12px);
+  padding: 0 var(--espacio-4, 16px);
 }
 
 .cc-boton:disabled {
-  background: var(--superficie-3);
+  background: var(--superficie-2);
   color: var(--deshabilitado);
   border-color: transparent;
   cursor: default;
@@ -231,11 +248,11 @@
   }
 }
 
-/* ---------- Campos (DESIGN C-11, C-12, C-13) ---------- */
+/* ---------- Campos (DESIGN C-11, C-12, C-13): redondeados de 12 px ---------- */
 
 .cc-campo {
   display: grid;
-  gap: var(--espacio-1, 4px);
+  gap: 6px;
   min-width: 0;
 }
 
@@ -248,7 +265,7 @@
 .cc-contador {
   margin: 0;
   font: var(--tipo-meta);
-  color: var(--texto-3);
+  color: var(--texto-2);
 }
 
 .cc-contador {
@@ -266,9 +283,9 @@
   width: 100%;
   min-width: 0;
   min-height: var(--objetivo-minimo, 40px);
-  padding: var(--espacio-2, 8px) var(--espacio-3, 12px);
+  padding: var(--espacio-2, 8px) 14px;
   border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
+  border-radius: 12px;
   background: var(--superficie-2);
   color: var(--texto);
   font: var(--tipo-cuerpo);
@@ -299,6 +316,20 @@ textarea.cc-control {
   }
 }
 
+/* Teléfono: objetivos de 44 px para casillas, pastillas de etiqueta y título pulsable (especificación). */
+@media (max-width: 599px) {
+  .cc-casilla,
+  .cc-casilla-etiqueta,
+  .cc-chip,
+  .cc-chip-quitar {
+    min-height: 44px;
+  }
+
+  .cc-fila-enlace {
+    min-height: 48px;
+  }
+}
+
 .cc-casilla {
   display: inline-flex;
   align-items: center;
@@ -317,12 +348,12 @@ textarea.cc-control {
   accent-color: var(--acento);
 }
 
-/* Etiquetas de la observación: casillas grandes; marcada = borde y fondo de acento (no solo color: hay casilla). */
+/* Etiquetas de la observación: pastillas con casilla; marcada = borde y fondo de acento (no solo color: hay casilla). */
 .cc-casilla-etiqueta {
   min-height: 44px;
-  padding: var(--espacio-1, 4px) var(--espacio-3, 12px);
-  border: 1px solid var(--borde-suave);
-  border-radius: var(--radio-control, 8px);
+  padding: var(--espacio-1, 4px) var(--espacio-4, 16px);
+  border: 1px solid var(--borde-control);
+  border-radius: 999px;
   background: var(--superficie-2);
 }
 
@@ -384,20 +415,20 @@ textarea.cc-control {
   display: inline-flex;
   align-items: center;
   gap: var(--espacio-2, 8px);
-  min-height: 40px;
-  padding: 0 var(--espacio-2, 8px) 0 var(--espacio-3, 12px);
-  border-radius: var(--radio-chip, 6px);
+  min-height: 36px;
+  padding: 0 var(--espacio-2, 8px) 0 var(--espacio-4, 16px);
+  border-radius: 999px;
   background: var(--acento-suave);
   color: var(--texto);
   font: var(--tipo-meta);
 }
 
 .cc-chip-quitar {
-  min-height: 36px;
-  padding: 0 var(--espacio-2, 8px);
-  border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
-  background: var(--superficie-2);
+  min-height: 28px;
+  padding: 0 var(--espacio-3, 12px);
+  border: 0;
+  border-radius: 999px;
+  background: var(--superficie-3);
   color: var(--texto);
   font: var(--tipo-meta);
   cursor: pointer;
@@ -468,16 +499,20 @@ textarea.cc-control {
   border-top: 1px solid var(--borde-suave);
 }
 
-/* Desde 1280 px: formulario de 560 px y columna de 320 px con fotografías y canciones (DESIGN C-21). */
+/* Desde 1280 px: formulario (hasta 560 px) y columna de 320 px con fotografías y canciones (DESIGN C-21). Con el
+   panel de canción abierto a 1440 px, el formulario se encoge en lugar de tapar la columna lateral. */
 @media (min-width: 1280px) {
   .cc-editor-cuerpo {
-    grid-template-columns: 560px 320px;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
     column-gap: var(--espacio-5, 24px);
-    justify-content: start;
+  }
+
+  .cc-formulario {
+    max-width: 560px;
   }
 }
 
-/* Teléfono: pie fijo de 72 px con «Cancelar» y «Guardar» por encima de la barra inferior y del mini reproductor.
+/* Teléfono: pie fijo con «Cancelar» y «Guardar» por encima de la barra inferior y del mini reproductor.
    --cc-pie-bottom suma la barra inferior (64 px) y el mini reproductor (64 px); si el shell oculta el mini, se ajusta. */
 .cc-editor-recuerdo,
 .cc-editor-lista {
@@ -523,7 +558,7 @@ textarea.cc-control {
   min-height: 160px;
   padding: var(--espacio-4, 16px);
   border: 2px dashed var(--borde-control);
-  border-radius: var(--radio-tarjeta, 12px);
+  border-radius: 16px;
   background: var(--superficie-2);
   text-align: center;
 }
@@ -557,7 +592,7 @@ textarea.cc-control {
   width: 96px;
   height: 96px;
   object-fit: cover;
-  border-radius: var(--radio-miniatura, 6px);
+  border-radius: 12px;
   background: var(--superficie-3);
 }
 
@@ -584,30 +619,35 @@ textarea.cc-control {
   }
 }
 
-/* ---------- Canciones: filas de la lista, del recuerdo y del selector ---------- */
+/* ---------- Canciones: filas de la lista, del recuerdo y del selector (como la biblioteca) ---------- */
 
 .cc-fila-cancion {
-  grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--espacio-3, 12px);
+  min-height: 56px;
+  padding: var(--espacio-2, 8px) 0;
 }
 
 .cc-fila-simple {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--espacio-3, 12px);
+  min-height: 48px;
+  padding: var(--espacio-2, 8px) 0;
 }
 
 .cc-posicion {
-  font: var(--tipo-meta);
+  font: var(--tipo-etiqueta);
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--texto-2);
-  text-align: end;
+  text-align: center;
 }
 
 @media (max-width: 599px) {
   .cc-fila-cancion {
-    grid-template-columns: 2rem minmax(0, 1fr);
+    grid-template-columns: 28px minmax(0, 1fr);
   }
 
   .cc-fila-cancion > .cc-acciones-fila {
@@ -641,10 +681,10 @@ textarea.cc-control {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: color-mix(in srgb, var(--texto) 40%, transparent);
+  background: color-mix(in srgb, var(--fondo) 80%, transparent);
 }
 
-/* Teléfono y tableta vertical: hoja inferior con radio de 16 px arriba, asa de 40×4 px y altura máxima del 90 %. */
+/* Teléfono y tableta vertical: hoja inferior con radio de 20 px arriba, asa de 40×4 px y altura máxima del 90 %. */
 .cc-hoja {
   position: relative;
   display: grid;
@@ -652,7 +692,7 @@ textarea.cc-control {
   width: 100%;
   max-height: 90dvh;
   overflow: hidden;
-  border-radius: var(--radio-hoja, 16px) var(--radio-hoja, 16px) 0 0;
+  border-radius: 20px 20px 0 0;
   background: var(--superficie-2);
   color: var(--texto);
   box-shadow: var(--sombra-3);
@@ -675,12 +715,12 @@ textarea.cc-control {
   align-items: center;
   justify-content: space-between;
   gap: var(--espacio-3, 12px);
-  padding: var(--espacio-5, 24px) var(--espacio-5, 24px) var(--espacio-3, 12px);
+  padding: var(--espacio-6, 28px) var(--espacio-5, 24px) var(--espacio-3, 12px);
 }
 
 .cc-hoja-titulo {
   margin: 0;
-  font: var(--tipo-seccion);
+  font: 700 calc(20px * var(--escala, 1)) / calc(26px * var(--escala, 1)) var(--familia-base);
   color: var(--texto);
 }
 
@@ -711,7 +751,7 @@ textarea.cc-control {
 
   .cc-hoja {
     width: min(480px, 100%);
-    border-radius: var(--radio-hoja, 16px);
+    border-radius: 20px;
   }
 
   .cc-hoja::before {
@@ -725,7 +765,7 @@ textarea.cc-control {
   display: block;
   font: var(--tipo-etiqueta);
   font-variant-numeric: tabular-nums;
-  color: var(--texto);
+  color: var(--texto-2);
 }
 
 .cc-observacion-nota {
@@ -746,9 +786,173 @@ textarea.cc-control {
 }
 
 .cc-etiqueta {
-  padding: var(--espacio-1, 4px) var(--espacio-2, 8px);
-  border-radius: var(--radio-chip, 6px);
+  padding: 2px 10px;
+  border-radius: 999px;
   background: var(--superficie-3);
   color: var(--texto);
   font: var(--tipo-meta);
+}
+
+/* ---------- Ajustes (C5): grupos de filas como en Apple Music (web) ----------
+   Cada sección es una tarjeta redondeada con su título; las opciones son filas con línea de separación. Son reglas
+   con .c-settings delante para no cambiar las primitivas que comparten el marco y las hojas. */
+
+.c-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--separacion-bloque, 24px);
+  max-width: 720px;
+}
+
+.c-settings .c-settings-section {
+  gap: var(--espacio-2, 8px);
+  padding: var(--espacio-4, 16px) var(--espacio-5, 20px) var(--espacio-4, 16px);
+  border-top: 0;
+  border-radius: 16px;
+  background: var(--superficie-2);
+}
+
+.c-settings .c-settings-section > .c-section-title {
+  font: 700 calc(20px * var(--escala, 1)) / calc(26px * var(--escala, 1)) var(--familia-base);
+}
+
+.c-settings .c-panel-subtitle {
+  margin-top: var(--espacio-2, 8px);
+  font: 600 calc(16px * var(--escala, 1)) / calc(22px * var(--escala, 1)) var(--familia-base);
+  color: var(--texto);
+}
+
+.c-settings .c-fieldset {
+  margin: 0;
+}
+
+.c-settings .c-fieldset + .c-fieldset {
+  margin-top: var(--espacio-4, 16px);
+}
+
+.c-settings .c-fieldset > .c-label {
+  margin-bottom: var(--espacio-1, 4px);
+  font: var(--tipo-meta);
+  font-weight: 600;
+  color: var(--texto-2);
+}
+
+.c-settings .c-choices {
+  gap: 0;
+  border-top: 1px solid var(--borde-suave);
+}
+
+.c-settings .c-choice {
+  min-height: 48px;
+  padding: 0;
+  border-bottom: 1px solid var(--borde-suave);
+}
+
+.c-settings .c-choice input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--acento);
+}
+
+.c-settings .c-switch-row {
+  min-height: 56px;
+  padding: var(--espacio-2, 8px) 0;
+  border-bottom: 1px solid var(--borde-suave);
+}
+
+.c-settings .c-switch {
+  min-height: 44px;
+}
+
+.c-settings .c-switch-track {
+  width: 51px;
+  height: 31px;
+  border: 0;
+  background: var(--superficie-3);
+}
+
+.c-settings .c-switch-thumb {
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  background: var(--texto-2);
+  box-shadow: var(--sombra-1);
+}
+
+.c-settings .c-switch[aria-checked="true"] .c-switch-track {
+  border: 0;
+}
+
+.c-settings .c-switch[aria-checked="true"] .c-switch-thumb {
+  transform: translateX(20px);
+}
+
+.c-settings .c-field {
+  gap: 6px;
+}
+
+.c-settings .c-input {
+  min-height: 44px;
+  border-radius: 12px;
+  border-color: var(--borde-control);
+}
+
+.c-settings .c-btn {
+  min-height: var(--objetivo-minimo, 40px);
+  padding: 0 var(--espacio-5, 20px);
+  border-radius: 999px;
+}
+
+.c-settings .c-btn--primary {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.c-settings .c-btn--secondary {
+  background: var(--superficie-3);
+  border-color: transparent;
+  color: var(--texto);
+}
+
+.c-settings .c-btn--danger {
+  background: transparent;
+  border-color: var(--peligro);
+  color: var(--peligro);
+}
+
+.c-settings .c-btn:disabled {
+  background: var(--superficie-2);
+  border-color: transparent;
+  color: var(--deshabilitado);
+}
+
+.c-settings .c-preview-box {
+  border: 0;
+  border-radius: 16px;
+  background: var(--superficie-3);
+}
+
+.c-settings .c-file {
+  min-height: 44px;
+}
+
+.c-settings .c-settings-section .c-check {
+  min-height: 40px;
+}
+
+@media (max-width: 599px) {
+  .c-settings .c-btn {
+    min-height: 48px;
+  }
+
+  .c-settings .c-input {
+    min-height: 48px;
+  }
+
+  .c-settings .c-switch-row,
+  .c-settings .c-choice {
+    min-height: 52px;
+  }
 }

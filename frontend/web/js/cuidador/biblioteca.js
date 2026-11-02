@@ -60,6 +60,8 @@ const ICONS = Object.freeze({
   dots: Object.freeze(['M5 12h.01', 'M12 12h.01', 'M19 12h.01']),
   check: Object.freeze(['M5 12l4 4 9-9']),
   caret: Object.freeze(['M6 9l6 6 6-6']),
+  // Nota musical: portada de marcador de cada canción (el catálogo no tiene imágenes).
+  note: Object.freeze(['M9 17.5V5l10-2v12.5', 'M4 17.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0', 'M14 15.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0']),
 });
 
 // ---------------------------------------------------------------------------
@@ -437,7 +439,9 @@ export function mountLibrary(root, services, params = {}) {
   }
   const thead = el('thead', null, el('tr', null,
     el('th', { scope: 'col', class: 'col-seleccion' }, headerCheckbox),
+    el('th', { scope: 'col', class: 'col-portada' }, el('span', { class: 'visually-hidden' }, 'Portada')),
     sortHeader('title', 'col-titulo'),
+    el('th', { scope: 'col', class: 'col-carpeta' }, 'Carpeta'),
     sortHeader('duration', 'col-duracion'),
     sortHeader('familiarity', 'col-familiaridad'),
     sortHeader('preference', 'col-preferencia'),
@@ -454,24 +458,47 @@ export function mountLibrary(root, services, params = {}) {
   const loadingEl = el('p', { class: 'c-biblioteca-cargando', role: 'status' }, 'Cargando la biblioteca…');
 
   section.append(toolbar, hintEl, bulk, loadingEl, emptyEl, tableBox);
-  if (services.headerSlot && typeof services.headerSlot.append === 'function') services.headerSlot.append(headerBox);
-  else section.insertBefore(headerBox, toolbar);
+  // En teléfono, la búsqueda y «Vista previa» no caben en la cabecera de 56 px: van al principio de la pantalla.
+  const phoneMedia = globalThis.matchMedia ? globalThis.matchMedia('(max-width: 599.98px)') : null;
+  function placeHeaderBox() {
+    if (services.headerSlot && typeof services.headerSlot.append === 'function' && !phoneMedia?.matches) services.headerSlot.append(headerBox);
+    else section.insertBefore(headerBox, toolbar);
+  }
+  placeHeaderBox();
+  phoneMedia?.addEventListener?.('change', placeHeaderBox);
   root.append(section);
   services.setTitle?.(TITLE);
 
   // ---- Filas ----
+
+  // Carpeta de cada canción (columna «Carpeta», desde 1024 px). Sin carpeta, guion largo.
+  const folderNames = new Map();
+  for (const folder of Array.isArray(services.catalog?.folders) ? services.catalog.folders : []) {
+    if (typeof folder?.id === 'string') folderNames.set(folder.id, typeof folder.name === 'string' ? folder.name : '');
+  }
+  const folderIdBySong = new Map();
+  for (const song of Array.isArray(services.catalog?.songs) ? services.catalog.songs : []) {
+    if (typeof song?.id === 'string') folderIdBySong.set(song.id, song.folder_id);
+  }
+  function folderLabel(songId) {
+    return folderNames.get(folderIdBySong.get(songId)) || '—';
+  }
 
   // Crea la fila con sus controles. Los controles de la fila no están en el orden de tabulación: la fila es el
   // único punto de tabulación (roving tabindex), y los controles se usan con el puntero o con las teclas de la fila.
   function buildRow(row) {
     const tr = el('tr', { class: 'c-biblioteca-fila', 'data-testid': 'c-biblioteca-row', 'data-song-id': row.id, tabindex: '-1' });
     const check = el('input', { type: 'checkbox', class: 'c-biblioteca-casilla', tabindex: '-1' });
+    // Número de la posición en la vista (lo pone applyView). Lo ven los ojos; el lector de pantalla usa la casilla.
+    const numberText = el('span', { class: 'c-biblioteca-numero cifras', 'aria-hidden': 'true' });
+    const coverMark = el('span', { class: 'c-biblioteca-portada', 'aria-hidden': 'true' }, icon('note', 'c-biblioteca-icono'));
+    const folderText = el('span', { class: 'c-biblioteca-carpeta' }, folderLabel(row.id));
     const selectedHint = el('span', { class: 'visually-hidden' }, 'Seleccionada');
     const playingTag = el('span', { class: 'c-biblioteca-estado c-biblioteca-estado--suena' }, icon('speaker', 'c-biblioteca-icono c-biblioteca-icono--pequeno'), 'Suena');
     const offlineTag = el('span', { class: 'c-biblioteca-estado c-biblioteca-estado--sin-conexion' }, 'No descargada');
     const titleText = el('span', { class: 'c-biblioteca-titulo-texto' }, row.title);
     const artistText = el('span', { class: 'c-biblioteca-artista' }, row.artist);
-    const titleCell = el('td', { class: 'col-titulo c-biblioteca-celda-titulo' }, titleText, artistText, selectedHint, playingTag, offlineTag);
+    const titleCell = el('td', { class: 'col-titulo c-biblioteca-celda-titulo' }, titleText, playingTag, offlineTag, artistText, selectedHint);
     const durationText = el('span', { class: 'cifras' }, formatDuration(row.durationS));
     const famButtons = [1, 2, 3, 4, 5].map((value) => el('button', {
       type: 'button',
@@ -519,15 +546,17 @@ export function mountLibrary(root, services, params = {}) {
       'aria-label': `Abrir la ficha de «${row.title}»`,
     }, 'Ficha');
     tr.append(
-      el('td', { class: 'col-seleccion' }, check),
+      el('td', { class: 'col-seleccion' }, numberText, check),
+      el('td', { class: 'col-portada' }, coverMark),
       titleCell,
+      el('td', { class: 'col-carpeta' }, folderText),
       el('td', { class: 'col-duracion' }, durationText),
       el('td', { class: 'col-familiaridad' }, famGroup, famText),
       el('td', { class: 'col-preferencia' }, prefButton),
       el('td', { class: 'col-presentacion' }, presButton),
       el('td', { class: 'col-menu' }, menuButton),
       el('td', { class: 'col-ficha' }, fichaButton));
-    partsById.set(row.id, { tr, check, selectedHint, playingTag, offlineTag, famButtons, famText, prefText, prefButton, presText, presButton, menuButton, fichaButton });
+    partsById.set(row.id, { tr, check, numberText, selectedHint, playingTag, offlineTag, famButtons, famText, prefText, prefButton, presText, presButton, menuButton, fichaButton });
     return tr;
   }
 
@@ -590,6 +619,7 @@ export function mountLibrary(root, services, params = {}) {
     state.selected = retainVisible(state.selected, ids);
     if (!ids.includes(state.activeId)) state.activeId = ids[0] ?? null;
     tbody.replaceChildren(...visible.map((row) => partsById.get(row.id).tr));
+    visible.forEach((row, index) => { partsById.get(row.id).numberText.textContent = String(index + 1); });
     for (const row of visible) paintRow(row);
     updateChrome();
   }
@@ -1254,6 +1284,7 @@ export function mountLibrary(root, services, params = {}) {
       disposed = true;
       globalThis.clearInterval(pollTimer);
       doc.removeEventListener('keydown', onGlobalKey);
+      phoneMedia?.removeEventListener?.('change', placeHeaderBox);
       closePopup(false);
       dismissNotice();
       headerBox.remove();

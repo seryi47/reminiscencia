@@ -1,7 +1,8 @@
-/* Pantallas de perfiles del modo cuidador: Perfiles (C3), Asistente de primer perfil (C3e), Perfil (C3a),
-   Canciones (C-5, C-6, C-7), Historial (C-24), Opciones del paciente (C3f) y diálogos (C-16).
-   Solo usa tokens de tokens.css y tipografía de base.css (DESIGN 5.3 y 5.4). Los tamaños de texto crecen con --escala.
-   Prefijo cp- para no chocar con otras pantallas del modo cuidador. */
+/* Pantallas de perfiles del modo cuidador: Perfiles (C3), Asistente de primer perfil (C3e, C-26), Perfil (C3a, con sus
+   pestañas como segmentos superiores), Canciones (C-5, C-6, C-7), Historial (C-24), Opciones del paciente (C3f) y
+   diálogos (C-16). Estilo de Apple Music (web) en la estructura: tarjetas con avatar, filas separadas por línea,
+   pastillas de acento y campos redondeados. Solo usa tokens de tokens.css y tipografía de base.css (DESIGN 5.3 y 5.4).
+   Los tamaños de texto crecen con --escala. Prefijo cp- para no chocar con otras pantallas del modo cuidador. */
 
 /* ---------- Estructura de pantalla ---------- */
 
@@ -10,6 +11,14 @@
   flex-direction: column;
   gap: var(--separacion-bloque, 24px);
   min-width: 0;
+}
+
+/* Encabezado de página grande: 40 px, peso 700 (especificación de rediseño). */
+.cp-pantalla h1 {
+  margin: 0;
+  font: 700 calc(40px * var(--escala, 1)) / calc(46px * var(--escala, 1)) var(--familia-base);
+  color: var(--texto);
+  letter-spacing: -0.01em;
 }
 
 .cp-cabecera-pantalla {
@@ -33,12 +42,13 @@
 .cp-dia-resumen {
   margin: 0;
   font: var(--tipo-meta);
-  color: var(--texto-3);
+  color: var(--texto-2);
 }
 
 .cp-subtitulo {
   margin: 0;
-  font: var(--tipo-seccion);
+  font: 700 calc(22px * var(--escala, 1)) / calc(28px * var(--escala, 1)) var(--familia-base);
+  color: var(--texto);
 }
 
 .cp-seccion {
@@ -58,14 +68,14 @@
 
 .cp-vacio {
   margin: 0;
-  padding: 16px;
-  border: 1px dashed var(--borde-control);
-  border-radius: var(--radio-tarjeta, 12px);
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--superficie-2);
   font: var(--tipo-cuerpo);
   color: var(--texto-2);
 }
 
-/* ---------- Botones (C-9) ---------- */
+/* ---------- Botones: pastillas (C-9) ---------- */
 
 .cp-boton {
   display: inline-flex;
@@ -75,9 +85,9 @@
   box-sizing: border-box;
   max-width: 100%;
   min-height: var(--objetivo-minimo, 40px);
-  padding: 0 16px;
+  padding: 0 var(--espacio-5, 20px);
   border: 1px solid transparent;
-  border-radius: var(--radio-control, 8px);
+  border-radius: 999px;
   font: var(--tipo-etiqueta);
   text-align: center;
   text-decoration: none;
@@ -94,6 +104,7 @@
 
 .cp-boton--grande {
   min-height: 48px;
+  padding: 0 var(--espacio-6, 28px);
 }
 
 .cp-boton--primario {
@@ -101,32 +112,41 @@
   color: var(--sobre-acento);
 }
 
+@media (hover: hover) {
+  .cp-boton--primario:not(:disabled):hover {
+    background: var(--acento-fuerte);
+  }
+
+  .cp-boton--secundario:not(:disabled):hover {
+    background: color-mix(in srgb, var(--texto) 12%, var(--superficie-3));
+  }
+}
+
 .cp-boton--primario:active {
   background: var(--acento-fuerte);
 }
 
 .cp-boton--secundario {
-  background: var(--superficie-2);
+  background: var(--superficie-3);
   color: var(--texto);
-  border-color: var(--borde-control);
 }
 
 .cp-boton--secundario:active {
-  background: var(--superficie-3);
+  background: var(--superficie-2);
 }
 
 .cp-boton--peligro {
-  background: var(--superficie-2);
+  background: transparent;
   color: var(--peligro);
   border-color: var(--peligro);
 }
 
 .cp-boton--peligro:active {
-  background: var(--superficie-3);
+  background: var(--superficie-2);
 }
 
 .cp-boton:disabled {
-  background: var(--superficie-3);
+  background: var(--superficie-2);
   color: var(--deshabilitado);
   border-color: transparent;
   cursor: default;
@@ -162,20 +182,19 @@
 
 .cp-aviso {
   margin: 0;
-  padding: 12px 16px;
-  border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
-  background: var(--superficie-1);
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: var(--superficie-2);
   color: var(--texto);
   font: 400 calc(14px * var(--escala, 1)) / calc(20px * var(--escala, 1)) var(--familia-base);
 }
 
-/* ---------- Tarjetas de perfil (C-15) ---------- */
+/* ---------- Tarjetas de perfil con avatar (C-15) ---------- */
 
 .cp-cuadricula-perfiles {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -192,61 +211,60 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   width: 100%;
-  min-height: 132px;
-  padding: 16px;
+  min-height: 160px;
+  padding: 20px;
   background: var(--superficie-2);
   color: var(--texto);
   border: 1px solid var(--borde-suave);
-  border-radius: var(--radio-tarjeta, 12px);
+  border-radius: 20px;
   box-shadow: var(--sombra-1, none);
 }
 
 /* El perfil en uso: borde de 2 px en acento. El padding baja 1 px para que el contenido no se mueva. */
 .cp-tarjeta-perfil--activa {
   border: 2px solid var(--acento);
-  padding: 15px;
+  padding: 19px;
 }
 
 .cp-tarjeta-cabecera {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
 .cp-avatar {
-  flex: 0 0 56px;
-  width: 56px;
-  height: 56px;
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--superficie-3);
-  color: var(--texto-2);
-  font: 700 calc(24px * var(--escala, 1)) / 1 var(--familia-base);
+  background: var(--acento-suave);
+  color: var(--acento);
+  font: 700 calc(26px * var(--escala, 1)) / 1 var(--familia-base);
 }
 
 .cp-tarjeta-texto {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 
 .cp-tarjeta-alias {
   margin: 0;
-  font: 600 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+  font: 600 calc(19px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
   overflow-wrap: anywhere;
 }
 
 .cp-etiqueta-uso {
-  margin-top: 2px;
-  padding: 0 8px;
-  border-radius: var(--radio-chip, 6px);
+  padding: 2px 10px;
+  border-radius: 999px;
   background: var(--acento-suave);
   color: var(--texto);
   font: var(--tipo-meta);
@@ -255,7 +273,7 @@
 
 .cp-tarjeta-datos {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -268,6 +286,11 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: auto;
+}
+
+/* Dos pastillas caben en una línea dentro de la tarjeta de 240 px. */
+.cp-tarjeta-acciones .cp-boton {
+  padding: 0 16px;
 }
 
 @media (min-width: 600px) {
@@ -334,12 +357,12 @@
   min-height: 48px;
 }
 
-/* ---------- Campos (C-11) ---------- */
+/* ---------- Campos (C-11): redondeados, con la misma altura que los botones ---------- */
 
 .cp-campo {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -350,7 +373,7 @@
 
 .cp-obligatorio {
   font-weight: 400;
-  color: var(--texto-3);
+  color: var(--texto-2);
 }
 
 .cp-campo input,
@@ -360,12 +383,19 @@
   box-sizing: border-box;
   width: 100%;
   min-height: var(--objetivo-minimo, 40px);
-  padding: 0 12px;
+  padding: 0 14px;
   border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
+  border-radius: 12px;
   background: var(--superficie-2);
   color: var(--texto);
   font: var(--tipo-cuerpo);
+}
+
+.cp-campo input:focus-visible,
+.cp-campo select:focus-visible,
+.cp-filtros input:focus-visible,
+.cp-filtros select:focus-visible {
+  border-color: var(--acento);
 }
 
 .cp-campo input[aria-invalid="true"] {
@@ -399,7 +429,7 @@
 .cp-opciones {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -411,10 +441,10 @@
   box-sizing: border-box;
   min-width: 36px;
   min-height: 36px;
-  padding: 0 10px;
+  padding: 0 12px;
   border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
-  background: var(--superficie-2);
+  border-radius: 999px;
+  background: var(--superficie-3);
   color: var(--texto);
   font: var(--tipo-etiqueta);
   text-align: center;
@@ -422,19 +452,23 @@
   transition: background-color var(--duracion-micro, 120ms) var(--curva-movimiento, ease);
 }
 
-/* Familiaridad: número y fondo de acento; el grosor del borde también marca la elección (1.4.1). */
+/* Familiaridad: círculos con número. La elección se ve por el relleno de acento y por un anillo de 2 px
+   fuera del botón (no cambia el tamaño, y el número sigue siendo la información). */
 .cp-opciones-escala .cp-opcion {
+  width: 36px;
   min-width: 36px;
+  padding: 0;
   font-weight: 700;
 }
 
 .cp-opciones-escala .cp-opcion[aria-checked="true"] {
   background: var(--acento);
-  border: 2px solid var(--acento);
+  border-color: var(--acento);
   color: var(--sobre-acento);
+  box-shadow: 0 0 0 2px var(--fondo), 0 0 0 4px var(--acento);
 }
 
-/* Preferencia y presentación: fondo suave, borde de 2 px y comprobación. */
+/* Preferencia y presentación: pastilla con comprobación y anillo de 2 px. */
 .cp-opcion--marca {
   min-width: 96px;
   white-space: normal;
@@ -442,8 +476,9 @@
 
 .cp-opcion--marca[aria-checked="true"] {
   background: var(--acento-suave);
-  border: 2px solid var(--acento);
+  border-color: var(--acento);
   color: var(--texto);
+  box-shadow: 0 0 0 1px var(--acento);
 }
 
 .cp-marca {
@@ -467,12 +502,12 @@
 
 .cp-opcion:disabled {
   color: var(--deshabilitado);
-  background: var(--superficie-3);
+  background: var(--superficie-2);
   cursor: default;
 }
 
 .cp-opcion:active {
-  background: var(--superficie-3);
+  background: var(--superficie-2);
 }
 
 /* ---------- Interruptores (C-13) ---------- */
@@ -538,8 +573,8 @@
 .cp-opcion-bloque {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-bottom: 8px;
+  gap: 6px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--borde-suave);
 }
 
@@ -551,14 +586,14 @@
 
 .cp-lista-seleccion {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   max-height: 360px;
   margin: 0;
-  padding: 4px;
+  padding: 6px;
   overflow: auto;
   list-style: none;
-  border: 1px solid var(--borde-suave);
-  border-radius: var(--radio-control, 8px);
+  border-radius: 16px;
+  background: var(--superficie-1);
 }
 
 .cp-fila-seleccion {
@@ -566,8 +601,8 @@
   align-items: center;
   gap: 12px;
   min-height: 48px;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
   cursor: pointer;
 }
 
@@ -596,7 +631,7 @@
 
 .cp-seleccion-artista {
   font: var(--tipo-meta);
-  color: var(--texto-3);
+  color: var(--texto-2);
 }
 
 /* ---------- Diálogos y hojas (C-16) ---------- */
@@ -609,7 +644,7 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: color-mix(in srgb, var(--texto) 45%, transparent);
+  background: color-mix(in srgb, var(--fondo) 80%, transparent);
 }
 
 /* Hoja inferior: menos de 1024 px (teléfono y tableta vertical). */
@@ -618,10 +653,10 @@
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  padding: 16px 24px 24px;
+  padding: 12px 24px 24px;
   background: var(--superficie-2);
   color: var(--texto);
-  border-radius: var(--radio-hoja, 16px) var(--radio-hoja, 16px) 0 0;
+  border-radius: 20px 20px 0 0;
   box-shadow: var(--sombra-3, none);
 }
 
@@ -643,7 +678,7 @@
 
 .cp-dialogo-titulo {
   margin: 0;
-  font: 600 calc(18px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+  font: 700 calc(20px * var(--escala, 1)) / calc(26px * var(--escala, 1)) var(--familia-base);
 }
 
 .cp-dialogo-pie {
@@ -669,7 +704,7 @@
   .cp-dialogo {
     width: 480px;
     max-width: 100%;
-    border-radius: var(--radio-hoja, 16px);
+    border-radius: 20px;
   }
 
   .cp-asa {
@@ -680,15 +715,15 @@
 /* ---------- Pantalla Perfil (C3a, C-14) ---------- */
 
 .cp-perfil {
-  gap: 16px;
+  gap: 20px;
 }
 
 .cp-cabecera-perfil {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  gap: 12px 16px;
 }
 
 .cp-acciones-cabecera {
@@ -709,42 +744,51 @@
   }
 }
 
-/* Pestañas: 40 px de alto y 2 px de indicador en acento. En teléfono se desplazan dentro de su franja. */
+/* Pestañas como segmentos (la especificación de rediseño): una pista redondeada con la pestaña elegida en acento.
+   En teléfono la pista se desplaza dentro de su franja; la página no se desplaza. */
 .cp-pestanas {
-  display: flex;
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 4px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--borde-suave);
+  scrollbar-width: none;
+  border-radius: 999px;
+  background: var(--superficie-2);
+}
+
+.cp-pestanas::-webkit-scrollbar {
+  display: none;
 }
 
 .cp-pestana {
   position: relative;
   flex: 0 0 auto;
-  min-height: var(--objetivo-minimo, 40px);
+  min-height: 36px;
   padding: 0 16px;
   border: 0;
+  border-radius: 999px;
   background: transparent;
   color: var(--texto-2);
   font: var(--tipo-etiqueta);
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.cp-pestana[aria-selected="true"] {
-  color: var(--texto);
+@media (hover: hover) {
+  .cp-pestana:not([aria-selected="true"]):hover {
+    color: var(--texto);
+  }
 }
 
-.cp-pestana[aria-selected="true"]::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
+.cp-pestana[aria-selected="true"] {
   background: var(--acento);
+  color: var(--sobre-acento);
 }
 
 .cp-panel {
   min-width: 0;
-  padding-top: 8px;
+  padding-top: 4px;
 }
 
 .cp-panel-contenido {
@@ -762,24 +806,28 @@
   border-top: 1px solid var(--borde-suave);
 }
 
-/* ---------- Canciones del perfil (C-4 a C-7 en lista) ---------- */
+/* ---------- Canciones del perfil: filas separadas por línea (C-4 a C-7 en lista) ---------- */
 
 .cp-canciones {
   display: grid;
-  gap: 12px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
+  border-top: 1px solid var(--borde-suave);
+}
+
+/* Sin canciones, la lista no dibuja línea: el mensaje de vacío ya separa la sección. */
+.cp-canciones:empty {
+  border-top: 0;
 }
 
 .cp-cancion {
   display: grid;
   gap: 12px;
   min-width: 0;
-  padding: 16px;
-  background: var(--superficie-2);
-  border: 1px solid var(--borde-suave);
-  border-radius: var(--radio-tarjeta, 12px);
+  padding: 16px 0;
+  border-bottom: 1px solid var(--borde-suave);
 }
 
 .cp-cancion-cabecera {
@@ -797,30 +845,34 @@
 
 .cp-cancion-controles {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
+/* Cada control va debajo de su etiqueta: así las tres valoraciones se leen igual en cualquier ancho. */
 .cp-campo-fila {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
 }
 
 .cp-campo-fila > .cp-campo-etiqueta {
-  flex: 0 0 110px;
+  font: var(--tipo-meta);
+  font-weight: 600;
+  color: var(--texto-2);
 }
 
 .cp-nota-campo {
   font: var(--tipo-meta);
-  color: var(--texto-3);
+  color: var(--texto-2);
 }
 
 @media (min-width: 1024px) {
   .cp-cancion {
-    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
     align-items: start;
+    column-gap: 32px;
   }
 }
 
@@ -842,7 +894,7 @@
 
 .cp-dia-titulo {
   margin: 0;
-  font: 600 calc(16px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
+  font: 700 calc(17px * var(--escala, 1)) / calc(24px * var(--escala, 1)) var(--familia-base);
 }
 
 /* La tabla se desplaza dentro de su franja, nunca la página. */
@@ -850,8 +902,7 @@
   max-width: 100%;
   overflow-x: auto;
   background: var(--superficie-2);
-  border: 1px solid var(--borde-suave);
-  border-radius: var(--radio-tarjeta, 12px);
+  border-radius: 16px;
 }
 
 .cp-tabla {
@@ -863,9 +914,9 @@
 }
 
 .cp-tabla th {
-  height: 32px;
-  padding: 0 8px;
-  background: var(--superficie-1);
+  height: 36px;
+  padding: 0 12px;
+  background: transparent;
   color: var(--texto-2);
   font: var(--tipo-cabecera-tabla);
   text-align: left;
@@ -873,8 +924,8 @@
 }
 
 .cp-tabla td {
-  height: 40px;
-  padding: 4px 8px;
+  height: 44px;
+  padding: 4px 12px;
   border-top: 1px solid var(--borde-suave);
   vertical-align: middle;
 }
@@ -894,12 +945,18 @@
   }
 
   .cp-pestana {
-    min-height: 48px;
+    min-height: 44px;
+    padding: 0 14px;
   }
 
   .cp-opcion {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  .cp-opciones-escala .cp-opcion {
+    width: 44px;
+    min-width: 44px;
   }
 
   .cp-opcion--marca {

@@ -1,11 +1,15 @@
-/* Biblioteca del cuidador (DESIGN C2, C-4, C-5, C-6, C-8, C-9, C-11, C-13, C-16, C-17, C-18; contrato 4 y 6).
-   Tabla de canciones, filas, filtros, barra de selección, búsqueda de cabecera, desplegables, avisos y la
-   hoja «Gestionar la biblioteca». Solo usa tokens de tokens.css y tipos de base.css: nada de colores fijos.
+/* Biblioteca del cuidador (DESIGN C2, C-4, C-5, C-6, C-8, C-9, C-11, C-13, C-16, C-17, C-18; contrato 4 y 6), con
+   la estructura de lista de Apple Music (web): filas con número o casilla, portada de 40 px, título con artista debajo,
+   carpeta (desde 1024 px), duración y menú de 44 px; búsqueda en pastilla en la cabecera del contenido; filtros en
+   pastillas y barra de selección múltiple. Solo usa tokens de tokens.css y tipos de base.css: nada de colores fijos.
 
-   Puntos de ruptura (contrato 6 y DESIGN 4):
-   - Menos de 600 px: tarjetas de 72 px (la cabecera de la tabla se oculta).
-   - De 600 a 1023 px: filas de 48 px con título, familiaridad y menú.
-   - Desde 1024 px: filas de 40 px con todas las columnas (la ficha solo existe en teléfono). */
+   Puntos de ruptura (contrato 6; especificación de rediseño):
+   - Menos de 600 px: tarjetas de 72 px (la cabecera de la tabla se oculta; la casilla va a la izquierda).
+   - De 600 a 819 px: filas de 56 px con título, familiaridad y menú.
+   - De 820 a 1023 px: además, la duración.
+   - Desde 1024 px: además, la carpeta. Las columnas de preferencia y de presentación solo caben desde 1680 px
+     (con el panel de canción abierto, a 1440 px, la tabla tiene 832 px); en anchos menores, esas dos
+     valoraciones se hacen desde el panel de canción y la barra de selección múltiple. */
 
 /* ---------- Iconos ---------- */
 
@@ -45,7 +49,7 @@
 
 .c-biblioteca-ayuda {
   font: var(--tipo-meta);
-  color: var(--texto-3);
+  color: var(--texto-2);
 }
 
 .c-biblioteca-vacio,
@@ -56,18 +60,18 @@
   margin: 0;
 }
 
-/* ---------- Botones de esta pantalla (C-9) ---------- */
+/* ---------- Botones de esta pantalla: pastillas (C-9) ---------- */
 
 .c-biblioteca-boton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--espacio-2, 8px);
-  min-height: var(--objetivo-minimo, 40px);
+  min-height: 36px;
   padding: 0 var(--espacio-4, 16px);
   border: 1px solid transparent;
-  border-radius: var(--radio-control, 8px);
-  background: var(--superficie-2);
+  border-radius: 999px;
+  background: var(--superficie-3);
   color: var(--texto);
   font: var(--tipo-etiqueta);
   text-decoration: none;
@@ -78,53 +82,53 @@
 
 .c-biblioteca-boton--primario {
   background: var(--acento);
-  border-color: var(--acento);
   color: var(--sobre-acento);
 }
 
 .c-biblioteca-boton--secundario {
-  background: var(--superficie-2);
-  border-color: var(--borde-control);
+  background: var(--superficie-3);
   color: var(--texto);
 }
 
 .c-biblioteca-boton--peligro {
-  background: var(--superficie-2);
+  background: transparent;
   border-color: var(--peligro);
   color: var(--peligro);
 }
 
-/* Acciones de la barra de selección (C-18): 40 px, como el resto de acciones del cuidador. */
+/* Acciones de la barra de selección (C-18): más bajas que las de la cabecera, pero con el mismo tacto. */
 .c-biblioteca-boton--compacto {
-  min-height: 40px;
+  min-height: 32px;
   padding: 0 var(--espacio-3, 12px);
 }
 
 @media (hover: hover) {
   .c-biblioteca-boton--primario:not(:disabled):not([aria-disabled="true"]):hover {
     background: var(--acento-fuerte);
-    border-color: var(--acento-fuerte);
   }
 
   .c-biblioteca-boton--secundario:not(:disabled):hover {
-    background: var(--superficie-3);
+    background: color-mix(in srgb, var(--texto) 12%, var(--superficie-3));
+  }
+
+  .c-biblioteca-boton--peligro:not(:disabled):hover {
+    background: var(--acento-suave);
   }
 }
 
 .c-biblioteca-boton--primario:not(:disabled):not([aria-disabled="true"]):active {
   background: var(--acento-fuerte);
-  border-color: var(--acento-fuerte);
 }
 
 .c-biblioteca-boton:disabled,
 .c-biblioteca-boton[aria-disabled="true"] {
-  background: var(--superficie-3);
-  border-color: var(--borde-suave);
+  background: var(--superficie-2);
+  border-color: transparent;
   color: var(--deshabilitado);
   cursor: default;
 }
 
-/* ---------- Filtros (C-8): chips de 28 px en escritorio y 36 px en teléfono ---------- */
+/* ---------- Filtros (C-8): pastillas de 32 px en escritorio y de 40 px en teléfono ---------- */
 
 .c-biblioteca-filtros {
   display: flex;
@@ -136,23 +140,24 @@
   display: inline-flex;
   align-items: center;
   gap: var(--espacio-1, 4px);
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--borde-control);
-  border-radius: var(--radio-chip, 6px);
-  background: var(--superficie-2);
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--superficie-3);
   color: var(--texto);
   font-family: var(--familia-base);
-  font-size: calc(13px * var(--escala, 1));
-  line-height: calc(18px * var(--escala, 1));
+  font-size: calc(14px * var(--escala, 1));
+  line-height: calc(20px * var(--escala, 1));
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--duracion-micro, 120ms) var(--curva-movimiento, ease);
 }
 
 .c-chip.is-activo {
-  background: var(--acento-suave);
+  background: var(--acento);
   border-color: var(--acento);
+  color: var(--sobre-acento);
 }
 
 .c-chip-marca {
@@ -167,11 +172,11 @@
 
 @media (hover: hover) {
   .c-chip:not(.is-activo):hover {
-    background: var(--superficie-3);
+    background: color-mix(in srgb, var(--texto) 12%, var(--superficie-3));
   }
 }
 
-/* ---------- Búsqueda de cabecera (320 px, Ctrl o Cmd+K) ---------- */
+/* ---------- Búsqueda de cabecera: pastilla con lupa (Ctrl o Cmd+K) ---------- */
 
 .c-biblioteca-cabecera-acciones {
   display: flex;
@@ -181,34 +186,64 @@
   min-width: 0;
 }
 
+/* La etiqueta «Buscar» sigue en el árbol de accesibilidad; visualmente, la pastilla lleva la lupa. */
 .c-biblioteca-busqueda {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--espacio-2, 8px);
   width: min(320px, 100%);
   min-width: 0;
+  min-height: 36px;
+  padding: 0 var(--espacio-3, 12px) 0 var(--espacio-5, 32px);
+  border-radius: 999px;
+  background: var(--superficie-3);
+  color: var(--texto-2);
+}
+
+.c-biblioteca-busqueda::before {
+  content: "";
+  position: absolute;
+  left: var(--espacio-3, 12px);
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-4-4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-4-4'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
 }
 
 .c-biblioteca-busqueda-etiqueta {
-  font: var(--tipo-etiqueta);
-  color: var(--texto-2);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
   white-space: nowrap;
+  border: 0;
 }
 
 .c-biblioteca-busqueda-campo {
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
-  min-height: var(--objetivo-minimo, 40px);
-  padding: 0 12px;
-  border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
-  background: var(--superficie-2);
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--texto);
   font: var(--tipo-cuerpo);
 }
 
-/* ---------- Barra de selección múltiple (C-18): 56 px, fija sobre la tabla ---------- */
+.c-biblioteca-busqueda-campo::placeholder {
+  color: var(--texto-3);
+}
+
+/* ---------- Barra de selección múltiple (C-18): 56 px, encima de la lista ---------- */
 
 .c-biblioteca-seleccion {
   display: flex;
@@ -217,7 +252,7 @@
   gap: var(--espacio-2, 8px) var(--espacio-3, 12px);
   min-height: 56px;
   padding: var(--espacio-2, 8px) var(--espacio-3, 12px);
-  border: 1px solid var(--borde-control);
+  border: 1px solid var(--borde-suave);
   border-radius: var(--radio-tarjeta, 12px);
   background: var(--superficie-2);
   box-shadow: var(--sombra-1);
@@ -246,24 +281,20 @@
 .c-biblioteca-selector {
   min-height: 32px;
   max-width: 220px;
-  padding: 0 var(--espacio-2, 8px);
+  padding: 0 var(--espacio-3, 12px);
   border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
+  border-radius: 999px;
   background: var(--superficie-2);
   color: var(--texto);
   font: var(--tipo-etiqueta);
 }
 
-/* ---------- Tabla (C-4) ---------- */
+/* ---------- Lista de canciones (C-4) ---------- */
 
 .c-biblioteca-tabla-caja {
   min-width: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--borde-suave);
-  border-radius: var(--radio-tarjeta, 12px);
-  background: var(--superficie-2);
-  box-shadow: var(--sombra-1);
 }
 
 .c-biblioteca-tabla {
@@ -273,10 +304,10 @@
   table-layout: fixed;
 }
 
-/* Separación de 12 px entre columnas: 6 px de relleno a cada lado de cada celda. */
+/* Relleno de 8 px a cada lado: la separación visual entre columnas es de 16 px. */
 .c-biblioteca-tabla th,
 .c-biblioteca-tabla td {
-  padding: 0 6px;
+  padding: 0 var(--espacio-2, 8px);
   vertical-align: middle;
   min-width: 0;
 }
@@ -286,8 +317,8 @@
   top: 0;
   z-index: 1;
   height: 32px;
-  background: var(--superficie-2);
-  /* La línea de separación es una sombra interior: no suma altura, así la cabecera mide 32 px (DESIGN C-4). */
+  background: var(--fondo);
+  /* La línea de separación es una sombra interior: no suma altura, así la cabecera mide 32 px. */
   box-shadow: inset 0 -1px 0 var(--borde-suave);
   font: var(--tipo-cabecera-tabla);
   color: var(--texto-2);
@@ -295,12 +326,12 @@
   white-space: nowrap;
 }
 
+/* Filas de 56 px: portada de 40 px y menú de 44 px con 6 px de aire. */
 .c-biblioteca-tabla tbody td {
-  height: 40px;
-  /* Igual que la cabecera: la línea de la fila no suma altura, así cada fila mide 40 px (DESIGN C-4). */
+  height: 56px;
   box-shadow: inset 0 -1px 0 var(--borde-suave);
-  font: var(--tipo-fila);
-  color: var(--texto);
+  font: var(--tipo-artista);
+  color: var(--texto-2);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -338,22 +369,27 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   opacity: 1;
 }
 
-/* Anchos de columna (desde 1024 px). El título ocupa el resto, con un mínimo de 220 px. */
-.c-biblioteca-tabla .col-seleccion { width: 36px; }
-.c-biblioteca-tabla .col-duracion { width: 68px; }
-.c-biblioteca-tabla .col-familiaridad { width: 168px; }
-.c-biblioteca-tabla .col-preferencia { width: 132px; }
-.c-biblioteca-tabla .col-presentacion { width: 132px; }
-.c-biblioteca-tabla .col-menu { width: 52px; }
+/* Anchos de columna (incluido el relleno de 8 px a cada lado). El título ocupa el resto de la fila. */
+.c-biblioteca-tabla .col-seleccion { width: 44px; }
+.c-biblioteca-tabla .col-portada { width: 56px; }
+.c-biblioteca-tabla .col-titulo { min-width: 140px; }
+.c-biblioteca-tabla .col-carpeta { width: 140px; }
+.c-biblioteca-tabla .col-duracion { width: 72px; text-align: right; }
+.c-biblioteca-tabla .col-familiaridad { width: 160px; }
+.c-biblioteca-tabla .col-preferencia { width: 116px; }
+.c-biblioteca-tabla .col-presentacion { width: 124px; }
+.c-biblioteca-tabla .col-menu { width: 60px; }
 .c-biblioteca-tabla .col-ficha { display: none; }
 
-.c-biblioteca-tabla .col-titulo { min-width: 220px; }
+.c-biblioteca-tabla thead .col-duracion {
+  text-align: right;
+}
 
 .c-biblioteca-tabla .cifras {
   font-variant-numeric: tabular-nums;
 }
 
-/* Filas: selección, sonando y foco. El resaltado en pasar el puntero solo existe con puntero. */
+/* Filas: selección, sonando y foco. El resaltado al pasar el puntero solo existe con puntero. */
 .c-biblioteca-fila {
   outline-offset: -2px;
 }
@@ -364,39 +400,100 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
 }
 
 @media (hover: hover) {
-  .c-biblioteca-fila:hover {
-    background: var(--superficie-3);
+  .c-biblioteca-fila:hover > td {
+    background: var(--superficie-2);
   }
 }
 
-.c-biblioteca-fila--seleccionada {
+.c-biblioteca-fila--seleccionada > td {
   background: var(--acento-suave);
 }
 
-.c-biblioteca-fila--sonando {
-  box-shadow: inset 3px 0 0 var(--acento);
+/* Sonando: el título va en acento y la etiqueta «Suena» lo dice con texto (no solo con color). */
+.c-biblioteca-fila--sonando .c-biblioteca-titulo-texto {
+  color: var(--acento);
+}
+
+/* Columna de número y casilla: el número es la posición; la casilla aparece al pasar el puntero o al seleccionar. */
+.c-biblioteca-tabla .col-seleccion {
+  position: relative;
+  text-align: center;
+}
+
+.c-biblioteca-numero {
+  display: inline-block;
+  min-width: 24px;
+  font: var(--tipo-etiqueta);
+  font-weight: 400;
+  color: var(--texto-2);
+  text-align: center;
+  transition: opacity var(--duracion-micro, 120ms) var(--curva-movimiento, ease);
 }
 
 .c-biblioteca-casilla {
-  width: 24px;
-  height: 24px;
-  margin: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  opacity: 0;
+  pointer-events: none;
   accent-color: var(--acento);
   cursor: pointer;
 }
 
+.c-biblioteca-fila--seleccionada .c-biblioteca-casilla {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.c-biblioteca-fila--seleccionada .c-biblioteca-numero {
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .c-biblioteca-fila:hover .c-biblioteca-casilla {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .c-biblioteca-fila:hover .c-biblioteca-numero {
+    opacity: 0;
+  }
+}
+
+/* Portada de 40 px: marcador neutro, porque el catálogo no trae imágenes. */
+.c-biblioteca-portada {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radio-miniatura, 6px);
+  background: var(--superficie-3);
+  color: var(--texto-2);
+}
+
 .c-biblioteca-celda-titulo {
-  font: var(--tipo-fila);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: var(--tipo-artista);
+  color: var(--texto-2);
 }
 
 .c-biblioteca-titulo-texto {
   font: var(--tipo-fila);
+  color: var(--texto);
 }
 
 .c-biblioteca-artista {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font: var(--tipo-artista);
   color: var(--texto-2);
-  margin-left: var(--espacio-2, 8px);
 }
 
 .c-biblioteca-artista:empty {
@@ -408,6 +505,7 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   align-items: center;
   gap: var(--espacio-1, 4px);
   margin-left: var(--espacio-2, 8px);
+  vertical-align: middle;
   font: var(--tipo-meta);
 }
 
@@ -417,10 +515,19 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
 }
 
 .c-biblioteca-estado--sin-conexion {
+  color: var(--texto-3);
+}
+
+.c-biblioteca-carpeta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--tipo-artista);
   color: var(--texto-2);
 }
 
-/* Familiaridad: cinco botones de 28 px con 4 px de separación (156 px). */
+/* Familiaridad: cinco círculos de 28 px con 4 px de separación (156 px). */
 .c-biblioteca-fam-grupo {
   display: inline-flex;
   gap: var(--espacio-1, 4px);
@@ -431,7 +538,7 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   height: 28px;
   padding: 0;
   border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
+  border-radius: 999px;
   background: var(--superficie-2);
   color: var(--texto);
   font: var(--tipo-etiqueta);
@@ -448,7 +555,7 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
 }
 
 .c-biblioteca-fam:disabled {
-  background: var(--superficie-3);
+  background: var(--superficie-2);
   border-color: var(--borde-suave);
   color: var(--deshabilitado);
   cursor: default;
@@ -460,7 +567,7 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   color: var(--texto-2);
 }
 
-/* Preferencia y presentación: botón de 32 px con menú. */
+/* Preferencia y presentación: pastilla de 32 px con su texto y el desplegable. */
 .c-biblioteca-desplegable {
   display: inline-flex;
   align-items: center;
@@ -469,16 +576,16 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   width: 100%;
   min-width: 0;
   min-height: 32px;
-  padding: 0 var(--espacio-2, 8px);
+  padding: 0 var(--espacio-3, 12px);
   border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
+  border-radius: 999px;
   background: var(--superficie-2);
   color: var(--texto);
   cursor: pointer;
 }
 
 .c-biblioteca-desplegable:disabled {
-  background: var(--superficie-3);
+  background: var(--superficie-2);
   border-color: var(--borde-suave);
   color: var(--deshabilitado);
   cursor: default;
@@ -493,12 +600,13 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   font-weight: 600;
 }
 
+/* Menú de la fila: botón circular de 44 px. */
 .c-biblioteca-icono-boton {
-  width: var(--objetivo-minimo, 40px);
-  height: var(--objetivo-minimo, 40px);
+  width: var(--objetivo-tactil, 44px);
+  height: var(--objetivo-tactil, 44px);
   padding: 0;
   border: 0;
-  border-radius: var(--radio-control, 8px);
+  border-radius: 999px;
   background: transparent;
   color: var(--texto-2);
   display: inline-flex;
@@ -524,9 +632,9 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   min-height: var(--objetivo-tactil, 44px);
   min-width: 64px;
   padding: 0 var(--espacio-3, 12px);
-  border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
-  background: var(--superficie-2);
+  border: 0;
+  border-radius: 999px;
+  background: var(--superficie-3);
   color: var(--texto);
   font: var(--tipo-etiqueta);
   cursor: pointer;
@@ -542,8 +650,8 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   min-width: 240px;
   max-width: calc(100vw - 16px);
   padding: var(--espacio-1, 4px);
-  border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
+  border: 1px solid var(--borde-suave);
+  border-radius: 14px;
   background: var(--superficie-2);
   color: var(--texto);
   box-shadow: var(--sombra-2);
@@ -556,7 +664,7 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   min-height: var(--objetivo-minimo, 40px);
   padding: 0 var(--espacio-3, 12px);
   border: 0;
-  border-radius: 6px;
+  border-radius: 10px;
   background: transparent;
   color: var(--texto);
   font: var(--tipo-etiqueta);
@@ -599,10 +707,10 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   gap: var(--espacio-2, 8px) var(--espacio-3, 12px);
   width: min(360px, calc(100vw - 32px));
   min-height: 48px;
-  padding: var(--espacio-2, 8px) var(--espacio-3, 12px);
+  padding: var(--espacio-2, 8px) var(--espacio-3, 12px) var(--espacio-2, 8px) var(--espacio-4, 16px);
   border: 1px solid var(--borde-suave);
-  border-radius: var(--radio-control, 8px);
-  background: var(--superficie-2);
+  border-radius: 16px;
+  background: var(--superficie-3);
   color: var(--texto);
   box-shadow: var(--sombra-2);
 }
@@ -658,11 +766,15 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   align-items: center;
   gap: var(--espacio-2, 8px);
   min-height: var(--objetivo-minimo, 40px);
-  padding: 0 var(--espacio-2, 8px);
-  border-radius: var(--radio-control, 8px);
+  padding: 0 var(--espacio-3, 12px);
+  border-radius: 12px;
   font: var(--tipo-cuerpo);
   color: var(--texto);
   cursor: pointer;
+}
+
+.c-hoja-opcion:hover {
+  background: var(--superficie-3);
 }
 
 .c-hoja-opcion input {
@@ -698,10 +810,10 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
 .c-campo-entrada {
   width: 100%;
   min-width: 0;
-  min-height: var(--objetivo-minimo, 40px);
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 var(--espacio-4, 16px);
   border: 1px solid var(--borde-control);
-  border-radius: var(--radio-control, 8px);
+  border-radius: 12px;
   background: var(--superficie-2);
   color: var(--texto);
   font: var(--tipo-cuerpo);
@@ -714,7 +826,7 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
 
 .c-campo-entrada--error {
   border: 2px solid var(--peligro);
-  padding: 0 11px;
+  padding: 0 calc(var(--espacio-4, 16px) - 1px);
 }
 
 .c-campo-ayuda,
@@ -844,24 +956,28 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   }
 
   .c-chip {
-    min-height: 36px;
+    min-height: 44px;
   }
 
+  /* En teléfono, la búsqueda y «Vista previa» van al principio de la pantalla, en una sola línea. */
   .c-biblioteca-cabecera-acciones {
+    flex-wrap: nowrap;
     width: 100%;
   }
 
   .c-biblioteca-busqueda {
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
+    min-height: 44px;
+  }
+
+  .c-biblioteca-busqueda-campo {
+    min-height: 40px;
   }
 
   .c-biblioteca-tabla-caja {
     max-height: none;
     overflow: visible;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
   }
 
   .c-biblioteca-tabla,
@@ -874,16 +990,17 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
     display: none;
   }
 
+  /* Tarjeta: casilla, portada, título con artista, familiaridad debajo y «Ficha». La casilla siempre se ve
+     (sin puntero no hay pasar el ratón). */
   .c-biblioteca-tabla .c-biblioteca-fila {
     display: grid;
-    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-columns: 28px 40px minmax(0, 1fr) auto;
     grid-template-rows: auto auto;
     column-gap: var(--espacio-3, 12px);
     align-items: center;
     min-height: 72px;
-    padding: var(--espacio-1, 4px) var(--espacio-3, 12px);
-    border: 1px solid var(--borde-suave);
-    border-radius: var(--radio-tarjeta, 12px);
+    padding: 6px var(--espacio-3, 12px);
+    border-radius: 16px;
     background: var(--superficie-2);
     margin-bottom: var(--espacio-2, 8px);
   }
@@ -897,68 +1014,59 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
     border: 0;
     box-shadow: none;
     white-space: normal;
+    background: transparent;
   }
 
   .c-biblioteca-tabla .c-biblioteca-fila > .col-seleccion {
     grid-column: 1;
     grid-row: 1 / span 2;
+    align-self: center;
   }
 
-  /* Título en la primera línea; artista y estado juntos en la segunda (22 + 18 px) y la familiaridad debajo (22 px).
-     Con el relleno y el borde, la tarjeta mide 72 px (DESIGN C-4). */
-  .c-biblioteca-tabla .c-biblioteca-fila > .col-titulo {
+  .c-biblioteca-tabla .c-biblioteca-fila > .col-portada {
     grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .c-biblioteca-tabla .c-biblioteca-fila > .col-titulo {
+    grid-column: 3;
     grid-row: 1;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    column-gap: var(--espacio-2, 8px);
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
-    line-height: 22px;
-  }
-
-  .c-biblioteca-tabla .c-biblioteca-fila > .col-titulo > .c-biblioteca-titulo-texto {
-    flex: 0 0 100%;
-    min-width: 0;
-    overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .c-biblioteca-tabla .c-biblioteca-fila .c-biblioteca-artista {
-    display: block;
-    flex: 0 1 auto;
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 18px;
-  }
-
-  .c-biblioteca-tabla .c-biblioteca-fila .c-biblioteca-estado {
-    display: block;
-    flex: none;
-    margin-left: 0;
-    line-height: 18px;
   }
 
   .c-biblioteca-tabla .c-biblioteca-fila > .col-familiaridad {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 2;
   }
 
   .c-biblioteca-tabla .c-biblioteca-fila > .col-ficha {
     display: block;
-    grid-column: 3;
+    grid-column: 4;
     grid-row: 1 / span 2;
   }
 
+  .c-biblioteca-tabla .c-biblioteca-fila > .col-carpeta,
   .c-biblioteca-tabla .c-biblioteca-fila > .col-duracion,
   .c-biblioteca-tabla .c-biblioteca-fila > .col-preferencia,
   .c-biblioteca-tabla .c-biblioteca-fila > .col-presentacion,
   .c-biblioteca-tabla .c-biblioteca-fila > .col-menu {
     display: none;
+  }
+
+  .c-biblioteca-tabla .c-biblioteca-numero {
+    display: none;
+  }
+
+  .c-biblioteca-tabla .c-biblioteca-casilla {
+    position: static;
+    width: 24px;
+    height: 24px;
+    margin: 0;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .c-biblioteca-tabla .c-biblioteca-fam-grupo {
@@ -967,6 +1075,15 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
 
   .c-biblioteca-tabla .c-biblioteca-fam-texto {
     display: inline;
+  }
+
+  .c-biblioteca-tabla .c-biblioteca-portada {
+    width: 40px;
+    height: 40px;
+  }
+
+  .c-biblioteca-tabla .c-biblioteca-titulo-texto {
+    font: var(--tipo-fila);
   }
 
   .c-biblioteca-seleccion {
@@ -983,7 +1100,17 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   }
 
   .c-biblioteca-boton {
-    min-height: 48px;
+    min-height: 44px;
+  }
+
+  .c-biblioteca-boton--compacto {
+    min-height: 44px;
+  }
+
+  .c-biblioteca-selector {
+    min-height: 44px;
+    max-width: none;
+    width: 100%;
   }
 
   .c-campo-entrada {
@@ -1011,31 +1138,7 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   }
 }
 
-/* ---------- De 600 a 1023 px: filas de 48 px con título, familiaridad y menú ---------- */
-
-@media (min-width: 600px) and (max-width: 1023.98px) {
-  .c-biblioteca-tabla .col-duracion,
-  .c-biblioteca-tabla .col-preferencia,
-  .c-biblioteca-tabla .col-presentacion {
-    display: none;
-  }
-
-  .c-biblioteca-tabla tbody tr {
-    height: 48px;
-  }
-
-  .c-biblioteca-tabla tbody td {
-    height: 48px;
-  }
-}
-
-/* ---------- Desde 1024 px: tabla completa de 40 px ---------- */
-
-@media (min-width: 1024px) {
-  .c-biblioteca-tabla .col-titulo {
-    min-width: 220px;
-  }
-}
+/* ---------- Escritorio y tableta (desde 600 px): la lista ocupa el alto que deja la barra de filtros ---------- */
 
 @media (min-width: 600px) {
   .c-biblioteca-ficha,
@@ -1043,9 +1146,11 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
     display: none;
   }
 
-  /* Escritorio y tableta: la tabla ocupa el alto que deja la barra de filtros, sin márgenes verticales. Así caben
-     17 filas de 40 px a 1440 × 900 y 14 a 1024 × 768 (DESIGN 15). Los avisos que aparecen encima (selección y
-     texto de ayuda) llevan su propio margen. */
+  .c-biblioteca-tabla .c-biblioteca-fam-texto {
+    display: none;
+  }
+
+  /* La lista se desplaza por dentro, nunca la página: así caben 11 filas de 56 px a 1440 × 900 (ver DESIGN 15). */
   .c-main:has(> .c-biblioteca) {
     padding-block: 0;
   }
@@ -1055,12 +1160,16 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
     gap: 0;
   }
 
-  /* Solo la tabla se encoge: la barra de filtros, la de selección (que tiene mínimo de 56 px) y el texto de ayuda
+  /* Solo la lista se encoge: la barra de filtros, la de selección (mínimo de 56 px) y el texto de ayuda
      conservan su altura natural. */
   .c-biblioteca > .c-biblioteca-barra-superior,
   .c-biblioteca > .c-biblioteca-seleccion,
   .c-biblioteca > .c-biblioteca-ayuda {
     flex: none;
+  }
+
+  .c-biblioteca > .c-biblioteca-barra-superior {
+    padding-bottom: var(--espacio-3, 12px);
   }
 
   .c-biblioteca > .c-biblioteca-seleccion,
@@ -1083,5 +1192,54 @@ th[aria-sort="descending"] .c-biblioteca-orden::after {
   .c-biblioteca-busqueda {
     flex: 0 1 320px;
     width: auto;
+  }
+
+  /* Cinco círculos de 26 px con 3 px de separación: 142 px dentro de la celda de 160 px. */
+  .c-biblioteca-tabla .c-biblioteca-fam {
+    width: 26px;
+    height: 26px;
+    font-size: calc(13px * var(--escala, 1));
+  }
+
+  .c-biblioteca-tabla .c-biblioteca-fam-grupo {
+    gap: 3px;
+  }
+}
+
+/* Tableta: 600 a 819 px. Sin carpeta ni duración: el título y la familiaridad caben con el panel encima. */
+@media (min-width: 600px) and (max-width: 819.98px) {
+  .c-biblioteca-tabla .col-carpeta,
+  .c-biblioteca-tabla .col-duracion,
+  .c-biblioteca-tabla .col-preferencia,
+  .c-biblioteca-tabla .col-presentacion {
+    display: none;
+  }
+}
+
+/* Tableta grande: de 820 a 1023 px, con la duración. */
+@media (min-width: 820px) and (max-width: 1023.98px) {
+  .c-biblioteca-tabla .col-carpeta,
+  .c-biblioteca-tabla .col-preferencia,
+  .c-biblioteca-tabla .col-presentacion {
+    display: none;
+  }
+}
+
+/* Escritorio: de 1024 a 1679 px, con la carpeta; preferencia y presentación se editan en el panel de canción. */
+@media (min-width: 1024px) and (max-width: 1679.98px) {
+  .c-biblioteca-tabla .col-titulo {
+    min-width: 160px;
+  }
+
+  .c-biblioteca-tabla .col-preferencia,
+  .c-biblioteca-tabla .col-presentacion {
+    display: none;
+  }
+}
+
+/* Escritorio amplio: desde 1680 px, todas las columnas (el panel de 320 px sigue abierto a su lado). */
+@media (min-width: 1680px) {
+  .c-biblioteca-tabla .col-titulo {
+    min-width: 260px;
   }
 }

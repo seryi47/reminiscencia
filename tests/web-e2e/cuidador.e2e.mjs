@@ -67,21 +67,23 @@ describe("Biblioteca a 1440 × 900 px (escritorio)", () => {
     }),
   );
 
-  prueba("Biblioteca a 1440 px: las filas de la tabla miden 40 px", () =>
+  // Rediseño (lista de estilo Apple Music): la fila pasa de 40 a 56 px para que quepa el menú de 44 px y la portada de 40 px.
+  prueba("Biblioteca a 1440 px: las filas de la lista miden 56 px", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      const caja = await measure(page, "c-biblioteca-row", "primera fila de la tabla (C2)");
-      expectSize("Fila de la tabla (alto)", caja.height, 40);
+      const caja = await measure(page, "c-biblioteca-row", "primera fila de la lista (C2)");
+      expectSize("Fila de la lista (alto)", caja.height, 56);
     }),
   );
 
-  prueba("Biblioteca a 1440 px: se ven 17 filas completas de la tabla", () =>
+  // Con filas de 56 px, a 1440 × 900 caben 12 filas completas (antes 17, con filas de 40 px).
+  prueba("Biblioteca a 1440 px: se ven 12 filas completas de la lista", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       await openCaregiverHome(page, server.url);
       await goCaregiverSection(page, "biblioteca");
-      const visibles = await countFullyVisibleRows(page, "c-biblioteca-row", "filas de la tabla (C2)");
-      assert.equal(visibles, 17, `Se ven ${visibles} filas completas y DESIGN 15 fija 17 a 1440 × 900.`);
+      const visibles = await countFullyVisibleRows(page, "c-biblioteca-row", "filas de la lista (C2)");
+      assert.equal(visibles, 12, `Se ven ${visibles} filas completas y el rediseño fija 12 a 1440 × 900 con filas de 56 px.`);
     }),
   );
 
