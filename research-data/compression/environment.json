@@ -1,0 +1,25 @@
+{
+  "generated_utc": "2026-10-31T14:56:06+00:00",
+  "python": "3.14.6",
+  "numpy": "2.4.4",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "macos_version": "27.0.1",
+  "cpu_brand": "Apple M4",
+  "logical_cpus": 10,
+  "repetitions": 3,
+  "duration_tolerance_ms": 50.0,
+  "lag_search_s": 0.25,
+  "low_frequency_cutoff_hz": 20.0,
+  "control_resample_hz": 48000,
+  "ffmpeg_version": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "ffmpeg_configuration": "configuration: --prefix=/opt/homebrew/Cellar/ffmpeg/8.1.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon",
+  "ffprobe_version": "ffprobe version 8.1.2 Copyright (c) 2007-2026 the FFmpeg developers",
+  "encoders_available": {
+    "libopus": true,
+    "aac": true,
+    "libmp3lame": true,
+    "flac": true,
+    "libvorbis": false
+  }
+}
