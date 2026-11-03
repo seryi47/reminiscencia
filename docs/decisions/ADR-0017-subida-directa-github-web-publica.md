@@ -40,6 +40,10 @@ Hasta ahora, «Subir canciones» ofrecía dos caminos: guardar el audio solo en 
 - **Atribución.** El catálogo pone «Subida por <cuenta del token>» en todas las subidas de la web: no se sabe quién subió cada una.
 - **Memoria del navegador.** Sin límite de duración, un archivo muy largo puede agotar la memoria al decodificarlo; entonces se muestra el error de conversión de ese archivo.
 
+## Nota 2026-11-03: subida en bloque por ZIP
+
+A petición del propietario, «Subir canciones» (web y APK) acepta también `.zip`. El ZIP se descomprime en el dispositivo y cada canción que contiene sube por `/api/subir` como un archivo suelto, con el nombre de su archivo como título; el ZIP no se sube, así que el contrato de `/api/subir` no cambia. El buzón acepta además `.zip` subidos por la página de GitHub (ADR-0014).
+
 ## Sin verificar (requiere desplegar en Vercel)
 
 - Que Vercel ejecute `api/subir.js` (ESM en `.js` sin `package.json`) con la firma web `POST(request)`, y el límite real de 4,5 MB del cuerpo.

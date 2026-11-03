@@ -25,7 +25,7 @@ Las listas y los «Me gusta» se guardan **solo en este navegador** (IndexedDB).
 
 ## Cómo subir canciones
 
-El botón **Subir canciones** sube siempre **para todos** (ADR-0017): eliges uno o varios archivos (WAV, MP3, M4A, FLAC, OGG u OPUS) y no hay que hacer nada más. No hace falta cuenta ni contraseña.
+El botón **Subir canciones** sube siempre **para todos** (ADR-0017): eliges uno o varios archivos (WAV, MP3, M4A, FLAC, OGG u OPUS), o un `.zip` con canciones, y no hay que hacer nada más. El ZIP no se sube: el navegador o el teléfono lo descomprime, saca cada canción (también de subcarpetas; ignora lo que no es audio) y la sube con el nombre de su archivo como título. No hace falta cuenta ni contraseña.
 
 - Cada archivo se convierte a Opus en el propio navegador, para que pese poco, y se envía, de uno en uno y en orden, a la función de la web `/api/subir`, en trozos de hasta 4 MB. La hoja muestra el progreso y, por archivo, «Subida: llegará a todos en un par de minutos» o el error.
 - El título de cada canción es el nombre del archivo sin la extensión (`Mi canción.mp3` pasa a «Mi canción»). Los caracteres que el buzón no admite (`:`, `/`, comillas...) se cambian por espacios; si el nombre ya está en el buzón, se añade « (2)».
