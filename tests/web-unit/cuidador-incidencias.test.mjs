@@ -9,6 +9,15 @@ import { describe, test } from 'node:test';
 
 import {
   buildImportRequest,
+  buildOrganizeIssueUrl,
+  COVER_RULES,
+  COVER_UPLOAD_URL,
+  EDIT_NOTE,
+  folderArtistProblem,
+  folderNameProblem,
+  isCoverFolderId,
+  songArtistProblem,
+  songTitleProblem,
   buildIssueBody,
   buildIssueTitle,
   buildIssueUrl,
@@ -195,12 +204,12 @@ describe('validateOperation (validate_payload del backend)', () => {
     assert.match(validateOperation(['edit_song']), /objeto JSON/);
   });
 
-  test('las carpetas: nombre obligatorio, identificadores de 10 caracteres y parent_id opcional', () => {
+  test('los álbumes (carpetas): nombre obligatorio, identificadores F + 16 o 10 hexadecimales y parent_id opcional', () => {
     assert.equal(validateOperation({ op: 'create_folder', name: 'Años 20', parent_id: null }), null);
     assert.equal(validateOperation({ op: 'create_folder', name: 'Años 20' }), null);
     assert.match(validateOperation({ op: 'create_folder', name: '   ' }), /no puede quedar en blanco/);
     assert.equal(validateOperation({ op: 'rename_folder', folder_id: FOLDER, name: 'Nueva' }), null);
-    assert.match(validateOperation({ op: 'rename_folder', folder_id: 'ABC', name: 'Nueva' }), /identificador de la carpeta no es válido/);
+    assert.match(validateOperation({ op: 'rename_folder', folder_id: 'ABC', name: 'Nueva' }), /identificador del álbum no es válido/);
     assert.equal(validateOperation({ op: 'delete_folder', folder_id: FOLDER }), null);
     assert.match(validateOperation({ op: 'delete_folder' }), /Falta el campo folder_id/);
   });
@@ -248,7 +257,7 @@ describe('título y enlace de la incidencia', () => {
     assert.equal(buildIssueTitle({ action: 'import', url: 'https://archive.org/details/x', title: 'Charleston' }), 'Importar audio: Charleston');
     assert.equal(buildIssueTitle({ action: 'organize', payload: { op: 'edit_song', song_id: SONG, public: true } }), `Publicar la canción ${SONG}`);
     assert.equal(buildIssueTitle({ action: 'organize', payload: { op: 'edit_song', song_id: SONG, public: false } }), `Despublicar la canción ${SONG}`);
-    assert.equal(buildIssueTitle({ action: 'organize', payload: { op: 'delete_folder', folder_id: FOLDER } }), `Borrar la carpeta ${FOLDER}`);
+    assert.equal(buildIssueTitle({ action: 'organize', payload: { op: 'delete_folder', folder_id: FOLDER } }), `Borrar el álbum ${FOLDER}`);
     const long = buildIssueTitle({ action: 'import', url: `https://ejemplo.org/${'a'.repeat(300)}.mp3`, license: 'x' });
     assert.equal([...long].length, REQUEST_LIMITS.issueTitle);
     assert.ok(long.endsWith('…'));
@@ -272,5 +281,82 @@ describe('título y enlace de la incidencia', () => {
     assert.deepEqual(parseLikeBackend(new URL(url).searchParams.get('body')), {
       action: 'import', url: 'https://ejemplo.org/a.mp3', license: 'CC BY 4.0', title: 'Tema',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Edición de canciones y álbumes (hojas de js/views/edit.js)
+// ---------------------------------------------------------------------------------------------
+
+describe('edición de canciones y álbumes', () => {
+  const NEW_FOLDER = 'F0123456789abcdef';
+  const payloadOf = (url) => {
+    const fields = parseLikeBackend(new URL(url).searchParams.get('body'));
+    assert.equal(fields.action, 'organize');
+    return JSON.parse(fields.payload);
+  };
+
+  test('«Editar detalles» de una canción: edit_song con title y artist', () => {
+    const payload = { op: 'edit_song', song_id: SONG, title: 'Charleston', artist: 'Orquesta de prueba' };
+    assert.equal(validateOperation(payload), null);
+    const url = buildOrganizeIssueUrl(payload);
+    assert.deepEqual(payloadOf(url), payload);
+    assert.equal(new URL(url).searchParams.get('labels'), 'biblioteca');
+    assert.equal(new URL(url).searchParams.get('title'), `Editar la canción ${SONG}`);
+  });
+
+  test('«Editar detalles» de un álbum: edit_folder con name y artist, en los dos formatos de identificador', () => {
+    for (const folderId of [NEW_FOLDER, FOLDER]) {
+      const payload = { op: 'edit_folder', folder_id: folderId, name: 'Valses', artist: '' };
+      assert.equal(validateOperation(payload), null, folderId);
+      assert.deepEqual(payloadOf(buildOrganizeIssueUrl(payload)), payload);
+      assert.equal(buildIssueTitle({ action: 'organize', payload }), `Editar el álbum ${folderId}`);
+    }
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: NEW_FOLDER }), /al menos un campo que cambiar en el álbum/);
+    assert.match(validateOperation({ op: 'edit_folder', name: 'Valses' }), /Falta el campo folder_id/);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: NEW_FOLDER, name: 'x', cover: 'covers/x.jpg' }), /no está permitido/);
+  });
+
+  test('«Añadir a un álbum»: edit_song con folder_id (o null para sacarla del álbum)', () => {
+    const add = { op: 'edit_song', song_id: SONG, folder_id: NEW_FOLDER };
+    assert.equal(validateOperation(add), null);
+    assert.equal(buildIssueTitle({ action: 'organize', payload: add }), `Añadir la canción ${SONG} al álbum ${NEW_FOLDER}`);
+    const out = { op: 'edit_song', song_id: SONG, folder_id: null };
+    assert.equal(validateOperation(out), null);
+    assert.equal(buildIssueTitle({ action: 'organize', payload: out }), `Quitar la canción ${SONG} de su álbum`);
+    assert.deepEqual(payloadOf(buildOrganizeIssueUrl(out)), out);
+  });
+
+  test('«Crear álbum»: create_folder con name y artist opcional', () => {
+    assert.equal(validateOperation({ op: 'create_folder', name: 'Valses', artist: 'Orquesta de prueba' }), null);
+    assert.equal(validateOperation({ op: 'create_folder', name: 'Valses' }), null);
+    assert.equal(buildIssueTitle({ action: 'organize', payload: { op: 'create_folder', name: 'Valses' } }), 'Crear el álbum «Valses»');
+  });
+
+  test('buildOrganizeIssueUrl no prepara una petición que el backend rechazaría', () => {
+    assert.throws(() => buildOrganizeIssueUrl({ op: 'edit_folder', folder_id: NEW_FOLDER, name: '' }), /no puede quedar en blanco/);
+    assert.throws(() => buildOrganizeIssueUrl({ op: 'edit_song', song_id: 'L0011223344556677', title: 'x' }), /identificador de la canción/);
+  });
+
+  test('los textos de cada campo se validan por separado para marcar el campo de la hoja', () => {
+    assert.equal(folderNameProblem('Valses'), null);
+    assert.match(folderNameProblem(' '), /nombre del álbum no puede quedar en blanco/);
+    assert.match(folderArtistProblem('x'.repeat(81)), /artista del álbum no puede tener más de 80/);
+    assert.equal(songTitleProblem('Charleston'), null);
+    assert.match(songArtistProblem('a\nb'), /saltos de línea/);
+  });
+
+  test('«Cambiar portada» abre el buzón de portadas y solo vale para canciones y álbumes F', () => {
+    assert.equal(COVER_UPLOAD_URL, 'https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas');
+    assert.deepEqual({ ...COVER_RULES }, { formats: 'JPG, PNG o WebP', maxMb: 10, size: 640 });
+    assert.equal(isCoverFolderId(NEW_FOLDER), true);
+    assert.equal(isCoverFolderId(FOLDER), false);
+    assert.equal(isFolderId(NEW_FOLDER), true);
+    assert.equal(isFolderId(FOLDER), true);
+  });
+
+  test('el aviso de las hojas pide permiso de escritura y dice cuándo llega el cambio', () => {
+    assert.match(EDIT_NOTE, /permiso de escritura en el repositorio/);
+    assert.match(EDIT_NOTE, /llega a todos en un par de minutos/);
   });
 });

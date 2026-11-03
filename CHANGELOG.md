@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## Sin publicar: web con la distribución de Spotify de 2025, portadas y edición de álbumes (2026-11-03, rama `feat/web-spotify-2`)
+
+Especificación en `docs/user-experience/DESIGN.md` 3.0.
+
+### Cambiado
+- Distribución del reproductor web de Spotify de 2025: barra superior de 64 px («Reminiscencia» en texto, botón Inicio de 48 px y buscador en pastilla de 48 × 480 px con «Explorar»), tres paneles de radio 8 separados 8 px («Tu biblioteca» de 280 a 420 px con separador ajustable, el contenido y el panel «Reproduciendo» de 300 px) y el reproductor de 72 px a todo el ancho. En el teléfono, barra inferior, minirreproductor con el color de la portada y pantalla completa, como la app.
+- Colores exactos de Spotify (`#000`, `#121212`, `#1f1f1f`, `#2a2a2a`, `#181818`/`#282828`, `#b3b3b3`, acento `#1ed760` con texto negro y separadores `#3e3e3e`).
+- «Tu biblioteca»: «+ Crear» (Lista, Álbum y Subir canciones), chips «Listas» y «Álbumes», buscador pequeño, orden «Recientes», «Orden alfabético» o «Creador», y elementos de 64 px con «Lista • Reminiscencia» o «Álbum • <artista>».
+- Inicio: chips «Todo» y «Música», accesos rápidos de 48 px en 4 columnas, «Escuchado recientemente» y tarjetas sin fondo hasta el hover con el botón verde que sube. Ya no hay saludo visible.
+- Las carpetas se llaman «Álbumes» en toda la interfaz; la ruta pasa a `#/album/<id>` (`#/carpeta/<id>` sigue valiendo). Página de álbum o lista con degradado del color dominante de la portada, metadatos «artista • año • n canciones, duración», «Me gusta» de toda la colección y tabla con cabecera fija (#, Título, Álbum y reloj).
+- Reproductor: «Reproduciendo», letra (desactivado), cola, dispositivo (oculto), volumen y pantalla completa; la cola se abre en el panel derecho en escritorio.
+- `js/cuidador/incidencias.js` e `intake.js` aceptan los dos formatos de álbum del backend (F + 16 hexadecimales y 10 hexadecimales); los mensajes y los títulos de las incidencias dicen «álbum».
+- `SHELL_VERSION` pasa a 7; el service worker guarda las portadas en su propia caché (`reminiscencia-portadas-v1`).
+
+### Añadido
+- Portadas publicadas: `"cover": "covers/<id>.jpg"` en canciones y álbumes, y `"artist"` en los álbumes (`js/catalog.js`); sin portada, la generada. Color dominante en `js/cover-color.js`.
+- Hojas de edición (`js/views/edit.js`) que abren una incidencia de GitHub con la etiqueta `biblioteca`: «Editar detalles» de una canción (`edit_song` con título y artista) y de un álbum (`edit_folder` con nombre y artista), «Añadir a un álbum» (`edit_song` con `folder_id`), «Crear álbum» (`create_folder` con artista opcional) y «Cambiar portada» (buzón `audio-library/buzon/portadas`, con el ID como nombre del archivo; solo canciones y álbumes F). Validadas con las reglas del backend y con pruebas de paridad.
+- Listas propias con descripción y foto del dispositivo, recortada y reducida a 640 px en el navegador (`js/cover-image.js`) y guardada en IndexedDB.
+- Pruebas: unitarias de portadas, color dominante, recorte, detalles de lista, edición y paridad de álbumes; de extremo a extremo, funcionales de la barra superior, el panel «Reproduciendo», las portadas, Tu biblioteca, las hojas de edición y la foto de una lista; axe a 390, 820, 1024 y 1440 px en las pantallas y hojas nuevas; medidas de DESIGN 3.0.
+
 ## Sin publicar: interfaz sin usuarios con el aspecto de Spotify (2026-11-03, rama `feat/web-spotify`)
 
 Decisión del propietario ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)); especificación en `docs/user-experience/DESIGN.md` 2.0.

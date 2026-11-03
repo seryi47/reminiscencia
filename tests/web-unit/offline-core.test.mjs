@@ -12,8 +12,10 @@ import { fileURLToPath } from 'node:url';
 
 import {
   audioCacheName,
+  coverCacheName,
   formatBytes,
   isAudioRequest,
+  isCoverRequest,
   isDataRequest,
   isShellRequest,
   listAudioUrls,
@@ -260,6 +262,22 @@ describe('clasificación de peticiones', () => {
     assert.equal(isShellRequest('http://['), false);
     assert.equal(isAudioRequest('http://['), false);
     assert.equal(isDataRequest(undefined), false);
+  });
+});
+
+describe('portadas (covers/<id>.jpg)', () => {
+  test('reconoce solo /covers/<id seguro>.jpg', () => {
+    assert.equal(isCoverRequest('/covers/S0000000000000001.jpg'), true);
+    assert.equal(isCoverRequest(`${ORIGIN}covers/F0123456789abcdef.jpg?v=2`), true);
+    for (const url of ['/covers/x.png', '/covers/a/b.jpg', '/covers/../js/app.js', '/covers/.jpg', '/audio/x.jpg']) {
+      assert.equal(isCoverRequest(url), false, url);
+    }
+    assert.equal(isShellRequest('/covers/S0000000000000001.jpg'), false, 'las portadas no van en la caché del shell');
+  });
+
+  test('tienen su propia caché, que no se borra al cambiar de shell', () => {
+    assert.equal(coverCacheName(), 'reminiscencia-portadas-v1');
+    assert.equal(coverCacheName().startsWith('reminiscencia-shell-'), false);
   });
 });
 
@@ -617,6 +635,17 @@ describe('service worker (sw.js)', () => {
     } finally {
       delete self.indexedDB;
     }
+  });
+
+  test('una portada se guarda al verla y, sin red, se sirve desde su caché', async () => {
+    env.routes.set(`${ORIGIN}covers/S0000000000000001.jpg`, { body: 'jpeg' });
+    const online = dispatchFetch(new Request(`${ORIGIN}covers/S0000000000000001.jpg`));
+    assert.equal(await (await online.response).text(), 'jpeg');
+    await Promise.all(online.waits);
+    assert.deepEqual(await urlsIn(coverCacheName()), [`${ORIGIN}covers/S0000000000000001.jpg`]);
+    env.offline = true;
+    const offline = dispatchFetch(new Request(`${ORIGIN}covers/S0000000000000001.jpg`));
+    assert.equal(await (await offline.response).text(), 'jpeg');
   });
 
   test('activate elimina las cachés de shell antiguas y conserva el audio', async () => {

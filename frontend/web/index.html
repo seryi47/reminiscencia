@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
   <title>Reminiscencia</title>
-  <meta name="description" content="Música para recordar, organizada por carpetas. Sin cuentas: tus listas se guardan en este navegador.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231fdf64'/%3E%3Cpath d='M12 22V10l10-2v12' fill='none' stroke='%23000' stroke-width='2.5'/%3E%3C/svg%3E">
+  <meta name="description" content="Música para recordar, organizada por álbumes. Sin cuentas: tus listas se guardan en este navegador.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231ed760'/%3E%3Cpath d='M12 22V10l10-2v12' fill='none' stroke='%23000' stroke-width='2.5'/%3E%3C/svg%3E">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="preload" href="fonts/figtree-400.woff2" as="font" type="font/woff2" crossorigin>
@@ -17,42 +17,36 @@
 <body>
   <a class="skip-link" href="#main" data-testid="skip-link">Saltar al contenido</a>
   <div class="app" id="app">
-    <nav class="sidebar" aria-label="Barra lateral" data-testid="sidebar">
-      <div class="panel sidebar-nav" data-testid="sidebar-nav">
-        <ul class="nav-list">
-          <li>
-            <a class="nav-link" href="#/" data-nav="inicio" data-testid="nav-inicio">
-              <span class="nav-icon" data-icon-active>
-                <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2 3.5 10.3V20.5h6v-6h5v6h6V10.3L12 3.2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-                <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><path d="M12 3.2 3.5 10.3V20.5h6v-6h5v6h6V10.3L12 3.2z" fill="currentColor"/></svg>
-              </span>
-              <span>Inicio</span>
-            </a>
-          </li>
-          <li>
-            <a class="nav-link" href="#/buscar" data-nav="buscar" data-testid="nav-buscar">
-              <span class="nav-icon" data-icon-active>
-                <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="3"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-              </span>
-              <span>Buscar</span>
-            </a>
-          </li>
-        </ul>
+    <header class="topbar" data-testid="topbar">
+      <div class="topbar-left">
+        <a class="brand" href="#/" data-testid="brand">Reminiscencia</a>
       </div>
-      <section class="panel sidebar-library" aria-labelledby="titulo-biblioteca" data-testid="sidebar-library">
-        <div class="library-head">
-          <h2 class="library-heading" id="titulo-biblioteca">
-            <a class="library-heading-link" href="#/biblioteca" data-testid="sidebar-library-link">
-              <svg class="icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M4.5 3.5v17M9.5 3.5v17M14 4.2l5.5 16.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              <span>Tu biblioteca</span>
-            </a>
-          </h2>
-        </div>
-        <div id="sidebar-actions"></div>
-        <div id="sidebar-chips"></div>
-        <ul class="library-list" id="sidebar-list" data-testid="sidebar-list"></ul>
-      </section>
+      <div class="topbar-center">
+        <a class="home-button" href="#/" aria-label="Inicio" data-nav="inicio" data-testid="nav-inicio">
+          <span class="nav-icon" data-icon-active>
+            <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2 3.5 10.3V20.5h6v-6h5v6h6V10.3L12 3.2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><path d="M12 3.2 3.5 10.3V20.5h6v-6h5v6h6V10.3L12 3.2z" fill="currentColor"/></svg>
+          </span>
+        </a>
+        <form class="top-search" role="search" data-testid="top-search">
+          <label class="sr-only" for="top-search-input">Buscar canciones, álbumes y listas</label>
+          <span class="top-search-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+          <input class="top-search-input" id="top-search-input" type="search" placeholder="¿Qué quieres reproducir?" autocomplete="off" spellcheck="false" enterkeyhint="search" data-testid="top-search-input">
+          <button class="top-search-clear" id="top-search-clear" type="button" aria-label="Borrar la búsqueda" data-testid="top-search-clear" hidden><svg class="icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+          <span class="top-search-divider" aria-hidden="true"></span>
+          <a class="explore-button" href="#/buscar" aria-label="Explorar" data-nav="buscar" data-testid="nav-buscar">
+            <span class="nav-icon" data-icon-active>
+              <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M3.5 9.5 6 4.5h12l2.5 5v10h-17zM3.5 9.5h17M9.5 13.5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+              <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><path d="M3.5 9.5 6 4.5h12l2.5 5v10h-17z" fill="currentColor"/><path d="M3.5 9.5h17M9.5 13.5h5" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"/></svg>
+            </span>
+          </a>
+        </form>
+      </div>
+      <div class="topbar-right"></div>
+    </header>
+
+    <nav class="panel sidebar" id="sidebar" aria-labelledby="titulo-biblioteca" data-testid="sidebar">
+      <div class="library-resize" id="library-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Ancho de Tu biblioteca" aria-valuemin="280" aria-valuemax="420" aria-valuenow="280" data-testid="library-resize"></div>
     </nav>
 
     <main class="panel main" id="main" tabindex="-1" data-testid="main">
@@ -60,7 +54,7 @@
       <div id="view" class="view"></div>
     </main>
 
-    <aside class="panel queue-panel" id="queue-panel" aria-label="Cola de reproducción" data-testid="queue-panel" hidden></aside>
+    <aside class="panel now-panel" id="now-panel" aria-labelledby="titulo-reproduciendo" data-testid="now-panel" hidden></aside>
 
     <footer class="player-bar" id="player-bar" aria-label="Reproductor" data-testid="player-bar"></footer>
 

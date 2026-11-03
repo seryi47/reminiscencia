@@ -5,7 +5,21 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestCatalogOverrides } from "./helpers/catalogo-prueba.mjs";
 import { clickTestid, focusRingWidth, focusWithKeyboardMode, TEST_TIMEOUT_MS, waitVisible, wcagViolations } from "./helpers/elementos.mjs";
-import { createPlaylist, fillField, goSection, isPhone, openApp, openCollection, openRowMenu, openUpload, playRow, search } from "./helpers/flujos.mjs";
+import {
+  createMenu,
+  createPlaylist,
+  fillField,
+  goSection,
+  isPhone,
+  openApp,
+  openCollection,
+  openCollectionMenu,
+  openRowMenu,
+  openUpload,
+  pickMenu,
+  playRow,
+  search,
+} from "./helpers/flujos.mjs";
 import { launchBrowser, VIEWPORTS, withPage } from "./helpers/navegador.mjs";
 import { startStaticServer } from "./helpers/servidor.mjs";
 
@@ -23,7 +37,7 @@ after(async () => {
 });
 
 const prueba = (nombre, fn) => it(nombre, { timeout: TEST_TIMEOUT_MS }, fn);
-const FOLDER_A = "#/carpeta/F0000000000000001";
+const FOLDER_A = "#/album/F0000000000000001";
 
 // Cada pantalla: cómo prepararla (page, viewport) y, si solo aplica a algunos anchos, en cuáles.
 const PANTALLAS = [
@@ -38,7 +52,7 @@ const PANTALLAS = [
     },
   },
   {
-    nombre: "Carpeta sonando",
+    nombre: "Álbum sonando",
     preparar: async (page) => {
       await openCollection(page, FOLDER_A);
       await playRow(page, 1);
@@ -55,10 +69,79 @@ const PANTALLAS = [
   { nombre: "Me gusta vacía", preparar: (page) => openCollection(page, "#/me-gusta") },
   { nombre: "Tu biblioteca", preparar: (page, vp) => goSection(page, "biblioteca", vp) },
   {
-    nombre: "Mostrar todo: Carpetas",
+    nombre: "Mostrar todo: Álbumes",
     preparar: async (page) => {
-      await page.evaluate(() => { location.hash = "#/seccion/carpetas"; });
+      await page.evaluate(() => { location.hash = "#/seccion/albumes"; });
       await waitVisible(page, "section-grid");
+    },
+  },
+  {
+    nombre: "Tu biblioteca con el buscador abierto y el menú de orden",
+    soloAncho: true,
+    preparar: async (page) => {
+      await clickTestid(page, "sidebar-search-toggle", "buscar en Tu biblioteca");
+      await waitVisible(page, "sidebar-filter");
+      await clickTestid(page, "sidebar-sort", "Ordenar");
+      await page.waitForSelector('[role="menu"]');
+    },
+  },
+  {
+    nombre: "Menú Crear",
+    preparar: async (page, vp) => {
+      if (isPhone(vp)) await goSection(page, "biblioteca", vp);
+      await clickTestid(page, isPhone(vp) ? "library-page-create" : "sidebar-create", "Crear");
+      await page.waitForSelector('[role="menu"]');
+    },
+  },
+  {
+    nombre: "Hoja Editar detalles de una canción, con error",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openRowMenu(page, "S0000000000000002");
+      await pickMenu(page, "menu-edit-song");
+      await fillField(await waitVisible(page, "edit-song-title"), " ");
+      await page.waitForSelector('[data-testid="edit-song"] .field-error:not([hidden])');
+    },
+  },
+  {
+    nombre: "Hoja Añadir a un álbum",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openRowMenu(page, "S0000000000000002");
+      await pickMenu(page, "menu-move-album");
+      await waitVisible(page, "move-album");
+    },
+  },
+  {
+    nombre: "Hoja Editar detalles de un álbum",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await clickTestid(page, "collection-edit", "Editar detalles");
+      await waitVisible(page, "edit-album");
+    },
+  },
+  {
+    nombre: "Hoja Cambiar portada",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openCollectionMenu(page);
+      await pickMenu(page, "menu-album-cover");
+      await waitVisible(page, "cover-sheet");
+    },
+  },
+  {
+    nombre: "Hoja Crear álbum",
+    preparar: async (page, vp) => {
+      await createMenu(page, vp, "album");
+      await waitVisible(page, "create-album");
+    },
+  },
+  {
+    nombre: "Editar detalles de una lista propia",
+    preparar: async (page, vp) => {
+      await createPlaylist(page, vp);
+      await clickTestid(page, "collection-edit", "Editar detalles");
+      await waitVisible(page, "playlist-edit");
     },
   },
   { nombre: "Hoja Subir canciones", preparar: (page, vp) => openUpload(page, vp) },
@@ -94,6 +177,16 @@ const PANTALLAS = [
     },
   },
   {
+    nombre: "Panel Reproduciendo",
+    soloEscritorio: true,
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await playRow(page, 0);
+      await clickTestid(page, "player-now", "Reproduciendo");
+      await waitVisible(page, "now-panel");
+    },
+  },
+  {
     nombre: "Reproducción a pantalla completa",
     soloTelefono: true,
     preparar: async (page) => {
@@ -116,6 +209,8 @@ for (const [ancho, viewport] of ANCHOS) {
   describe(`axe a ${ancho} px`, () => {
     for (const pantalla of PANTALLAS) {
       if (pantalla.soloTelefono && !isPhone(viewport)) continue;
+      if (pantalla.soloAncho && isPhone(viewport)) continue;
+      if (pantalla.soloEscritorio && viewport.width < 1024) continue;
       prueba(`${pantalla.nombre}: sin fallos serios ni críticos y un único H1`, () =>
         withPage(browser, viewport, async (page) => {
           await openApp(page, server.url);
@@ -158,7 +253,7 @@ describe("Teclado y foco", () => {
   prueba("El foco se ve: contorno de 2 px en botones, enlaces y campos", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       await openApp(page, server.url);
-      for (const testid of ["nav-buscar", "sidebar-create-playlist", "sidebar-chip-listas", "player-shuffle", "player-queue", "skip-link"]) {
+      for (const testid of ["nav-inicio", "nav-buscar", "brand", "sidebar-create", "sidebar-chip-listas", "sidebar-sort", "library-resize", "player-shuffle", "player-now", "player-queue", "skip-link"]) {
         const info = await focusWithKeyboardMode(page, testid, "foco visible");
         assert.ok(focusRingWidth(info) >= 2, `${testid}: el anillo de foco mide ${focusRingWidth(info)} px.`);
       }
@@ -188,7 +283,27 @@ describe("Teclado y foco", () => {
       await openUpload(page, VIEWPORTS.escritorio);
       assert.ok(await page.evaluate(() => document.activeElement?.closest("dialog") !== null));
       await page.keyboard.press("Escape");
-      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "sidebar-upload");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "sidebar-create");
+    }),
+  );
+
+  prueba("El buscador de la barra superior marca el foco con un borde blanco", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await focusWithKeyboardMode(page, "top-search-input", "buscador");
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-testid="top-search"]')).borderTopColor === "rgb(255, 255, 255)", { timeout: 3000 });
+    }),
+  );
+
+  prueba("El separador de Tu biblioteca es un control con su valor (aria-valuenow) y se mueve con las flechas", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      const info = await focusWithKeyboardMode(page, "library-resize", "separador");
+      assert.ok(info.active);
+      const antes = Number(await page.$eval('[data-testid="library-resize"]', (el) => el.getAttribute("aria-valuenow")));
+      await page.keyboard.press("ArrowRight");
+      const despues = Number(await page.$eval('[data-testid="library-resize"]', (el) => el.getAttribute("aria-valuenow")));
+      assert.ok(despues > antes, `${antes} → ${despues}`);
     }),
   );
 });

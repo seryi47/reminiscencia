@@ -238,6 +238,14 @@ describe("validatePayload: operaciones e identificadores", () => {
     assert.equal(validatePayload({ op: "edit_song", song_id: SONG, folder_id: null }), null);
   });
 
+  it("acepta los dos formatos de álbum del backend: F + 16 hexadecimales (nuevo) y 10 hexadecimales (antiguo)", () => {
+    assert.equal(validatePayload({ op: "delete_folder", folder_id: "F0123456789abcdef" }), null);
+    assert.equal(validatePayload({ op: "edit_song", song_id: SONG, folder_id: "F0123456789abcdef" }), null);
+    for (const bad of ["f0123456789abcdef", "F0123456789ABCDEF", "F0123456789abcde", "G0123456789abcdef"]) {
+      assert.notEqual(validatePayload({ op: "delete_folder", folder_id: bad }), null, bad);
+    }
+  });
+
   it("exige el año entre 1000 y 2100, como entero o null", () => {
     assert.equal(validatePayload({ op: "edit_song", song_id: SONG, year: 1925 }), null);
     assert.equal(validatePayload({ op: "edit_song", song_id: SONG, year: null }), null);

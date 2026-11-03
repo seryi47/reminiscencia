@@ -1,4 +1,4 @@
-/* Tokens de Reminiscencia (DESIGN §2). Tema oscuro único, con la estructura del reproductor web de Spotify.
+/* Tokens de Reminiscencia (DESIGN §2). Tema oscuro único, con la distribución y los colores del reproductor web de Spotify.
    Figtree (SIL OFL 1.1, fonts/LICENSE-figtree.txt), autoalojada en los pesos 400, 600, 700 y 800. */
 
 @font-face {
@@ -33,28 +33,33 @@
 :root {
   color-scheme: dark;
 
-  /* Colores */
+  /* Colores (DESIGN §2): los del reproductor web de Spotify. */
   --bg: #000000;
   --surface: #121212;
-  --card: #181818;
-  --hover: #282828;
-  --elevated: #242424;
+  --elevated: #1f1f1f;
   --highlight: #2a2a2a;
+  --card: #181818;
+  --card-hover: #282828;
   --text: #ffffff;
   --text-2: #b3b3b3;
-  --accent: #1fdf64;
+  --accent: #1ed760;
   --accent-hover: #3be477;
   --on-accent: #000000;
-  --line: #727272;
-  --danger: #c01530;
+  --separator: #3e3e3e;
+  --outline: #7c7c7c;
+  --slider-track: #4d4d4d;
+  --danger: #e91429;
   --row-hover: rgba(255, 255, 255, 0.1);
+  --tile: rgba(255, 255, 255, 0.1);
+  --tile-hover: rgba(255, 255, 255, 0.2);
 
   /* Medidas */
   --gap: 8px;
   --radius: 8px;
   --radius-small: 4px;
-  --sidebar-w: 280px;
-  --queue-w: 320px;
+  --topbar-h: 64px;
+  --lib-w: clamp(280px, 22vw, 420px);
+  --now-w: 300px;
   --player-h: 72px;
   --tabbar-h: 64px;
   --mini-h: 56px;
@@ -69,12 +74,6 @@
   --text-m: 16px;
   --text-l: 24px;
   --text-xl: 32px;
-}
-
-@media (max-width: 1023px) {
-  :root {
-    --sidebar-w: 240px;
-  }
 }
 
 @media (max-width: 767px) {

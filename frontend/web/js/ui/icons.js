@@ -49,6 +49,20 @@ const ICONS = Object.freeze({
   trash: [['path', { d: 'M4 7h16M9.5 7V4.5h5V7M6.2 7l1 13h9.6l1-13' }]],
   check: [['path', { d: 'm5 12.5 4.5 4.5L19 7.5' }]],
   offline: [['path', { d: 'M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 4.2-2.4M12 9.6a10 10 0 0 1 7 3.4M2 9.5a15 15 0 0 1 4-2.6M10.5 5.6a15 15 0 0 1 11.5 3.9' }], ['circle', { cx: 12, cy: 19.5, r: 1, fill: true }]],
+  // Explorar: una bandeja con una ranura.
+  browse: [['path', { d: 'M3.5 9.5 6 4.5h12l2.5 5v10h-17zM3.5 9.5h17M9.5 13.5h5' }]],
+  'browse-filled': [['path', { d: 'M3.5 9.5 6 4.5h12l2.5 5v10h-17z', fill: true }], ['path', { d: 'M3.5 9.5h17M9.5 13.5h5', stroke: '#000' }]],
+  // Reproduciendo: una pantalla con un triángulo.
+  'now-playing': [['path', { d: 'M3 4.5h18v15H3z' }], ['path', { d: 'M10 9v6l5-3z', fill: true }]],
+  lyrics: [['circle', { cx: 15, cy: 9, r: 5 }], ['path', { d: 'm11.5 12.5-7.5 7.5M8.5 12.5l3 3' }]],
+  speaker: [['path', { d: 'M6 3h12v18H6z' }], ['circle', { cx: 12, cy: 14.5, r: 3 }], ['circle', { cx: 12, cy: 7.2, r: 1, fill: true }]],
+  fullscreen: [['path', { d: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5' }]],
+  pencil: [['path', { d: 'M4 20h4L19.2 8.8a2.1 2.1 0 0 0-3-3L5 17v3zM14.5 7.5l2.9 2.9' }]],
+  image: [['path', { d: 'M3.5 4.5h17v15h-17z' }], ['circle', { cx: 9, cy: 9.5, r: 1.8 }], ['path', { d: 'm4 17.5 5-5 4 4 2.5-2.5 5 4.5' }]],
+  sort: [['path', { d: 'M4 6h16M4 12h11M4 18h7' }]],
+  album: [['circle', { cx: 12, cy: 12, r: 9 }], ['circle', { cx: 12, cy: 12, r: 2.5 }]],
+  copy: [['path', { d: 'M8.5 8.5h11v11h-11zM15.5 8.5v-4h-11v11h4' }]],
+  'arrow-left': [['path', { d: 'M20 12H5M11 5.5 4.5 12l6.5 6.5' }]],
 });
 
 /** Crea un icono SVG decorativo. size en píxeles (por defecto 24). */

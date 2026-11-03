@@ -1,6 +1,7 @@
 // Recorridos reutilizables: abrir la app (sin perfiles ni modos: abre en Inicio), ir a cada pantalla, reproducir,
-// crear una lista y sembrar canciones locales. Cada paso usa data-testid del contrato (DESIGN §13).
-import { clickTestid, waitShownSelector, waitVisible } from "./elementos.mjs";
+// buscar (en la barra superior o, en el teléfono, en la página), crear una lista, abrir el menú «Crear» y sembrar
+// canciones locales. Cada paso usa data-testid del contrato (DESIGN §13).
+import { clickTestid, findVisibleTestid, waitShownSelector, waitVisible } from "./elementos.mjs";
 
 /** Abre la app y espera a que haya cargado la biblioteca (html[data-ready]). */
 export async function openApp(page, url, hash = "") {
@@ -13,15 +14,34 @@ export function isPhone(viewport) {
   return viewport.width < 768;
 }
 
-/** Va a Inicio, Buscar o Tu biblioteca con la navegación que se ve en ese ancho. */
+/** Va a Inicio, Buscar o Tu biblioteca con la navegación que se ve en ese ancho (barra superior o barra inferior). */
 export async function goSection(page, section, viewport) {
   if (section === "biblioteca") {
     await clickTestid(page, isPhone(viewport) ? "tab-biblioteca" : "sidebar-library-link", "Tu biblioteca");
     await waitVisible(page, "view-library", { context: "página Tu biblioteca" });
     return;
   }
+  // En la barra superior, «Inicio» es el botón redondo y «Buscar» es «Explorar», dentro del buscador.
   await clickTestid(page, `${isPhone(viewport) ? "tab" : "nav"}-${section}`, `destino ${section}`);
   await waitVisible(page, section === "inicio" ? "view-home" : "view-search", { context: `pantalla ${section}` });
+}
+
+/** Prefijo de «Tu biblioteca» en ese ancho: el panel izquierdo o, en el teléfono, la página. */
+export async function libraryPrefix(page, viewport) {
+  if (isPhone(viewport)) {
+    if (!(await findVisibleTestid(page, "view-library", 300))) await goSection(page, "biblioteca", viewport);
+    return "library-page";
+  }
+  return "sidebar";
+}
+
+/** Abre «+ Crear» de «Tu biblioteca» y elige una opción (playlist, album o upload). */
+export async function createMenu(page, viewport, option) {
+  const prefix = await libraryPrefix(page, viewport);
+  await clickTestid(page, `${prefix}-create`, "botón Crear");
+  await waitShownSelector(page, '[role="menu"]', { context: "menú Crear" });
+  const testid = { playlist: "menu-create-playlist", album: "menu-create-album", upload: "menu-upload" }[option];
+  await page.$eval(`[data-testid="${testid}"]`, (item) => item.click());
 }
 
 /** Abre una colección por su hash (carpeta, lista, «Me gusta»…) y espera su cabecera. */
@@ -48,37 +68,42 @@ export async function fillField(field, text) {
   await field.type(text);
 }
 
-/** Escribe en el campo de búsqueda grande. */
+/** Escribe en el buscador que se ve: el de la barra superior (escritorio y tableta) o el de la página (teléfono). */
 export async function search(page, text) {
-  const input = await waitVisible(page, "search-input", { context: "campo de búsqueda" });
+  const input = (await findVisibleTestid(page, "top-search-input", 300)) ?? (await waitVisible(page, "search-input", { context: "campo de búsqueda" }));
   await fillField(input, text);
+  await waitVisible(page, "view-search", { context: "pantalla Buscar" });
 }
 
-/** Crea una lista desde la biblioteca de ese ancho y espera su página. Devuelve su id. */
+/** Crea una lista con «+ Crear» › «Lista» y espera su página. Devuelve su id. */
 export async function createPlaylist(page, viewport) {
-  if (isPhone(viewport)) {
-    await goSection(page, "biblioteca", viewport);
-    await clickTestid(page, "library-page-create-playlist", "Crear lista");
-  } else {
-    await clickTestid(page, "sidebar-create-playlist", "Crear lista de la barra lateral");
-  }
+  await createMenu(page, viewport, "playlist");
+  await page.waitForFunction(() => location.hash.startsWith("#/lista/"), { timeout: 8000 });
   await waitVisible(page, "collection-title", { context: "página de la lista nueva" });
   return page.evaluate(() => decodeURIComponent(location.hash.split("/")[2] ?? ""));
 }
 
 /** Abre la hoja «Subir canciones» y, si se indica, una de sus opciones (local, todos o archive). */
 export async function openUpload(page, viewport, option = null) {
-  if (isPhone(viewport)) {
-    await goSection(page, "biblioteca", viewport);
-    await clickTestid(page, "library-page-upload", "Subir canciones");
-  } else {
-    await clickTestid(page, "sidebar-upload", "Subir canciones de la barra lateral");
-  }
+  await createMenu(page, viewport, "upload");
   await waitVisible(page, "upload-sheet", { context: "hoja Subir canciones" });
   if (option) {
     await clickTestid(page, `upload-option-${option}`, `opción ${option}`);
     await waitVisible(page, `upload-panel-${option}`, { context: `panel ${option}` });
   }
+}
+
+/** Abre el menú «···» de la colección abierta y devuelve los textos de sus opciones. */
+export async function openCollectionMenu(page) {
+  await clickTestid(page, "collection-more", "«···» de la colección");
+  await waitShownSelector(page, '[role="menu"]', { context: "menú de la colección" });
+  return page.$$eval('[role="menu"] [role="menuitem"]', (items) => items.map((item) => item.querySelector(".menu-label").textContent.trim()));
+}
+
+/** Pulsa una opción del menú abierto por su data-testid. */
+export async function pickMenu(page, testid) {
+  await page.waitForSelector(`[role="menu"] [data-testid="${testid}"]`, { timeout: 5000 });
+  await page.$eval(`[role="menu"] [data-testid="${testid}"]`, (item) => item.click());
 }
 
 /** Abre el menú «Más opciones» de la fila de una canción y devuelve los textos de sus opciones. */
@@ -87,7 +112,23 @@ export async function openRowMenu(page, songId) {
   await page.waitForSelector(selector, { timeout: 8000 });
   await page.$eval(selector, (button) => button.click());
   await waitShownSelector(page, '[role="menu"]', { context: "menú de la canción" });
-  return page.$$eval('[role="menu"] [role="menuitem"]', (items) => items.map((item) => item.textContent.trim()));
+  return page.$$eval('[role="menu"] [role="menuitem"]', (items) => items.map((item) => item.querySelector(".menu-label").textContent.trim()));
+}
+
+/** Payload JSON de la incidencia de un enlace de GitHub (línea «payload:» del cuerpo). */
+export async function issuePayload(page, testid) {
+  await page.waitForFunction((id) => document.querySelector(`[data-testid="${id}"]`)?.getAttribute("aria-disabled") === "false", { timeout: 5000 }, testid);
+  const href = await page.$eval(`[data-testid="${testid}"]`, (a) => a.href);
+  const url = new URL(href);
+  const body = url.searchParams.get("body");
+  const line = body.split("\n").find((item) => item.startsWith("payload: "));
+  return {
+    origin: url.origin + url.pathname,
+    labels: url.searchParams.get("labels"),
+    title: url.searchParams.get("title"),
+    body,
+    payload: JSON.parse(line.slice("payload: ".length)),
+  };
 }
 
 /** Siembra una canción en la base de audio local (la misma que usa subida-local.js). */
