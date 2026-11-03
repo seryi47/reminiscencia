@@ -1,6 +1,6 @@
 # ADR-0014: Buzón de canciones subidas desde GitHub
 
-- Estado: aceptada (sin probar en GitHub)
+- Estado: aceptada. Vía privada probada en GitHub el 2026-11-03 (ver «Cómo se prueba»); vía pública sin probar.
 - Fecha: 2026-11-03
 - Relacionadas: ADR-0007 (catálogo como fuente de verdad), ADR-0008 (entrada por incidencias), ADR-0010 (procesado y publicación separados) y ADR-0011 (publicar regenera la parte pública).
 
@@ -44,4 +44,5 @@ Hasta ahora, una canción entra en la biblioteca por una incidencia con una URL 
 - `backend/tests/test_buzon.py`: nombre a título, licencia desde el mensaje, nombres y rutas, pública o privada, declaración posterior, duplicados, rechazos (no audio, vacío, tamaño), enlaces y subcarpetas para revisar, el paquete que solo borra del buzón y el script del job. Las conversiones son reales con ffmpeg (tonos sintéticos en WAV, MP3, FLAC, OGG y M4A) y git es real, sin red.
 - `backend/tests/test_buzon_workflow.py`: estructura del workflow (disparo, concurrencia compartida, permisos por job, token solo en el push, checkouts sin credenciales, acciones fijadas, ninguna interpolación en `run:`).
 - Suite de `backend/`: 563 pruebas en verde el 2026-11-03.
-- **No verificado en GitHub:** el disparo por push con los filtros de `paths`, la forma real del evento de un commit de la página de subida, la consulta de permiso con `contents: read`, la cola compartida con `biblioteca.yml` y el push final. Hay que probarlo con una subida real antes de darlo por cerrado.
+- **No verificado en GitHub** al escribir este ADR: el disparo por push con los filtros de `paths`, la forma real del evento de un commit de la página de subida, la consulta de permiso con `contents: read`, la cola compartida con `biblioteca.yml` y el push final.
+- **Verificado el 2026-11-03.** Un push con un WAV de prueba sin licencia lanzó el workflow (ejecución 41608486716) y la consulta de permiso pasó, pero terminó en verde sin procesar nada: el evento no traía las listas de archivos. La corrección `34a1f06` procesa lo que hay en el buzón cuando el evento no nombra archivos, con el mensaje del último commit del push (`head_commit`), y añade `workflow_dispatch`. La ejecución manual 41608984990 dio de alta la canción como privada con `Sin declarar` y subió a `main` (commit del bot `4f6c73d`). Una ejecución manual no tiene mensaje de commit: todo lo que procesa entra privado, a nombre de quien la lanza. Siguen sin verificar una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`. Suite de `backend/`: 566 pruebas en verde.

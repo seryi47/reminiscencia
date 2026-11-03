@@ -1,14 +1,14 @@
 # Seguridad, privacidad y marco legal
 
-Rama `feat/investigacion`. Revisión del 2 de noviembre de 2026 sobre el commit `8a19a09`.
+Revisión del 3 de noviembre de 2026 sobre `main` (`b058a0c`), con la interfaz sin usuarios de ADR-0015 y el buzón de ADR-0014. La revisión anterior (2 de noviembre, `8a19a09`) describía la capa de datos del cuidador, retirada desde entonces.
 
-Este documento describe lo que el código de esta rama hace hoy, separa lo implementado de lo previsto en el diseño y recoge lo pendiente. No es asesoramiento jurídico ni una evaluación de impacto (ver §5).
+Este documento describe lo que el código de `main` hace hoy, separa lo implementado de lo previsto en el diseño y recoge lo pendiente. No es asesoramiento jurídico ni una evaluación de impacto (ver §5).
 
 ## 0. Alcance, estado y convenciones
 
-- **Alcance.** Web pública (`frontend/web/`), capa de datos del cuidador (`frontend/web/js/`), app Android (`mobile/`), workflows (`.github/workflows/`) y el repositorio.
-- **Estado de la rama.** La página pública solo escucha: `index.html` carga `app.js`, que lee `data/songs.json` y `data/folders.json`. La capa de datos del cuidador (IndexedDB, copia cifrada, PIN) está implementada como módulos, con pruebas en `tests/web-unit/`, pero ninguna pantalla del cuidador la usa todavía. Las pruebas no se han ejecutado para este documento, que no cambia código.
-- **Etiquetas.** **Implementado**: existe en el código de la rama. **Previsto**: aparece en el diseño o en el changelog, sin código en la rama. **Pendiente**: requiere decisión, trabajo o dictamen.
+- **Alcance.** Web pública (`frontend/web/`), app Android (`mobile/`), workflows (`.github/workflows/`), incluido el buzón de subida (`buzon.yml`), y el repositorio.
+- **Estado de `main`.** La web y la APK no tienen usuarios (ADR-0015): no hay perfiles, modos paciente ni cuidador, PIN, recuerdos, fotografías, observaciones, registro del estudio ni copia cifrada `.rmc`. Todos ven la misma biblioteca pública. Las listas y «Me gusta» se guardan solo en el navegador o en el teléfono, y el audio subido «Solo en este navegador» o «Solo en este teléfono», también (ADR-0012 y ADR-0013). Lo que se sube «Para todos» entra por el buzón de GitHub (§3.11). Pruebas en verde el 2026-11-03: 274 unitarias de la web y 566 del backend.
+- **Etiquetas.** **Implementado**: existe en el código de `main`. **Retirado**: existía y ADR-0015 lo quitó. **Previsto**: aparece en el diseño o en el changelog, sin código. **Pendiente**: requiere decisión, trabajo o dictamen.
 - **Citas.** Los identificadores entre corchetes son los de la verificación ([legal-01] a [legal-06] y [B1-2025]). Cuando una verificación tiene corrección, se cita la versión corregida. Lo que la verificación no confirma queda en §5.
 - **Límites de la evidencia.** La música es una hipótesis del proyecto. H1 a H5 están propuestas, no demostradas ([PROJECT_MASTER.md](PROJECT_MASTER.md)). La revisión Cochrane de 2025 [B1-2025] reporta certeza moderada de una mejora ligera de los síntomas depresivos, y de que probablemente no mejoran la agitación ni la agresión. Da certeza baja a una posible mejora de los problemas conductuales globales y no encuentra mejora demostrada del bienestar emocional ni de la ansiedad. Para la cognición, la certeza es baja o muy baja. Este documento no promete ningún efecto clínico.
 
@@ -94,75 +94,61 @@ Uso en el proyecto: la metodología de revisión de literatura. Si el investigad
 
 ### 1.8 Licencias del catálogo
 
-El catálogo (`audio-library/indexes/catalog.json`) tiene 11 canciones. Cada una declara su licencia en el campo `license`, tomada del ítem de Internet Archive o declarada por el depositante. Nueve tienen `public: true` y son las que se sirven en la web pública. Si esa declaración basta para publicar en Europa es el punto pendiente de dictamen (ADR-0005).
+El catálogo (`audio-library/indexes/catalog.json`) tiene 14 canciones. Cada una declara su licencia en el campo `license`: tomada del ítem de Internet Archive, declarada por el depositante o, en el buzón, declarada por quien sube en el mensaje del commit (ADR-0014). Diez tienen `public: true` y son las que se sirven en la web pública: nueve de dominio público según Internet Archive y una con CC BY 4.0. Si esa declaración basta para publicar en Europa es el punto pendiente de dictamen (ADR-0005).
 
 ## 2. Datos que se tratan y minimización
 
 ### 2.1 Qué se guarda y dónde
 
-Fuentes: `docs/user-experience/DESIGN.md`, §8.4 y §9 (en adelante, «DESIGN»).
+Fuentes: `docs/datos/DATABASE.md` y el código de `frontend/web/js/` y `mobile/lib/`.
 
-| Dato | Dónde (diseño) | Estado en la rama |
+| Dato | Dónde | Estado |
 |---|---|---|
-| Perfiles: alias y código de participante opcional | IndexedDB, almacén `profiles` | Implementado en la capa de datos (`store.js`). El alias se valida en `schema.js`: límite de caracteres y sin caracteres de control. |
-| Asociaciones canción-perfil (familiaridad, preferencia, presentación) | IndexedDB, `songLinks` | Implementado en la capa de datos. |
-| Recuerdos, fotografías, listas, observaciones e historial | IndexedDB, `memories`, `photos`, `playlists`, `observations`, `history` | Implementado en la capa de datos. Límite de fotografía en el código: 8 MB (`store.js`, línea 452). DESIGN fija 10 MB (C-22). |
-| Opciones del paciente y ajustes del cuidador | IndexedDB, `meta` (`settings`) y opciones por perfil | Implementado en la capa de datos, con valores por defecto en `store.js`. |
-| Hash del PIN | IndexedDB, `meta` (clave `pin`) | Implementado: PBKDF2-SHA-256, 310 000 iteraciones y sal de 16 bytes (`crypto.js`). |
-| Registro del estudio (eventos con marca de tiempo) | IndexedDB (DESIGN §8.4 y §9) | Pendiente. `store.js` no tiene almacén propio para los eventos. |
-| Preferencias de pantalla | localStorage (DESIGN §9) | Previsto. No aparece en el código de la rama. |
-| Audio sin conexión | Cache Storage (DESIGN §9) | Módulo implementado (`sw.js`, `offline-core.js`), pero `index.html` no carga `js/pwa.js`. No está activo. |
+| Listas y «Me gusta» (identificadores de canción, nombres de lista y fechas) | Navegador: IndexedDB `reminiscencia-biblioteca` (`js/local-library.js`). Teléfono: `colecciones.json` | Implementado. Sin cuenta ni sincronización |
+| Audio subido «Solo en este navegador» o «Solo en este teléfono» | IndexedDB `reminiscencia-audio-local` (ADR-0012); `biblioteca-local/` de la app (ADR-0013) | Implementado. No sale del dispositivo |
+| Volumen, aleatorio y repetir | localStorage `reminiscencia.reproductor` | Implementado. No son datos personales |
+| Audio y shell para escuchar sin conexión | Cache Storage (`reminiscencia-shell-v5`, `reminiscencia-audio-v1`) | Implementado |
+| Perfiles, recuerdos, fotografías, observaciones, registro del estudio, PIN y preferencias de pantalla | Base `reminiscencia` de la versión anterior | **Retirado** (ADR-0015). La web nueva no la abre ni la borra: sigue en los navegadores que la usaron (R5) |
+| Canciones subidas «Para todos» | Repositorio: catálogo, `audio-library/audio/` y, en el historial de git, el archivo original subido al buzón | Implementado (ADR-0014, §3.11) |
 
-Los recuerdos autobiográficos son el material de H2, y las fotografías el de H4. Por eso su tratamiento tiene más peso que el de las preferencias musicales.
+La web y la APK ya no tratan datos de participantes. Los recuerdos autobiográficos (material de H2) y las fotografías (material de H4) no tienen hoy instrumento en la aplicación (ADR-0015, consecuencias).
 
 ### 2.2 Qué nunca entra en el repositorio
 
 - **Datos de personas.** Nombres reales, fotografías, recuerdos y datos de participantes (CLAUDE.md). `.gitignore` excluye `research-data/personal/`, `research-data/**/raw/`, `*.sqlite` y `.env`. En `research-data/` no aparecen las palabras nombre, alias, paciente, participante ni correo electrónico; esto no sustituye una revisión manual de los ficheros.
-- **Copias cifradas (.rmc).** Se generan en el navegador del cuidador. No hay ninguna en el árbol versionado.
+- **Copias cifradas (.rmc).** Retiradas con ADR-0015. No hay ninguna en el árbol versionado.
+- **Grabaciones de pacientes o sin derechos, también por el buzón.** Lo que se sube al buzón queda en el historial de git aunque el workflow lo borre y aunque la canción entre como privada (§3.11).
 - **Claves de firma de Android.** No hay ficheros `.jks`, `.keystore`, `key.properties` ni `.p12` versionados. Las claves locales están en `~/.android-keys/` (CLAUDE.md).
 - **Secretos.** Una búsqueda de patrones habituales (tokens de GitHub, claves privadas, contraseñas asignadas, `ADMIN_PASSWORD`, `GITHUB_TOKEN`) sobre los ficheros de texto versionados no encontró valores. Solo aparecen nombres de variables y marcadores, como `<contraseña del almacén>` en `docs/android/RELEASE.md`. No se ha revisado el historial de git.
 
 ### 2.3 Identificación de participantes
 
-- Los participantes se identifican con alias y código de participante. El registro del estudio no usa nombres reales (DESIGN §8.4).
-- DESIGN §9 dice que los nombres reales son opcionales. El código no impide escribirlos en el alias. Recomendación: no usarlos (riesgo R8).
+**Retirado** (ADR-0015). La aplicación ya no tiene alias, códigos de participante ni registro del estudio. Si el estudio vuelve a necesitar un instrumento con datos de participantes, esta sección y la evaluación de §5 (A.1) se rehacen antes de recoger nada.
 
 ### 2.4 Minimización en la copia cifrada
 
-La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observaciones, historial y opciones. No incluye el hash del PIN, los ajustes del dispositivo (`backup.js`, comentario de cabecera) ni el audio, que solo se referencia por identificador de catálogo (DESIGN §9).
+**Retirado** (ADR-0015, decisión 4): no hay copia cifrada.
 
 ## 3. Medidas de seguridad de la aplicación
 
-### 3.1 Datos solo en el navegador del cuidador: Implementado (capa de datos)
+### 3.1 Datos solo en el dispositivo: Implementado
 
-- Almacén IndexedDB, base `reminiscencia`, versión 1. `store.js` declara que los datos no salen del navegador.
-- Sin cuentas ni sincronización en la nube (DESIGN §1).
-- La página no envía datos a ningún servidor. Las únicas peticiones de `app.js` son a `data/songs.json` y `data/folders.json`, del mismo origen. No hay URLs externas en `frontend/web/`, salvo una base local usada para resolver rutas en `offline-core.js`.
-- Límite: sin interfaz del cuidador en la rama, el almacén no recibe datos desde la página.
+- Las listas, los «Me gusta» y el audio subido «Solo en este navegador» se guardan en IndexedDB y no salen del navegador; en la APK, en el almacenamiento privado de la app.
+- Sin cuentas ni sincronización en la nube (ADR-0015).
+- La página no envía datos a ningún servidor. Sus únicas peticiones son al mismo origen (`data/*.json`, audio y shell). Los enlaces a otro dominio solo abren GitHub en otra pestaña: la página de subida del buzón y el formulario de incidencia nueva (§3.8).
 
-### 3.2 Copia cifrada con contraseña y sin recuperación: Implementado (módulo)
+### 3.2 Copia cifrada: Retirado
 
-- AES-GCM de 256 bits. La clave se deriva de la contraseña con PBKDF2-SHA-256, 600 000 iteraciones y sal aleatoria de 16 bytes (`crypto.js`).
-- La cabecera del fichero se usa como dato adicional autenticado, así que una alteración de la cabecera hace fallar el descifrado.
-- Contraseña de al menos 10 caracteres (`MIN_PASSPHRASE_LENGTH`).
-- Al importar, las iteraciones se aceptan solo entre 100 000 y 2 000 000.
-- Los errores de descifrado dan un único mensaje («Contraseña incorrecta o copia dañada»). No revelan si falló la contraseña o si el contenido está dañado.
-- Sin contraseña no hay recuperación. La aplicación no guarda ni envía la contraseña (DESIGN §9).
-- Pendiente de interfaz: el aviso antes de exportar (DESIGN §9).
+ADR-0015 (decisión 4) retira la copia `.rmc` y borra `js/crypto.js` y `js/backup.js`. Las copias exportadas antes ya no se pueden importar.
 
-### 3.3 PIN local: Implementado en parte, con protección limitada
+### 3.3 PIN local: Retirado
 
-- Se guarda solo el hash PBKDF2-SHA-256 (310 000 iteraciones, sal de 16 bytes). El PIN nunca se guarda en claro (`setPin`, `checkPin` y `hasPin` en `store.js`).
-- «Olvidé el PIN» quita solo el PIN y conserva los datos (`removePin`, `store.js`).
-- Finalidad declarada: evitar salidas accidentales del modo paciente. No protege los datos frente a quien tenga el dispositivo desbloqueado (DESIGN §9).
-- Divergencias:
-  - Longitud. Resuelto (2026-11-02): `schema.js` acepta de 4 a 6 dígitos, como DESIGN §9.
-  - Bloqueo. Resuelto (2026-11-02): DESIGN §9 y P-16 fijan 60 s tras cinco fallos, como el código (`PIN_LOCK_MS` en `store.js`).
+ADR-0015 retira el PIN con los modos paciente y cuidador. No hay ninguna contraseña ni PIN en la aplicación.
 
 ### 3.4 Sin administración ni contraseñas en la web: Implementado
 
 - El commit `0fa6ed3` retiró `frontend/web/admin`, `frontend/web/api` y `frontend/web/lib`. Según su mensaje, el propietario ha pedido que no exista ninguna administración en la web. Ya no hay funciones de Vercel ni `ADMIN_PASSWORD` (CHANGELOG.md, línea 23).
-- No hay campos de contraseña de administración en la web pública. La única contraseña de la aplicación es la de la copia cifrada (§3.2).
+- No hay campos de contraseña en la web pública ni en la APK.
 - La documentación todavía describe la administración retirada (§5, C).
 
 ### 3.5 Incidencias de GitHub con permiso de escritura: Implementado, con pendientes
@@ -172,7 +158,8 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
   1. El permiso del autor se consulta en el propio workflow, con la API de GitHub, no en la interfaz.
   2. El cuerpo de la incidencia y los campos pasan por variables de entorno (`env`); ningún texto se interpola en `run:`.
   3. Permisos mínimos por job (§3.7): `autorizar` solo tiene `issues: write`.
-- Verificado en GitHub (2-nov-2026): la importación por la incidencia #5, con los tres jobs en success. Sin verificar: publicar una canción y la concurrencia `queue: max` (ADR-0010).
+- Verificado en GitHub (2-nov-2026): la importación por la incidencia #5, con los tres jobs en success, y la publicación de «Nomyn Fragments» (ejecución 41512760196, commit del bot `7b73d19`). Sin verificar: la concurrencia `queue: max` (ADR-0010).
+- Desde ADR-0015 la web solo prepara incidencias de importación (hoja «Subir canciones», «Desde Internet Archive»). Publicar, editar y las carpetas se escriben a mano; el workflow las valida igual.
 
 ### 3.6 Secretos fuera del repositorio: Implementado, con pendiente
 
@@ -186,32 +173,52 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 | Workflow | Permisos declarados | Estado |
 |---|---|---|
 | `android.yml` | `contents: read` a nivel de workflow. El job de producción hace checkout con `persist-credentials: false`. Solo el job de publicación de la release (etiquetas `android-v*`) tiene `contents: write`. | Implementado. Es el modelo a seguir. |
-| `biblioteca.yml` | Sin bloque de permisos a nivel de workflow. `autorizar`: `issues: write`. `procesar`: `contents: read`, sin token y con `persist-credentials: false`. `publicar`: `contents: write` e `issues: write`; el token solo llega a los pasos que suben a `main` y responden. | Implementado (ADR-0010). Importación verificada en GitHub el 2-nov-2026; publicación sin verificar. |
+| `biblioteca.yml` | Sin bloque de permisos a nivel de workflow. `autorizar`: `issues: write`. `procesar`: `contents: read`, sin token y con `persist-credentials: false`. `publicar`: `contents: write` e `issues: write`; el token solo llega a los pasos que suben a `main` y responden. | Implementado (ADR-0010). Importación y publicación verificadas en GitHub el 2-nov-2026. |
+| `buzon.yml` | Sin bloque a nivel de workflow. `autorizar`: `contents: read` (consulta el permiso; sin checkout). `procesar`: `contents: read`, sin token y con `persist-credentials: false`. `publicar`: `contents: write`; el token solo llega al paso que sube a `main`. Acciones fijadas por SHA. | Implementado (ADR-0014, §3.11). |
 | `backend.yml` | Sin bloque `permissions`. Hereda el valor por defecto del repositorio. | Pendiente: declarar `contents: read`. |
 
-- `biblioteca.yml` se lanza con `workflow_dispatch` (quien tenga permiso de escritura en el repositorio) y al abrirse una incidencia (§3.5). Es el comportamiento habitual de GitHub, no comprobado con otra cuenta.
+- `biblioteca.yml` y `buzon.yml` se lanzan con `workflow_dispatch` (quien tenga permiso de escritura en el repositorio). `biblioteca.yml` también al abrirse una incidencia (§3.5) y `buzon.yml` con un push a `main` que toca el buzón (§3.11). Es el comportamiento habitual de GitHub, no comprobado con otra cuenta.
 - Ningún workflow usa `pull_request_target`.
 
 ### 3.8 Web pública: terceros y cabeceras: Parcial
 
-- Sin scripts, fuentes, analítica ni recursos de terceros. `index.html` carga solo `js/app.js` (módulo), el manifiesto y las hojas de estilo locales. No hay SDK de analítica en `mobile/pubspec.yaml` ni en los ficheros Gradle.
-- Los títulos y artistas se escriben con `textContent` (`app.js`, líneas 119 a 121), no con `innerHTML`.
-- `vercel.json` define el `Content-Type` del audio y una Content-Security-Policy para todas las rutas (`default-src 'self'`, `frame-ancestors 'none'`, entre otras). No define `X-Content-Type-Options` ni `Referrer-Policy` (R9). La rama `feat/ui-publica` no tiene la CSP: al fusionarla hay que conservarla.
-- DESIGN §5.3 prevé la tipografía autoalojada en WOFF2. La rama la incluye en `frontend/web/fonts/` (pesos 400, 600 y 700).
+- Sin scripts, fuentes, analítica ni recursos de terceros. `index.html` carga solo `js/app.js` (módulo), el manifiesto, las fuentes y las hojas de estilo locales. Los únicos enlaces a otro dominio abren GitHub en otra pestaña (subida al buzón e incidencia de importación). No hay SDK de analítica en `mobile/pubspec.yaml` ni en los ficheros Gradle.
+- Los textos (títulos, artistas, nombres de lista) se pintan con nodos del DOM (`js/ui/dom.js`); no hay `innerHTML` en `frontend/web/js/` (comprobado con grep el 2026-11-03). Los títulos que vienen de nombres de archivo del buzón se escriben así también.
+- `vercel.json` define el `Content-Type` del audio y una Content-Security-Policy para todas las rutas (`default-src 'self'`, `frame-ancestors 'none'`, entre otras). No define `X-Content-Type-Options` ni `Referrer-Policy` (R9). `media-src 'self'` no admite `blob:`: las canciones locales las sirve el service worker en `audio/L….opus` (ADR-0015, decisión 7).
+- Tipografía Figtree (SIL OFL 1.1) autoalojada en WOFF2 en `frontend/web/fonts/` (pesos 400, 600, 700 y 800), con su licencia.
 
-### 3.9 Fotografías y almacenamiento del navegador: Implementado
+### 3.9 Fotografías: Retirado
 
-- Diseño: máximo 10 fotografías por recuerdo, reducción a 1600 px en el lado mayor (JPEG al 85 %) y eliminación de los metadatos EXIF, incluida la ubicación (DESIGN §9 y C-22).
-- La interfaz reduce las fotografías a 1600 px en el lado mayor (JPEG al 85 %) y elimina los metadatos EXIF, incluida la ubicación, al guardarlas (`js/cuidador/recuerdo-editor.js`).
-- Persistencia: se pide `navigator.storage.persist()` al crear el primer perfil (`js/cuidador/asistente.js`) y desde Ajustes. `pwa.js` consulta `navigator.storage.estimate()` (línea 74), para la caché y el aviso de cuota.
-- El aviso de copia con más de 14 días está en Inicio (`js/cuidador/inicio.js`).
+ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/subida-local.js` pide `navigator.storage.persist()` al guardar audio local y comprueba el espacio con `navigator.storage.estimate()` (ADR-0012).
 
-### 3.10 Aplicación Android (`mobile/`): Implementado, sin datos del cuidador
+### 3.10 Aplicación Android (`mobile/`): Implementado, sin usuarios
 
-- Permisos del manifiesto: acceso a la red (INTERNET), reproducción en segundo plano (FOREGROUND_SERVICE_MEDIA_PLAYBACK, WAKE_LOCK) y notificaciones (POST_NOTIFICATIONS).
-- En `mobile/lib` no hay código de PIN.
-- `AndroidManifest.xml` no declara `android:allowBackup`. Por defecto, Android permite la copia de seguridad del sistema. Hay que decidirlo (§5).
-- Discrepancia con el diseño: DESIGN §1 dice que la app Android empaqueta las mismas pantallas que la PWA. `mobile/` es una app Flutter que lee la biblioteca de la web (ADR-0004).
+- Versión 1.2.0+3, sin perfiles ni modo paciente (ADR-0015). La clave antigua del modo paciente se borra al leer los ajustes (`settings_store.dart`).
+- Permisos del manifiesto: acceso a la red (INTERNET y ACCESS_NETWORK_STATE, este para la descarga solo con Wi-Fi), reproducción en segundo plano (FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK y WAKE_LOCK) y notificaciones (POST_NOTIFICATIONS). Sin permisos de almacenamiento: el selector del sistema da acceso a los archivos elegidos (ADR-0013).
+- En `mobile/lib` no hay código de PIN ni de cuentas.
+- Copia de Android: el manifiesto no declara `android:allowBackup` (vale el valor por defecto), pero sí `fullBackupContent` y `dataExtractionRules`, que excluyen `biblioteca-local/` (el audio subido en el teléfono) de la copia y del traspaso entre dispositivos. Las listas y «Me gusta» (`colecciones.json`) sí pueden entrar en la copia del sistema; no son datos sensibles.
+- «Para todos» abre en el navegador la página de subida de GitHub; la app no guarda tokens.
+
+### 3.11 Buzón de canciones (`buzon.yml`, ADR-0014): Implementado, verificado en parte
+
+**Quién puede subir.**
+- Subir a `audio-library/buzon/` desde la página de subida de GitHub exige permiso de escritura en el repositorio, porque es un commit a `main`. La web y la APK solo abren esa página.
+- El job `autorizar` comprueba además, con la API de GitHub, que `github.actor` (quien hizo el push o lanzó la ejecución) y `github.triggering_actor` (quien la relanza) tienen permiso `admin`, `maintain` o `write`. Si la consulta falla, cuenta como sin permiso. Sin checkout.
+- El push del bot no vuelve a lanzar el workflow (GitHub no lanza workflows con pushes hechos con `GITHUB_TOKEN`).
+
+**Qué se valida.**
+- En `procesar` (sin token, `contents: read`, `persist-credentials: false`, guarda de rama antes de instalar nada): extensión de audio (WAV, MP3, M4A, FLAC u OGG), archivo no vacío, como máximo 100 MiB, que ffprobe lo lea como audio y que ffmpeg lo convierta. Lo que no cumple se borra del buzón y se anota.
+- Se dejan en el buzón, para revisarlos a mano, los enlaces simbólicos, las carpetas, las subcarpetas y los nombres fuera de la lista de `nombre_valido` (hasta 200 caracteres y 255 bytes, sin punto ni guion iniciales). Un buzón que sea enlace simbólico o una cuenta con nombre que no es de GitHub detienen el procesado.
+- Licencia: la primera línea que empiece por `Licencia:` en el mensaje del commit, hasta 300 caracteres, sin caracteres de control ni de formato. Con ella, `public: true`; sin ella, `public: false` y licencia `Sin declarar`, que `update_song` no deja publicar. **El workflow no comprueba que la declaración sea cierta:** la registra con la cuenta (`source`: `Subida por <cuenta>`). Quien sube responde de ella.
+- Ningún nombre de archivo ni mensaje de commit se interpola en `run:`: `scripts/buzon.py` los lee del evento (`GITHUB_EVENT_PATH`). En el resumen del job van escapados y en bloques de código.
+- En `publicar` (`contents: write`, sin ffmpeg ni código del procesado): el paquete se valida antes de tocar el repositorio. La acción `buzon` es la única que puede tocar `audio-library/buzon/`, y solo para borrar archivos con nombre válido (nunca `README.md` ni `.gitkeep`). Después se regenera la parte pública desde el catálogo (ADR-0011) y se comprueban los límites con `check_repo_limits.py`. El token solo llega al paso que sube.
+
+**Qué queda en el historial de git.**
+- El archivo original subido (WAV, MP3, etc.) queda en el commit de subida aunque `publicar` lo borre del buzón, y también si entra como privado o se rechaza. Retirarlo exige reescribir el historial. Por eso no se sube nada sin derecho a usarlo ni datos de pacientes (README del buzón).
+- El Opus de cada canción, también de las privadas, queda en `audio-library/audio/`.
+- El nombre de la cuenta que subió queda en el catálogo y, para las canciones públicas, en `frontend/web/data/catalog.json` (campo `source`). Es el nombre público de una cuenta de GitHub.
+
+**Verificación en GitHub (2026-11-03).** La ejecución por push del archivo de prueba terminó en verde sin procesar nada: el evento no traía las listas de archivos. Desde `34a1f06`, si el evento no nombra archivos (o la ejecución es manual), se procesa lo que haya en el buzón con el mensaje del último commit del push. La ejecución manual dio de alta «tono-de-prueba-buzon» como privada (`4f6c73d`). Sin verificar: una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`.
 
 ## 4. Amenazas y riesgos residuales
 
@@ -219,55 +226,41 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 
 - Evidencia: en `biblioteca.yml`, el job `procesar` (`contents: read`) descarga la URL con `intake.py` y ejecuta ffmpeg con `compression.py`; lo que cambia sale como artefacto `biblioteca-paquete`. El job `publicar` (`contents: write`, `needs: procesar`) valida el paquete por ruta y tipo de fichero (`backend/sonidos/paquete.py`), lo aplica sobre `main` y confirma.
 - Mitigación actual: solo Internet Archive con licencia declarada, o ficheros directos con licencia declarada (ADR-0005). Bloqueo de plataformas en `sources.py` (`BLOCKED_HOSTS`). Descarga limitada a 200 MiB y escritura solo dentro del directorio de destino (`intake.py`). ffmpeg se llama con una lista de argumentos, con `-map 0:a:0` y `-vn` (`compression.py`). `check_repo_limits.py` se ejecuta antes del commit. `publicar` regenera la parte pública desde el catálogo y no acepta la que trae el paquete (ADR-0011).
+- El buzón (§3.11) procesa con ffmpeg archivos subidos por cuentas con permiso de escritura, con la misma separación entre `procesar` y `publicar`.
 - Riesgo residual: un fichero preparado para explotar el decodificador de ffmpeg podría ejecutar código en `procesar`, que no tiene token ni permiso de escritura. Ese código sí puede alterar el catálogo y el audio de `audio-library/`, que son las fuentes de la parte pública, porque la validación comprueba rutas y tipos, no el contenido (ADR-0010).
-- Verificado en GitHub (2-nov-2026): el flujo de importación, con el artefacto entre jobs y los permisos efectivos. Pendiente: publicar una canción (la parte pública cambia) y la concurrencia `queue: max`.
+- Verificado en GitHub (2-nov-2026): el flujo de importación, con el artefacto entre jobs y los permisos efectivos, y la publicación de una canción. Pendiente: la concurrencia `queue: max`.
 
 **R2. Token de GitHub disponible en los pasos del procesado.** Mitigado en el workflow (ADR-0010); verificado en la importación real del 2-nov-2026.
 
 - Evidencia: `procesar` tiene `persist-credentials: false` en el checkout y ningún paso usa `github.token`. El token solo llega a los pasos de `publicar` que suben a `main` y responden (`GH_TOKEN`).
 - Riesgo residual: `publicar` ejecuta scripts del checkout de `main` con permiso de escritura, pero no ejecuta nada del paquete (`scripts/aplicar_paquete.py`; ADR-0010).
-- Pendiente: la publicación real de una canción, igual que en R1.
+- Verificado también con la publicación real del 2-nov-2026 y, en `buzon.yml`, con la ejecución manual del 3-nov-2026.
 
 **R3. Publicación accidental del repositorio.**
 
-- Evidencia: el repositorio es privado, según la consulta a GitHub del 2 de noviembre de 2026. Si se hiciera público, serían visibles el catálogo con las 11 canciones, incluidas las 2 con `public: false`; los dos ficheros de audio no publicados, versionados en `audio-library/audio/`; y todo el historial de git, que no se ha revisado en busca de secretos.
+- Evidencia: el repositorio es privado, según la consulta a GitHub del 2 de noviembre de 2026. Si se hiciera público, serían visibles el catálogo con las 14 canciones, incluidas las 4 con `public: false`; sus ficheros de audio, versionados en `audio-library/audio/`; los archivos originales subidos al buzón, que siguen en el historial; y todo el historial de git, que no se ha revisado en busca de secretos.
 - Mitigación actual: repositorio privado.
 - Propuesta: no hacerlo público sin revisar el historial con un escáner de secretos, sin dictamen sobre la licencia de cada pista y sin decidir si el audio no publicado debe seguir versionado.
 
 **R4. Publicación de pistas antes del dictamen sobre la licencia.**
 
-- Evidencia: nueve pistas con `public: true` en `catalog.json`, con licencia declarada en Internet Archive o por el depositante. ADR-0005 deja pendiente si esa declaración basta para publicar en Europa, lo que puede depender de la fecha de fijación y del país.
+- Evidencia: diez pistas con `public: true` en `catalog.json`, con licencia declarada en Internet Archive o por el depositante. Por el buzón, la licencia la declara quien sube y el workflow no la comprueba (§3.11). ADR-0005 deja pendiente si esa declaración basta para publicar en Europa, lo que puede depender de la fecha de fijación y del país.
 - Riesgo: legal. Una pista podría no estar en dominio público en España o en la UE.
 - Mitigación actual: solo se aceptan licencias declaradas, y se registran en el catálogo.
 - Propuesta: revisar pista a pista con [legal-05] y con el dictamen antes de ampliar la publicación.
 
-**R5. Datos del cuidador en el navegador.**
+**R5. Datos de la versión anterior que siguen en los navegadores.**
 
-- Evidencia: el PIN no protege frente a un dispositivo desbloqueado (DESIGN §9). `store.js` escribe los registros sin cifrarlos. El cifrado se usa solo en la copia (`backup.js`), y el hash, solo en el PIN. No hay cifrado en reposo de los registros.
-- Riesgos: pérdida de datos si el navegador borra el sitio (DESIGN §9 lo advierte para iOS y Safari), y acceso por quien use un dispositivo desbloqueado o una tableta compartida.
-- Mitigación prevista: persistencia (no implementada), recordatorio de copia (DESIGN §9, no localizado en el código) y el ajuste «Abrir siempre en modo paciente» (DESIGN §3.3).
-- Propuesta: implementar la persistencia y el recordatorio. Decidir si los registros se cifran en reposo y cómo se gestiona la clave (§5).
+- Evidencia: ADR-0015 (decisión 3) deja la base `reminiscencia` sin abrir ni borrar en los navegadores que usaron la versión anterior, con sus perfiles, recuerdos, fotografías y observaciones, sin cifrar en reposo.
+- Riesgo: quien use ese dispositivo desbloqueado puede leerla con las herramientas del navegador, y la interfaz ya no ofrece borrarla.
+- Mitigación: no se borra sin que la persona lo pida (decisión del propietario). Se elimina borrando los datos del sitio en el navegador.
+- Propuesta: explicar en la ayuda o en el README cómo borrar los datos del sitio, si hubo pruebas con datos reales.
 
-**R6. Fotografías con metadatos de ubicación y personas identificables.**
+**R6. Fotografías con metadatos de ubicación.** Retirado (ADR-0015): la aplicación ya no guarda fotografías.
 
-- Evidencia: no hay eliminación de EXIF ni reducción de imagen en el código (§3.9). El límite de tamaño del código es de 8 MB.
-- Riesgo: la ubicación puede viajar en los metadatos EXIF. Las fotografías de familiares son datos personales. Son el material de H4.
-- Mitigación: prevista (DESIGN §9 y C-22), no implementada.
-- Propuesta: implementar la reducción y la eliminación de EXIF antes de guardar ninguna foto, y probarlo con una imagen de prueba que tenga metadatos.
+**R7. Contraseña débil en la copia cifrada.** Retirado (ADR-0015): no hay copia cifrada. Las copias `.rmc` exportadas antes siguen protegidas solo por su contraseña donde se hayan guardado.
 
-**R7. Contraseña débil en la copia cifrada.**
-
-- Evidencia: mínimo de 10 caracteres. PBKDF2 con 600 000 iteraciones (`crypto.js`).
-- Riesgo: si el fichero `.rmc` se filtra y la contraseña es débil, puede atacarse sin conexión.
-- Mitigación: longitud mínima, iteraciones altas y sin recuperación.
-- Propuesta: mostrar la fuerza de la contraseña en la interfaz y recomendar una frase larga.
-
-**R8. Reidentificación por combinación de datos.**
-
-- Evidencia: el alias admite cualquier texto válido (`schema.js`). Los nombres reales son opcionales (DESIGN §9). El registro combina sesión, perfil, canción, presentación y marca de tiempo (DESIGN §8.4). Las fotografías pueden mostrar personas, y los recuerdos (H2) describen la vida de la persona.
-- Riesgo: un alias con nombre real, o la combinación de fechas, fotos y recuerdos, permite identificar a la persona.
-- Mitigación: alias y código. El registro no usa nombres (DESIGN §8.4).
-- Propuesta: texto de ayuda al crear el perfil («usa un alias, no un nombre»). Revisar los CSV antes de compartirlos.
+**R8. Reidentificación por combinación de datos.** Retirado de la aplicación (ADR-0015): no hay alias, recuerdos ni registro del estudio. Vuelve a aplicar si se define un instrumento nuevo para el estudio.
 
 **R9. Cabeceras de seguridad incompletas en la web pública.**
 
@@ -276,6 +269,8 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 - Propuesta: añadir `X-Content-Type-Options: nosniff` y `Referrer-Policy`. La CSP ya existe y ya incluye `frame-ancestors 'none'`.
 
 **R10. Documentación desactualizada.** Resuelta en lo principal (2-nov-2026).
+
+- Nota (3-nov-2026): la documentación se puso al día con ADR-0015 y ADR-0014. `METHODOLOGY.md` y la parte 2 de `AUDIO_ENGINE.md` describen el instrumento y el reproductor retirados y llevan nota de estado; varios comentarios del código citan ADR-0014 donde debería decir ADR-0015 (ROADMAP).
 
 - Evidencia: CLAUDE.md, PROJECT_MASTER.md, ROADMAP.md, ADR-0005 y ADR-0007 ya indican que la administración está retirada; ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02. Ningún fichero del repositorio lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. Las referencias antiguas a `library.yml` y a la administración de `docs/audio-processing/AUDIO_ENGINE.md` y `docs/datos/DATABASE.md` se corrigieron el 2-nov-2026.
 - Riesgo: que alguien dé por protegida una vía que no existe, o mantenga una lista de bloqueo duplicada que ya no existe.
@@ -287,13 +282,20 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 - Riesgo: sin la clave no se pueden publicar actualizaciones que los usuarios instalen (ADR-0004; `docs/android/RELEASE.md`).
 - Propuesta: copia cifrada fuera del equipo.
 
+**R12. Buzón: licencias, historial y atribución.**
+
+- Evidencia: §3.11. La licencia la declara quien sube y no se comprueba; los archivos subidos quedan en el historial de git; la fuente pública es `Subida por <cuenta>`.
+- Riesgos: (a) publicar una grabación con una licencia falsa o equivocada (R4); (b) versionar para siempre una grabación sin derechos o con datos de pacientes, aunque entre como privada; (c) atribución inexacta cuando el evento no nombra archivos o la ejecución es manual: entonces se procesa todo lo que haya en el buzón con el mensaje del último commit y con la cuenta que hizo el push o lanzó la ejecución, así que un archivo pendiente de una subida anterior puede quedar a nombre de otra cuenta, y con otra licencia; a mano, siempre privado y sin licencia.
+- Mitigación: solo cuentas con permiso de escritura; sin línea de licencia la canción entra privada y no se puede publicar con `Sin declarar`; el resumen del job anota cada caso.
+- Propuesta: revisar el resumen de cada ejecución del buzón; antes de publicar una canción subida, comprobar su licencia; no relanzar a mano con archivos de varias personas en el buzón.
+
 ## 5. Pendientes
 
 **A. Legales y éticos (decisión o dictamen)**
 
-1. Evaluación de impacto. Decidir si es necesaria según el art. 35 RGPD y la lista de la autoridad de control ([legal-02], disposición adicional decimoséptima, apartado 2, letra f). Hasta entonces no se tratan datos de participantes (PROJECT_MASTER.md: «Perfiles de pacientes y datos personales», no iniciado).
+1. Evaluación de impacto. Decidir si es necesaria según el art. 35 RGPD y la lista de la autoridad de control ([legal-02], disposición adicional decimoséptima, apartado 2, letra f), cuando se defina el instrumento del estudio que sustituya al registro retirado (ADR-0015). Hasta entonces no se tratan datos de participantes.
 2. Comité de ética. Informe previo favorable: Ley 14/2007, art. 2.e ([legal-03]); disposición adicional decimoséptima, apartado 2, letra c ([legal-02]); Helsinki ([legal-04]). No hay informe en el repositorio. Es requisito previo a cualquier dato de pacientes.
-3. Consentimiento. Documentos de consentimiento expreso y escrito (art. 4.1 de la Ley 14/2007, [legal-03]), con representante y asentimiento cuando corresponda ([legal-04]). La validación con cinco cuidadores y cinco pacientes exige consentimiento y tutor (DESIGN §16).
+3. Consentimiento. Documentos de consentimiento expreso y escrito (art. 4.1 de la Ley 14/2007, [legal-03]), con representante y asentimiento cuando corresponda ([legal-04]). La validación con cinco cuidadores y cinco pacientes exigía consentimiento y tutor (DESIGN 1.0, §16; retirada con ADR-0015). Cualquier validación con personas que se defina después lo exigirá igual.
 4. Dictamen sobre la licencia de Internet Archive para publicar en Europa, incluidas las grabaciones antiguas (ADR-0005). También, el dictamen sobre copia privada y archivos familiares (ADR-0002) y el dictamen legal sobre audio (ROADMAP.md).
 5. Plazos de protección de las grabaciones. Aplicar [legal-05] pista a pista: fecha de grabación, primera publicación o comunicación lícita, reglas de cómputo y disposición transitoria vigésima primera, apartado 3. Obtener dictamen. No se declara el estado de ninguna pista.
 6. Terminología de la capacidad en los arts. 4.2 y 20 de la Ley 14/2007, frente a la Ley 8/2021 ([legal-03]).
@@ -303,19 +305,19 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 
 **B. Implementación (previsto y no hecho)**
 
-10. Conectar la capa de datos a la interfaz del cuidador. En la rama, `index.html` solo carga `app.js`, y `js/pwa.js` no se carga.
-11. Persistencia del almacenamiento (`navigator.storage.persist()`) y aviso de cuota (DESIGN §9).
-12. Fotografías: reducción a 1600 px y eliminación de EXIF. Alinear el límite, que es de 8 MB en `store.js` y de 10 MB en DESIGN C-22.
-13. PIN: resuelto el 2026-11-02. Longitud de 4 a 6 dígitos en `schema.js` y DESIGN §9; bloqueo de 60 s tras cinco fallos en DESIGN §9, P-16 y el código.
-14. Registro del estudio: decidir el almacén (DESIGN §8.4 y §9), porque `store.js` no tiene uno propio.
+10. Retirados por ADR-0015, antes en esta lista: conectar la capa de datos del cuidador, persistencia y aviso de cuota de la copia, fotografías (reducción y EXIF), PIN y almacén del registro del estudio.
+11. Decidir el instrumento del estudio que sustituya al registro retirado (ADR-0015, consecuencias) y rehacer §2.3 antes de recoger datos.
+12. Buzón: probar una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`; revisar la atribución cuando el evento no nombra archivos (R12).
+13. Licencias declaradas en el buzón: incluirlas en el dictamen de §5 A.4.
+14. Base `reminiscencia` de la versión anterior en los navegadores: decidir si se explica cómo borrarla (R5).
 15. Gestión por incidencias de GitHub: implementada para cuentas con permiso de escritura (§3.5). Pendiente: revisar el filtro de autor antes de hacer público el repositorio (ADR-0008).
 16. Workflows: la separación de procesado y escritura, y `persist-credentials: false` en el procesado, están hechos en `biblioteca.yml` (R1 y R2; importación verificada en GitHub el 2-nov-2026; falta la publicación). Pendiente: `permissions: contents: read` en `backend.yml`.
 17. Cabeceras y CSP en `vercel.json` (R9).
-18. Fuentes: añadir los ficheros WOFF2 autoalojados o corregir DESIGN §5.3.
-19. `android:allowBackup`: decidir el valor y declararlo en `AndroidManifest.xml`.
+18. Fuentes: resuelto. Figtree autoalojada en WOFF2 con su licencia (§3.8).
+19. `android:allowBackup`: no se declara, pero las reglas de copia excluyen el audio local (§3.10). Decidir si se declara de forma explícita.
 20. Copia de seguridad de la clave de firma de Android fuera del equipo (R11).
-21. Decidir si los registros de IndexedDB se cifran en reposo (R5).
-22. Antes de hacer público el repositorio: escaneo del historial y decisión sobre el audio no publicado (R3).
+21. Cifrado en reposo de IndexedDB: ya no aplica a los datos actuales (listas, «Me gusta» y audio local). Sí a la base antigua `reminiscencia` (R5).
+22. Antes de hacer público el repositorio: escaneo del historial, incluidos los archivos subidos al buzón, y decisión sobre el audio no publicado (R3).
 
 **C. Documentación obsoleta (fuera de este fichero, sin modificar)**
 
@@ -324,4 +326,4 @@ La copia incluye perfiles, asociaciones, listas, recuerdos, fotografías, observ
 25. Resuelto en lo referente a la administración. Queda la acción del propietario de borrar `ADMIN_PASSWORD` y `GITHUB_TOKEN` en Vercel (ROADMAP.md, «Pendiente»).
 26. Resuelto: ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02, y los puntos 4 y 5 de ADR-0007 están superados por ADR-0008.
 27. Resuelto: `.github/workflows/library.yml` ya no existe en `main`; su comentario obsoleto salió con el fichero.
-28. DESIGN.md: tamaño de fotografía y §1 (la app Android no es la PWA). El PIN (longitud y bloqueo de 60 s) está resuelto desde el 2026-11-02.
+28. Resuelto: DESIGN.md 2.0 (ADR-0015) ya no trata fotografías, PIN ni la app Android como PWA.

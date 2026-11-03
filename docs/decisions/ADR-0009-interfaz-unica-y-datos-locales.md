@@ -1,8 +1,10 @@
 # ADR-0009: Interfaz única y datos locales
 
-- Estado: aceptada e implementada en `main` (fusión de `feat/ui-publica`, merge `0629371`, 2026-11-02).
+- Estado: aceptada e implementada en `main` (fusión de `feat/ui-publica`, merge `0629371`, 2026-11-02); **sustituida en parte por [ADR-0015](ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)** el 2026-11-03 (ver la nota de estado).
 - Fecha: 2026-11-02
 - Relacionada con: ADR-0001 (stack), ADR-0004 (app Android), ADR-0007 (catálogo público), ADR-0008 (entrada por incidencias), ADR-0012 (audio subido desde el dispositivo, solo en el navegador). Especificación: `docs/user-experience/DESIGN.md`. Estado de la implementación: DESIGN sección 17 y [ROADMAP](../../ROADMAP.md).
+
+> **Nota de estado (2026-11-03).** [ADR-0015](ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) retira los usuarios: no hay perfiles, modos paciente y cuidador, PIN, sesiones ni registro del estudio, recuerdos, fotografías ni observaciones. Quedan **sustituidas** las decisiones 2 (almacén `reminiscencia` de `store.js`), 3 (preferencias de pantalla de `prefs.js`) y 4 (PIN y copia cifrada `.rmc` con `crypto.js` y `backup.js`), y las partes de la 5, la 6 y la 7 que cita ADR-0015: la caché del shell es hoy `reminiscencia-shell-v5`, la fuente es Figtree en lugar de Atkinson Hyperlegible Next y los enlaces a GitHub son los de la hoja «Subir canciones» (buzón e incidencia de importación), no «Gestionar la biblioteca». **Siguen vigentes** la decisión 1 (módulos ES sin framework ni dependencias de runtime), la 5 (sin conexión con service worker y Cache Storage) y la 7 (sin scripts de terceros ni analítica). Las listas y «Me gusta» viven ahora en la base `reminiscencia-biblioteca` (`js/local-library.js`); la base `reminiscencia` no se abre ni se borra (ADR-0015, decisión 3). Las consecuencias sobre perfiles, PIN, copia y avisos de almacenamiento, el «Estado de la implementación» y el «Pendiente» de abajo describen la versión retirada y se conservan como registro. Estado actual: `docs/datos/DATABASE.md`, `docs/user-experience/DESIGN.md` 2.0 y `docs/user-experience/PLAYER.md`.
 
 ## Contexto
 

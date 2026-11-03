@@ -1,6 +1,6 @@
 # Arquitectura de Reminiscencia
 
-- Estado: 2026-11-02, con la interfaz única de [ADR-0009](../decisions/ADR-0009-interfaz-unica-y-datos-locales.md).
+- Estado: 2026-11-03, con la interfaz sin usuarios de [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) y el buzón de [ADR-0014](../decisions/ADR-0014-buzon-de-canciones.md).
 - Documentos relacionados: `docs/decisions/` (ADR), [GITHUB_STORAGE.md](GITHUB_STORAGE.md) (almacenamiento y límites), `docs/audio-processing/AUDIO_ENGINE.md`, `docs/datos/DATABASE.md`, `docs/user-experience/DESIGN.md`.
 
 ## Visión general
@@ -8,9 +8,9 @@
 Cuatro piezas, cada una con una sola responsabilidad:
 
 - **GitHub guarda** el código, el catálogo (`audio-library/indexes/catalog.json`), el audio de todas las canciones (`audio-library/audio/`), el audio publicado (`frontend/web/audio/`) y los datos públicos de la web (`frontend/web/data/`).
-- **GitHub Actions procesa.** Importar, convertir, organizar y publicar se hacen en el workflow `biblioteca.yml`, con ffmpeg del runner. Nada de eso corre en Vercel.
-- **Vercel sirve la web estática** de `frontend/web` (Root Directory, según ADR-0007). No tiene funciones ni página de administración. La interfaz única (paciente y cuidador) es una sola página.
-- **La app Android lee la biblioteca** de la web: descarga `data/songs.json` y `data/folders.json` de `https://reminiscencia.vercel.app/` y guarda una copia para escuchar sin conexión. No lleva audio empaquetado. Puede añadir audio del propio teléfono, convertido a Opus y solo en el dispositivo (ADR-0013).
+- **GitHub Actions procesa.** Importar, convertir, organizar y publicar se hacen en dos workflows con ffmpeg del runner: `biblioteca.yml` (peticiones por incidencia) y `buzon.yml` (archivos subidos a `audio-library/buzon/`). Nada de eso corre en Vercel.
+- **Vercel sirve la web estática** de `frontend/web` (Root Directory, según ADR-0007). No tiene funciones ni página de administración. La interfaz es una sola página, sin usuarios, con el aspecto de Spotify (ADR-0015).
+- **La app Android lee la biblioteca** de la web: descarga `data/songs.json` y `data/folders.json` de `https://reminiscencia.vercel.app/` y guarda una copia para escuchar sin conexión. No lleva audio empaquetado ni tiene usuarios. Puede añadir audio del propio teléfono, convertido a Opus y solo en el dispositivo (ADR-0013), y abrir la subida de GitHub al buzón.
 
 ## Diagrama
 
@@ -18,6 +18,8 @@ Cuatro piezas, cada una con una sola responsabilidad:
 flowchart LR
   subgraph GH["GitHub (repositorio privado)"]
     ISSUE["Incidencia con etiqueta biblioteca"]
+    BUZON["Push a main en audio-library/buzon (página de subida)"]
+    BZWF["buzon.yml: autorizar, procesar (sin token) y publicar"]
     AUTORIZAR["biblioteca.yml, job autorizar (permiso de escritura del autor)"]
     MANUAL["Disparo manual (workflow_dispatch)"]
     PROCESAR["biblioteca.yml, job procesar (sin token)"]
@@ -27,10 +29,14 @@ flowchart LR
   end
   FUENTES["Internet Archive o URL directa con licencia"]
   VERCEL["Vercel: sirve solo frontend/web"]
-  NAVEG["Navegador: interfaz única (paciente y cuidador)"]
+  NAVEG["Navegador: interfaz sin usuarios"]
   APP["App Android (Flutter)"]
 
-  NAVEG -->|"Gestionar la biblioteca abre la incidencia"| ISSUE
+  NAVEG -->|"Desde Internet Archive abre la incidencia"| ISSUE
+  NAVEG -->|"Para todos abre la página de subida"| BUZON
+  APP -->|"Para todos abre la página de subida"| BUZON
+  BUZON -->|"permiso de escritura de quien sube"| BZWF
+  BZWF -->|"valida el paquete, confirma y sube"| MAIN
   ISSUE -->|"etiqueta biblioteca"| AUTORIZAR
   AUTORIZAR -->|"sin permiso: solo comenta"| ISSUE
   AUTORIZAR -->|"con permiso de escritura"| PROCESAR
@@ -51,75 +57,83 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 
 | Componente | Dónde está | Qué hace |
 |---|---|---|
+| Buzón | `audio-library/buzon/` | Carpeta de paso. Quien tiene permiso de escritura sube audio desde la página de subida de GitHub; `buzon.yml` lo convierte, lo da de alta y lo borra de aquí (ADR-0014). |
 | Catálogo | `audio-library/indexes/catalog.json` | Fuente de verdad: carpetas, canciones, licencia, huella SHA-256, origen y el indicador `public`. Versión 1. |
 | Audio de la biblioteca | `audio-library/audio/<id>.opus` | Opus de todas las canciones, también de las no publicadas. Lo genera la importación (`backend/sonidos/pipeline.py`). |
 | Audio publicado | `frontend/web/audio/<id>.opus` | Copia de las canciones con `public: true`. Lo sincroniza `backend/sonidos/publish.py`. |
 | Datos públicos | `frontend/web/data/` | `songs.json`, `folders.json` y `catalog.json`, solo con lo publicado. Los regenera `publish.py`. |
 | Biblioteca (CI) | `.github/workflows/biblioteca.yml` | Procesa las incidencias con la etiqueta `biblioteca` de cuentas con permiso de escritura, y las ejecuciones manuales. Tres jobs: `autorizar` (comprueba el permiso del autor; sin checkout), `procesar` (sin token) y `publicar` (escribe en `main`). ADR-0008 y ADR-0010. |
+| Buzón (CI) | `.github/workflows/buzon.yml` | Push a `main` que toca el buzón, o a mano. Mismos tres jobs y misma cola (`library-catalog`) que `biblioteca.yml`. Con «Licencia: …» en el mensaje del commit, la canción entra pública; sin ella, privada (ADR-0014). |
 | Pruebas y límites (CI) | `backend.yml`, `web.yml`, `web-e2e.yml`, `android.yml` | `backend.yml`: pruebas de Python (3.12 y 3.13), límites de GitHub y app Flutter; no ejecuta pruebas web. `web.yml`: sintaxis y pruebas unitarias de la web. `web-e2e.yml`: pruebas de extremo a extremo con Chrome. `android.yml`: compilación de la app Android. |
-| Interfaz pública | `frontend/web/index.html`, `js/app.js`, `js/paciente/`, `js/cuidador/`, `js/player.js`, `css/` | Una sola página. `app.js` arranca el modo paciente (escucha, listas, carpetas, búsqueda y salida) o el modo cuidador (inicio, biblioteca, perfiles, ajustes), según el último modo usado. `player.js` reproduce el audio. |
-| Datos locales, copia y PWA | `js/store.js`, `js/schema.js`, `js/crypto.js`, `js/backup.js`, `js/prefs.js`, `js/pwa.js`, `js/offline-core.js`, `sw.js`, `manifest.webmanifest` | IndexedDB (versión 3) para los datos del cuidador; copia cifrada `.rmc`; preferencias de pantalla en localStorage; service worker y caché para el uso sin conexión (ADR-0009). |
-| Audio subido desde el dispositivo | `js/cuidador/subida-local.js` | Convierte a Opus en el navegador y guarda el audio en IndexedDB `reminiscencia-audio-local` (versión 1). No sale del navegador ni entra en la copia cifrada (ADR-0012). |
+| Interfaz pública | `frontend/web/index.html`, `js/app.js`, `js/views/`, `js/ui/`, `js/catalog.js`, `js/player.js`, `css/`, `fonts/` | Una sola página sin usuarios que abre en Inicio (ADR-0015, DESIGN 2.0). `app.js` lleva las rutas (Inicio, Buscar, Tu biblioteca, carpeta, lista y «Me gusta»); `js/views/` pinta cada pantalla y la hoja «Subir canciones»; `player.js` reproduce (cola, aleatorio, repetir y volumen; ver `PLAYER.md`). |
+| Listas, «Me gusta» y PWA | `js/local-library.js`, `js/pwa.js`, `js/offline-core.js`, `sw.js`, `manifest.webmanifest` | IndexedDB `reminiscencia-biblioteca` (versión 1) para las listas y «Me gusta», solo en este navegador; volumen, aleatorio y repetir en localStorage; service worker y caché para el uso sin conexión. Retirados por ADR-0015: `store.js`, `schema.js`, `crypto.js`, `backup.js` (copia `.rmc`) y `prefs.js`. Ver `docs/datos/DATABASE.md`. |
+| Audio subido desde el dispositivo | `js/cuidador/subida-local.js` | Convierte a Opus en el navegador y guarda el audio en IndexedDB `reminiscencia-audio-local` (versión 1). No sale del navegador (ADR-0012). `sw.js` lo sirve en `audio/L<16 hex>.opus`, porque la CSP no admite `blob:` (ADR-0015, decisión 7). |
+| Importación desde la web | `js/cuidador/incidencias.js` y `js/intake.js` | Validan la petición de «Desde Internet Archive» y preparan la incidencia (ADR-0008). La carpeta `js/cuidador/` conserva el nombre aunque ya no hay modo cuidador. |
 | Pruebas de la web | `tests/web-unit/` (`node:test`), `tests/web-e2e/` (puppeteer-core y axe-core) | Lógica sin navegador, y pruebas de extremo a extremo y de accesibilidad con Chrome. |
-| App Android | `mobile/` | Flutter. Lee la biblioteca de la web y guarda copia local. ADR-0004. |
-| Backend | `backend/sonidos/` | `catalog`, `intake`, `sources`, `pipeline`, `paquete`, `publish`, `probe`, `compression`, `hashing`, `limits` e `issue_request`. `release.py` existe, pero ningún workflow lo usa. |
-| Scripts | `scripts/` | `issue_request.py`, `empaquetar_cambios.py`, `ci_library.py`, `aplicar_paquete.py`, `responder_incidencia.py`, `check_repo_limits.py`, `smoke_produccion.mjs` (comprueba la web pública) y `android/verify_apk.sh`. |
+| App Android | `mobile/` | Flutter 1.2.0+3, sin usuarios y con el aspecto de la app de Spotify. Lee la biblioteca de la web y guarda copia local; listas y «Me gusta» en `colecciones.json` del teléfono. ADR-0004 y ADR-0013. |
+| Backend | `backend/sonidos/` | `catalog`, `intake`, `sources`, `pipeline`, `buzon`, `paquete`, `publish`, `probe`, `compression`, `hashing`, `limits` e `issue_request`. `release.py` existe, pero ningún workflow lo usa. |
+| Scripts | `scripts/` | `issue_request.py`, `empaquetar_cambios.py`, `ci_library.py`, `buzon.py`, `aplicar_paquete.py`, `responder_incidencia.py`, `check_repo_limits.py`, `smoke_produccion.mjs` (comprueba la web pública) y `android/verify_apk.sh`. |
 | Investigación | Raíz del repositorio | `BIBLIOGRAPHY.md`, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`. |
 
 ## Flujos
 
-**Escucha.** Vercel sirve `index.html`, los módulos de `js/` y las hojas de `css/`. En el modo paciente, `js/app.js` lee `data/songs.json` y `data/folders.json`, y `js/player.js` reproduce `audio/<id>.opus`. La app Android lee los mismos datos desde la misma dirección y guarda una copia local.
+**Escucha.** Vercel sirve `index.html`, los módulos de `js/` y las hojas de `css/`. `js/app.js` lee `data/songs.json` y `data/folders.json`, junta esas canciones con las subidas a este navegador y `js/player.js` reproduce `audio/<id>.opus` (o `audio/L….opus`, servido por `sw.js` desde IndexedDB). La app Android lee los mismos datos desde la misma dirección y guarda una copia local.
 
-**Gestión (importar, organizar, publicar).**
+**Gestión por incidencias (importar, organizar, publicar).**
 
-1. En el modo cuidador, «Gestionar la biblioteca» (Biblioteca) valida el formato de la petición en el navegador (`js/cuidador/incidencias.js`) y abre una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito. La envía en GitHub una cuenta con permiso de escritura. La lista de bloqueo de la web tiene las mismas 42 entradas que la del backend.
+1. Para importar, la hoja «Subir canciones», «Desde Internet Archive», valida la petición en el navegador (`js/cuidador/incidencias.js` y `js/intake.js`) y abre una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito. Publicar, despublicar, editar y las carpetas se escriben a mano en la incidencia (la hoja «Gestionar la biblioteca» se retiró con ADR-0015). La envía en GitHub una cuenta con permiso de escritura. La lista de bloqueo de la web tiene las mismas 42 entradas que la del backend.
 2. `biblioteca.yml`, job `autorizar`, comprueba el permiso de escritura del autor; sin permiso, solo comenta la incidencia. No hace checkout. El disparo manual no pasa por este paso.
 3. `biblioteca.yml`, job `procesar`, descarga y convierte, o aplica la operación de organización al catálogo, y deja un paquete de cambios como artefacto. No tiene token.
 4. `biblioteca.yml`, job `publicar`, valida el paquete contra `main`, lo aplica, regenera la parte pública desde el catálogo, confirma, sube a `main` y responde a la incidencia. La incidencia se cierra, o recibe la etiqueta `error`.
+5. Vercel redespliega `main`.
+
+**Buzón (ADR-0014).**
+
+1. Quien tiene permiso de escritura sube archivos de audio a `audio-library/buzon/` desde la página de subida de GitHub, con una línea `Licencia: …` en la descripción del commit. La web y la APK solo abren esa página.
+2. `buzon.yml`, job `autorizar`, comprueba el permiso de `github.actor` y de `github.triggering_actor`. No hace checkout.
+3. `procesar` (sin token) lee del evento los archivos y los mensajes de commit; si el evento no nombra archivos, o la ejecución es manual, toma lo que haya en el buzón con el mensaje del último commit (vacío a mano). Convierte a Opus, da de alta en el catálogo (pública con licencia, privada sin ella) y empaqueta los cambios con `ACTION=buzon`.
+4. `publicar` valida el paquete (la acción `buzon` es la única que puede borrar del buzón), lo aplica, regenera la parte pública, comprueba los límites, confirma y sube a `main`.
 5. Vercel redespliega `main`.
 
 **Pruebas en cada cambio.** `backend.yml` corre en cada push a `main` y en cada pull request. `web.yml` corre si cambian `frontend/web/**`, `tests/web-unit/**` o el propio workflow. `web-e2e.yml` corre si cambian `frontend/web/**` o `tests/web-e2e/**`. `android.yml` corre a mano o con una etiqueta `android-v*` (ver `docs/android/RELEASE.md`).
 
 ## Límites de confianza
 
-- **Sin secretos en la web.** No hay contraseña de administración ni token en el navegador ni en Vercel (ADR-0008). Ningún código del repositorio lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. La interfaz no llama a la API de GitHub: solo abre el formulario de nueva incidencia.
+- **Sin secretos ni usuarios en la web.** No hay contraseña de administración, PIN ni token en el navegador ni en Vercel (ADR-0008, ADR-0015). Ningún código del repositorio lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. La interfaz no llama a la API de GitHub: solo abre el formulario de nueva incidencia o la página de subida al buzón.
 - **El procesado no tiene token.** `procesar` tiene `contents: read` y su checkout no guarda credenciales. El token llega solo al paso que sube a `main` y al que responde.
 - **Solo `main` escribe en el catálogo.** Hay guardas de rama al inicio del procesado y antes del push. Si `main` cambia entre los dos jobs, la petición se rechaza y hay que reenviarla (ADR-0010).
-- **Solo cuentas con permiso de escritura procesan.** El job `autorizar` exige que el autor de la incidencia tenga permiso de escritura (`admin`, `maintain` o `write`) y que la incidencia lleve la etiqueta `biblioteca` (ADR-0008, enmienda de 2026-11-02).
+- **Solo cuentas con permiso de escritura procesan.** En `biblioteca.yml`, el job `autorizar` exige que el autor de la incidencia tenga permiso de escritura (`admin`, `maintain` o `write`) y que la incidencia lleve la etiqueta `biblioteca` (ADR-0008, enmienda de 2026-11-02). En `buzon.yml`, lo exige a quien hizo el push y a quien relanza la ejecución (ADR-0014).
+- **El buzón queda en el historial.** Lo subido al buzón sigue en el historial de git aunque el workflow lo borre; la licencia la declara quien sube y el workflow no la comprueba (ver `SECURITY.md`).
 - **Repositorio privado.** Comprobado con `gh` el 2026-11-02. ADR-0008 exige revisar el filtro de autor antes de hacerlo público.
 - **Cabeceras de Vercel.** `frontend/web/vercel.json` fija una política de contenido (CSP) que limita los scripts, las conexiones y el audio al mismo origen, y el tipo de contenido del audio.
-- **Acciones de GitHub.** `biblioteca.yml` fija cada acción por SHA. `backend.yml`, `web.yml`, `web-e2e.yml` y `android.yml` usan etiquetas de versión (por ejemplo `actions/checkout@v4`). Decidir si también se fijan por SHA está pendiente.
+- **Acciones de GitHub.** `biblioteca.yml` y `buzon.yml` fijan cada acción por SHA. `backend.yml`, `web.yml`, `web-e2e.yml` y `android.yml` usan etiquetas de versión (por ejemplo `actions/checkout@v4`). Decidir si también se fijan por SHA está pendiente.
 
 ## Estado
 
-**En main (2026-11-02):**
+**En main (2026-11-03, `b058a0c`):**
 
-- Biblioteca por incidencias: `biblioteca.yml` con los jobs `autorizar`, `procesar` y `publicar`, el paquete de cambios y la publicación separada (ADR-0008, ADR-0010).
-- Interfaz única (ADR-0009): modo paciente y modo cuidador en una sola página, con datos locales en IndexedDB (versión 3), copia cifrada, PIN local y uso sin conexión. «Gestionar la biblioteca» está en Biblioteca del modo cuidador.
-- Interfaz con la estructura de la web de Apple Music (rediseño del 2026-11-02, decisión del propietario): barra lateral en escritorio, riel en tableta y barra de pestañas inferior en teléfono.
-- Audio subido desde el dispositivo del cuidador, solo en su navegador (ADR-0012).
-- Pruebas: 650 pruebas unitarias de la web (`node --test`) y la suite e2e de `tests/web-e2e/` (resultado en CHANGELOG).
-- Audio subido desde el teléfono, solo en la APK (ADR-0013).
-- Prueba real del flujo con la grabación «Tell me pretty maiden», con las incidencias #1 (importar), #2 (publicar) y #3 (despublicar). Quedan en el historial los commits del bot `biblioteca: import` y `biblioteca: organize`. La grabación está hoy sin publicar.
-- Biblioteca actual: 13 canciones en el catálogo, 9 publicadas, 4 privadas y ninguna carpeta.
-- Documentación técnica: ADR-0009 «Interfaz única y datos locales» y ADR-0010 «Procesado y publicación separados». `AUDIO_ENGINE.md`, `DATABASE.md` y `PLAYER.md` están pendientes de revisión (ver «Pendiente»).
+- Biblioteca por incidencias: `biblioteca.yml` con los jobs `autorizar`, `procesar` y `publicar`, el paquete de cambios y la publicación separada (ADR-0008, ADR-0010, ADR-0011). Probado con las incidencias #1 a #3 («Tell me pretty maiden»: importar, publicar y despublicar) y con la publicación de «Nomyn Fragments» (commit del bot `7b73d19`).
+- Buzón: `buzon.yml` (ADR-0014). Vía privada probada en GitHub el 2026-11-03 (ejecución manual, commit del bot `4f6c73d`); también se lanza a mano para reprocesar lo pendiente. Sin probar: una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`.
+- Web y APK sin usuarios, con el aspecto de Spotify (ADR-0015): sin perfiles, modos, PIN, registro del estudio ni copia `.rmc`. Listas y «Me gusta» solo en el dispositivo.
+- Subida local: «Solo en este navegador» (ADR-0012) y «Solo en este teléfono» (ADR-0013).
+- APK 1.2.0+3; `android.yml` publica, por etiqueta `android-vX.Y.Z`, un APK de producción por arquitectura. Sin ejecuciones todavía.
+- Comprobador de producción: `scripts/smoke_produccion.mjs`.
+- Pruebas: 274 unitarias de la web y 566 del backend en verde (2026-11-03); `web-e2e.yml` en verde sobre `ae22479`.
+- Biblioteca actual: 14 canciones en el catálogo, 10 publicadas, 4 privadas y ninguna carpeta.
 - Investigación: bibliografía, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`.
-- CI: `backend.yml`, `biblioteca.yml`, `web.yml`, `web-e2e.yml` y `android.yml`.
-
-Colaboradores con permiso de escritura e Internet Archive por `/download/` están en `main` (commit `8d29978`, fusionado en `5c060c1`). Procesan las peticiones las cuentas con permiso `admin`, `maintain` o `write`, y `sources.py` acepta `archive.org/download/<identificador>`.
+- CI: `backend.yml`, `biblioteca.yml`, `buzon.yml`, `web.yml`, `web-e2e.yml` y `android.yml`.
 
 ## Pendiente
 
 **Código y documentación:**
 
-- Revisar `PLAYER.md`, `DATABASE.md` y la parte 2 de `AUDIO_ENGINE.md`, que describen la rama antes de la integración.
-- Retirar `js/intake.js` y `tests/web-unit/intake.test.mjs`. Siguen en `main`: la app no importa `intake.js`, pero `js/offline-core.js` lo lista en `SHELL_ASSETS`. Quitarlo exige un cambio de código y de la versión del shell, fuera de esta tarea de documentación. Ya retirados en `main`: `js/gestion.js`, `app.js` y `listen.css` de la raíz, y sus pruebas. La CSP de `frontend/web/vercel.json` está en `main`.
-- ADR-0008 y ADR-0010 describen el flujo. La prueba real de las incidencias #1 a #3 (importar, publicar y despublicar) está en GITHUB_STORAGE.md.
-- Dictamen legal sobre las licencias de Internet Archive (ADR-0005).
+- La parte 2 de `docs/audio-processing/AUDIO_ENGINE.md` describe el reproductor retirado (ADR-0009); el actual está en `docs/user-experience/PLAYER.md`.
+- Comentarios del código que citan ADR-0014 para la interfaz sin usuarios; el número correcto es ADR-0015 (ver ROADMAP).
+- Decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015, consecuencias).
+- Dictamen legal sobre las licencias de Internet Archive (ADR-0005) y sobre las licencias declaradas en el buzón.
 
 **Fuera del repositorio (acciones del propietario):**
 
 - Si siguen configuradas en Vercel, retirar `ADMIN_PASSWORD` y `GITHUB_TOKEN`. Ningún código del repositorio las lee.
 - Revocar los tokens de GitHub creados para la administración retirada.
 - La clave de firma de Android no está en GitHub, así que la compilación de producción no está verificada (`docs/android/RELEASE.md`).
-- Comprobar en `https://reminiscencia.vercel.app/` que se sirven `data/*.json` y `audio/*.opus` tras el último despliegue. No verificado desde el repositorio.
