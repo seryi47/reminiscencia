@@ -1,10 +1,19 @@
-// Lógica pura de la biblioteca: lectura del catálogo público (data/songs.json y data/folders.json), carpetas,
-// búsqueda, saludo según la hora, duraciones y colores de portada. No usa el DOM ni APIs del navegador, así que se
+// Lógica pura de la biblioteca: lectura del catálogo público (data/songs.json y data/folders.json), álbumes (las
+// carpetas del catálogo, que la interfaz llama «Álbumes»), portadas, búsqueda, saludo según la hora, duraciones y
+// colores de portada. No usa el DOM ni APIs del navegador, así que se
 // prueba en Node (tests/web-unit/catalog.test.mjs).
 
 // Identificadores seguros: van en rutas (audio/<id>.opus) y en el hash de la página.
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_TEXT = 200;
+// Portada publicada por el backend: "covers/<id>.jpg" (data/songs.json y data/folders.json). Cualquier otra forma se
+// ignora y la portada se genera con un color y un icono.
+const COVER_PATH = /^covers\/[A-Za-z0-9_-]{1,64}\.jpg$/;
+
+/** Ruta de portada válida ("covers/<id>.jpg") o null. */
+export function normalizeCoverPath(value) {
+  return typeof value === 'string' && COVER_PATH.test(value) ? value : null;
+}
 
 /** Colores de portada. Todos dan un contraste de 6:1 o más con texto blanco (WCAG 1.4.3). */
 export const COVER_COLORS = Object.freeze([
@@ -41,20 +50,23 @@ export function normalizeSong(raw, index = 0) {
     folderId: typeof raw.folder_id === 'string' && SAFE_ID.test(raw.folder_id) ? raw.folder_id : null,
     durationS: finiteOrNull(raw.duration_s),
     audio,
+    cover: raw.local === true ? null : normalizeCoverPath(raw.cover),
     local: raw.local === true,
     addedAt,
     order: index,
   };
 }
 
-/** Carpeta con la forma que usa la interfaz, o null si no es válida. */
-function normalizeFolder(raw) {
+/** Álbum (carpeta del catálogo) con la forma que usa la interfaz, o null si no es válido. */
+export function normalizeFolder(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const id = typeof raw.id === 'string' && SAFE_ID.test(raw.id) ? raw.id : null;
   if (!id) return null;
   return {
     id,
-    name: cleanText(raw.name, 'Carpeta sin nombre'),
+    name: cleanText(raw.name, 'Álbum sin nombre'),
+    artist: cleanText(raw.artist),
+    cover: normalizeCoverPath(raw.cover),
     parentId: typeof raw.parent_id === 'string' && SAFE_ID.test(raw.parent_id) && raw.parent_id !== id ? raw.parent_id : null,
   };
 }
@@ -86,6 +98,24 @@ export function buildCatalog(songs = [], folders = [], localSongs = []) {
     if (song.folderId && !folderById.has(song.folderId)) song.folderId = null;
   }
   return { songs: list, folders: [...folderById.values()], songById, folderById };
+}
+
+/** Portada de una canción: la suya o, si no tiene, la de su álbum. null si no hay ninguna. */
+export function songCover(catalog, song) {
+  if (!song) return null;
+  if (song.cover) return song.cover;
+  return song.folderId ? catalog.folderById.get(song.folderId)?.cover ?? null : null;
+}
+
+/** Año de un álbum: el más repetido entre sus canciones (con empate, el más antiguo), o null. */
+export function albumYear(songs) {
+  const counts = new Map();
+  for (const song of songs) if (Number.isInteger(song.year)) counts.set(song.year, (counts.get(song.year) ?? 0) + 1);
+  let best = null;
+  for (const [year, count] of counts) {
+    if (best === null || count > best.count || (count === best.count && year < best.year)) best = { year, count };
+  }
+  return best ? best.year : null;
 }
 
 /** Canciones de una carpeta (solo las que están directamente en ella), en el orden del catálogo. */
@@ -221,7 +251,7 @@ function scoreSong(song, query, catalog) {
 }
 
 /**
- * Busca en canciones, carpetas y listas propias. Devuelve { top, songs, folders, playlists }: top es el resultado
+ * Busca en canciones, álbumes (por nombre y artista) y listas propias. Devuelve { top, songs, folders, playlists }: top es el resultado
  * principal ({ kind: 'song' | 'folder' | 'playlist', item }) o null; con la misma puntuación gana una carpeta o
  * una lista sobre una canción. Sin texto, todo vacío.
  */
@@ -233,7 +263,7 @@ export function searchCatalog(catalog, rawQuery, playlists = []) {
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
   const songs = rank(catalog.songs, (song) => scoreSong(song, query, catalog));
-  const folders = rank(catalog.folders, (folder) => scoreText(folder.name, query));
+  const folders = rank(catalog.folders, (folder) => Math.max(scoreText(folder.name, query), scoreText(folder.artist, query) * 0.75));
   const lists = rank(playlists, (list) => scoreText(list.name, query));
   const candidates = [
     folders[0] && { kind: 'folder', ...folders[0] },

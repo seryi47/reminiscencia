@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import {
+  albumYear,
   buildCatalog,
   childFolders,
   COVER_COLORS,
@@ -13,11 +14,14 @@ import {
   formatTotalDuration,
   greetingFor,
   localSongsOf,
+  normalizeCoverPath,
+  normalizeFolder,
   normalizeSong,
   normalizeText,
   recentSongs,
   searchCatalog,
   songCountText,
+  songCover,
   songsInFolder,
   titleSize,
   totalDuration,
@@ -53,6 +57,7 @@ describe('lectura del catálogo', () => {
       folderId: 'aaaaaaaaaa',
       durationS: 101,
       audio: 'audio/S0000000000000001.opus',
+      cover: null,
       local: false,
       addedAt: null,
       order: 0,
@@ -204,5 +209,48 @@ describe('búsqueda', () => {
 
   test('normalizeText quita tildes, diéresis y espacios de más', () => {
     assert.equal(normalizeText('  Pingüino   ÁRBOL '), 'pinguino arbol');
+  });
+});
+
+describe('álbumes y portadas publicadas (contrato con el backend)', () => {
+  test('una canción y un álbum aceptan "cover": "covers/<id>.jpg" y nada más', () => {
+    assert.equal(normalizeCoverPath('covers/S0000000000000001.jpg'), 'covers/S0000000000000001.jpg');
+    assert.equal(normalizeCoverPath('covers/F0123456789abcdef.jpg'), 'covers/F0123456789abcdef.jpg');
+    for (const bad of ['covers/x.png', '/covers/x.jpg', 'https://otro.test/covers/x.jpg', 'covers/../x.jpg', 'covers/a/b.jpg', 'covers/.jpg', 42, null]) {
+      assert.equal(normalizeCoverPath(bad), null, String(bad));
+    }
+    assert.equal(normalizeSong(song(1, { cover: 'covers/S0000000000000001.jpg' })).cover, 'covers/S0000000000000001.jpg');
+    assert.equal(normalizeSong(song(1, { cover: 'data:image/png;base64,AAAA' })).cover, null);
+  });
+
+  test('un álbum lee artist y cover opcionales; sin ellos, artista vacío y sin portada', () => {
+    assert.deepEqual(normalizeFolder({ id: 'F0123456789abcdef', name: ' Valses ', artist: ' Orquesta \n de prueba ', cover: 'covers/F0123456789abcdef.jpg' }), {
+      id: 'F0123456789abcdef', name: 'Valses', artist: 'Orquesta de prueba', cover: 'covers/F0123456789abcdef.jpg', parentId: null,
+    });
+    assert.deepEqual(normalizeFolder({ id: 'aaaaaaaaaa', name: 'Años veinte' }), { id: 'aaaaaaaaaa', name: 'Años veinte', artist: '', cover: null, parentId: null });
+    assert.equal(normalizeFolder({ id: 'aaaaaaaaaa' }).name, 'Álbum sin nombre');
+  });
+
+  test('songCover usa la portada de la canción o, si no tiene, la de su álbum', () => {
+    const catalog = buildCatalog(
+      [song(1, { folder_id: 'F0123456789abcdef' }), song(2, { folder_id: 'F0123456789abcdef', cover: 'covers/S0000000000000002.jpg' }), song(3)],
+      [{ id: 'F0123456789abcdef', name: 'Con portada', cover: 'covers/F0123456789abcdef.jpg' }],
+    );
+    const [one, two, three] = catalog.songs;
+    assert.equal(songCover(catalog, one), 'covers/F0123456789abcdef.jpg');
+    assert.equal(songCover(catalog, two), 'covers/S0000000000000002.jpg');
+    assert.equal(songCover(catalog, three), null);
+  });
+
+  test('albumYear da el año más repetido (con empate, el más antiguo) o null', () => {
+    assert.equal(albumYear([{ year: 1925 }, { year: 1928 }, { year: 1928 }]), 1928);
+    assert.equal(albumYear([{ year: 1930 }, { year: 1925 }]), 1925);
+    assert.equal(albumYear([{ year: null }]), null);
+  });
+
+  test('la búsqueda encuentra un álbum por su artista', () => {
+    const catalog = buildCatalog([song(1)], [{ id: 'aaaaaaaaaa', name: 'Valses', artist: 'Orquesta Imaginaria' }]);
+    const found = searchCatalog(catalog, 'imaginaria');
+    assert.deepEqual(found.folders.map((folder) => folder.id), ['aaaaaaaaaa']);
   });
 });

@@ -7,12 +7,16 @@ import { describe, test } from 'node:test';
 import {
   addSongIds,
   defaultPlaylistName,
+  isValidCoverDataUrl,
+  normalizeDescription,
+  PLAYLIST_DESCRIPTION_MAX,
   LIBRARY_DB_NAME,
   LIBRARY_DB_VERSION,
   newPlaylistId,
   openLocalLibrary,
   PLAYLIST_NAME_MAX,
   removeSongId,
+  validatePlaylistDescription,
   validatePlaylistName,
 } from '../../frontend/web/js/local-library.js';
 
@@ -174,6 +178,49 @@ describe('biblioteca local en IndexedDB', () => {
     const again = await openLocalLibrary({ indexedDB });
     assert.deepEqual((await again.listPlaylists()).map((list) => list.name), ['Guardada']);
     assert.equal((await again.listLikes()).has('S9'), true);
+  });
+});
+
+describe('detalles de una lista: descripción y portada propia', () => {
+  const COVER = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+
+  test('la descripción va en una línea, es opcional y admite hasta 300 caracteres', () => {
+    assert.equal(normalizeDescription('  Para  el\ndomingo \r\n por la tarde '), 'Para el domingo por la tarde');
+    assert.equal(validatePlaylistDescription(''), null);
+    assert.equal(validatePlaylistDescription('x'.repeat(PLAYLIST_DESCRIPTION_MAX)), null);
+    assert.match(validatePlaylistDescription('x'.repeat(PLAYLIST_DESCRIPTION_MAX + 1)), /300 caracteres/);
+    assert.match(validatePlaylistDescription('a\u0007b'), /control/);
+    assert.match(validatePlaylistDescription(5), /texto/);
+  });
+
+  test('la portada propia es una imagen JPEG, PNG o WebP en data: (no blob: ni direcciones)', () => {
+    assert.equal(isValidCoverDataUrl(COVER), true);
+    assert.equal(isValidCoverDataUrl('data:image/png;base64,iVBORw0KGgo='), true);
+    for (const bad of ['blob:https://x/1', 'https://otro.test/a.jpg', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:text/html;base64,PGI+', `data:image/jpeg;base64,${'A'.repeat(2_000_001)}`]) {
+      assert.equal(isValidCoverDataUrl(bad), false, bad.slice(0, 30));
+    }
+  });
+
+  test('updatePlaylist cambia nombre, descripción y portada, conserva lo que no se pasa y quita la portada con null', async () => {
+    const { library } = await open();
+    const list = await library.createPlaylist('Domingo', ['S1']);
+    assert.equal(list.description, '');
+    assert.equal(list.cover, null);
+    await library.updatePlaylist(list.id, { description: 'Para  escuchar\njuntos', cover: COVER });
+    let saved = await library.getPlaylist(list.id);
+    assert.deepEqual([saved.name, saved.description, saved.cover, saved.songIds], ['Domingo', 'Para escuchar juntos', COVER, ['S1']]);
+    await library.updatePlaylist(list.id, { name: ' Tarde ', cover: null });
+    saved = await library.getPlaylist(list.id);
+    assert.deepEqual([saved.name, saved.description, saved.cover], ['Tarde', 'Para escuchar juntos', null]);
+  });
+
+  test('si un dato no vale, updatePlaylist no guarda nada', async () => {
+    const { library } = await open();
+    const list = await library.createPlaylist('Domingo');
+    await assert.rejects(library.updatePlaylist(list.id, { name: 'Nuevo', cover: 'blob:https://x/1' }), /portada no es una imagen válida/);
+    await assert.rejects(library.updatePlaylist(list.id, { name: 'Nuevo', description: 'x'.repeat(301) }), /300 caracteres/);
+    await assert.rejects(library.updatePlaylist(list.id, { name: '  ' }), /Escribe un nombre/);
+    assert.equal((await library.getPlaylist(list.id)).name, 'Domingo');
   });
 });
 

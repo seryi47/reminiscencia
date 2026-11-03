@@ -154,6 +154,7 @@ export function promptDialog({ title, label, value = '', confirmLabel = 'Guardar
 // ---------------------------------------------------------------------------
 
 let openMenuState = null;
+const ITEM_SELECTOR = '[role="menuitem"], [role="menuitemradio"]';
 
 /** Cierra el menú abierto, si lo hay. Con restoreFocus, el foco vuelve al botón que lo abrió. */
 export function closeMenu({ restoreFocus = true } = {}) {
@@ -167,28 +168,38 @@ export function closeMenu({ restoreFocus = true } = {}) {
 }
 
 /**
- * Abre un menú junto a anchor. items: [{ label, icon?, action, testid? }] o una función que devuelve la lista
- * (para submenús: una acción puede devolver una lista nueva y el menú se sustituye). Flechas, Inicio, Fin y Escape.
+ * Abre un menú junto a anchor. items: [{ label, icon?, description?, checked?, action, testid? }]. Una acción puede
+ * devolver una lista nueva (submenú) y el menú se sustituye. heading: rótulo encima de las opciones («Ordenar por»).
+ * Flechas, Inicio, Fin y Escape.
  */
-export function openMenu(anchor, items, { label = 'Opciones' } = {}) {
+export function openMenu(anchor, items, { label = 'Opciones', heading = null } = {}) {
   closeMenu({ restoreFocus: false });
   const menu = el('div', { class: 'menu', role: 'menu', 'aria-label': label, 'data-testid': 'menu' });
   const fill = (list) => {
     menu.replaceChildren();
+    if (heading) menu.append(el('p', { class: 'menu-heading', 'aria-hidden': 'true' }, heading));
     for (const item of list) {
+      // Con «checked», el elemento es una opción de un grupo (menuitemradio) y lleva una marca si está elegida.
+      const radio = typeof item.checked === 'boolean';
       const button = el('button', {
         type: 'button',
-        class: 'menu-item',
-        role: 'menuitem',
+        class: `menu-item${item.checked ? ' is-checked' : ''}${item.description ? ' has-description' : ''}`,
+        role: radio ? 'menuitemradio' : 'menuitem',
+        'aria-checked': radio ? String(item.checked) : null,
         tabindex: '-1',
         'data-testid': item.testid,
-      }, item.icon ? icon(item.icon, { size: 18 }) : null, el('span', {}, item.label));
+      },
+      item.icon ? icon(item.icon, { size: 18 }) : null,
+      el('span', { class: 'menu-text' },
+        el('span', { class: 'menu-label' }, item.label),
+        item.description ? el('span', { class: 'menu-description' }, item.description) : null),
+      item.checked ? icon('check', { size: 16, className: 'menu-check' }) : null);
       button.addEventListener('click', async (event) => {
         event.stopPropagation();
         const next = await item.action();
         if (Array.isArray(next)) {
           fill(next);
-          menu.querySelector('[role="menuitem"]')?.focus();
+          menu.querySelector(ITEM_SELECTOR)?.focus();
         } else {
           closeMenu({ restoreFocus: next !== false });
         }
@@ -198,7 +209,7 @@ export function openMenu(anchor, items, { label = 'Opciones' } = {}) {
   };
   fill(items);
   const onKey = (event) => {
-    const entries = [...menu.querySelectorAll('[role="menuitem"]')];
+    const entries = [...menu.querySelectorAll(ITEM_SELECTOR)];
     const at = entries.indexOf(document.activeElement);
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -238,7 +249,7 @@ export function openMenu(anchor, items, { label = 'Opciones' } = {}) {
       window.removeEventListener('resize', onResize);
     },
   };
-  menu.querySelector('[role="menuitem"]')?.focus();
+  menu.querySelector(ITEM_SELECTOR)?.focus();
 }
 
 function positionMenu(menu, anchor) {

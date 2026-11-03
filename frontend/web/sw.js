@@ -1,9 +1,11 @@
-// Service worker de Reminiscencia (módulo, alcance '/'): shell sin conexión, canciones descargadas para escuchar
-// sin conexión, canciones subidas a este navegador (audio/L….opus, desde IndexedDB; ADR-0012 y ADR-0014) y datos
+// Service worker de Reminiscencia (módulo, alcance '/'): shell sin conexión, portadas (covers/<id>.jpg, en su
+// propia caché), canciones descargadas para escuchar sin conexión, canciones subidas a este navegador (audio/L….opus, desde IndexedDB; ADR-0012 y ADR-0014) y datos
 // con respaldo de caché. Se registra desde js/pwa.js. Al cambiar el shell, sube SHELL_VERSION en js/offline-core.js.
 import {
   audioCacheName,
+  coverCacheName,
   isAudioRequest,
+  isCoverRequest,
   isDataRequest,
   isShellRequest,
   localAudioId,
@@ -17,6 +19,7 @@ import { readLocalRecord } from './js/cuidador/subida-local.js';
 
 const SHELL_CACHE = shellCacheName(SHELL_VERSION);
 const AUDIO_CACHE = audioCacheName();
+const COVER_CACHE = coverCacheName();
 
 self.addEventListener('install', (event) => {
   event.waitUntil(precacheShell().then(() => self.skipWaiting()));
@@ -44,6 +47,8 @@ self.addEventListener('fetch', (event) => {
 
   if (isAudioRequest(url.pathname)) {
     event.respondWith(audioResponse(request));
+  } else if (isCoverRequest(url.pathname)) {
+    event.respondWith(staleWhileRevalidate(event, COVER_CACHE));
   } else if (isDataRequest(url.pathname)) {
     event.respondWith(networkFirst(event));
   } else if (isShellRequest(url.pathname)) {
@@ -79,11 +84,11 @@ async function precacheShell() {
   );
 }
 
-/** Shell (páginas, CSS, JS e iconos): responde con la copia guardada y actualiza la copia en
- *  segundo plano. Sin copia previa, espera a la red. */
-async function staleWhileRevalidate(event) {
+/** Shell (páginas, CSS, JS e iconos) y portadas (en su propia caché): responde con la copia guardada y
+ *  actualiza la copia en segundo plano. Sin copia previa, espera a la red. */
+async function staleWhileRevalidate(event, cacheName = SHELL_CACHE) {
   const key = shellKey(event.request.url);
-  const cache = await caches.open(SHELL_CACHE);
+  const cache = await caches.open(cacheName);
   const cached = await cache.match(key);
   const network = fetch(event.request).then(async (response) => {
     // Un fallo al escribir en caché (p. ej. cuota llena) no debe romper la respuesta.

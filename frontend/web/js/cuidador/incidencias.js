@@ -6,13 +6,21 @@
 // Las validaciones reproducen las del backend con dos restricciones más estrictas que fija el contrato de la
 // interfaz: solo https, y en Internet Archive solo la forma archive.org/details/<identificador> (el backend
 // también acepta download/<identificador>). Este módulo no toca el DOM: la hoja «Subir canciones» (js/views/upload.js)
-// usa evaluateImportForm y buildIssueUrl. La carpeta js/cuidador/ conserva su nombre por las referencias de la
-// documentación (CLAUDE.md, ADR-0005 y ADR-0008); ya no hay modo cuidador (ADR-0014).
+// usa evaluateImportForm y buildIssueUrl, y las hojas de edición (js/views/edit.js) usan buildOrganizeIssueUrl para
+// «Editar detalles» de una canción o de un álbum, «Añadir a un álbum» y «Crear álbum». Las carpetas del catálogo se
+// llaman «Álbumes» en toda la interfaz; el contrato conserva sus nombres (create_folder, edit_folder, folder_id).
+// La carpeta js/cuidador/ conserva su nombre por las referencias de la documentación (CLAUDE.md, ADR-0005 y
+// ADR-0008); ya no hay modo cuidador (ADR-0014).
 
 export const REPO = 'seryi47/reminiscencia';
 export const ISSUE_LABEL = 'biblioteca';
 // Aviso de la hoja: quién procesa las incidencias.
 export const PROCESSING_NOTE = 'Se abrirá GitHub para que confirmes la incidencia. Solo la procesan las cuentas con permiso de escritura en el repositorio.';
+// Aviso de las hojas de edición (detalles, álbum y portada).
+export const EDIT_NOTE = 'Hace falta permiso de escritura en el repositorio. El cambio llega a todos en un par de minutos.';
+// Buzón de portadas: la imagen se sube con el ID de la canción o del álbum como nombre de archivo.
+export const COVER_UPLOAD_URL = `https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas`;
+export const COVER_RULES = Object.freeze({ formats: 'JPG, PNG o WebP', maxMb: 10, size: 640 });
 
 // Límites del backend (issue_request.py). Se miden en caracteres (puntos de código), como len() de Python.
 export const REQUEST_LIMITS = Object.freeze({
@@ -22,6 +30,7 @@ export const REQUEST_LIMITS = Object.freeze({
   title: 200,
   payload: 4000,
   folderName: 80,
+  folderArtist: 80,
   artist: 200,
   tags: 20,
   tag: 40,
@@ -48,7 +57,10 @@ export const AUDIO_EXTENSIONS = Object.freeze(['.mp3', '.flac', '.ogg', '.opus',
 
 const FALLBACK_TITLE = 'Petición de la biblioteca';
 const SONG_ID = /^S[0-9a-f]{16}$/;
-const FOLDER_ID = /^[0-9a-f]{10}$/;
+// Álbum (carpeta del catálogo): «F» + 16 hexadecimales (las nuevas, las únicas que admiten portada) o 10
+// hexadecimales (las antiguas). El backend acepta las dos formas.
+const FOLDER_ID = /^(?:F[0-9a-f]{16}|[0-9a-f]{10})$/;
+const COVER_FOLDER_ID = /^F[0-9a-f]{16}$/;
 const HTTPS_PREFIX = 'https://';
 const AUTHORITY = /^([A-Za-z0-9.-]+)(?::[0-9]*)?$/;
 const IA_HOST = 'archive.org';
@@ -74,7 +86,8 @@ const CONTROL = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
 
 // Operaciones de organize: campos obligatorios y opcionales, además de «op» (igual que OPERATIONS del backend).
 const OPERATIONS = Object.freeze({
-  create_folder: Object.freeze({ required: Object.freeze(['name']), optional: Object.freeze(['parent_id']) }),
+  create_folder: Object.freeze({ required: Object.freeze(['name']), optional: Object.freeze(['parent_id', 'artist']) }),
+  edit_folder: Object.freeze({ required: Object.freeze(['folder_id']), optional: Object.freeze(['name', 'artist']) }),
   rename_folder: Object.freeze({ required: Object.freeze(['folder_id', 'name']), optional: Object.freeze([]) }),
   delete_folder: Object.freeze({ required: Object.freeze(['folder_id']), optional: Object.freeze([]) }),
   edit_song: Object.freeze({
@@ -101,6 +114,7 @@ const MESSAGES = Object.freeze({
   tagLength: `Cada etiqueta admite como máximo ${REQUEST_LIMITS.tag} caracteres.`,
   tagsControl: 'Las etiquetas no pueden tener caracteres de control.',
   noChanges: 'Indica al menos un campo que cambiar en la canción.',
+  noFolderChanges: 'Indica al menos un campo que cambiar en el álbum.',
   unknownAction: 'La acción no es válida: usa importar u organizar.',
   requestInvalid: 'La petición no es válida.',
   requestTooLong: `La petición no puede tener más de ${REQUEST_LIMITS.request} caracteres.`,
@@ -132,6 +146,8 @@ function cleanIssueTitle(text) {
 
 export const isSongId = (value) => typeof value === 'string' && SONG_ID.test(value);
 export const isFolderId = (value) => typeof value === 'string' && FOLDER_ID.test(value);
+/** ¿Admite portada este álbum? Solo los de la forma nueva (F + 16 hexadecimales). */
+export const isCoverFolderId = (value) => typeof value === 'string' && COVER_FOLDER_ID.test(value);
 
 // ---------- direcciones ----------
 
@@ -274,7 +290,7 @@ export function buildImportRequest({ url, license, title } = {}) {
 
 function folderRefProblem(value, { nullable = false } = {}) {
   if (value === null && nullable) return null;
-  return isFolderId(value) ? null : 'El identificador de la carpeta no es válido (10 caracteres hexadecimales en minúscula).';
+  return isFolderId(value) ? null : 'El identificador del álbum no es válido (F seguida de 16 caracteres hexadecimales en minúscula, o 10 hexadecimales).';
 }
 
 function songRefProblem(value) {
@@ -295,6 +311,13 @@ export function normalizeTags(items) {
   return tags;
 }
 
+// Campos de texto de las operaciones, por separado para marcar el campo que falla en las hojas de edición.
+// Álbum: nombre de 1 a 80 caracteres y artista de 0 a 80; canción: título de 1 a 200 y artista de 0 a 200. Una línea.
+export const folderNameProblem = (value) => textProblem(value, { name: 'El nombre del álbum', max: REQUEST_LIMITS.folderName, required: true });
+export const folderArtistProblem = (value) => textProblem(value, { name: 'El artista del álbum', max: REQUEST_LIMITS.folderArtist });
+export const songTitleProblem = (value) => textProblem(value, { name: 'El título', max: REQUEST_LIMITS.title, required: true });
+export const songArtistProblem = (value) => textProblem(value, { name: 'El artista', max: REQUEST_LIMITS.artist });
+
 // Comprobación de una operación de organize (validate_payload del backend). Devuelve el motivo o null.
 export function validateOperation(payload) {
   if (!isObject(payload)) return 'Los datos deben ser un objeto JSON.';
@@ -311,13 +334,23 @@ export function validateOperation(payload) {
 
   switch (op) {
     case 'create_folder': {
-      const problem = textProblem(payload.name, { name: 'El nombre de la carpeta', max: REQUEST_LIMITS.folderName, required: true });
+      const problem = folderNameProblem(payload.name)
+        ?? ('artist' in payload ? folderArtistProblem(payload.artist) : null);
       if (problem) return problem;
       return 'parent_id' in payload ? folderRefProblem(payload.parent_id, { nullable: true }) : null;
     }
+    case 'edit_folder': {
+      const problem = folderRefProblem(payload.folder_id);
+      if (problem) return problem;
+      if (!spec.optional.some((key) => key in payload)) return MESSAGES.noFolderChanges;
+      if ('name' in payload) {
+        const nameProblem = folderNameProblem(payload.name);
+        if (nameProblem) return nameProblem;
+      }
+      return 'artist' in payload ? folderArtistProblem(payload.artist) : null;
+    }
     case 'rename_folder':
-      return folderRefProblem(payload.folder_id)
-        ?? textProblem(payload.name, { name: 'El nombre de la carpeta', max: REQUEST_LIMITS.folderName, required: true });
+      return folderRefProblem(payload.folder_id) ?? folderNameProblem(payload.name);
     case 'delete_folder':
       return folderRefProblem(payload.folder_id);
     default: {
@@ -325,11 +358,11 @@ export function validateOperation(payload) {
       if (problem) return problem;
       if (!spec.optional.some((key) => key in payload)) return MESSAGES.noChanges;
       if ('title' in payload) {
-        const titleProblem = textProblem(payload.title, { name: 'El título', max: REQUEST_LIMITS.title, required: true });
+        const titleProblem = songTitleProblem(payload.title);
         if (titleProblem) return titleProblem;
       }
       if ('artist' in payload) {
-        const artistProblem = textProblem(payload.artist, { name: 'El artista', max: REQUEST_LIMITS.artist });
+        const artistProblem = songArtistProblem(payload.artist);
         if (artistProblem) return artistProblem;
       }
       if ('year' in payload) {
@@ -399,17 +432,27 @@ export function buildIssueTitle(request) {
   const payload = isObject(request?.payload) ? request.payload : {};
   switch (payload.op) {
     case 'create_folder':
-      return cleanIssueTitle(`Crear la carpeta «${payload.name}»`);
+      return cleanIssueTitle(`Crear el álbum «${payload.name}»`);
+    case 'edit_folder':
+      return cleanIssueTitle(`Editar el álbum ${payload.folder_id}`);
     case 'rename_folder':
-      return cleanIssueTitle(`Renombrar la carpeta ${payload.folder_id} como «${payload.name}»`);
+      return cleanIssueTitle(`Renombrar el álbum ${payload.folder_id} como «${payload.name}»`);
     case 'delete_folder':
-      return cleanIssueTitle(`Borrar la carpeta ${payload.folder_id}`);
-    case 'edit_song':
+      return cleanIssueTitle(`Borrar el álbum ${payload.folder_id}`);
+    case 'edit_song': {
+      const keys = Object.keys(payload).filter((key) => key !== 'op' && key !== 'song_id');
       // Solo «public» en la operación: publicar o despublicar.
-      if (typeof payload.public === 'boolean' && Object.keys(payload).length === 3) {
+      if (keys.length === 1 && typeof payload.public === 'boolean') {
         return cleanIssueTitle(`${payload.public ? 'Publicar' : 'Despublicar'} la canción ${payload.song_id}`);
       }
+      // Solo «folder_id»: mover a un álbum o sacarla de su álbum.
+      if (keys.length === 1 && 'folder_id' in payload) {
+        return cleanIssueTitle(payload.folder_id === null
+          ? `Quitar la canción ${payload.song_id} de su álbum`
+          : `Añadir la canción ${payload.song_id} al álbum ${payload.folder_id}`);
+      }
       return cleanIssueTitle(`Editar la canción ${payload.song_id}`);
+    }
     default:
       return FALLBACK_TITLE;
   }
@@ -420,6 +463,12 @@ export function buildIssueUrl(title, body) {
   const issueTitle = encodeURIComponent(cleanIssueTitle(title));
   const issueBody = encodeURIComponent(String(body ?? ''));
   return `https://github.com/${REPO}/issues/new?labels=${encodeURIComponent(ISSUE_LABEL)}&title=${issueTitle}&body=${issueBody}`;
+}
+
+// Enlace de la incidencia de una operación de organize ({ op, … }). Lanza el motivo si el backend la rechazaría.
+export function buildOrganizeIssueUrl(payload) {
+  const request = { action: 'organize', payload };
+  return buildIssueUrl(buildIssueTitle(request), buildIssueBody(request));
 }
 
 // ---------- evaluación del formulario de importación (lógica pura de la hoja) ----------

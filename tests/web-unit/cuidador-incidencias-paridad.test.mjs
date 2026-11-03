@@ -8,6 +8,8 @@ import { describe, test } from 'node:test';
 
 import {
   BLOCKED_HOSTS,
+  isCoverFolderId,
+  isFolderId,
   PROCESSING_NOTE,
   buildIssueBody,
   classifyUrl,
@@ -108,5 +110,41 @@ describe('aviso de la hoja', () => {
   test('dice que las procesan las cuentas con permiso de escritura, no el propietario', () => {
     assert.match(PROCESSING_NOTE, /permiso de escritura/);
     assert.doesNotMatch(PROCESSING_NOTE, /propietario/);
+  });
+});
+
+describe('álbumes: identificadores y textos (issue_request.py de feat/portadas-albumes)', () => {
+  test('folder_id admite F + 16 hexadecimales (nuevo) y 10 hexadecimales (antiguo), como FOLDER_ID_RE del backend', () => {
+    for (const ok of ['F0123456789abcdef', '0123456789']) assert.equal(isFolderId(ok), true, ok);
+    for (const bad of ['f0123456789abcdef', 'F0123456789ABCDEF', 'F0123456789abcde', 'F0123456789abcdef0', '012345678', 'ABCDEF0123', 'S0123456789abcdef', '']) {
+      assert.equal(isFolderId(bad), false, bad);
+    }
+  });
+
+  test('en todas las operaciones con álbum valen los dos formatos y nada más', () => {
+    for (const folderId of ['F0123456789abcdef', '0123456789']) {
+      assert.equal(validateOperation({ op: 'edit_folder', folder_id: folderId, name: 'Valses' }), null);
+      assert.equal(validateOperation({ op: 'rename_folder', folder_id: folderId, name: 'Valses' }), null);
+      assert.equal(validateOperation({ op: 'delete_folder', folder_id: folderId }), null);
+      assert.equal(validateOperation({ op: 'edit_song', song_id: 'S0123456789abcdef', folder_id: folderId }), null);
+      assert.equal(validateOperation({ op: 'create_folder', name: 'Hija', parent_id: folderId }), null);
+    }
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: 'F0123', name: 'Valses' }), /identificador del álbum/);
+  });
+
+  test('solo los álbumes F admiten portada', () => {
+    assert.equal(isCoverFolderId('F0123456789abcdef'), true);
+    assert.equal(isCoverFolderId('0123456789'), false);
+  });
+
+  test('nombre del álbum de 1 a 80 caracteres y artista de 0 a 80, en una línea', () => {
+    assert.equal(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'x'.repeat(80), artist: 'y'.repeat(80) }), null);
+    assert.equal(validateOperation({ op: 'edit_folder', folder_id: '0123456789', artist: '' }), null);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'x'.repeat(81) }), /80 caracteres/);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', artist: 'y'.repeat(81) }), /80 caracteres/);
+    assert.match(validateOperation({ op: 'create_folder', name: 'Valses', artist: 'y'.repeat(81) }), /80 caracteres/);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'Val\u2028ses' }), /saltos de línea/);
+    assert.match(validateOperation({ op: 'create_folder', name: 'Valses', artist: 'Or\nquesta' }), /saltos de línea/);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', artist: 5 }), /debe ser texto/);
   });
 });

@@ -48,7 +48,10 @@ export const BLOCKED_HOSTS = Object.freeze([
 
 export const AUDIO_EXTENSIONS = Object.freeze([".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav"]);
 
-const FOLDER_ID = /^[0-9a-f]{10}$/;
+// Álbum (carpeta del catálogo): «F» + 16 hexadecimales (las nuevas, las únicas que admiten portada) o 10
+// hexadecimales (las antiguas). El backend acepta las dos formas.
+const FOLDER_ID = /^(?:F[0-9a-f]{16}|[0-9a-f]{10})$/;
+const COVER_FOLDER_ID = /^F[0-9a-f]{16}$/;
 const SONG_ID = /^S[0-9a-f]{16}$/;
 const HTTP_URL = /^https?:\/\//;
 // Igual que IA_IDENTIFIER en sources.py: sin barras, y sin punto ni guion al principio.
@@ -101,6 +104,8 @@ function tagLength(tag) {
 }
 
 export const isFolderId = (value) => typeof value === "string" && FOLDER_ID.test(value);
+/** ¿Admite portada este álbum? Solo los de la forma nueva (F + 16 hexadecimales). */
+export const isCoverFolderId = (value) => typeof value === "string" && COVER_FOLDER_ID.test(value);
 export const isSongId = (value) => typeof value === "string" && SONG_ID.test(value);
 
 // Canciones que la sección muestra y cuenta: publicadas (ADR-0008) y con un identificador de canción válido.

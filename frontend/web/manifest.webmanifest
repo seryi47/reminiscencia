@@ -1,7 +1,7 @@
 {
   "name": "Reminiscencia",
   "short_name": "Reminiscencia",
-  "description": "Música para recordar, organizada por carpetas. Sin cuentas: tus listas se guardan en este navegador.",
+  "description": "Música para recordar, organizada por álbumes. Sin cuentas: tus listas se guardan en este navegador.",
   "lang": "es",
   "start_url": "/",
   "scope": "/",

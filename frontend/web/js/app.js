@@ -1,13 +1,16 @@
-// Arranque de Reminiscencia (ADR-0014): una sola biblioteca pública para todos, sin perfiles ni modos.
-// La web abre en Inicio con la música. Las listas propias y «Me gusta» viven solo en este navegador
-// (js/local-library.js) y las canciones subidas aquí, en su propia base (js/cuidador/subida-local.js).
+// Arranque de Reminiscencia (ADR-0015): una sola biblioteca pública para todos, sin perfiles ni modos, con la
+// distribución del reproductor web de Spotify: barra superior (nombre, Inicio y buscador), tres paneles («Tu
+// biblioteca», el contenido y «Reproduciendo») y el reproductor abajo; en el teléfono, barra inferior y
+// minirreproductor. Las listas propias y «Me gusta» viven solo en este navegador (js/local-library.js) y las
+// canciones subidas aquí, en su propia base (js/cuidador/subida-local.js).
 //
-// Este módulo guarda el estado, enruta por hash (#/, #/buscar, #/biblioteca, #/carpeta/<id>, #/lista/<id>,
-// #/me-gusta, #/canciones, #/locales y #/seccion/<estante>), pinta la pantalla activa y la barra lateral, y conecta
-// el reproductor con la interfaz. Al abrir la página no se mueve el foco (el primer Tab llega al enlace de salto);
-// al cambiar de pantalla por una acción, el foco va al H1.
+// Este módulo guarda el estado, enruta por hash (#/, #/buscar, #/biblioteca, #/album/<id> —también el antiguo
+// #/carpeta/<id>—, #/lista/<id>, #/me-gusta, #/canciones, #/locales y #/seccion/<estante>), pinta la pantalla activa y
+// «Tu biblioteca», y conecta el reproductor con la interfaz. Al abrir la página no se mueve el foco (el primer Tab
+// llega al enlace de salto); al cambiar de pantalla por una acción, el foco va al H1.
 
 import {
+  albumYear,
   ALL_SONGS_COLOR,
   buildCatalog,
   childFolders,
@@ -16,24 +19,63 @@ import {
   LOCAL_COLOR,
   localSongsOf,
   songCountText,
+  songCover,
   songsInFolder,
 } from './catalog.js';
-import { openLocalLibrary, validatePlaylistName } from './local-library.js';
+import { cachedDominantColor } from './cover-color.js';
+import { isSongId } from './cuidador/incidencias.js';
+import { openLocalLibrary } from './local-library.js';
 import { createPlayer, nextRepeatMode } from './player.js';
 import { cachedAudioPaths, registerPwa, removeOfflineSongs, saveLibraryOffline } from './pwa.js';
 import { deleteLocalSong as removeLocalRecord, loadLocalSongs } from './cuidador/subida-local.js';
-import { closeMenu, confirmDialog, promptDialog, toast } from './ui/dom.js';
-import { likeButton, setPlayButtonState } from './views/components.js';
+import { closeMenu, confirmDialog, toast } from './ui/dom.js';
+import { DOT, likeButton, setPlayButtonState } from './views/components.js';
+import {
+  openCoverSheet,
+  openCreateAlbumSheet,
+  openEditAlbumSheet,
+  openEditSongSheet,
+  openMoveToAlbumSheet,
+  openPlaylistEditor,
+} from './views/edit.js';
 import { renderHome } from './views/home.js';
-import { renderSearch } from './views/search.js';
+import { refreshSearchResults, renderSearch } from './views/search.js';
 import { renderCollection } from './views/collection.js';
-import { libraryActions, libraryChips, renderLibraryList, renderLibraryPage, renderSection } from './views/library.js';
+import { libraryPanel, renderLibraryPage, renderSection } from './views/library.js';
 import { mountPlayerUi } from './views/player-ui.js';
 import { openUploadSheet } from './views/upload.js';
 
 const DATA_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
 const PLAYER_PREFS_KEY = 'reminiscencia.reproductor';
+const RECENTS_KEY = 'reminiscencia.recientes';
+const LIBRARY_PREFS_KEY = 'reminiscencia.biblioteca';
 const APP_NAME = 'Reminiscencia';
+const OWNER = 'Reminiscencia';
+const LIBRARY_WIDTH = Object.freeze({ min: 280, max: 420, step: 16 });
+const RECENTS_MAX = 50;
+
+// ---------------------------------------------------------------------------
+// Preferencias (solo comodidad: si el navegador no deja guardar, valen durante la visita)
+// ---------------------------------------------------------------------------
+
+function readJson(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? '{}');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Almacenamiento bloqueado: no pasa nada.
+  }
+}
+
+const libraryPrefs = readJson(LIBRARY_PREFS_KEY);
 
 // ---------------------------------------------------------------------------
 // Estado
@@ -49,9 +91,15 @@ const state = {
   likes: new Map(),
   cached: new Set(),
   downloading: new Set(),
+  recents: new Map(Object.entries(readJson(RECENTS_KEY)).filter(([, time]) => Number.isFinite(time))),
   online: typeof navigator === 'undefined' ? true : navigator.onLine !== false,
+  homeFilter: 'todo',
   libraryFilter: null,
+  libraryQuery: '',
+  librarySearchOpen: false,
+  librarySort: ['recientes', 'alfabetico', 'creador'].includes(libraryPrefs.sort) ? libraryPrefs.sort : 'recientes',
   searchQuery: '',
+  searchFilter: 'todo',
   addQuery: '',
   route: { name: 'inicio', id: null },
   ready: false,
@@ -61,6 +109,7 @@ let library = null;
 let player = null;
 let playerUi = null;
 let userNavigated = false;
+let keepFocusOnce = false;
 let persistenceRequested = false;
 let lastSync = '';
 
@@ -70,33 +119,12 @@ function rebuildCatalog() {
   state.catalog = buildCatalog(state.publicSongs, state.publicFolders, state.localSongs);
 }
 
-// ---------------------------------------------------------------------------
-// Preferencias del reproductor (solo comodidad: si el navegador no deja guardar, valen durante la visita)
-// ---------------------------------------------------------------------------
-
-function readPlayerPrefs() {
-  try {
-    const value = JSON.parse(localStorage.getItem(PLAYER_PREFS_KEY) ?? '{}');
-    return value && typeof value === 'object' ? value : {};
-  } catch {
-    return {};
-  }
-}
-
 function savePlayerPrefs(playerState) {
-  try {
-    localStorage.setItem(PLAYER_PREFS_KEY, JSON.stringify({
-      volume: playerState.volume,
-      shuffle: playerState.shuffle,
-      repeat: playerState.repeat,
-    }));
-  } catch {
-    // Almacenamiento bloqueado: no pasa nada.
-  }
+  writeJson(PLAYER_PREFS_KEY, { volume: playerState.volume, shuffle: playerState.shuffle, repeat: playerState.repeat });
 }
 
 // ---------------------------------------------------------------------------
-// Colecciones (contextos de reproducción)
+// Canciones y colecciones (contextos de reproducción)
 // ---------------------------------------------------------------------------
 
 function songColor(song) {
@@ -104,28 +132,60 @@ function songColor(song) {
   return coverColor(song.folderId ?? song.id);
 }
 
-function folderContext(folder) {
-  const count = songsInFolder(state.catalog, folder.id).length;
+const songCoverSrc = (song) => (song?.local ? null : songCover(state.catalog, song));
+const artistOf = (song) => song.artist || (song.local ? 'Subida a este navegador' : 'Artista desconocido');
+const albumHref = (id) => `#/album/${encodeURIComponent(id)}`;
+
+/** Color de una colección para los degradados: el dominante de su portada si ya se conoce; si no, el generado. */
+function colorOf(item) {
+  const src = item.cover ?? item.mosaic?.[0] ?? null;
+  return (src && cachedDominantColor(src)) || item.color;
+}
+
+function albumContext(folder) {
+  const songs = songsInFolder(state.catalog, folder.id);
   return {
-    contextId: `carpeta:${folder.id}`,
-    kind: 'folder',
+    contextId: `album:${folder.id}`,
+    kind: 'album',
     title: folder.name,
-    subtitle: `Carpeta · ${songCountText(count)}`,
-    href: `#/carpeta/${encodeURIComponent(folder.id)}`,
+    owner: folder.artist || null,
+    subtitle: `Álbum${DOT}${folder.artist || OWNER}`,
+    cardSubtitle: folder.artist || songCountText(songs.length),
+    href: albumHref(folder.id),
     color: coverColor(folder.id),
-    iconName: 'folder',
+    iconName: 'album',
+    cover: folder.cover,
+    mosaic: null,
+    year: albumYear(songs),
   };
 }
 
+function playlistSongs(list) {
+  return list.songIds.map((id) => state.catalog.songById.get(id)).filter(Boolean);
+}
+
+/** Portada de una lista: la propia; si no, un mosaico de cuatro portadas distintas o la primera que haya. */
+function playlistArt(list, songs) {
+  if (list.cover) return { cover: list.cover, mosaic: null };
+  const covers = [...new Set(songs.map(songCoverSrc).filter(Boolean))];
+  if (covers.length >= 4) return { cover: null, mosaic: covers.slice(0, 4) };
+  return { cover: covers[0] ?? null, mosaic: null };
+}
+
 function playlistContext(list) {
+  const songs = playlistSongs(list);
   return {
     contextId: `lista:${list.id}`,
     kind: 'playlist',
     title: list.name,
-    subtitle: `Lista · ${songCountText(list.songIds.filter((id) => state.catalog.songById.has(id)).length)}`,
+    owner: OWNER,
+    description: list.description || '',
+    subtitle: `Lista${DOT}${OWNER}`,
+    cardSubtitle: list.description || `Lista${DOT}${songCountText(songs.length)}`,
     href: `#/lista/${encodeURIComponent(list.id)}`,
     color: coverColor(list.id),
     iconName: 'list',
+    ...playlistArt(list, songs),
   };
 }
 
@@ -137,57 +197,73 @@ function likedSongs() {
 }
 
 function likedContext() {
+  const count = songCountText(likedSongs().length);
   return {
     contextId: 'me-gusta',
     kind: 'liked',
     title: 'Me gusta',
-    subtitle: `Lista · ${songCountText(likedSongs().length)}`,
+    owner: OWNER,
+    subtitle: `Lista${DOT}${count}`,
+    cardSubtitle: `Lista${DOT}${count}`,
     href: '#/me-gusta',
     color: LIKED_COLOR,
     iconName: 'heart-filled',
+    cover: null,
+    mosaic: null,
   };
 }
 
 function allSongsContext() {
+  const count = songCountText(state.catalog.songs.length);
   return {
     contextId: 'canciones',
     kind: 'all',
     title: 'Todas las canciones',
-    subtitle: `Biblioteca · ${songCountText(state.catalog.songs.length)}`,
+    owner: OWNER,
+    subtitle: `Biblioteca${DOT}${count}`,
+    cardSubtitle: count,
     href: '#/canciones',
     color: ALL_SONGS_COLOR,
     iconName: 'note',
+    cover: null,
+    mosaic: null,
   };
 }
 
 function localContext() {
+  const count = songCountText(localSongsOf(state.catalog).length);
   return {
     contextId: 'locales',
     kind: 'local',
     title: 'Subidas a este navegador',
-    subtitle: `Solo aquí · ${songCountText(localSongsOf(state.catalog).length)}`,
+    owner: 'Solo aquí',
+    subtitle: `Solo aquí${DOT}${count}`,
+    cardSubtitle: count,
     href: '#/locales',
     color: LOCAL_COLOR,
     iconName: 'device',
+    cover: null,
+    mosaic: null,
   };
 }
 
-function folderContexts(parentId) {
+/** Álbumes de la raíz (parentId null), de un álbum padre o, con undefined, todos. */
+function albumContexts(parentId) {
   const folders = parentId === undefined ? state.catalog.folders : childFolders(state.catalog, parentId);
-  return folders.map(folderContext);
+  return folders.map(albumContext);
 }
 
 function playlistContexts() {
   return state.playlists.map(playlistContext);
 }
 
-/** Elementos de la biblioteca: «Me gusta», (todas), las subidas aquí, las listas y las carpetas. */
-function libraryContexts({ includeAll = false, allFolders = false } = {}) {
+/** Elementos de la biblioteca: «Me gusta», (todas), las subidas aquí, las listas y todos los álbumes. */
+function libraryContexts({ includeAll = false } = {}) {
   const items = [likedContext()];
   if (includeAll && state.catalog.songs.length > 0) items.push(allSongsContext());
   if (localSongsOf(state.catalog).length > 0) items.push(localContext());
   items.push(...playlistContexts());
-  items.push(...folderContexts(allFolders ? undefined : null));
+  items.push(...albumContexts(undefined));
   return items;
 }
 
@@ -197,31 +273,66 @@ function getContext(contextId) {
   if (contextId === 'me-gusta') return { ...likedContext(), typeLabel: 'Lista', songs: likedSongs() };
   if (contextId === 'canciones') return { ...allSongsContext(), typeLabel: 'Biblioteca', songs: state.catalog.songs };
   if (contextId === 'locales') return { ...localContext(), typeLabel: 'Canciones locales', songs: localSongsOf(state.catalog) };
-  if (contextId.startsWith('carpeta:')) {
-    const folder = state.catalog.folderById.get(contextId.slice('carpeta:'.length));
+  if (contextId.startsWith('album:')) {
+    const folder = state.catalog.folderById.get(contextId.slice('album:'.length));
     if (!folder) return null;
     return {
-      ...folderContext(folder),
-      typeLabel: 'Carpeta',
+      ...albumContext(folder),
+      typeLabel: 'Álbum',
       folder,
       songs: songsInFolder(state.catalog, folder.id),
-      subfolders: childFolders(state.catalog, folder.id).map(folderContext),
+      subfolders: childFolders(state.catalog, folder.id).map(albumContext),
     };
   }
   if (contextId.startsWith('lista:')) {
     const list = state.playlists.find((item) => item.id === contextId.slice('lista:'.length));
     if (!list) return null;
-    return {
-      ...playlistContext(list),
-      typeLabel: 'Lista',
-      playlist: list,
-      songs: list.songIds.map((id) => state.catalog.songById.get(id)).filter(Boolean),
-    };
+    return { ...playlistContext(list), typeLabel: 'Lista', playlist: list, songs: playlistSongs(list) };
   }
   return null;
 }
 
 const EXTRA_CONTEXT_NAMES = Object.freeze({ busqueda: 'Búsqueda', recientes: 'Añadidas recientemente' });
+
+/** Colecciones escuchadas, de la más reciente a la más antigua (solo las que siguen existiendo). */
+function recentContexts() {
+  return [...state.recents.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => getContext(id))
+    .filter(Boolean);
+}
+
+/** Accesos rápidos de Inicio: lo escuchado hace poco y, después, «Me gusta», las listas y los álbumes. */
+function quickContexts() {
+  const seen = new Set();
+  return [...recentContexts(), ...libraryContexts({ includeAll: true })].filter((item) => {
+    if (seen.has(item.contextId)) return false;
+    seen.add(item.contextId);
+    return true;
+  });
+}
+
+/** Orden de «Tu biblioteca». «Me gusta» va siempre arriba (fijada, como en Spotify). */
+function sortContexts(items, sort) {
+  const pinned = items.filter((item) => item.kind === 'liked');
+  const rest = items.filter((item) => item.kind !== 'liked');
+  const byTitle = (a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+  if (sort === 'alfabetico') rest.sort(byTitle);
+  else if (sort === 'creador') rest.sort((a, b) => (a.owner ?? OWNER).localeCompare(b.owner ?? OWNER, 'es', { sensitivity: 'base' }) || byTitle(a, b));
+  else {
+    const order = new Map(rest.map((item, index) => [item.contextId, index]));
+    rest.sort((a, b) => (state.recents.get(b.contextId) ?? 0) - (state.recents.get(a.contextId) ?? 0) || order.get(a.contextId) - order.get(b.contextId));
+  }
+  return [...pinned, ...rest];
+}
+
+function rememberContext(contextId) {
+  if (!getContext(contextId)) return;
+  state.recents.set(contextId, Date.now());
+  const kept = [...state.recents.entries()].sort((a, b) => b[1] - a[1]).slice(0, RECENTS_MAX);
+  state.recents = new Map(kept);
+  writeJson(RECENTS_KEY, Object.fromEntries(kept));
+}
 
 // ---------------------------------------------------------------------------
 // Reproducción
@@ -239,6 +350,8 @@ function trackOf(song) {
     artist: song.artist,
     audioUrl: song.audio,
     folderId: song.folderId,
+    // La portada ya resuelta (la de la canción o la de su álbum): la usan la barra y Media Session.
+    cover: songCoverSrc(song),
     durationS: song.durationS,
     local: song.local,
   };
@@ -246,7 +359,10 @@ function trackOf(song) {
 
 function playSongs(songs, index, { contextId = null } = {}) {
   const name = getContext(contextId)?.title ?? EXTRA_CONTEXT_NAMES[contextId] ?? '';
+  rememberContext(contextId);
   player.load(songs.map(trackOf), index, { contextId, contextName: name, autoplay: true });
+  // «Recientes» de Tu biblioteca cambia de orden: se vuelve a pintar el panel (no la pantalla).
+  if (state.ready && state.librarySort === 'recientes') renderSidebar();
 }
 
 function playContext(contextId) {
@@ -266,7 +382,7 @@ function isContextPlaying(contextId) {
   return Boolean(current && current.playing && current.contextId === contextId);
 }
 
-/** Marca lo que suena: botones verdes, filas y tarjetas. Solo trabaja cuando cambia algo relevante. */
+/** Marca lo que suena: botones verdes, filas, tarjetas y elementos de la biblioteca. Solo trabaja si cambia algo. */
 function syncPlaying(force = false) {
   const current = player.getState();
   const signature = `${current.key}|${current.playing}|${current.contextId}|${current.shuffle}|${current.track?.id}`;
@@ -280,6 +396,11 @@ function syncPlaying(force = false) {
     const isCurrent = songId !== null && row.dataset.songId === songId;
     row.classList.toggle('is-current', isCurrent);
     row.classList.toggle('is-playing', isCurrent && current.playing);
+  }
+  for (const item of document.querySelectorAll('.library-item, .tile')) {
+    const isCurrent = current.track && item.dataset.context === current.contextId;
+    item.classList.toggle('is-current', Boolean(isCurrent));
+    item.classList.toggle('is-playing', Boolean(isCurrent && current.playing));
   }
   for (const toggle of document.querySelectorAll('[data-shuffle-toggle]')) {
     toggle.classList.toggle('is-active', current.shuffle);
@@ -307,6 +428,7 @@ async function refreshLibrary() {
   state.playlists = await library.listPlaylists();
   state.likes = await library.listLikes();
   render();
+  playerUi?.update(player.getState());
 }
 
 async function toggleLike(songId) {
@@ -320,7 +442,21 @@ async function toggleLike(songId) {
     console.error(error);
   }
   await refreshLibrary();
-  playerUi.update(player.getState());
+}
+
+/** «Me gusta» de una colección entera: marca o quita todas sus canciones. */
+async function setLikedMany(songIds, liked) {
+  requestPersistence();
+  try {
+    for (const id of songIds) {
+      if (state.likes.has(id) !== liked) await library.setLiked(id, liked);
+    }
+    toast(liked ? 'Se han guardado en Me gusta.' : 'Se han quitado de Me gusta.');
+  } catch (error) {
+    toast('No se ha podido guardar el cambio en este navegador.');
+    console.error(error);
+  }
+  await refreshLibrary();
 }
 
 async function createPlaylist({ songIds = [], navigate = true } = {}) {
@@ -337,14 +473,23 @@ async function createPlaylist({ songIds = [], navigate = true } = {}) {
   }
 }
 
-async function renamePlaylist(id) {
-  const list = state.playlists.find((item) => item.id === id);
-  if (!list) return;
-  const name = await promptDialog({ title: 'Cambiar el nombre', label: 'Nombre de la lista', value: list.name, validate: validatePlaylistName });
-  if (name === null || name === list.name) return;
-  await library.renamePlaylist(id, name);
+/** Guarda nombre, descripción y portada de una lista. Resuelve true si se ha guardado. */
+async function updatePlaylist(id, changes) {
+  requestPersistence();
+  try {
+    await library.updatePlaylist(id, changes);
+  } catch (error) {
+    toast(error instanceof Error ? error.message : 'No se ha podido guardar la lista.');
+    return false;
+  }
   await refreshLibrary();
-  toast(`La lista se llama ahora «${name}».`);
+  toast('Se han guardado los cambios.');
+  return true;
+}
+
+function editPlaylist(id) {
+  const list = state.playlists.find((item) => item.id === id);
+  if (list) openPlaylistEditor(ctx, list);
 }
 
 async function deletePlaylist(id) {
@@ -358,6 +503,8 @@ async function deletePlaylist(id) {
   });
   if (!ok) return;
   await library.deletePlaylist(id);
+  state.recents.delete(`lista:${id}`);
+  writeJson(RECENTS_KEY, Object.fromEntries(state.recents));
   if (state.route.name === 'lista' && state.route.id === id) goTo('#/', { replace: true });
   await refreshLibrary();
   toast(`Se ha borrado «${list.name}».`);
@@ -382,6 +529,11 @@ async function removeFromPlaylist(id, songId) {
 function addToQueue(song) {
   player.addToQueue(trackOf(song));
   toast('Se ha añadido a la cola.');
+}
+
+function addManyToQueue(songs) {
+  for (const song of songs) player.addToQueue(trackOf(song));
+  toast(songs.length === 1 ? 'Se ha añadido a la cola.' : `Se han añadido ${songs.length} canciones a la cola.`);
 }
 
 /** Borra una canción subida a este navegador, tras confirmarlo. Resuelve true si se borra. */
@@ -455,20 +607,23 @@ function parseRoute(hash) {
   }
   const simple = { '': 'inicio', buscar: 'buscar', biblioteca: 'biblioteca', 'me-gusta': 'me-gusta', canciones: 'canciones', locales: 'locales' };
   if (name in simple) return { name: simple[name], id: null };
-  if ((name === 'carpeta' || name === 'lista' || name === 'seccion') && id) return { name, id };
+  // #/carpeta/<id> es la ruta anterior de un álbum: se conserva para los enlaces guardados.
+  if ((name === 'album' || name === 'carpeta') && id) return { name: 'album', id };
+  if ((name === 'lista' || name === 'seccion') && id) return { name, id };
   return { name: 'inicio', id: null };
 }
 
 function activeContextId() {
   const { name, id } = state.route;
-  if (name === 'carpeta') return `carpeta:${id}`;
+  if (name === 'album') return `album:${id}`;
   if (name === 'lista') return `lista:${id}`;
   if (name === 'me-gusta' || name === 'canciones' || name === 'locales') return name;
   return null;
 }
 
-function goTo(hash, { replace = false } = {}) {
+function goTo(hash, { replace = false, keepFocus = false } = {}) {
   userNavigated = true;
+  keepFocusOnce = keepFocus;
   if (replace) {
     history.replaceState(null, '', hash);
     onRoute();
@@ -479,23 +634,25 @@ function goTo(hash, { replace = false } = {}) {
   }
 }
 
-// Sección de la navegación que se marca como activa (teléfono: tres destinos; barra lateral: dos).
+function goBack() {
+  if (userNavigated && history.length > 1) history.back();
+  else goTo('#/');
+}
+
+// Sección de la navegación que se marca como activa (teléfono: tres destinos; barra superior: Inicio y Explorar).
 function navSection(route) {
   if (route.name === 'buscar') return 'buscar';
   if (['biblioteca', 'lista', 'me-gusta', 'locales'].includes(route.name)) return 'biblioteca';
-  return 'inicio';
+  if (route.name === 'inicio') return 'inicio';
+  return null;
 }
 
 function updateNav() {
   const section = navSection(state.route);
   for (const link of document.querySelectorAll('[data-nav]')) {
-    const target = link.dataset.nav;
-    const active = target === section;
+    const active = link.dataset.nav === section;
     link.classList.toggle('is-active', active);
-    const exact = (target === 'inicio' && state.route.name === 'inicio')
-      || (target === 'buscar' && state.route.name === 'buscar')
-      || (target === 'biblioteca' && state.route.name === 'biblioteca');
-    if (exact) link.setAttribute('aria-current', 'page');
+    if (active && link.dataset.nav === state.route.name) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
     const iconSlot = link.querySelector('[data-icon-active]');
     if (iconSlot) {
@@ -506,10 +663,9 @@ function updateNav() {
   }
 }
 
-function renderSidebar() {
-  dom.sidebarActions.replaceChildren(libraryActions(ctx, 'sidebar'));
-  dom.sidebarChips.replaceChildren(libraryChips(ctx, 'sidebar'));
-  renderLibraryList(dom.sidebarList, ctx, 'sidebar');
+function syncTopSearch() {
+  if (document.activeElement !== dom.topInput && dom.topInput.value !== state.searchQuery) dom.topInput.value = state.searchQuery;
+  dom.topClear.hidden = dom.topInput.value === '';
 }
 
 function pageTitle() {
@@ -521,7 +677,28 @@ function pageTitle() {
   return context ? context.title : 'Inicio';
 }
 
-/** Pinta la pantalla activa y la barra lateral, conservando el foco y el desplazamiento si la ruta no cambia. */
+/** Marca la cabecera de las tablas cuando se queda fija arriba (fondo y borde, como en Spotify). */
+function updateStickyHeads() {
+  const top = dom.main.getBoundingClientRect().top;
+  for (const head of dom.view.querySelectorAll('.track-table thead')) {
+    const rect = head.parentElement.getBoundingClientRect();
+    head.classList.toggle('is-stuck', rect.top < top - 1 && rect.bottom > top + 60);
+  }
+}
+
+/** Pinta «Tu biblioteca» en el panel izquierdo, conservando su desplazamiento y el foco. */
+function renderSidebar() {
+  const sidebarScroll = dom.sidebar.querySelector('.library-list')?.scrollTop ?? 0;
+  const active = document.activeElement;
+  const focusKey = dom.sidebar.contains(active) ? active.closest?.('[data-key]')?.dataset.key ?? null : null;
+  dom.sidebar.replaceChildren(...libraryPanel(ctx, 'sidebar'), dom.resize);
+  const list = dom.sidebar.querySelector('.library-list');
+  if (list) list.scrollTop = sidebarScroll;
+  syncPlaying(true);
+  if (focusKey) focusByKey(focusKey);
+}
+
+/** Pinta la pantalla activa y «Tu biblioteca», conservando el foco y el desplazamiento si la ruta no cambia. */
 function render({ routeChanged = false } = {}) {
   closeMenu({ restoreFocus: false });
   const active = document.activeElement;
@@ -547,27 +724,33 @@ function render({ routeChanged = false } = {}) {
   else renderCollection(dom.view, ctx, activeContextId());
   renderSidebar();
   updateNav();
+  syncTopSearch();
   dom.offline.hidden = state.online;
   document.title = name === 'inicio' ? APP_NAME : `${pageTitle()} · ${APP_NAME}`;
   syncPlaying(true);
 
   if (routeChanged) {
     dom.main.scrollTop = 0;
-    if (userNavigated) document.querySelector('#view h1')?.focus({ preventScroll: true });
+    // Quien escribe en el buscador de la barra superior sigue en él al llegar a Buscar.
+    if (userNavigated && !keepFocusOnce && document.activeElement !== dom.topInput) document.querySelector('#view h1')?.focus({ preventScroll: true });
+    keepFocusOnce = false;
+    updateStickyHeads();
     return;
   }
   dom.main.scrollTop = scroll;
-  if (focusKey) {
-    const target = [...document.querySelectorAll('[data-key]')].find((node) => node.dataset.key === focusKey);
-    if (target && target !== document.activeElement) {
-      target.focus({ preventScroll: true });
-      if (selection && 'setSelectionRange' in target) {
-        try {
-          target.setSelectionRange(selection[0], selection[1]);
-        } catch {
-          // Algunos tipos de campo no admiten selección.
-        }
-      }
+  updateStickyHeads();
+  if (focusKey) focusByKey(focusKey, selection);
+}
+
+function focusByKey(key, selection = null) {
+  const target = [...document.querySelectorAll('[data-key]')].find((node) => node.dataset.key === key && node.getClientRects().length > 0);
+  if (!target || target === document.activeElement) return;
+  target.focus({ preventScroll: true });
+  if (selection && 'setSelectionRange' in target) {
+    try {
+      target.setSelectionRange(selection[0], selection[1]);
+    } catch {
+      // Algunos tipos de campo no admiten selección.
     }
   }
 }
@@ -581,6 +764,80 @@ function onRoute() {
 }
 
 // ---------------------------------------------------------------------------
+// Buscador de la barra superior y ancho de «Tu biblioteca»
+// ---------------------------------------------------------------------------
+
+function setSearchQuery(value) {
+  state.searchQuery = value;
+  syncTopSearch();
+  if (state.route.name !== 'buscar') {
+    if (value.trim() !== '') goTo('#/buscar', { keepFocus: true });
+    return;
+  }
+  refreshSearchResults(dom.view, ctx);
+  syncPlaying(true);
+}
+
+function mountTopSearch() {
+  dom.topInput.addEventListener('input', () => setSearchQuery(dom.topInput.value));
+  dom.topInput.closest('form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (state.route.name !== 'buscar') goTo('#/buscar', { keepFocus: true });
+  });
+  dom.topInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && dom.topInput.value !== '') {
+      event.preventDefault();
+      dom.topInput.value = '';
+      setSearchQuery('');
+    }
+  });
+  dom.topClear.addEventListener('click', () => {
+    dom.topInput.value = '';
+    setSearchQuery('');
+    dom.topInput.focus();
+  });
+}
+
+function setLibraryWidth(width, { save = true } = {}) {
+  const value = Math.round(Math.min(LIBRARY_WIDTH.max, Math.max(LIBRARY_WIDTH.min, width)));
+  dom.app.style.setProperty('--lib-w', `${value}px`);
+  dom.resize.setAttribute('aria-valuenow', String(value));
+  if (save) {
+    libraryPrefs.width = value;
+    writeJson(LIBRARY_PREFS_KEY, libraryPrefs);
+  }
+}
+
+/** Separador entre «Tu biblioteca» y el contenido: se arrastra o se mueve con las flechas (de 280 a 420 px). */
+function mountResize() {
+  if (Number.isFinite(libraryPrefs.width)) setLibraryWidth(libraryPrefs.width, { save: false });
+  const current = () => dom.sidebar.getBoundingClientRect().width;
+  dom.resize.setAttribute('aria-valuenow', String(Math.round(current()) || LIBRARY_WIDTH.min));
+  dom.resize.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    dom.resize.setPointerCapture?.(event.pointerId);
+    const left = dom.sidebar.getBoundingClientRect().left;
+    const move = (moveEvent) => setLibraryWidth(moveEvent.clientX - left, { save: false });
+    const up = (upEvent) => {
+      dom.resize.removeEventListener('pointermove', move);
+      dom.resize.removeEventListener('pointerup', up);
+      dom.resize.removeEventListener('pointercancel', up);
+      setLibraryWidth(upEvent.clientX - left);
+    };
+    dom.resize.addEventListener('pointermove', move);
+    dom.resize.addEventListener('pointerup', up);
+    dom.resize.addEventListener('pointercancel', up);
+  });
+  dom.resize.addEventListener('keydown', (event) => {
+    const width = current();
+    const moves = { ArrowLeft: width - LIBRARY_WIDTH.step, ArrowRight: width + LIBRARY_WIDTH.step, Home: LIBRARY_WIDTH.min, End: LIBRARY_WIDTH.max };
+    if (!(event.key in moves)) return;
+    event.preventDefault();
+    setLibraryWidth(moves[event.key]);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Contexto que reciben las pantallas
 // ---------------------------------------------------------------------------
 
@@ -590,17 +847,24 @@ const ctx = {
     return player;
   },
   songColor,
+  songCoverSrc,
+  artistOf,
+  colorOf,
   folderName: (id) => state.catalog.folderById.get(id)?.name ?? null,
-  folderContext,
+  albumContext,
   playlistContext,
-  folderContexts,
+  albumContexts,
   playlistContexts,
   libraryContexts,
+  quickContexts,
+  recentContexts,
+  sortContexts,
   getContext,
   activeContextId,
   localSongs: () => localSongsOf(state.catalog),
   isPlayable,
   isLiked: (songId) => state.likes.has(songId),
+  isEditableSong: (song) => !song.local && isSongId(song.id),
   likeButtonFor: (track, testid, size) => likeButton(ctx, track, { testid, size }),
   isContextPlaying,
   toggleContext,
@@ -609,21 +873,53 @@ const ctx = {
   cycleRepeat: () => player.setRepeat(nextRepeatMode(player.getState().repeat)),
   setVolume: (value) => player.setVolume(value),
   toggleLike,
+  setLikedMany,
   createPlaylist,
-  renamePlaylist,
+  updatePlaylist,
+  editPlaylist,
   deletePlaylist,
   addToPlaylist,
   removeFromPlaylist,
   addToQueue,
+  addManyToQueue,
   deleteLocalSong,
   onLocalAdded,
   toggleDownload,
+  editSong: (song) => openEditSongSheet(ctx, song),
+  moveSongToAlbum: (song) => openMoveToAlbumSheet(ctx, song),
+  createAlbum: () => openCreateAlbumSheet(ctx),
+  editAlbum: (folder) => openEditAlbumSheet(ctx, folder),
+  changeCover: (target) => openCoverSheet(ctx, target),
   openUpload: () => openUploadSheet(ctx),
+  setSearchQuery,
+  setSearchFilter: (filter) => {
+    state.searchFilter = filter;
+    refreshSearchResults(dom.view, ctx);
+    syncPlaying(true);
+    focusByKey(`search-chip-${filter}`);
+  },
+  setHomeFilter: (filter) => {
+    state.homeFilter = filter;
+    render();
+  },
   setLibraryFilter: (filter) => {
     state.libraryFilter = filter;
     render();
   },
+  setLibrarySort: (sort) => {
+    state.librarySort = sort;
+    libraryPrefs.sort = sort;
+    writeJson(LIBRARY_PREFS_KEY, libraryPrefs);
+    render();
+  },
+  setLibrarySearch: ({ open, query, focus = null }) => {
+    state.librarySearchOpen = open;
+    state.libraryQuery = query;
+    render();
+    if (focus) focusByKey(focus);
+  },
   navigate: (hash) => goTo(hash),
+  goBack,
 };
 
 // ---------------------------------------------------------------------------
@@ -644,14 +940,16 @@ async function loadPublicCatalog() {
 }
 
 async function start() {
+  dom.app = document.getElementById('app');
   dom.main = document.getElementById('main');
   dom.view = document.getElementById('view');
-  dom.sidebarActions = document.getElementById('sidebar-actions');
-  dom.sidebarChips = document.getElementById('sidebar-chips');
-  dom.sidebarList = document.getElementById('sidebar-list');
+  dom.sidebar = document.getElementById('sidebar');
+  dom.resize = document.getElementById('library-resize');
   dom.offline = document.getElementById('offline-banner');
+  dom.topInput = document.getElementById('top-search-input');
+  dom.topClear = document.getElementById('top-search-clear');
 
-  const prefs = readPlayerPrefs();
+  const prefs = readJson(PLAYER_PREFS_KEY);
   player = createPlayer({
     audio: document.getElementById('audio'),
     isAvailable: (track) => isPlayable({ ...track, audio: track.audioUrl }),
@@ -664,9 +962,11 @@ async function start() {
   playerUi = mountPlayerUi(ctx, {
     bar: document.getElementById('player-bar'),
     mini: document.getElementById('mini-player'),
-    queuePanel: document.getElementById('queue-panel'),
+    nowPanel: document.getElementById('now-panel'),
   });
   playerUi.update(player.getState());
+  mountTopSearch();
+  mountResize();
 
   // El enlace de salto no cambia el hash (que es la ruta): solo lleva el foco al contenido.
   document.querySelector('.skip-link')?.addEventListener('click', (event) => {
@@ -682,6 +982,7 @@ async function start() {
     const link = event.target.closest?.('a[href^="#/"], a[href="#/"]');
     if (link) userNavigated = true;
   }, true);
+  dom.main.addEventListener('scroll', updateStickyHeads, { passive: true });
   const setOnline = () => {
     state.online = navigator.onLine !== false;
     render();
@@ -704,6 +1005,7 @@ async function start() {
   if (!library.persistent) toast('Este navegador no deja guardar las listas: se perderán al cerrar la página.', { ms: 8000 });
   state.ready = true;
   render();
+  playerUi.update(player.getState());
   document.documentElement.dataset.ready = 'true';
 }
 

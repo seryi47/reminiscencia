@@ -6,12 +6,13 @@
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 6;
+export const SHELL_VERSION = 7;
 
 /** Prefijo de las cachés del shell; sirve para reconocer las antiguas al limpiar. */
 export const SHELL_CACHE_PREFIX = 'reminiscencia-shell-';
 
 const AUDIO_CACHE = 'reminiscencia-audio-v1';
+const COVER_CACHE = 'reminiscencia-portadas-v1';
 
 // Base para resolver rutas relativas. Solo se usa el pathname.
 const BASE = 'http://localhost/';
@@ -29,6 +30,7 @@ const SHELL_PATTERNS = [
 ];
 const DATA_PATTERN = /^\/data\/[^/]+\.json$/;
 const AUDIO_PATTERN = /^\/audio\/[^/]+\.opus$/;
+const COVER_PATTERN = /^\/covers\/[A-Za-z0-9_-]{1,64}\.jpg$/;
 
 /** Rutas desde la raíz del sitio que el service worker precarga al instalarse. Las que
  *  no existen (por ejemplo, ficheros de otras ramas) se omiten sin error. Al añadir una hoja,
@@ -46,6 +48,8 @@ export const SHELL_ASSETS = Object.freeze([
   '/fonts/figtree-800.woff2',
   '/js/app.js',
   '/js/catalog.js',
+  '/js/cover-color.js',
+  '/js/cover-image.js',
   '/js/local-library.js',
   '/js/offline-core.js',
   '/js/player.js',
@@ -55,6 +59,7 @@ export const SHELL_ASSETS = Object.freeze([
   '/js/ui/icons.js',
   '/js/views/collection.js',
   '/js/views/components.js',
+  '/js/views/edit.js',
   '/js/views/home.js',
   '/js/views/library.js',
   '/js/views/player-ui.js',
@@ -76,6 +81,17 @@ export function shellCacheName(version = SHELL_VERSION) {
     throw new RangeError(`Versión de shell no válida: ${version}`);
   }
   return `${SHELL_CACHE_PREFIX}v${version}`;
+}
+
+/** Nombre de la caché de portadas (covers/<id>.jpg): se guardan al verse y sobreviven a los cambios de shell. */
+export function coverCacheName() {
+  return COVER_CACHE;
+}
+
+/** ¿Es una portada publicada (/covers/<id>.jpg)? */
+export function isCoverRequest(url) {
+  const path = pathOf(url);
+  return path !== null && COVER_PATTERN.test(path);
 }
 
 /** Nombre de la caché de audio guardado para escuchar sin conexión. */

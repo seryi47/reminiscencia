@@ -52,6 +52,7 @@ function copyTrack(item) {
     artist: item.artist ?? '',
     audioUrl: item.audioUrl ?? null,
     folderId: item.folderId ?? null,
+    cover: typeof item.cover === 'string' && item.cover !== '' ? item.cover : null,
     durationS: Number.isFinite(item.durationS) ? item.durationS : null,
     local: item.local === true,
   };
@@ -207,7 +208,8 @@ export function createPlayer(options = {}) {
       session.playbackState = item ? (playing ? 'playing' : 'paused') : 'none';
       if (!item) session.metadata = null;
       else if (typeof runtime.MediaMetadata === 'function') {
-        session.metadata = new runtime.MediaMetadata({ title: item.track.title, artist: item.track.artist, album: contextName });
+        const artwork = item.track.cover ? { artwork: [{ src: item.track.cover, sizes: '640x640', type: 'image/jpeg' }] } : {};
+        session.metadata = new runtime.MediaMetadata({ title: item.track.title, artist: item.track.artist, album: contextName, ...artwork });
       }
     } catch {
       // Media Session incompleta: la reproducción no depende de ella.
