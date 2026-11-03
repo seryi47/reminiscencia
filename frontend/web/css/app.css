@@ -2591,35 +2591,168 @@ button:disabled {
   margin: 16px 0 8px;
 }
 
-.upload-progress {
-  width: 100%;
-  height: 4px;
-  accent-color: var(--accent);
-}
-
-.upload-status {
-  min-height: 1.5em;
-  margin: 8px 0;
+/* Subidas: una fila por archivo con icono, nombre, paso y barra (DESIGN §8.4). El paso va siempre en texto. */
+.upload-summary {
+  margin: 16px 0 8px;
   font-size: var(--text-s);
+  font-weight: 700;
 }
 
-.upload-results {
+.upload-summary[hidden],
+.upload-item-progress[hidden],
+.upload-indicator[hidden] {
+  display: none;
+}
+
+.upload-items {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-bottom: 16px;
 }
 
-.upload-result {
+.upload-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-h);
+  padding: 8px;
+  border-radius: var(--radius-small);
+  background: var(--tile);
+}
+
+.upload-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.upload-item-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--highlight);
+  color: var(--text-2);
+}
+
+.upload-item[data-state="publicada"] .upload-item-icon {
+  background: transparent;
+  color: var(--accent);
+}
+
+.upload-item[data-state="error"] .upload-item-icon {
+  color: #ff8b98;
+}
+
+.upload-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.upload-item-name {
+  overflow: hidden;
+  font-size: var(--text-m);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.upload-item-status {
+  color: var(--text-2);
   font-size: var(--text-s);
   overflow-wrap: anywhere;
 }
 
-.upload-result.is-error {
+.upload-item[data-state="publicada"] .upload-item-status {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.upload-item[data-state="error"] .upload-item-status {
   color: #ff8b98;
 }
 
-.upload-result-name {
-  font-weight: 700;
+.upload-item-progress {
+  width: 100%;
+  height: 4px;
+  margin-top: 4px;
+  accent-color: var(--accent);
+}
+
+/* Publicándose: no se puede medir, así que la barra se mueve sin porcentaje. */
+.upload-item-progress:indeterminate {
+  appearance: none;
+  border: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--highlight) 0%, var(--accent) 50%, var(--highlight) 100%);
+  background-size: 200% 100%;
+  animation: upload-indeterminate 1.6s linear infinite;
+}
+
+.upload-item-progress:indeterminate::-webkit-progress-bar {
+  background: transparent;
+}
+
+@keyframes upload-indeterminate {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+.upload-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.upload-item-actions:empty {
+  display: none;
+}
+
+/* Indicador discreto al pie de «Tu biblioteca»: «Publicándose 1 canción». Abre la hoja. */
+.upload-indicator {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--highlight);
+  color: var(--text);
+  font-size: var(--text-s);
+  font-weight: 600;
+  text-align: left;
+}
+
+.upload-indicator:hover {
+  background: var(--card-hover);
+}
+
+.upload-indicator:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.upload-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: upload-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes upload-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.badge-pending {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .upload-local[hidden] {

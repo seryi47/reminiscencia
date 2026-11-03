@@ -1,6 +1,23 @@
 # CHANGELOG
 
-## Sin publicar: APK, estado de cada subida hasta que se publica (2026-11-03; rama `feat/apk-subida-estado`)
+## Sin publicar: «Subir canciones» muestra cada paso hasta «Publicada» (2026-11-03; en `main`)
+
+Pedido del propietario: la hoja se quedaba en «Subida: llegará a todos en un par de minutos» sin decir si la canción se había subido o publicado.
+
+### Cambiado
+- La hoja «Subir canciones» tiene una fila por archivo con icono, nombre (con elipsis; entero en `title`), el paso en texto y una barra: «En cola» → «Convirtiendo a Opus…» → «Subiendo… 45 %» (por trozos) → «Guardada en GitHub» → «Publicándose… (suele tardar 2–3 minutos)» → «Publicada» con «Reproducir», o «Error: <motivo>» con «Reintentar». Arriba, el resumen «2 de 3 publicadas». Se pueden elegir más archivos mientras se suben otros.
+- «Publicada» es de verdad: tras guardarse en GitHub, la web lee `data/songs.json` cada 15 s (`cache: 'no-store'`) hasta que aparece una canción con un id que no estaba antes de subir y con ese título (o el que dio el buzón). Si pasan 10 minutos: «Sigue procesándose; aparecerá en la biblioteca cuando termine», y deja de comprobar.
+- La canción sale en la biblioteca en cuanto termina la conversión: su Opus se guarda en este navegador, sale en «Tus subidas» (`#/subidas`), «Añadidas recientemente» y «Todas las canciones» con la etiqueta «Publicándose…» y se puede escuchar ya (`audio/L….opus`). Al publicarse se sustituye por la pública sin recargar ni cortar lo que suena (también en «Me gusta», las listas y la cola) y la copia se borra al dejar de sonar.
+- Al cerrar la hoja, las subidas siguen: indicador «Publicándose 1 canción» al pie de «Tu biblioteca», aviso «“<título>” ya está en la biblioteca» y biblioteca al día sola. Las pendientes se guardan en `localStorage` (`reminiscencia.subidas`, con try/catch) y se siguen comprobando al volver; las cortadas a medias quedan con «Reintentar» (reenvía la copia local).
+- Accesibilidad: región `aria-live` con cada cambio de paso, el paso siempre en texto (no solo color), foco a la fila al pulsar «Reintentar».
+- El service worker pide `data/songs.json`, `folders.json` y `catalog.json` siempre a la red primero y sin caché HTTP (`cache: 'no-store'`); la copia guardada solo responde sin conexión. El arranque de la web los pide con `cache: 'no-cache'`.
+- `SHELL_VERSION` pasa a 10 (9 en el commit del service worker; módulo nuevo `js/cuidador/subida-estado.js` en `SHELL_ASSETS`).
+
+### Añadido
+- `js/cuidador/subida-estado.js`: máquina de estados, textos, detección de la canción publicada, persistencia y gestor de subidas con dependencias inyectadas. `player.replaceTrack`, `library.replaceSong` y, en `subida-local.js`, `saveUploadCopy`, `readLocalBytes` y `markLocalPublished`.
+- Pruebas: `tests/web-unit/subida-estado.test.mjs` (máquina de estados y `songs.json` simulado, también con un título que ya existía), el service worker sin copia vieja de los datos, `replaceTrack` y `replaceSong`; de extremo a extremo, el flujo con la función y `songs.json` simulados: publicada, error y reintento, cerrar la hoja con una subida en curso, la canción que suena desde la copia local y una captura con varios estados (con axe-core).
+
+## Sin publicar: APK, estado de cada subida hasta que se publica (2026-11-03; en `main`)
 
 Sin probar en dispositivo.
 

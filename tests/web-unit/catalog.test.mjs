@@ -14,6 +14,7 @@ import {
   formatTotalDuration,
   greetingFor,
   localSongsOf,
+  pendingSongsOf,
   normalizeCoverPath,
   normalizeFolder,
   normalizeSong,
@@ -59,6 +60,7 @@ describe('lectura del catálogo', () => {
       audio: 'audio/S0000000000000001.opus',
       cover: null,
       local: false,
+      pending: false,
       addedAt: null,
       order: 0,
     });
@@ -108,6 +110,19 @@ describe('carpetas y colecciones', () => {
 
   test('las canciones locales van de la más reciente a la más antigua', () => {
     assert.deepEqual(localSongsOf(catalog).map((item) => item.title), ['Nueva', 'Vieja']);
+  });
+
+  test('una subida que se está publicando sale en «Añadidas recientemente» y en «Tus subidas», no en las locales de antes', () => {
+    const withPending = buildCatalog([song(1)], [], [
+      { id: 'L0000000000000001', title: 'Vieja', audio: 'x', local: true, createdAt: 1 },
+      { id: 'L0000000000000003', title: 'Recién subida', audio: 'z', local: true, pending: true, createdAt: 20 },
+    ]);
+    assert.deepEqual(localSongsOf(withPending).map((item) => item.title), ['Vieja']);
+    assert.deepEqual(pendingSongsOf(withPending).map((item) => item.title), ['Recién subida']);
+    assert.equal(recentSongs(withPending, 1)[0].title, 'Recién subida');
+    assert.equal(withPending.songs.length, 3, 'también está en «Todas las canciones»');
+    // Solo una canción local puede estar pendiente.
+    assert.equal(buildCatalog([song(2, { pending: true })]).songs[0].pending, false);
   });
 
   test('«Añadidas recientemente»: primero las fechadas y después el catálogo en orden inverso', () => {

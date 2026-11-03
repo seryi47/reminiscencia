@@ -35,7 +35,7 @@ Fuente: `frontend/web/js/cuidador/subida-local.js` (ADR-0012). Desde ADR-0017 la
 ### 1.3 Fuera de IndexedDB
 
 - localStorage, clave `reminiscencia.reproductor` (`js/app.js`): `volume`, `shuffle` y `repeat`. Todo acceso va en try/catch; si el navegador no deja guardar, valen durante la visita.
-- Cache Storage (`js/offline-core.js`): `reminiscencia-shell-v8` (`SHELL_VERSION` 8) con los archivos de la aplicación y los JSON de `data/`, y `reminiscencia-audio-v1` con el audio descargado para escuchar sin conexión (por carpeta o lista).
+- Cache Storage (`js/offline-core.js`): `reminiscencia-shell-v<N>` (`N` = `SHELL_VERSION` de `js/offline-core.js`) con los archivos de la aplicación y los JSON de `data/`, y `reminiscencia-audio-v1` con el audio descargado para escuchar sin conexión (por carpeta o lista).
 
 ### 1.4 Diagrama
 

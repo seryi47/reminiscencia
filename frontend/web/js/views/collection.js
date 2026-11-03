@@ -132,6 +132,7 @@ function emptyText(kind) {
     case 'liked': return 'Las canciones que marques con el corazón aparecen aquí.';
     case 'playlist': return 'Esta lista está vacía. Busca canciones abajo para añadirlas.';
     case 'local': return 'No has subido canciones a este navegador.';
+    case 'uploads': return 'No hay subidas publicándose.';
     default: return 'Este álbum está vacío.';
   }
 }

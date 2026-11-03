@@ -52,6 +52,8 @@ export function normalizeSong(raw, index = 0) {
     audio,
     cover: raw.local === true ? null : normalizeCoverPath(raw.cover),
     local: raw.local === true,
+    // Subida para todos que todavía se está publicando (su copia local suena mientras tanto).
+    pending: raw.local === true && raw.pending === true,
     addedAt,
     order: index,
   };
@@ -128,9 +130,16 @@ export function childFolders(catalog, parentId = null) {
   return catalog.folders.filter((folder) => folder.parentId === parentId);
 }
 
-/** Canciones subidas a este navegador, de la más reciente a la más antigua. */
+const newestFirst = (a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0) || a.order - b.order;
+
+/** Canciones subidas antes solo a este navegador (ADR-0012), de la más reciente a la más antigua. */
 export function localSongsOf(catalog) {
-  return catalog.songs.filter((song) => song.local).sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0) || a.order - b.order);
+  return catalog.songs.filter((song) => song.local && !song.pending).sort(newestFirst);
+}
+
+/** Subidas para todos que se están publicando (copias locales), de la más reciente a la más antigua. */
+export function pendingSongsOf(catalog) {
+  return catalog.songs.filter((song) => song.pending).sort(newestFirst);
 }
 
 /**

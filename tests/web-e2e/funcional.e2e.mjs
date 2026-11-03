@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { createTestCatalogOverrides } from "./helpers/catalogo-prueba.mjs";
-import { clickTestid, isVisible, TEST_TIMEOUT_MS, textOf, waitHidden, waitVisible } from "./helpers/elementos.mjs";
+import { clickTestid, isVisible, TEST_TIMEOUT_MS, textOf, waitHidden, waitVisible, wcagViolations } from "./helpers/elementos.mjs";
 import {
   countLocalSongs,
   createMenu,
@@ -30,20 +30,27 @@ import {
   seedLocalSong,
   waitServiceWorker,
 } from "./helpers/flujos.mjs";
-import { launchBrowser, VIEWPORTS, withPage } from "./helpers/navegador.mjs";
+import { capture, launchBrowser, VIEWPORTS, withPage } from "./helpers/navegador.mjs";
 import { startStaticServer } from "./helpers/servidor.mjs";
 
 let server;
 let browser;
 
 // Función /api/subir simulada: guarda cada trozo recibido y responde como la de Vercel (frontend/web/api/subir.js).
-// Un nombre de archivo que contiene «falla» recibe el error de un archivo que no es Ogg Opus.
+// Un nombre de archivo que contiene «falla» recibe el error de un archivo que no es Ogg Opus; uno con «una-vez», solo
+// la primera vez (para «Reintentar»), y uno con «lenta» tarda en responder (para cerrar la hoja con la subida a medias).
 const subidas = [];
+const fallidasUnaVez = new Set();
 async function fakeUploadFunction({ headers, body }) {
   const name = decodeURIComponent(headers["x-nombre-archivo"] ?? "");
   const index = Number(headers["x-parte"]);
   const total = Number(headers["x-partes"]);
   subidas.push({ name, id: headers["x-subida-id"], index, total, type: headers["content-type"], body });
+  if (name.includes("lenta")) await new Promise((resolve) => setTimeout(resolve, 2500));
+  if (name.includes("una-vez") && !fallidasUnaVez.has(name)) {
+    fallidasUnaVez.add(name);
+    return { status: 415, json: { ok: false, error: "El archivo no es Ogg Opus." } };
+  }
   if (name.includes("falla")) return { status: 415, json: { ok: false, error: "El archivo no es Ogg Opus." } };
   const complete = index === total - 1;
   return {
@@ -55,8 +62,14 @@ async function fakeUploadFunction({ headers, body }) {
   };
 }
 
+// El catálogo de prueba se puede cambiar durante una prueba: así se simula que el workflow publica una subida.
+let catalogo;
+let cancionesBase;
+
 before(async () => {
-  server = await startStaticServer({ overrides: createTestCatalogOverrides(), functions: new Map([["/api/subir", fakeUploadFunction]]) });
+  catalogo = createTestCatalogOverrides();
+  cancionesBase = catalogo.get("/data/songs.json").body;
+  server = await startStaticServer({ overrides: catalogo, functions: new Map([["/api/subir", fakeUploadFunction]]) });
   browser = await launchBrowser();
 });
 
@@ -620,8 +633,40 @@ describe("Editar canciones y álbumes (incidencias de GitHub)", () => {
 });
 
 describe("Subir canciones", () => {
-  // Elige los archivos en la hoja y espera al resumen final.
-  async function uploadWavs(page, names) {
+  const ESTADOS_EN_MARCHA = ["cola", "convirtiendo", "subiendo"];
+
+  // Publica en data/songs.json del servidor de pruebas una canción nueva (como haría el workflow buzon).
+  function publicar(...nuevas) {
+    const songs = JSON.parse(cancionesBase);
+    for (const { id, title } of nuevas) {
+      songs.push({ id, title, artist: "", year: null, tags: [], folder_id: null, duration_s: 1.5, license: "Dato ficticio para pruebas automáticas", audio: `audio/${id}.opus` });
+      catalogo.set(`/audio/${id}.opus`, catalogo.get("/audio/S0000000000000001.opus"));
+    }
+    catalogo.set("/data/songs.json", { body: JSON.stringify(songs), type: "application/json; charset=utf-8" });
+  }
+
+  function restaurarCatalogo() {
+    catalogo.set("/data/songs.json", { body: cancionesBase, type: "application/json; charset=utf-8" });
+  }
+
+  // Comprobación de songs.json cada 0,2 s en lugar de cada 15 s (solo en la prueba) y registro de cada texto de estado.
+  async function prepararPagina(page) {
+    await page.evaluateOnNewDocument(() => {
+      const original = window.setTimeout;
+      window.setTimeout = function (fn, ms, ...rest) {
+        return original.call(window, fn, ms === 15000 ? 200 : ms, ...rest);
+      };
+      window.__estados = [];
+      new MutationObserver(() => {
+        for (const node of document.querySelectorAll('[data-testid="upload-item-status"]')) {
+          const text = `${node.closest("li").querySelector('[data-testid="upload-item-name"]').textContent}: ${node.textContent}`;
+          if (window.__estados.at(-1) !== text && !window.__estados.includes(text)) window.__estados.push(text);
+        }
+      }).observe(document, { subtree: true, childList: true, characterData: true });
+    });
+  }
+
+  async function wavFiles(names) {
     const dir = await mkdtemp(join(tmpdir(), "reminiscencia-e2e-"));
     const paths = [];
     for (const name of names) {
@@ -629,16 +674,42 @@ describe("Subir canciones", () => {
       await writeFile(path, wavTone(1.5));
       paths.push(path);
     }
+    return paths;
+  }
+
+  // Elige los archivos en la hoja; con wait, espera a que todos hayan salido de la conversión y el envío.
+  async function uploadWavs(page, names, { wait = true } = {}) {
+    const paths = await wavFiles(names);
     const soporte = await textOf(page, "upload-support").catch(() => "");
     assert.equal(soporte, "", `Este Chrome no convierte a Opus: ${soporte}`);
     const input = await page.$('[data-testid="upload-file-input"]');
     await input.uploadFile(...paths);
-    await page.waitForFunction((count) => document.querySelectorAll('[data-testid="upload-results"] li').length === count, { timeout: 60000 }, names.length);
+    if (wait) await waitRows(page, names.length);
   }
 
-  prueba("Una sola opción: convierte cada archivo a Opus y lo sube a /api/subir, de uno en uno y en orden", () =>
+  async function waitRows(page, count) {
+    await page.waitForFunction((total, enMarcha) => {
+      const rows = [...document.querySelectorAll('[data-testid="upload-item"]')];
+      return rows.length === total && rows.every((row) => !enMarcha.includes(row.dataset.state));
+    }, { timeout: 60000 }, count, ESTADOS_EN_MARCHA);
+  }
+
+  const filas = (page) => page.$$eval('[data-testid="upload-item"]', (rows) => rows.map((row) => [
+    row.dataset.state,
+    row.querySelector('[data-testid="upload-item-name"]').textContent,
+    row.querySelector('[data-testid="upload-item-status"]').textContent,
+  ]));
+
+  const waitState = (page, name, state, timeout = 30000) => page.waitForFunction((n, st) => [...document.querySelectorAll('[data-testid="upload-item"]')]
+    .some((row) => row.querySelector('[data-testid="upload-item-name"]').textContent === n && row.dataset.state === st), { timeout }, name, state);
+
+  const toastText = (page, text) => page.waitForFunction((t) => document.querySelector('[data-testid="toast"]')?.textContent === t, { timeout: 30000 }, text);
+
+  prueba("Una sola opción: convierte cada archivo a Opus y lo sube a /api/subir, de uno en uno y en orden, con cada paso a la vista", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       subidas.length = 0;
+      restaurarCatalogo();
+      await prepararPagina(page);
       await openApp(page, server.url);
       await openUpload(page, VIEWPORTS.escritorio);
       // Sin elección «Solo en este navegador / Para todos» y sin casilla: solo el texto fijo de derechos.
@@ -660,29 +731,164 @@ describe("Subir canciones", () => {
         assert.equal(item.body.subarray(28, 36).toString("latin1"), "OpusHead");
         assert.ok(item.body.length < 64 * 1024, `1,5 s de Opus pesa poco (${item.body.length} bytes)`);
       }
-      assert.equal(await textOf(page, "upload-status"), "2 canciones subidas: llegarán a todos en un par de minutos.");
-      const filas = await page.$$eval('[data-testid="upload-results"] li', (items) => items.map((li) => [li.dataset.state, li.textContent]));
-      assert.deepEqual(filas, [
-        ["ok", "Tono de prueba.wav: Subida: llegará a todos en un par de minutos."],
-        ["ok", "Mi canción.wav: Subida: llegará a todos en un par de minutos."],
+      await waitState(page, "Mi canción.wav", "publicandose");
+      assert.deepEqual(await filas(page), [
+        ["publicandose", "Tono de prueba.wav", "Publicándose… (suele tardar 2–3 minutos)"],
+        ["publicandose", "Mi canción.wav", "Publicándose… (suele tardar 2–3 minutos)"],
       ]);
-      assert.equal(await countLocalSongs(page), 0, "ya no se guarda nada en este navegador");
+      assert.equal(await textOf(page, "upload-summary"), "0 de 2 publicadas");
+      const estados = await page.evaluate(() => window.__estados.filter((text) => text.startsWith("Tono de prueba.wav")));
+      for (const paso of ["En cola", "Convirtiendo a Opus…", "Guardada en GitHub", "Publicándose… (suele tardar 2–3 minutos)"]) {
+        assert.ok(estados.includes(`Tono de prueba.wav: ${paso}`), `pasa por «${paso}»: ${estados.join(" | ")}`);
+      }
+      assert.ok(estados.some((text) => /^Tono de prueba\.wav: Subiendo… \d+\u00a0%$/.test(text)), `pasa por «Subiendo… N %»: ${estados.join(" | ")}`);
+      // El nombre largo se corta con elipsis y entero va en title.
+      assert.equal(await page.$eval('[data-testid="upload-item-name"]', (node) => [node.title, getComputedStyle(node).textOverflow].join("|")), "Tono de prueba.wav|ellipsis");
+      // Mientras se publican, una copia local en este navegador (se borra al publicarse).
+      assert.equal(await countLocalSongs(page), 2);
     }),
   );
 
-  prueba("Un error del servidor se muestra en su archivo y no para los demás", () =>
+  prueba("La canción sale ya en la biblioteca y suena; al publicarse se sustituye por la pública sin recargar ni cortar", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      subidas.length = 0;
+      restaurarCatalogo();
+      await prepararPagina(page);
+      await openApp(page, server.url);
+      await waitServiceWorker(page);
+      await page.evaluate(() => { window.__sinRecargar = true; });
+      await openUpload(page, VIEWPORTS.escritorio);
+      await uploadWavs(page, ["Tono nuevo.wav"]);
+      assert.equal(await textOf(page, "upload-indicator"), "Publicándose 1 canción");
+      await page.keyboard.press("Escape");
+      await waitHidden(page, "upload-sheet");
+
+      // «Tus subidas» en Tu biblioteca, «Todas las canciones» y «Añadidas recientemente», con «Publicándose…».
+      const biblioteca = await page.$$eval('[data-testid="sidebar-list"] .library-item', (items) => items.map((item) => item.textContent));
+      assert.ok(biblioteca.some((text) => /Tus subidas/.test(text) && /Publicándose…/.test(text)), biblioteca.join(" | "));
+      await openCollection(page, "#/canciones");
+      const fila = await page.waitForSelector('[data-testid="track-row"]:has([data-testid="track-pending"])');
+      assert.match(await fila.evaluate((row) => row.textContent), /Tono nuevo.*Publicándose…/);
+      const localId = await fila.evaluate((row) => row.dataset.songId);
+      assert.match(localId, /^L[0-9a-f]{16}$/);
+      await openCollection(page, "#/subidas");
+      await playRow(page, 0);
+      assert.match((await audioState(page)).src, new RegExp(`/audio/${localId}\\.opus$`));
+      await page.waitForFunction(() => document.getElementById("audio").currentTime > 0.2, { timeout: 10000 });
+
+      publicar({ id: "S00000000000000aa", title: "Tono nuevo" });
+      await toastText(page, "“Tono nuevo” ya está en la biblioteca");
+      // Sigue sonando la misma fuente: no se corta.
+      const estado = await audioState(page);
+      assert.equal(estado.paused, false);
+      assert.match(estado.src, new RegExp(`/audio/${localId}\\.opus$`));
+      assert.equal(await page.evaluate(() => window.__sinRecargar), true, "sin recargar la página");
+      assert.equal(await isVisible(page, "upload-indicator", 500), false);
+      await openCollection(page, "#/canciones");
+      await page.waitForSelector('[data-testid="track-row"][data-song-id="S00000000000000aa"]');
+      assert.equal(await page.$('[data-testid="track-pending"]'), null, "ya no lleva «Publicándose…»");
+      assert.equal(await page.$('[data-testid="sidebar-list"] [data-context="subidas"]'), null, "«Tus subidas» se va al quedar vacía");
+      // La copia local se borra en cuanto deja de sonar (al poner otra canción).
+      await playRow(page, 0);
+      await page.waitForFunction(async () => {
+        const db = await new Promise((resolve) => { const r = indexedDB.open("reminiscencia-audio-local"); r.onsuccess = () => resolve(r.result); });
+        const count = await new Promise((resolve) => { const r = db.transaction("pistas").objectStore("pistas").count(); r.onsuccess = () => resolve(r.result); });
+        db.close();
+        return count === 0;
+      }, { timeout: 10000, polling: 200 });
+
+      await openUpload(page, VIEWPORTS.escritorio);
+      assert.deepEqual(await filas(page), [["publicada", "Tono nuevo.wav", "Publicada"]]);
+      assert.equal(await textOf(page, "upload-summary"), "1 de 1 publicada");
+      await clickTestid(page, "upload-item-play", "Reproducir");
+      await page.waitForFunction(() => /\/audio\/S00000000000000aa\.opus$/.test(document.getElementById("audio").src), { timeout: 10000 });
+      restaurarCatalogo();
+    }),
+  );
+
+  prueba("Un error del servidor se muestra en su archivo, no para los demás y «Reintentar» la vuelve a subir", () =>
     withPage(browser, VIEWPORTS.telefono, async (page) => {
       subidas.length = 0;
+      fallidasUnaVez.clear();
+      restaurarCatalogo();
+      await prepararPagina(page);
       await openApp(page, server.url);
       await openUpload(page, VIEWPORTS.telefono);
-      await uploadWavs(page, ["Este falla.wav", "Este sube.wav"]);
-      assert.deepEqual(subidas.map((item) => item.name), ["Este falla.wav", "Este sube.wav"]);
-      const filas = await page.$$eval('[data-testid="upload-results"] li', (items) => items.map((li) => [li.dataset.state, li.textContent]));
-      assert.deepEqual(filas, [
-        ["error", "Este falla.wav: El archivo no es Ogg Opus."],
-        ["ok", "Este sube.wav: Subida: llegará a todos en un par de minutos."],
+      await uploadWavs(page, ["Este se cae una-vez.wav", "Este sube.wav"]);
+      assert.deepEqual(subidas.map((item) => item.name), ["Este se cae una-vez.wav", "Este sube.wav"]);
+      await waitState(page, "Este sube.wav", "publicandose");
+      assert.deepEqual(await filas(page), [
+        ["error", "Este se cae una-vez.wav", "Error: El archivo no es Ogg Opus."],
+        ["publicandose", "Este sube.wav", "Publicándose… (suele tardar 2–3 minutos)"],
       ]);
-      assert.match(await textOf(page, "upload-status"), /Subida: llegará a todos en un par de minutos\. Un archivo no se ha podido subir\./);
+      assert.equal(await textOf(page, "upload-summary"), "0 de 2 publicadas · 1 con error");
+      assert.equal(await page.$eval('[data-testid="upload-live"]', (node) => node.getAttribute("aria-live")), "polite");
+
+      await clickTestid(page, "upload-item-retry", "Reintentar");
+      // El botón desaparece y el foco pasa a su fila (no se pierde en el documento).
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "upload-item");
+      await waitState(page, "Este se cae una-vez.wav", "publicandose");
+      assert.deepEqual(subidas.map((item) => item.name), ["Este se cae una-vez.wav", "Este sube.wav", "Este se cae una-vez.wav"]);
+
+      publicar({ id: "S00000000000000b1", title: "Este se cae una-vez" }, { id: "S00000000000000b2", title: "Este sube" });
+      await waitState(page, "Este se cae una-vez.wav", "publicada");
+      await waitState(page, "Este sube.wav", "publicada");
+      assert.equal(await textOf(page, "upload-summary"), "2 de 2 publicadas");
+      assert.match(await page.$eval('[data-testid="upload-live"]', (node) => node.textContent), /Publicada/);
+      restaurarCatalogo();
+    }),
+  );
+
+  prueba("Al cerrar la hoja con una subida a medias, sigue: indicador en la barra lateral, aviso y biblioteca al día sin recargar", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      subidas.length = 0;
+      restaurarCatalogo();
+      await prepararPagina(page);
+      await openApp(page, server.url);
+      await page.evaluate(() => { window.__sinRecargar = true; });
+      await openUpload(page, VIEWPORTS.escritorio);
+      await uploadWavs(page, ["Canción lenta.wav"], { wait: false });
+      await page.waitForFunction(() => ["convirtiendo", "subiendo"].includes(document.querySelector('[data-testid="upload-item"]')?.dataset.state), { timeout: 30000 });
+      await clickTestid(page, "upload-sheet-close", "Cerrar la hoja");
+      await waitHidden(page, "upload-sheet");
+      assert.equal(await textOf(page, "upload-indicator"), "Publicándose 1 canción");
+      // Lo que queda por comprobar se guarda en localStorage.
+      await page.waitForFunction(() => JSON.parse(localStorage.getItem("reminiscencia.subidas") ?? "{}").items?.some((item) => item.state === "guardada" || item.state === "publicandose"), { timeout: 30000 });
+      assert.deepEqual(subidas.map((item) => item.name), ["Canción lenta.wav"]);
+
+      publicar({ id: "S00000000000000c1", title: "Canción lenta" });
+      await toastText(page, "“Canción lenta” ya está en la biblioteca");
+      assert.equal(await isVisible(page, "upload-indicator", 500), false);
+      await openCollection(page, "#/canciones");
+      await page.waitForSelector('[data-testid="track-row"][data-song-id="S00000000000000c1"]');
+      assert.equal(await page.evaluate(() => window.__sinRecargar), true, "sin recargar la página");
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("reminiscencia.subidas") ?? "null")), null, "ya no queda nada pendiente");
+      restaurarCatalogo();
+    }),
+  );
+
+  prueba("Captura de la hoja con varios estados", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      subidas.length = 0;
+      fallidasUnaVez.clear();
+      restaurarCatalogo();
+      await prepararPagina(page);
+      await openApp(page, server.url);
+      await openUpload(page, VIEWPORTS.escritorio);
+      await uploadWavs(page, ["Vals de la tarde.wav", "Este falla.wav", "Bolero con un nombre de archivo muy largo que no cabe en la fila.wav"]);
+      publicar({ id: "S00000000000000d1", title: "Vals de la tarde" });
+      await waitState(page, "Vals de la tarde.wav", "publicada");
+      await uploadWavs(page, ["Copla lenta.wav"], { wait: false });
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="upload-item"][data-state="subiendo"]').length === 1, { timeout: 30000 });
+      const estados = await page.$$eval('[data-testid="upload-item"]', (rows) => rows.map((row) => row.dataset.state));
+      assert.deepEqual(estados, ["publicada", "error", "publicandose", "subiendo"]);
+      assert.equal(await textOf(page, "upload-summary"), "1 de 4 publicadas · 1 con error");
+      await capture(page, "subida-estados");
+      // Accesibilidad de la hoja con filas en todos esos estados (mismo criterio que a11y.e2e.mjs).
+      const fallos = (await wcagViolations(page)).filter((v) => v.impacto === "serious" || v.impacto === "critical");
+      assert.deepEqual(fallos, []);
+      await waitRows(page, 4);
+      restaurarCatalogo();
     }),
   );
 
@@ -718,7 +924,8 @@ describe("Subir canciones", () => {
       assert.match(await textOf(page, "confirm"), /¿Borrar esta canción de este navegador\? No se puede deshacer\./);
       await clickTestid(page, "confirm-ok", "Borrar");
       await page.waitForFunction(() => document.querySelector('[data-testid="upload-local"]')?.hidden === true);
-      assert.equal(await countLocalSongs(page), 0);
+      // Queda solo la copia de «Tono local», que se está publicando (no sale entre las de antes ni se borra desde aquí).
+      assert.equal(await countLocalSongs(page), 1);
     }),
   );
 

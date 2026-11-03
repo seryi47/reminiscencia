@@ -259,6 +259,28 @@ export async function openLocalLibrary(env = {}) {
         if (list.songIds.includes(songId)) await savePlaylist({ ...list, songIds: removeSongId(list.songIds, songId), updatedAt: now() });
       }
     },
+    /**
+     * Cambia una canción por otra en «Me gusta» y en las listas, sin repetirla (por ejemplo, la copia local de una
+     * subida por la canción pública cuando se publica). Conserva la fecha del «Me gusta» y el orden de las listas.
+     */
+    async replaceSong(oldId, newId) {
+      if (oldId === newId) return;
+      const likes = await backend.getAll(LIKES);
+      const old = likes.find((record) => record.songId === oldId);
+      if (old) {
+        if (!likes.some((record) => record.songId === newId)) await backend.put(LIKES, { songId: newId, likedAt: old.likedAt });
+        await backend.delete(LIKES, oldId);
+      }
+      for (const list of await listPlaylists()) {
+        if (!list.songIds.includes(oldId)) continue;
+        const songIds = [];
+        for (const id of list.songIds) {
+          const value = id === oldId ? newId : id;
+          if (!songIds.includes(value)) songIds.push(value);
+        }
+        await savePlaylist({ ...list, songIds, updatedAt: now() });
+      }
+    },
     close: () => backend.close(),
   };
 }

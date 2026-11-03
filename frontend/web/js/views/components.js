@@ -195,7 +195,7 @@ export function songMenuItems(ctx, song, { playlistId = null } = {}) {
     editable ? { label: 'Editar detalles', icon: 'pencil', testid: 'menu-edit-song', action: viaDialog(() => ctx.editSong(song)) } : null,
     editable ? { label: 'Añadir a un álbum', icon: 'album', testid: 'menu-move-album', action: viaDialog(() => ctx.moveSongToAlbum(song)) } : null,
     editable ? { label: 'Cambiar portada', icon: 'image', testid: 'menu-song-cover', action: viaDialog(() => ctx.changeCover({ kind: 'song', id: song.id, name: song.title })) } : null,
-    song.local ? { label: 'Borrar de este navegador', icon: 'trash', testid: 'menu-delete-local', action: viaDialog(() => ctx.deleteLocalSong(song)) } : null,
+    song.local && !song.pending ? { label: 'Borrar de este navegador', icon: 'trash', testid: 'menu-delete-local', action: viaDialog(() => ctx.deleteLocalSong(song)) } : null,
   ].filter(Boolean);
 }
 
@@ -277,8 +277,11 @@ export function trackTable(ctx, songs, {
         },
         el('span', { class: 'track-title' }, song.title),
         el('span', { class: 'track-artist' },
-          song.local ? el('span', { class: 'badge' }, 'En este navegador') : null,
-          song.artist || (song.local ? '' : 'Artista desconocido'),
+          // Una subida que se está publicando lleva su estado («Publicándose…») en lugar del artista.
+          song.pending
+            ? el('span', { class: 'badge badge-pending', 'data-testid': 'track-pending' }, ctx.uploadLabel(song))
+            : (song.local ? el('span', { class: 'badge' }, 'En este navegador') : null),
+          song.pending ? '' : (song.artist || (song.local ? '' : 'Artista desconocido')),
           playable ? null : el('span', { class: 'track-offline' }, ' · No disponible sin conexión'))))),
     showAlbum ? el('td', { class: 'col-album' },
       albumName ? el('a', { href: `#/album/${encodeURIComponent(song.folderId)}`, class: 'track-album', 'data-key': `album:${contextId}:${position}` }, albumName) : '') : null,

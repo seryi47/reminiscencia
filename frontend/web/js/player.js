@@ -494,6 +494,33 @@ export function createPlayer(options = {}) {
     notify();
   }
 
+  /**
+   * Sustituye una canción por otra en el contexto y en la cola (por ejemplo, la copia local de una subida por la
+   * canción pública). La que está sonando no se corta: el elemento de audio conserva su fuente hasta que se pase a
+   * otra canción (o se vuelva a cargar tras un error, ya con la fuente nueva). Devuelve true si estaba.
+   */
+  function replaceTrack(oldId, track) {
+    if (destroyed || typeof oldId !== 'string' || !isTrackLike(track) || track.id === oldId) return false;
+    const next = copyTrack(track);
+    let changed = false;
+    base = base.map((item) => {
+      if (item.id !== oldId) return item;
+      changed = true;
+      return next;
+    });
+    for (const item of seq) {
+      if (item.track.id === oldId) {
+        item.track = next;
+        changed = true;
+      }
+    }
+    if (changed) {
+      updateMediaSession();
+      notify();
+    }
+    return changed;
+  }
+
   function setShuffle(on) {
     const value = on === true;
     if (destroyed || value === shuffle) return;
@@ -614,6 +641,7 @@ export function createPlayer(options = {}) {
     previous,
     playEntry,
     addToQueue,
+    replaceTrack,
     seekTo,
     setShuffle,
     setRepeat,

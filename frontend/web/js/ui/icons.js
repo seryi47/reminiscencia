@@ -63,6 +63,8 @@ const ICONS = Object.freeze({
   album: [['circle', { cx: 12, cy: 12, r: 9 }], ['circle', { cx: 12, cy: 12, r: 2.5 }]],
   copy: [['path', { d: 'M8.5 8.5h11v11h-11zM15.5 8.5v-4h-11v11h4' }]],
   'arrow-left': [['path', { d: 'M20 12H5M11 5.5 4.5 12l6.5 6.5' }]],
+  alert: [['circle', { cx: 12, cy: 12, r: 9 }], ['path', { d: 'M12 7.5v5.5' }], ['circle', { cx: 12, cy: 16.5, r: 1, fill: true }]],
+  'check-circle': [['circle', { cx: 12, cy: 12, r: 10, fill: true }], ['path', { d: 'm7.5 12.3 3 3 6-6.3', stroke: '#000' }]],
 });
 
 /** Crea un icono SVG decorativo. size en píxeles (por defecto 24). */

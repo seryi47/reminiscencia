@@ -170,6 +170,20 @@ describe('biblioteca local en IndexedDB', () => {
     assert.equal((await library.listLikes()).has('L1'), false);
   });
 
+  test('replaceSong cambia la copia local por la canción pública en «Me gusta» y en las listas, sin repetirla', async () => {
+    const { library } = await open();
+    const list = await library.createPlaylist('Lista', ['S1', 'L1', 'S2']);
+    const both = await library.createPlaylist('Las dos', ['S9', 'L1']);
+    await library.setLiked('L1', true);
+    const likedAt = (await library.listLikes()).get('L1');
+    await library.replaceSong('L1', 'S9');
+    assert.deepEqual((await library.getPlaylist(list.id)).songIds, ['S1', 'S9', 'S2']);
+    assert.deepEqual((await library.getPlaylist(both.id)).songIds, ['S9']);
+    const likes = await library.listLikes();
+    assert.equal(likes.has('L1'), false);
+    assert.equal(likes.get('S9'), likedAt);
+  });
+
   test('los datos siguen al volver a abrir la base', async () => {
     const indexedDB = fakeIndexedDb();
     const { library } = await open(indexedDB);
