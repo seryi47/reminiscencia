@@ -53,20 +53,13 @@ describe('API del importador de YouTube', () => {
   });
 
   test('acepta un vídeo individual, incluidos los enlaces cortos', async () => {
-    let invocation;
     const response = await handlePlaylist(playlistRequest('https://youtu.be/abcdefghijk'), {
-      env: { YTDLP_PATH: '/opt/yt-dlp' },
-      spawnImpl(command, args) {
-        invocation = { command, args };
-        return fakeProcess('abcdefghijk\tVídeo individual\n');
-      },
+      spawnImpl: () => { throw new Error('No debe enumerar un vídeo individual'); },
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { items: [
-      { url: videoUrl, title: 'Vídeo individual' },
+      { url: 'https://youtu.be/abcdefghijk', title: 'YouTube abcdefghijk' },
     ] });
-    assert.equal(invocation.command, '/opt/yt-dlp');
-    assert.equal(invocation.args.at(-1), 'https://youtu.be/abcdefghijk');
   });
 
   test('fija WAV/original y solo devuelve el identificador del job', async () => {

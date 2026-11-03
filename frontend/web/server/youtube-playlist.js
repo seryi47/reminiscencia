@@ -7,6 +7,7 @@ import {
   canonicalVideoUrl,
   json,
   publicError,
+  videoId,
   youtubeUrl,
 } from './youtube-common.js';
 
@@ -90,10 +91,17 @@ export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = pro
   try {
     if (request.method !== 'GET') throw new YoutubeApiError(405, 'Solo se admite GET.');
     const value = new URL(request.url).searchParams.get('url') ?? '';
-    // yt-dlp también acepta un vídeo individual, igual que el script de
-    // escritorio que sirve de referencia para este importador.
-    const url = youtubeUrl(value, { playlist: true }) || youtubeUrl(value);
+    const playlistUrl = youtubeUrl(value, { playlist: true });
+    const url = playlistUrl || youtubeUrl(value);
     if (!url) throw new YoutubeApiError(400, 'La URL de YouTube no es válida.');
+
+    // Para un único vídeo no hace falta enumerar nada con yt-dlp. Esto evita
+    // que un bloqueo de la API de YouTube en la IP de Vercel impida convertir
+    // enlaces individuales, y conserva la URL original que acepta yttowav.
+    if (!playlistUrl) {
+      return json(200, { items: [{ url: url.href, title: `YouTube ${videoId(url.href)}` }] });
+    }
+
     const result = await runYtdlp(url, { spawnImpl, env });
     return json(200, { items: extractPlaylist({ url, ...result }) });
   } catch (error) {
