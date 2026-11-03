@@ -45,12 +45,20 @@ const NBSP = ' ';
 // Máquina de estados (funciones puras)
 // ---------------------------------------------------------------------------------------------
 
-/** Subida nueva, en cola. */
-export function createItem({ key, name, title, createdAt = 0 }) {
+/** Grupo de una subida (el ZIP del que sale) en una forma segura, o null. */
+export function cleanGroup(group) {
+  if (!group || typeof group.key !== 'string' || group.key === '' || typeof group.name !== 'string' || group.name === '') return null;
+  const count = (value) => (Number.isInteger(value) && value >= 0 ? value : 0);
+  return { key: group.key, name: group.name, songs: count(group.songs), ignored: count(group.ignored) };
+}
+
+/** Subida nueva, en cola. group: el ZIP del que sale ({ key, name, songs, ignored }) o null. */
+export function createItem({ key, name, title, createdAt = 0, group = null }) {
   return {
     key: String(key),
     name: String(name ?? ''),
     title: String(title ?? ''),
+    group: cleanGroup(group),
     state: S.QUEUED,
     fraction: 0,
     localId: null,
@@ -246,6 +254,7 @@ export function serializeItems(items) {
     .map((item) => ({
       key: item.key, name: item.name, title: item.title, state: item.state, localId: item.localId,
       serverName: item.serverName, knownIds: item.knownIds, savedAt: item.savedAt, error: item.error, createdAt: item.createdAt,
+      group: item.group ?? null,
     }));
   return JSON.stringify({ version: STORAGE_VERSION, items: kept });
 }
@@ -269,7 +278,7 @@ export function parseItems(raw) {
   for (const entry of data.items) {
     if (!entry || !isText(entry.key) || !isText(entry.title)) continue;
     const base = {
-      ...createItem({ key: entry.key, name: isText(entry.name) ? entry.name : entry.title, title: entry.title, createdAt: Number(entry.createdAt) || 0 }),
+      ...createItem({ key: entry.key, name: isText(entry.name) ? entry.name : entry.title, title: entry.title, createdAt: Number(entry.createdAt) || 0, group: entry.group }),
       localId: isText(entry.localId) ? entry.localId : null,
       serverName: isText(entry.serverName) ? entry.serverName : null,
       knownIds: Array.isArray(entry.knownIds) ? entry.knownIds.filter(isText) : [],
@@ -309,7 +318,8 @@ function writeStorage(storage, value) {
 
 /**
  * Crea el gestor. Dependencias (todas inyectables para las pruebas):
- * - convert(file, { onProgress({ fraction }) }) → { bytes, durationS, channels, bitrate }
+ * - convert(file, { onProgress({ fraction }) }) → { bytes, durationS, channels, bitrate }. Si el archivo es una fuente
+ *   perezosa (una canción de un ZIP, con open()), primero se abre (se descomprime) y solo vive mientras se convierte.
  * - saveCopy({ title, bytes, durationS, channels, bitrate }) → canción local ({ id, … }); su fallo no para la subida
  * - readCopy(localId) → Uint8Array | null (para reintentar tras recargar)
  * - send(bytes, { fileName, onChunk({ index, total }) }) → respuesta del último trozo ({ nombre, … })
@@ -392,7 +402,7 @@ export function createUploadTracker(deps = {}) {
   }
 
   function failMessage(error) {
-    if (error && typeof error.message === 'string' && error.message && (error.name === 'PublicUploadError' || error.name === 'LocalAudioError')) {
+    if (error && typeof error.message === 'string' && error.message && ['PublicUploadError', 'LocalAudioError', 'ZipError'].includes(error.name)) {
       return error.message;
     }
     console.error('Reminiscencia: fallo al subir un archivo.', error);
@@ -407,7 +417,9 @@ export function createUploadTracker(deps = {}) {
       if (!bytes) {
         if (!entry.file) throw Object.assign(new Error(LOST_FILE_TEXT), { name: 'LocalAudioError', lost: true });
         dispatch(entry, { type: 'convert', fraction: 0 });
-        const converted = await convert(entry.file, { onProgress: ({ fraction }) => dispatch(entry, { type: 'convert', fraction }) });
+        // Una canción de un ZIP se descomprime ahora, justo antes de convertirla, y se suelta al terminar.
+        const source = typeof entry.file.open === 'function' ? await entry.file.open() : entry.file;
+        const converted = await convert(source, { onProgress: ({ fraction }) => dispatch(entry, { type: 'convert', fraction }) });
         bytes = converted.bytes;
         if (!entry.item.localId) {
           try {
@@ -429,7 +441,7 @@ export function createUploadTracker(deps = {}) {
       onChunk: ({ index, total }) => dispatch(entry, { type: 'send', fraction: (index + 1) / total }),
     });
     dispatch(entry, { type: 'saved', serverName: result?.nombre, at: now(), knownIds });
-    // Ya está en GitHub: no hace falta conservar el archivo ni los bytes.
+    // Ya está en GitHub: no hace falta conservar el archivo (ni el ZIP del que sale) ni los bytes.
     entry.file = null;
     entry.bytes = null;
     const timer = setTimer(() => {
@@ -452,7 +464,9 @@ export function createUploadTracker(deps = {}) {
           await processEntry(entry);
         } catch (error) {
           const message = failMessage(error);
-          dispatch(entry, { type: 'fail', message, retryable: !error?.lost && Boolean(entry.file || entry.item.localId) });
+          dispatch(entry, { type: 'fail', message, retryable: !error?.lost && !error?.permanent && Boolean(entry.file || entry.item.localId) });
+          // Un error que no se arregla reintentando (por ejemplo, una canción cifrada en el ZIP) suelta el archivo.
+          if (error?.permanent) entry.file = null;
           // Un fallo de configuración del servidor afectaría igual a las demás: no se intentan.
           if (error?.stop) {
             for (const other of entries) if (other.item.state === S.QUEUED) dispatch(other, { type: 'fail', message, retryable: true });
@@ -528,6 +542,27 @@ export function createUploadTracker(deps = {}) {
     if (entries.some((entry) => WAITING_STATES.includes(entry.item.state))) schedulePoll(pollMs);
   }
 
+  /**
+   * Añade subidas ya preparadas (subida-zip.js): [{ file, name, title, group, error }]. Con error, la subida entra
+   * directamente en «Error» sin Reintentar (por ejemplo, un ZIP dañado). Devuelve las claves.
+   */
+  function addSources(sources) {
+    const keys = [];
+    for (const source of Array.from(sources ?? [])) {
+      const key = newKey();
+      const item = createItem({ key, name: source?.name || 'Sin nombre', title: source?.title ?? '', createdAt: now(), group: source?.group });
+      if (source?.error) {
+        entries.push({ item: { ...item, state: S.ERROR, error: String(source.error), retryable: false }, file: null, bytes: null });
+      } else {
+        entries.push({ item, file: source?.file ?? null, bytes: null });
+      }
+      keys.push(key);
+    }
+    if (keys.length > 0) emit();
+    pump();
+    return keys;
+  }
+
   return {
     /** Copia de las subidas, en el orden en que se eligieron. */
     items: snapshot,
@@ -538,16 +573,9 @@ export function createUploadTracker(deps = {}) {
     },
     /** Añade archivos a la cola (se suben de uno en uno y en orden). Devuelve las claves. */
     add(files, { titleOf = (file) => file?.name ?? '' } = {}) {
-      const keys = [];
-      for (const file of Array.from(files ?? [])) {
-        const key = newKey();
-        entries.push({ item: createItem({ key, name: file?.name || 'Sin nombre', title: titleOf(file), createdAt: now() }), file, bytes: null });
-        keys.push(key);
-      }
-      if (keys.length > 0) emit();
-      pump();
-      return keys;
+      return addSources(Array.from(files ?? []).map((file) => ({ file, name: file?.name, title: titleOf(file) })));
     },
+    addSources,
     /** Vuelve a poner en cola una subida con error. true si se ha podido. */
     retry(key) {
       const entry = find(key);

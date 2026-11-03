@@ -1,11 +1,13 @@
 // Hoja «Subir canciones» (ADR-0017): una sola forma de subir archivos.
-// - Subir: la persona elige uno o varios archivos y cada uno pasa a la cola del gestor de subidas de la app
+// - Subir: la persona elige uno o varios archivos (también ZIP, mezclados con canciones sueltas) y cada canción pasa a la cola del gestor de subidas de la app
 //   (js/cuidador/subida-estado.js), que lo convierte a Opus en este navegador, guarda una copia para que se pueda
 //   escuchar ya, lo envía por trozos a la función del propio origen /api/subir (js/cuidador/subida-publica.js) y
 //   comprueba /data/songs.json hasta que la canción está publicada. La hoja solo pinta ese estado: una fila por archivo
 //   con su paso («Convirtiendo a Opus…», «Subiendo… 45 %», «Guardada en GitHub», «Publicándose…», «Publicada» con
 //   «Reproducir», o «Error: <motivo>» con «Reintentar») y un resumen arriba («2 de 3 publicadas»). Al cerrar la hoja,
 //   las subidas siguen. Ni esta hoja ni la web conocen ningún token.
+// - ZIP: la app saca del ZIP sus canciones de audio (subida-zip.js y zip.js) y la hoja las pinta en un grupo, con la
+//   cabecera «Álbum.zip: 12 canciones», lo que se ignoró y una fila por canción. El ZIP no se sube nunca.
 // - Las canciones guardadas antes solo en este navegador (ADR-0012) siguen sonando y se pueden borrar desde aquí.
 // - «Importar desde Internet Archive»: prepara una incidencia de importación con la validación de incidencias.js y de
 //   intake.js (la misma lista de bloqueo de 42 plataformas que el backend; ADR-0008).
@@ -15,6 +17,7 @@ import { validateImport } from '../intake.js';
 import { opusSupport } from '../cuidador/subida-local.js';
 import { PUBLIC_AUDIO_ACCEPT, PUBLIC_UNSUPPORTED_TEXT, RIGHTS_TEXT } from '../cuidador/subida-publica.js';
 import { progressOf, STATES, statusText, summaryText } from '../cuidador/subida-estado.js';
+import { groupNote, groupTitle, ZIP_ACCEPT } from '../cuidador/subida-zip.js';
 import { formatDuration } from '../catalog.js';
 import { el, openDialog, uid } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
@@ -147,7 +150,7 @@ function uploadRow(ctx) {
 function uploadPanel(ctx, openArchive) {
   const inputId = uid('archivos');
   // El campo de archivo va oculto: lo abre el botón visible, que sí recibe el foco con el teclado.
-  const input = el('input', { id: inputId, type: 'file', accept: PUBLIC_AUDIO_ACCEPT, multiple: true, hidden: true, 'data-testid': 'upload-file-input' });
+  const input = el('input', { id: inputId, type: 'file', accept: `${PUBLIC_AUDIO_ACCEPT},${ZIP_ACCEPT}`, multiple: true, hidden: true, 'data-testid': 'upload-file-input' });
   const pick = el('button', {
     type: 'button',
     class: 'button button-primary upload-pick',
@@ -161,6 +164,7 @@ function uploadPanel(ctx, openArchive) {
   // Región que anuncia cada cambio de paso (no cada porcentaje) a quien usa un lector de pantalla.
   const live = el('p', { class: 'sr-only', 'aria-live': 'polite', 'data-testid': 'upload-live' });
   const rows = new Map();
+  const groups = new Map();
   const seen = new Map();
 
   opusSupport().then((result) => {
@@ -171,6 +175,26 @@ function uploadPanel(ctx, openArchive) {
     }
   });
 
+  // Grupo de un ZIP: cabecera «Álbum.zip: 12 canciones», lo ignorado y su propia lista de filas.
+  const groupNode = (group, changes) => {
+    let node = groups.get(group.key);
+    if (node) return node;
+    const note = groupNote(group);
+    const items = el('ul', { class: 'upload-items upload-group-items', 'aria-label': `Canciones de ${group.name}` });
+    const title = groupTitle(group);
+    const element = el('li', { class: 'upload-group', 'data-testid': 'upload-group', 'data-group-key': group.key },
+      el('p', { class: 'upload-group-title', 'data-testid': 'upload-group-title', title },
+        el('span', { class: 'upload-group-icon', 'aria-hidden': 'true' }, icon('archive', { size: 20 })),
+        el('span', { class: 'upload-group-name' }, title)),
+      note ? el('p', { class: 'upload-note upload-group-note', 'data-testid': 'upload-group-note' }, note) : null,
+      items);
+    list.append(element);
+    node = { element, items };
+    groups.set(group.key, node);
+    changes.push([title, note].filter(Boolean).join('. '));
+    return node;
+  };
+
   const paint = (items, { announce = true } = {}) => {
     summary.textContent = summaryText(items);
     summary.hidden = items.length === 0;
@@ -180,7 +204,7 @@ function uploadPanel(ctx, openArchive) {
       if (!row) {
         row = uploadRow(ctx);
         rows.set(item.key, row);
-        list.append(row.node);
+        (item.group ? groupNode(item.group, changes).items : list).append(row.node);
       }
       row.update(item);
       if (seen.get(item.key) !== item.state) {
@@ -205,7 +229,7 @@ function uploadPanel(ctx, openArchive) {
 
   const node = el('div', { class: 'upload-panel', 'data-testid': 'upload-panel' },
     el('p', { class: 'dialog-text', 'data-autofocus': '', tabindex: '-1' },
-      'Elige uno o varios archivos de audio (WAV, MP3, M4A, FLAC, OGG u OPUS). Se convierten a Opus en este navegador y se suben a la biblioteca para todos. El título de cada canción es el nombre del archivo.'),
+      'Elige uno o varios archivos de audio (WAV, MP3, M4A, FLAC, OGG u OPUS) o archivos ZIP con canciones. Se convierten a Opus en este navegador y se suben a la biblioteca para todos. El título de cada canción es el nombre del archivo. De un ZIP se sacan todas sus canciones, también las de sus carpetas; el ZIP no se sube.'),
     el('p', { class: 'upload-note', 'data-testid': 'upload-rights' }, RIGHTS_TEXT),
     support,
     el('div', { class: 'upload-row' }, input, pick),

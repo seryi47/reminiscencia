@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## Sin publicar: web, «Subir canciones» acepta archivos ZIP (2026-11-03)
+
+Pedido del propietario: subir un álbum entero en un ZIP, o varios, mezclados con canciones sueltas.
+
+### Cambiado
+- «Elegir archivos» admite también `.zip`. El navegador lee cada ZIP y saca todas sus canciones de audio (WAV, MP3, M4A, FLAC, OGG y OPUS), también las de subcarpetas, y cada una sube con el flujo de siempre (conversión a Opus, trozos a `/api/subir` y pasos hasta «Publicada»). El título es el nombre del archivo dentro del ZIP, sin la ruta ni la extensión. Se ignoran las carpetas, `__MACOSX/`, lo oculto (empieza por «.») y lo que no es audio, y la hoja dice cuántos archivos se ignoraron.
+- El ZIP no se sube nunca: solo se lee su directorio central y cada canción se descomprime cuando le toca, de una en una; el ZIP se suelta en cuanto cada canción está en GitHub. Sin límites de tamaño (orden del propietario). Las rutas del ZIP solo sirven para sacar el nombre base.
+- En la hoja, cada ZIP es un grupo: «Álbum.zip: 12 canciones», lo ignorado y una fila por canción; el resumen general cuenta todas. Un ZIP dañado, en varias partes o sin canciones da un error claro en su fila (sin «Reintentar») y el resto sigue; una canción cifrada dentro del ZIP falla en su fila y las demás suben.
+- `SHELL_VERSION` pasa a 11 (módulos nuevos en `SHELL_ASSETS`).
+
+### Añadido
+- `js/cuidador/zip.js`: lector mínimo de ZIP sin dependencias (directorio central, ZIP64, entradas «stored» y «deflate» con `DecompressionStream('deflate-raw')`, CRC-32, nombres en UTF-8, Info-ZIP Unicode o página de códigos 437). `js/cuidador/subida-zip.js`: la selección mezclada convertida en subidas con su grupo, y los textos y el agrupado de la hoja. En `subida-estado.js`, `addSources` y el grupo de cada subida (también en `localStorage`).
+- Pruebas: `tests/web-unit/zip.test.mjs` (ZIP generados en la prueba: stored, deflate, subcarpetas, `__MACOSX`, ocultos, no-audio, ZIP64, página de códigos 437, cifrado y dañado) y `tests/web-unit/subida-zip.test.mjs` (selección mezclada, textos, agrupado y el gestor de una en una); de extremo a extremo, un ZIP con subcarpetas y `__MACOSX` junto a una canción suelta y un ZIP dañado, con la función y `songs.json` simulados, hasta «Publicada» (con axe-core).
+
 ## Sin publicar: APK, «Subir canciones» acepta archivos ZIP (2026-11-03)
 
 Pedido del propietario. Sin probar en dispositivo.
