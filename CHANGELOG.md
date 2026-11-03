@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## Sin publicar: artista y año al importar desde Internet Archive (2026-11-03)
+
+### Corregido
+- Las canciones importadas desde Internet Archive entraban sin artista («Artista desconocido»). Ahora la importación (`backend/sonidos/sources.py` y `pipeline.py`) toma el artista de `creator` en los metadatos del ítem (una lista se une con «, », sin nombres vacíos, repetidos ni con caracteres de control o de formato) y el año de `date` o, si no sirve, de `year` (solo cuatro cifras al principio, como `1925-00-00 00:00:00`). Lo que no cumple los límites del catálogo se recorta (artista de más de 200 caracteres) o se descarta (año fuera de 1000 a 2100, «1920s», «c. 1925»), sin que la importación falle. Solo afecta a las canciones nuevas: una canción ya catalogada no cambia.
+- Los límites del artista y del año de una canción están ahora en `backend/sonidos/catalog.py` (`SONG_ARTIST_MAX_CHARS`, `YEAR_MIN`, `YEAR_MAX`), y `issue_request.py` los usa en lugar de tener su copia.
+- Pruebas con metadatos simulados, sin red, en `backend/tests/test_sources.py` y `test_pipeline.py`.
+
 ## Sin publicar: APK con portadas, álbumes y edición por GitHub (2026-11-03; en `main`)
 
 ### Añadido

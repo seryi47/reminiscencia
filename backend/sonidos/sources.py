@@ -18,6 +18,8 @@ import unicodedata
 from dataclasses import dataclass
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
+from sonidos.catalog import SONG_ARTIST_MAX_CHARS, YEAR_MAX, YEAR_MIN
+
 AUDIO_EXTENSIONS = (".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav")
 
 # Plataformas de vídeo y de streaming (ADR-0002, ADR-0005) y los dominios de sus ficheros (CDN).
@@ -121,6 +123,8 @@ class ResolvedSource:
     license: str
     title: str | None
     file_name: str
+    artist: str = ""
+    year: int | None = None
 
 
 def canonical_host(url: str) -> str:
@@ -351,6 +355,51 @@ def _ia_title(value: object) -> str | None:
     return clean
 
 
+# Año al principio de «date» o «year» de Internet Archive: «1925», «1927-01-01» o «1925-00-00 00:00:00».
+_IA_YEAR = re.compile(r"(\d{4})(?:[-/ T].*)?", re.DOTALL)
+
+
+def _ia_artist(value: object) -> str:
+    """Artista desde «creator» de Internet Archive: un texto o una lista de textos, unidos con «, ». Se descarta cada
+    nombre que no sea texto de una línea (control, saltos, caracteres de formato) y los repetidos. Si el resultado
+    supera SONG_ARTIST_MAX_CHARS, se recorta. Sin un nombre válido, queda vacío: la importación no falla por esto."""
+    items = value if isinstance(value, list) else [value]
+    names: list[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        clean = item.strip()
+        if not clean or clean in names:
+            continue
+        if any(unicodedata.category(char) in UNSAFE_TEXT_CATEGORIES for char in clean):
+            continue
+        names.append(clean)
+    artist = ", ".join(names)
+    if len(artist) > SONG_ARTIST_MAX_CHARS:
+        artist = artist[:SONG_ARTIST_MAX_CHARS].rstrip(" ,")
+    return artist
+
+
+def _ia_year(meta: dict) -> int | None:
+    """Año desde «date» y, si no sirve, desde «year»: cuatro cifras al principio, entre YEAR_MIN y YEAR_MAX. Una
+    lista se mira elemento a elemento. Lo que no lo cumpla («1920s», «c. 1925», «0000») se descarta."""
+    for key in ("date", "year"):
+        raw = meta.get(key)
+        for item in raw if isinstance(raw, list) else [raw]:
+            if isinstance(item, bool):
+                continue
+            if isinstance(item, int):
+                text = str(item)
+            elif isinstance(item, str):
+                text = item.strip()
+            else:
+                continue
+            match = _IA_YEAR.fullmatch(text)
+            if match and YEAR_MIN <= int(match.group(1)) <= YEAR_MAX:
+                return int(match.group(1))
+    return None
+
+
 def resolve_internet_archive(url: str, metadata: dict) -> ResolvedSource:
     identifier = ia_identifier(url)
 
@@ -372,6 +421,8 @@ def resolve_internet_archive(url: str, metadata: dict) -> ResolvedSource:
         license=f"{license_name} (Internet Archive: {identifier})",
         title=_ia_title(meta.get("title")),
         file_name=file_name,
+        artist=_ia_artist(meta.get("creator")),
+        year=_ia_year(meta),
     )
 
 

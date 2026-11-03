@@ -626,3 +626,88 @@ def test_resolve_url_asks_for_the_metadata_of_the_item_not_of_the_file(monkeypat
 
     assert asked == ["https://archive.org/metadata/tema-item"]
     assert resolved.download_url == "https://archive.org/download/tema-item/tema.flac"
+
+
+# --- Artista y año desde los metadatos de Internet Archive (2026-11-03) ------------------------
+
+
+def _ia_with(**fields):
+    metadata = _ia_metadata(
+        "http://creativecommons.org/publicdomain/mark/1.0/", [{"name": "tema.mp3", "format": "VBR MP3"}]
+    )
+    metadata["metadata"].update(fields)
+    return resolve_internet_archive("https://archive.org/details/tema-item", metadata)
+
+
+def test_internet_archive_creator_and_date_give_artist_and_year():
+    resolved = _ia_with(creator="Golden Gate Orchestra", date="1925-00-00 00:00:00")
+
+    assert resolved.artist == "Golden Gate Orchestra"
+    assert resolved.year == 1925
+
+
+def test_internet_archive_creator_list_is_joined_without_empty_or_repeated_names():
+    resolved = _ia_with(creator=["Harry Macdonough", " ", "Grace Spencer", 7, "Harry Macdonough"])
+
+    assert resolved.artist == "Harry Macdonough, Grace Spencer"
+
+
+def test_internet_archive_without_creator_or_date_keeps_artist_empty_and_year_null():
+    resolved = _ia_with()
+
+    assert resolved.artist == ""
+    assert resolved.year is None
+
+
+@pytest.mark.parametrize("creator", [None, "", "   ", 42, {"name": "x"}, ["", None], "Hola\nmundo", "Hola‮mundo"])
+def test_internet_archive_creator_that_is_not_plain_text_is_discarded(creator):
+    assert _ia_with(creator=creator).artist == ""
+
+
+def test_internet_archive_creator_list_drops_only_the_unsafe_names():
+    assert _ia_with(creator=["Ana​Pérez", "Luis Gil"]).artist == "Luis Gil"
+
+
+def test_internet_archive_long_creator_is_cut_to_the_catalog_limit():
+    from sonidos.catalog import SONG_ARTIST_MAX_CHARS
+
+    resolved = _ia_with(creator=["a" * 150, "b" * 150])
+
+    assert len(resolved.artist) == SONG_ARTIST_MAX_CHARS
+    assert resolved.artist.startswith("a" * 150 + ", b")
+
+
+def test_internet_archive_long_creator_does_not_end_in_a_separator():
+    resolved = _ia_with(creator=["a" * 199, "b"])
+
+    assert resolved.artist == "a" * 199
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        ({"date": "1927-01-01", "year": "1930"}, 1927),
+        ({"date": "1920s", "year": "1927"}, 1927),
+        ({"year": "1902"}, 1902),
+        ({"year": 1919}, 1919),
+        ({"date": ["c. 1900", "1907-00-00"]}, 1907),
+        ({"date": "1925/06"}, 1925),
+        ({"date": "c. 1925"}, None),
+        ({"date": "0000-00-00"}, None),
+        ({"date": "0999"}, None),
+        ({"date": "2101"}, None),
+        ({"date": "19250"}, None),
+        ({"date": "25-01-1925"}, None),
+        ({"year": True}, None),
+        ({"year": 19.25}, None),
+        ({"date": "1925\n"}, 1925),
+    ],
+)
+def test_internet_archive_year_only_takes_a_valid_four_digit_year(fields, expected):
+    assert _ia_with(**fields).year == expected
+
+
+def test_direct_file_has_no_artist_or_year():
+    resolved = resolve_direct_file("https://ejemplo.com/tema.mp3", "CC0")
+
+    assert resolved.artist == "" and resolved.year is None

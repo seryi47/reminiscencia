@@ -2,6 +2,7 @@
 
 Pasos: resolver la fuente (ADR-0005) -> descargar a staging -> huella SHA-256 ->
 sondeo -> si es nuevo, convertir a Opus en audio-library/audio/<id>.opus -> guardar catálogo.
+De un ítem de Internet Archive salen también el artista («creator») y el año («date» o «year»), ya validados.
 Pensado para ejecutarse en GitHub Actions (runner con ffmpeg), no en Vercel.
 """
 
@@ -51,6 +52,8 @@ def import_url(
             codec=info.codec,
             duration_s=info.duration_s,
             size_bytes=info.size_bytes,
+            artist=resolved.artist,
+            year=resolved.year,
         )
         if created:
             produced = transcode(target, staging_dir / song["id"], PLAYBACK_PROFILE)

@@ -106,3 +106,51 @@ def test_direct_download_is_not_marked_as_internet_archive(paths, tone_wav, monk
     import_url(url="https://ejemplo.com/tema.wav", license="CC0", **paths)
 
     assert seen == {"internet_archive": False}
+
+
+# --- Artista y año desde Internet Archive (2026-11-03) -----------------------------------------
+
+
+def _import_ia(paths, tone_wav, monkeypatch, **fields):
+    metadata = {"metadata": {"title": "Tono", "licenseurl": "http://creativecommons.org/publicdomain/mark/1.0/",
+                             **fields},
+                "files": [{"name": "tono.wav", "format": "Flac"}]}
+    monkeypatch.setattr(intake, "fetch_json", lambda url: metadata)
+    monkeypatch.setattr(intake, "download", _fake_download(tone_wav))
+    result = import_url(url="https://archive.org/details/tono-prueba", license=None, **paths)
+    return catalog.find_song(catalog.load(paths["catalog_path"]), result["song_id"])
+
+
+def test_internet_archive_import_saves_creator_as_artist_and_the_year(paths, tone_wav, monkeypatch):
+    song = _import_ia(paths, tone_wav, monkeypatch, creator=["Harry Macdonough", "Grace Spencer"],
+                      date="1902-00-00 00:00:00")
+
+    assert song["artist"] == "Harry Macdonough, Grace Spencer"
+    assert song["year"] == 1902
+
+
+def test_internet_archive_import_with_unusable_creator_and_date_still_imports(paths, tone_wav, monkeypatch):
+    song = _import_ia(paths, tone_wav, monkeypatch, creator="x" * 500, date="hacia 1920", year="1920s")
+
+    assert song["artist"] == "x" * catalog.SONG_ARTIST_MAX_CHARS
+    assert song["year"] is None
+    assert song["title"] == "Tono"
+
+
+def test_internet_archive_import_artist_and_year_pass_the_request_contract(paths, tone_wav, monkeypatch):
+    from sonidos.issue_request import validate_payload
+
+    song = _import_ia(paths, tone_wav, monkeypatch, creator="y" * 300, year=1925)
+
+    validated = validate_payload({"op": "edit_song", "song_id": song["id"], "artist": song["artist"],
+                                  "year": song["year"]})
+    assert validated["artist"] == song["artist"] and validated["year"] == 1925
+
+
+def test_direct_file_import_keeps_artist_empty(paths, tone_wav, monkeypatch):
+    monkeypatch.setattr(intake, "download", _fake_download(tone_wav))
+
+    result = import_url(url="https://ejemplo.com/tema.wav", license="CC0", **paths)
+
+    song = catalog.find_song(catalog.load(paths["catalog_path"]), result["song_id"])
+    assert song["artist"] == "" and song["year"] is None
