@@ -18,6 +18,7 @@ import 'settings_store.dart';
 import 'shared_upload.dart';
 import 'sonidos_audio_handler.dart';
 import 'upload_tracker.dart';
+import 'youtube_importer.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -81,6 +82,7 @@ Future<void> main() async {
         covers: covers,
         collections: collections,
         settings: settings,
+        youtube: YoutubeImporter(client: client),
       ),
     ),
   );

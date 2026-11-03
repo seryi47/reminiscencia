@@ -72,9 +72,31 @@ Las portadas se suben al mismo buzón, en su carpeta `portadas` (ADR-0016): http
 - Si el id no existe o la imagen no es válida, se rechaza, se borra del buzón y el motivo sale en el resumen de la ejecución.
 - Sube solo portadas que puedas usar: quedan en el historial de git y, las públicas, en la web. Nunca fotografías de pacientes ni de otras personas.
 
+### Importar playlists propias de YouTube desde Homeostasia
+
+Homeostasia conserva la cola existente de «Subir canciones»: tanto los archivos elegidos a mano como los WAV importados terminan en `ctx.addUploads`, se convierten a Ogg Opus, se envían por fragmentos a `/api/subir` y los publica el workflow `buzon`. La importación no crea una ruta alternativa de publicación.
+
+La APK ofrece el mismo flujo desde `mobile/lib/ui/homeostasia.dart`: consulta los proxies `/api/youtube/*`, convierte y valida los WAV en el teléfono y después llama a `LibraryController.uploadShared`, de modo que también termina en `/api/subir` y en el workflow `buzon`.
+
+El flujo de YouTube es:
+
+1. El navegador valida una URL `https://www.youtube.com/playlist?list=...` y llama a `GET /api/youtube/playlist?url=...`.
+2. La función serverless ejecuta `yt-dlp` con argumentos separados, `--flat-playlist` y un máximo de 200 elementos. Solo devuelve IDs y títulos; no descarga vídeos ni acepta URLs que no sean de YouTube.
+3. El navegador encola como máximo cuatro trabajos a la vez. Las llamadas a `api.yttowav.org` pasan por `POST /api/youtube/convert`, `GET /api/youtube/status` y `GET /api/youtube/download`; el backend fija `format: wav` y `quality: original`, valida el identificador y transmite el WAV sin cargarlo completo en memoria.
+4. Cada WAV debe tener cabecera RIFF/WAVE y contenido. Tras descargarlo se convierte en `File` y vuelve a la cola original. Los errores son por canción y se pueden reintentar.
+
+Las funciones de proxy se encuentran en `frontend/web/api/youtube/`; `frontend/web/server/` contiene la lógica compartida fuera del directorio de rutas. La CSP sigue usando `connect-src 'self'`, por lo que el navegador no necesita CORS del servicio externo. El estado de trabajos encolados se conserva en `localStorage` y los WAV terminados antes de encolarlos en IndexedDB; la conversión solo se marca terminada después de descargar y validar el archivo, y la publicación sigue siendo un estado separado de la conversión.
+
+Configuración del servidor:
+
+- `YTDLP_PATH`: ruta absoluta al ejecutable `yt-dlp`; si no existe se intenta `yt-dlp` desde `PATH`. En producción debe instalarse o incluirse ese ejecutable en el runtime de Vercel. La función devuelve un error explícito si falta.
+- No se necesita ninguna clave para yttowav en el frontend. `GITHUB_TOKEN` sigue siendo únicamente la variable de `/api/subir`.
+
+La API externa de yttowav no publica una especificación estable de sus endpoints. El script original y la integración usan sus rutas observadas (`/api/convert`, `/api/status` y `/api/download/?jobId=...`), además de comprobar estados, identificadores, origen de descarga y cabecera WAV. La comprobación no destructiva observó HTTP 500 en el preflight `OPTIONS /api/convert` y HTTP 400 para un `jobId` deliberadamente inválido en `/api/status`. El proxy evita el preflight del navegador, pero no se creó ningún trabajo real: la conversión y descarga de WAV siguen pendientes de una prueba autorizada contra el servicio externo.
+
 ### Importar desde Internet Archive
 
-En la hoja, «Importar desde Internet Archive». Para importar un ítem de Internet Archive con licencia (o un fichero de audio directo con licencia declarada). La hoja valida la dirección en el navegador, con la misma lista de bloqueo de 42 plataformas que el backend, y abre en GitHub una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. Solo se procesan las incidencias de cuentas con permiso de escritura (job `autorizar`). La canción entra **privada** hasta que se publica por incidencia (abajo). YouTube y las plataformas de streaming no se admiten.
+En la hoja, «Importar desde Internet Archive». Para importar un ítem de Internet Archive con licencia (o un fichero de audio directo con licencia declarada). La hoja valida la dirección en el navegador, con la misma lista de bloqueo de 42 plataformas que el backend, y abre en GitHub una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. Solo se procesan las incidencias de cuentas con permiso de escritura (job `autorizar`). La canción entra **privada** hasta que se publica por incidencia (abajo). Por esta vía de incidencias no se admiten YouTube ni las plataformas de streaming.
 
 ## Cambios en la biblioteca por incidencia
 
@@ -91,7 +113,7 @@ Publicar, despublicar, editar y organizar carpetas se hace escribiendo la incide
    ```
 
    También se admite `archive.org/download/<identificador-del-ítem>`.
-3. Para un fichero de audio directo, fuera de Internet Archive, `license:` es obligatoria y debe declarar la licencia. YouTube y las plataformas de streaming no se admiten.
+3. Para un fichero de audio directo, fuera de Internet Archive, `license:` es obligatoria y debe declarar la licencia. Las URLs de YouTube y de plataformas de streaming no se admiten en las incidencias de importación.
 
 Las canciones nuevas quedan **privadas** hasta que las publicas.
 

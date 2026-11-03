@@ -135,9 +135,11 @@ def test_permissions_are_declared_on_the_job_not_on_the_whole_workflow():
 def test_web_has_no_administration_code():
     for folder in ("admin", "lib"):
         assert not (ROOT / "frontend" / "web" / folder).exists()
-    # La única función de Vercel es la subida al buzón (ADR-0017, que sustituye en esto a ADR-0008).
+    # Las funciones públicas son la subida al buzón y el importador seguro de YouTube;
+    # server solo contiene módulos compartidos, no rutas alternativas de publicación.
     api = ROOT / "frontend" / "web" / "api"
-    assert sorted(path.name for path in api.iterdir()) == ["subir.js"]
+    assert sorted(path.name for path in api.iterdir()) == ["subir.js", "youtube"]
+    assert sorted(path.name for path in (api / "youtube").iterdir()) == ["convert.js", "download.js", "playlist.js", "status.js"]
 
 
 # --- Corrección de la ronda 2 (2026-11-02): procesado separado de la publicación -----------------

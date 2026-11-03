@@ -5,6 +5,7 @@ import 'library_controller.dart';
 import 'playback.dart';
 import 'settings_store.dart';
 import 'url_opener.dart';
+import 'youtube_importer.dart';
 
 /// Servicios que usa la interfaz. En pruebas se sustituyen por versiones falsas.
 /// No hay usuarios ni modos: todos ven el mismo catálogo; las listas y «Me gusta» viven solo en este teléfono.
@@ -18,6 +19,7 @@ class AppServices {
     this.openUrl = openInBrowser,
     this.pickImage = pickImageFromDevice,
     this.pickAudio = pickAudioFromDevice,
+    this.youtube,
     this.clock = DateTime.now,
   });
 
@@ -37,6 +39,10 @@ class AppServices {
 
   /// Elige archivos de audio del teléfono («Subir canciones»).
   final AudioFilesPicker pickAudio;
+
+  /// Importador de playlists para Homeostasia. Es opcional en pruebas y en
+  /// construcciones que no necesitan la conexión de YouTube.
+  final YoutubeImporter? youtube;
 
   /// Hora actual (saludo de Inicio). Se sustituye en pruebas.
   final DateTime Function() clock;

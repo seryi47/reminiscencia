@@ -4,6 +4,7 @@ import '../app_error.dart';
 import '../local_audio.dart';
 import '../services.dart';
 import '../shared_upload.dart';
+import '../youtube_importer.dart';
 import 'common.dart';
 
 /// «Homeostasia»: toda la lógica del botón vive en este archivo (como `js/views/homeostasia.js` en la web).
@@ -48,16 +49,20 @@ class _HomeostasiaSheet extends StatefulWidget {
 
 class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
   String? _status;
+  bool _working = false;
+  late final TextEditingController _playlistController;
 
   @override
   void initState() {
     super.initState();
+    _playlistController = TextEditingController();
     widget.services.library.uploads.addListener(_onUploads);
   }
 
   @override
   void dispose() {
     widget.services.library.uploads.removeListener(_onUploads);
+    _playlistController.dispose();
     super.dispose();
   }
 
@@ -69,6 +74,7 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
   }
 
   Future<void> _send() async {
+    if (_working) return;
     final library = widget.services.library;
     if (!await library.canUpload()) {
       _show(kOfflineMessage);
@@ -82,6 +88,7 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
       return;
     }
     if (files.isEmpty || !mounted) return;
+    setState(() => _working = true);
     setState(() {
       _status = files.length == 1
           ? 'Enviando «${files.first.name}» a GitHub…'
@@ -95,6 +102,56 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
             ? error.message
             : 'No se pudo enviar: ${describeError(error)}',
       );
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _importYoutube() async {
+    if (_working) return;
+    final importer = widget.services.youtube;
+    if (importer == null) {
+      _show('La importación de YouTube no está disponible en esta versión.');
+      return;
+    }
+    if (!await widget.services.library.canUpload()) {
+      _show(kOfflineMessage);
+      return;
+    }
+    final playlistUrl = _playlistController.text.trim();
+    if (playlistUrl.isEmpty) {
+      _show('Pega una URL de playlist de YouTube.');
+      return;
+    }
+    setState(() {
+      _working = true;
+      _status = 'Leyendo la playlist de YouTube…';
+    });
+    List<YoutubeImportedAudio>? imported;
+    try {
+      imported = await importer.importPlaylist(
+        playlistUrl,
+        onProgress: (progress) {
+          if (mounted) _show(progress.message);
+        },
+      );
+      if (!mounted) return;
+      final audios = imported;
+      setState(() => _status = 'Enviando ${audios.length} canciones a GitHub…');
+      final result = await widget.services.library.uploadShared([
+        for (final audio in audios)
+          PickedAudioFile(name: audio.name, path: audio.path),
+      ]);
+      if (mounted) _show(describeUploadResult(result));
+    } catch (error) {
+      _show(
+        error is AppException
+            ? error.message
+            : 'No se pudo importar la playlist: ${describeError(error)}',
+      );
+    } finally {
+      if (imported != null) await importer.cleanup(imported);
+      if (mounted) setState(() => _working = false);
     }
   }
 
@@ -126,9 +183,38 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
               const SizedBox(height: 16),
               FilledButton.icon(
                 key: const Key('homeostasia-pick'),
-                onPressed: _send,
+                onPressed: _working ? null : _send,
                 icon: const Icon(Icons.upload_rounded),
                 label: const Text('Enviar a GitHub'),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Importar playlist de YouTube',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Se convierten sus canciones a WAV y después se envían por la misma cola de GitHub.',
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const Key('homeostasia-youtube-url'),
+                controller: _playlistController,
+                enabled: !_working,
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'URL de la playlist',
+                  hintText: 'https://www.youtube.com/playlist?list=…',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.tonalIcon(
+                key: const Key('homeostasia-youtube-import'),
+                onPressed: _working ? null : _importYoutube,
+                icon: const Icon(Icons.playlist_add_rounded),
+                label: const Text('Importar playlist'),
               ),
               if (_status != null) ...[
                 const SizedBox(height: 12),

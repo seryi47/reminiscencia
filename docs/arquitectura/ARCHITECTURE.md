@@ -1,6 +1,6 @@
 # Arquitectura de Reminiscencia
 
-- Estado: 2026-11-03, con la interfaz sin usuarios de [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md), el buzón de [ADR-0014](../decisions/ADR-0014-buzon-de-canciones.md), las portadas y álbumes de [ADR-0016](../decisions/ADR-0016-portadas-y-albumes.md) y la subida para todos por `/api/subir` de [ADR-0017](../decisions/ADR-0017-subida-directa-github-web-publica.md).
+- Estado: 2026-11-03, con la interfaz sin usuarios de [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md), el buzón de [ADR-0014](../decisions/ADR-0014-buzon-de-canciones.md), las portadas y álbumes de [ADR-0016](../decisions/ADR-0016-portadas-y-albumes.md), la subida para todos por `/api/subir` de [ADR-0017](../decisions/ADR-0017-subida-directa-github-web-publica.md) y la integración web de playlists propias de YouTube (pendiente de configurar yt-dlp y verificar yttowav en producción).
 - Documentos relacionados: `docs/decisions/` (ADR), [GITHUB_STORAGE.md](GITHUB_STORAGE.md) (almacenamiento y límites), `docs/audio-processing/AUDIO_ENGINE.md`, `docs/datos/DATABASE.md`, `docs/user-experience/DESIGN.md`.
 
 ## Visión general
@@ -9,7 +9,7 @@ Cuatro piezas, cada una con una sola responsabilidad:
 
 - **GitHub guarda** el código, el catálogo (`audio-library/indexes/catalog.json`), el audio de todas las canciones (`audio-library/audio/`), el audio publicado (`frontend/web/audio/`) y los datos públicos de la web (`frontend/web/data/`).
 - **GitHub Actions procesa.** Importar, convertir, organizar y publicar se hacen en dos workflows con ffmpeg del runner: `biblioteca.yml` (peticiones por incidencia) y `buzon.yml` (archivos subidos a `audio-library/buzon/`). Nada de eso corre en Vercel.
-- **Vercel sirve la web estática** de `frontend/web` (Root Directory, según ADR-0007) y una sola función, `api/subir.js` (ADR-0017), que recibe las canciones por trozos y las guarda en el buzón del repositorio con `GITHUB_TOKEN` (variable de entorno de Vercel). No procesa audio ni tiene página de administración. La interfaz es una sola página, sin usuarios, con el aspecto de Spotify (ADR-0015).
+- **Vercel sirve la web estática** de `frontend/web` (Root Directory, según ADR-0007) y funciones serverless. `api/subir.js` (ADR-0017) recibe canciones por trozos y las guarda en el buzón con `GITHUB_TOKEN`; `api/youtube/*` extrae metadatos de playlists con `yt-dlp` y hace de proxy para la API de yttowav. El proxy transmite el WAV, que luego la cola de la web convierte a Opus y publica por el workflow `buzon`. El runtime necesita `yt-dlp` en `PATH` o `YTDLP_PATH`. La interfaz es una sola página, sin usuarios, con el aspecto de Spotify (ADR-0015).
 - **La app Android lee la biblioteca** de la web: descarga `data/songs.json` y `data/folders.json` de `https://reminiscencia.vercel.app/` y guarda una copia para escuchar sin conexión. No lleva audio empaquetado ni tiene usuarios. «Subir canciones» convierte cada archivo a Opus en el teléfono y lo envía por trozos a la misma función `/api/subir` de la web (ADR-0017); las canciones guardadas antes solo en el teléfono (ADR-0013) siguen sonando y se borran.
 
 ## Diagrama
@@ -28,12 +28,21 @@ flowchart LR
     CI["CI: backend, web, web-e2e y android"]
   end
   FUENTES["Internet Archive o URL directa con licencia"]
+  YT["Playlist propia de YouTube"]
+  YTDLP["yt-dlp: metadatos flat, máximo 200"]
+  YTTOWAV["api.yttowav.org"]
   VERCEL["Vercel: sirve frontend/web"]
   SUBIR["Función de Vercel api/subir.js (GITHUB_TOKEN)"]
+  YTAPI["Funciones api/youtube/* (mismo origen)"]
   NAVEG["Navegador: interfaz sin usuarios"]
   APP["App Android (Flutter)"]
 
   NAVEG -->|"Desde Internet Archive abre la incidencia"| ISSUE
+  NAVEG -->|"URL de playlist"| YTAPI
+  YTAPI -->|"spawn con argumentos separados"| YTDLP
+  YTDLP -->|"IDs y títulos, sin descargar vídeos"| YTAPI
+  YTAPI -->|"crear job, consultar y transmitir WAV"| YTTOWAV
+  YTAPI -->|"File WAV a la cola existente"| NAVEG
   NAVEG -->|"Subir canciones: Opus en trozos de 4 MiB"| SUBIR
   APP -->|"Subir canciones: Opus en trozos de 4 MiB"| SUBIR
   SUBIR -->|"un commit por trozo en buzon/.partes/; el último con manifiesto y Licencia"| BUZON
@@ -61,6 +70,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 |---|---|---|
 | Buzón | `audio-library/buzon/` | Carpeta de paso. La función `/api/subir` deja aquí los trozos de cada subida de la web o la APK (`.partes/<id>/` y su `manifiesto.json`; ADR-0017), y quien tiene permiso de escritura puede subir audio desde la página de subida de GitHub (ADR-0014). Las portadas van en `portadas/` (ADR-0016). `buzon.yml` lo convierte, lo da de alta y lo borra de aquí. |
 | Función de subida | `frontend/web/api/subir.js` | `POST /api/subir`, Node sin dependencias. Recibe un trozo de hasta 4 MiB con las cabeceras `X-Nombre-Archivo`, `X-Subida-Id`, `X-Parte` y `X-Partes` (hasta 1000 trozos), valida Ogg Opus en el primero y lo guarda con un commit en `main` por la API de git de GitHub, con `GITHUB_TOKEN` de Vercel. Con el último escribe el manifiesto y la línea «Licencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla». Sin límites de tamaño ni por hora, por decisión del propietario (ADR-0017). |
+| Importación YouTube | `frontend/web/api/youtube/`, `frontend/web/server/youtube-*.js` y `js/views/homeostasia.js` | `GET /api/youtube/playlist` ejecuta `yt-dlp --flat-playlist` (máximo 200 elementos, timeout 45 s) para devolver IDs y títulos, sin descargar vídeos. `POST /api/youtube/convert`, `GET /api/youtube/status` y `GET /api/youtube/download` son un proxy del mismo origen a yttowav; validan entradas, mantienen la CSP `connect-src 'self'` y transmiten el WAV con límite de 256 MiB. El WAV vuelve a `ctx.addUploads` y sigue el flujo de `/api/subir` y `buzon`. Requiere `yt-dlp` instalado o empaquetado y `YTDLP_PATH` si no está en `PATH`; la conversión real contra el proveedor aún no se ha verificado. |
 | Catálogo | `audio-library/indexes/catalog.json` | Fuente de verdad: carpetas, canciones, licencia, huella SHA-256, origen y el indicador `public`. Versión 1. |
 | Audio de la biblioteca | `audio-library/audio/<id>.opus` | Opus de todas las canciones, también de las no publicadas. Lo genera la importación (`backend/sonidos/pipeline.py`). |
 | Audio publicado | `frontend/web/audio/<id>.opus` | Copia de las canciones con `public: true`. Lo sincroniza `backend/sonidos/publish.py`. |

@@ -6,7 +6,7 @@ Este documento describe lo que el código de `main` hace hoy, separa lo implemen
 
 ## 0. Alcance, estado y convenciones
 
-- **Alcance.** Web pública (`frontend/web/`, incluida su única función de Vercel, `api/subir.js`), app Android (`mobile/`), workflows (`.github/workflows/`), incluido el buzón de subida (`buzon.yml`), y el repositorio.
+- **Alcance.** Web pública (`frontend/web/`, incluidas `api/subir.js` y las funciones `api/youtube/*`), app Android (`mobile/`), workflows (`.github/workflows/`), incluido el buzón de subida (`buzon.yml`), y el repositorio.
 - **Estado de `main`.** La web y la APK no tienen usuarios (ADR-0015): no hay perfiles, modos paciente ni cuidador, PIN, recuerdos, fotografías, observaciones, registro del estudio ni copia cifrada `.rmc`. Todos ven la misma biblioteca pública. Las listas y «Me gusta» se guardan solo en el navegador o en el teléfono, y el audio subido antes «Solo en este navegador» o «Solo en este teléfono», también (ADR-0012 y ADR-0013). Desde ADR-0017, «Subir canciones» sube siempre para todos: cualquiera que entre en la web sube al buzón del repositorio por la función `/api/subir`, sin cuenta (§3.12), y el buzón lo publica (§3.11). Pruebas en verde el 2026-11-03 en la rama de ADR-0017: 342 unitarias de la web, 133 de extremo a extremo y 671 del backend.
 - **Etiquetas.** **Implementado**: existe en el código de `main`. **Retirado**: existía y ADR-0015 lo quitó. **Previsto**: aparece en el diseño o en el changelog, sin código. **Pendiente**: requiere decisión, trabajo o dictamen.
 - **Citas.** Los identificadores entre corchetes son los de la verificación ([legal-01] a [legal-06] y [B1-2025]). Cuando una verificación tiene corrección, se cita la versión corregida. Lo que la verificación no confirma queda en §5.
@@ -145,11 +145,11 @@ ADR-0015 (decisión 4) retira la copia `.rmc` y borra `js/crypto.js` y `js/backu
 
 ADR-0015 retira el PIN con los modos paciente y cuidador. No hay ninguna contraseña ni PIN en la aplicación.
 
-### 3.4 Sin administración ni contraseñas en la web: Implementado, con una función de subida
+### 3.4 Sin administración ni contraseñas en la web: Implementado, con funciones públicas
 
 - El commit `0fa6ed3` retiró `frontend/web/admin`, `frontend/web/api` y `frontend/web/lib`. Según su mensaje, el propietario ha pedido que no exista ninguna administración en la web. Ya no hay funciones de Vercel ni `ADMIN_PASSWORD` (CHANGELOG.md, línea 23).
 - No hay campos de contraseña en la web pública ni en la APK.
-- Desde ADR-0017 hay una función de Vercel, `frontend/web/api/subir.js`, que sube al buzón con `GITHUB_TOKEN` (variable de entorno de Vercel). No es administración: solo escribe trozos de audio en `audio-library/buzon/.partes/` (§3.12). Siguen sin existir `frontend/web/admin` y `frontend/web/lib` (`backend/tests/test_biblioteca_workflow.py`).
+- Desde ADR-0017, `frontend/web/api/subir.js` sube al buzón con `GITHUB_TOKEN` (variable de entorno de Vercel); no es administración, solo escribe trozos de audio en `audio-library/buzon/.partes/` (§3.12). Las funciones `frontend/web/api/youtube/*` extraen metadatos de playlists y actúan como proxy de yttowav (§3.13); no usan el token de GitHub. Siguen sin existir `frontend/web/admin` y `frontend/web/lib` (`backend/tests/test_biblioteca_workflow.py`).
 
 ### 3.5 Incidencias de GitHub con permiso de escritura: Implementado, con pendientes
 
@@ -231,6 +231,12 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 - **ZIP (2026-11-03).** La web (`js/cuidador/zip.js`) y la APK (`lib/zip_audio.dart`) descomprimen el `.zip` en el dispositivo y suben cada canción por el mismo camino; el ZIP nunca llega a `/api/subir`, que sigue aceptando solo Ogg Opus. Solo se usa el nombre base de cada entrada (sin rutas: zip-slip), se comprueba el CRC y se ignoran carpetas, `__MACOSX/`, ocultos y no-audio. El buzón (`sonidos.buzon`) acepta además `.zip` subidos por la página de GitHub: los extrae entrada a entrada fuera del repositorio, ignora enlaces simbólicos y rutas absolutas o con `..`, rechaza entero un ZIP cifrado o dañado y borra el ZIP. Sin límite de tamaño, por orden del propietario.
 - **No hay**: límite por hora, captcha, cuentas, moderación previa ni comprobación de derechos. La web muestra un texto fijo: «Al subir, declaras que tienes derecho a publicar estos archivos».
 - Pruebas: `tests/web-unit/api-subir.test.mjs` (GitHub simulado), `tests/web-unit/subida-publica.test.mjs` y `tests/web-e2e/funcional.e2e.mjs` (función simulada en el servidor de pruebas). **Probado en producción el 2026-11-03**, con Vercel y el token real: «Prueba subida directa.mp3» llegó por `/api/subir` (commit `8ac2d17`, un trozo y su manifiesto, con la cuenta del token), `buzon.yml` la aceptó (`autorizar` pasó con esa cuenta), la unió y la publicó como «Prueba subida directa» (`e7eaa73`), y se despublicó después con la incidencia #21 (`6d62aee`). Los trozos intermedios no lanzan el workflow: el filtro de `buzon.yml` excluye `audio-library/buzon/.partes/**/*.part`. No se ha probado una subida de varios trozos en producción.
+
+### 3.13 Importación de playlists propias de YouTube desde Homeostasia: Implementada en código, pendiente de despliegue y verificación externa
+
+- `GET /api/youtube/playlist` solo acepta URLs HTTPS de YouTube, llama a `yt-dlp` mediante `spawn` con argumentos separados, limita la playlist a 200 elementos y 45 segundos, y devuelve IDs/títulos, no descarga los vídeos. Requiere que el runtime de Vercel tenga `yt-dlp` instalado o empaquetado y que `YTDLP_PATH` apunte al ejecutable si no está en `PATH`.
+- `POST /api/youtube/convert`, `GET /api/youtube/status` y `GET /api/youtube/download` usan como upstream fijo `api.yttowav.org`, validan los IDs, aplican timeout y no exponen direcciones de descarga externas. La descarga valida la cabecera RIFF/WAVE, se transmite sin almacenarla entera en memoria y tiene un máximo de 256 MiB.
+- La interfaz declara que se deben importar contenidos propios o autorizados. No hay autenticación de usuario ni verificación automática de derechos. No se inició un trabajo real de conversión: el preflight directo del navegador a yttowav devolvió HTTP 500; el proxy evita CORS, pero la aceptación de una conversión server-to-server y la descarga real siguen pendientes de comprobar. Ver la sección de playlists de YouTube del [README](README.md).
 
 ## 4. Amenazas y riesgos residuales
 
