@@ -290,6 +290,38 @@
       "size_bytes": 393210,
       "added_at": "2026-11-03T11:25:26+00:00",
       "public": true
+    },
+    {
+      "id": "Sc7d7330c0a7bc385",
+      "title": "Prueba ZIP dos",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "c7d7330c0a7bc3856a71a196b6abf1ab47c194a083f82d41139f239035e23189",
+      "duration_s": 4.006,
+      "codec": "opus",
+      "size_bytes": 16686,
+      "added_at": "2026-11-03T12:08:23+00:00",
+      "public": true
+    },
+    {
+      "id": "S5d0ff459a03af321",
+      "title": "Prueba ZIP uno",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "5d0ff459a03af321dda20f4bb64dce58ac24875c721500d3b693b22f7b4f1c17",
+      "duration_s": 4.006,
+      "codec": "opus",
+      "size_bytes": 16838,
+      "added_at": "2026-11-03T12:08:23+00:00",
+      "public": true
     }
   ]
 }
