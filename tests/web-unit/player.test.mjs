@@ -273,6 +273,40 @@ describe('carga y reproducción', () => {
   });
 });
 
+describe('sustituir una canción (copia local → pública)', () => {
+  test('replaceTrack cambia la pista en el contexto y en la cola sin cortar la que suena', () => {
+    const { player, audio } = setup();
+    const local = track('l', { id: 'L0011223344556677', audioUrl: 'audio/L0011223344556677.opus', local: true });
+    const pub = track('p', { id: 'S0011223344556677', audioUrl: 'audio/S0011223344556677.opus', title: 'Canción ficticia L' });
+    player.load([local, B], 0);
+    player.addToQueue(local);
+    audio.currentTime = 42;
+    const playCalls = audio.playCalls;
+    assert.equal(player.replaceTrack(local.id, pub), true);
+    const state = player.getState();
+    assert.equal(state.track.id, pub.id);
+    assert.equal(state.track.local, false);
+    assert.deepEqual(ids(state), [pub.id, pub.id, B.id]);
+    assert.equal(state.playing, true, 'sigue sonando');
+    assert.equal(audio.src, local.audioUrl, 'el audio conserva su fuente: no se corta');
+    assert.equal(audio.currentTime, 42);
+    assert.equal(audio.playCalls, playCalls);
+    // Al volver a la canción más tarde, ya suena la pública.
+    player.next();
+    player.next();
+    player.previous();
+    assert.equal(audio.src, pub.audioUrl);
+  });
+
+  test('replaceTrack no hace nada con una canción que no está o con el mismo id', () => {
+    const { player } = setup();
+    player.load([A, B], 0);
+    assert.equal(player.replaceTrack('no-esta', C), false);
+    assert.equal(player.replaceTrack(A.id, A), false);
+    assert.deepEqual(ids(player.getState()), [A.id, B.id]);
+  });
+});
+
 describe('repetir', () => {
   test('repetir toda la cola vuelve al principio al terminar la última', () => {
     const { player, audio } = setup({ repeat: 'all' });

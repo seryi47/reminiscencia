@@ -425,6 +425,8 @@ export function songFromRecord(record, { viaServiceWorker = false } = {}) {
     folder_id: null,
     duration_s: record.durationS,
     local: true,
+    // Copia de una subida para todos que aún no está en el catálogo público (subida-estado.js).
+    pending: record.pending === true,
     createdAt: record.createdAt,
     audio: url,
   };
@@ -436,8 +438,12 @@ export async function loadLocalSongs(env = globalThis) {
   try {
     const records = await readAllRecords(env);
     const viaServiceWorker = serviceWorkerServes(env);
+    // La copia de una subida que ya se ha publicado sobra: se borra (la pública la sustituye).
+    for (const record of records) {
+      if (record && typeof record.publishedAs === 'string') await deleteLocalSong(record.id, env).catch(() => {});
+    }
     return records
-      .filter((record) => record && typeof record.id === 'string' && record.blob instanceof Blob)
+      .filter((record) => record && typeof record.id === 'string' && record.blob instanceof Blob && typeof record.publishedAs !== 'string')
       .map((record) => songFromRecord(record, { viaServiceWorker }));
   } catch (error) {
     console.error('Reminiscencia: no se pudieron cargar las canciones subidas desde este dispositivo.', error);
@@ -464,7 +470,7 @@ export async function readLocalRecord(id, env = globalThis) {
  * Las canciones públicas del catálogo nunca cumplen esto.
  */
 export function isDeletableSong(song) {
-  return song?.local === true && typeof song.id === 'string' && song.id.startsWith(LOCAL_ID_PREFIX);
+  return song?.local === true && song.pending !== true && typeof song.id === 'string' && song.id.startsWith(LOCAL_ID_PREFIX);
 }
 
 /**
@@ -485,6 +491,49 @@ export async function deleteLocalSong(id, env = globalThis) {
   if (url) {
     URL.revokeObjectURL(url);
     objectUrls.delete(id);
+  }
+}
+
+/**
+ * Guarda en este navegador la copia Opus de una subida para todos, marcada como pendiente, para que se pueda
+ * escuchar mientras se publica (ADR-0017). Devuelve la canción con la forma del catálogo.
+ */
+export async function saveUploadCopy({ title, bytes, durationS, channels, bitrate }, env = globalThis) {
+  const blob = new Blob([bytes], { type: 'audio/ogg; codecs=opus' });
+  const record = {
+    id: randomId(env),
+    title: String(title || 'Sin título'),
+    durationS,
+    channels,
+    bitrate,
+    bytes: blob.size,
+    createdAt: Date.now(),
+    pending: true,
+    blob,
+  };
+  await requestPersistence(env);
+  await putRecord(record, env);
+  return songFromRecord(record, { viaServiceWorker: serviceWorkerServes(env) });
+}
+
+/** Bytes de una copia guardada (para reintentar la subida tras recargar), o null. */
+export async function readLocalBytes(id, env = globalThis) {
+  const record = await readLocalRecord(id, env);
+  if (!record) return null;
+  return new Uint8Array(await record.blob.arrayBuffer());
+}
+
+/**
+ * Marca la copia de una subida como ya publicada con el id público. Se borra en cuanto deja de sonar o, si se cierra
+ * la página antes, al volver a abrirla (loadLocalSongs).
+ */
+export async function markLocalPublished(id, songId, env = globalThis) {
+  if (!isLocalSongId(id)) return;
+  try {
+    const record = await withStore('readonly', (store) => store.get(id), env);
+    if (record) await withStore('readwrite', (store) => store.put({ ...record, pending: false, publishedAs: String(songId) }), env);
+  } catch {
+    // Si no se puede marcar, se borrará igualmente al dejar de sonar.
   }
 }
 
@@ -627,9 +676,9 @@ export async function convertToOpus(file, { onProgress = () => {}, env = globalT
   };
 }
 
-function randomId() {
+function randomId(env = globalThis) {
   const bytes = new Uint8Array(8);
-  globalThis.crypto.getRandomValues(bytes);
+  (env.crypto ?? globalThis.crypto).getRandomValues(bytes);
   return newLocalSongId(bytes);
 }
 

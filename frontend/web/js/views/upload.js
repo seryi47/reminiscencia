@@ -1,7 +1,11 @@
 // Hoja «Subir canciones» (ADR-0017): una sola forma de subir archivos.
-// - Subir: la persona elige uno o varios archivos; cada uno se convierte a Opus en este navegador y se envía, de uno en
-//   uno y en orden, a la función del propio origen /api/subir (js/cuidador/subida-publica.js), que lo guarda en el
-//   buzón del repositorio para que llegue a todos. Ni esta hoja ni la web conocen ningún token.
+// - Subir: la persona elige uno o varios archivos y cada uno pasa a la cola del gestor de subidas de la app
+//   (js/cuidador/subida-estado.js), que lo convierte a Opus en este navegador, guarda una copia para que se pueda
+//   escuchar ya, lo envía por trozos a la función del propio origen /api/subir (js/cuidador/subida-publica.js) y
+//   comprueba /data/songs.json hasta que la canción está publicada. La hoja solo pinta ese estado: una fila por archivo
+//   con su paso («Convirtiendo a Opus…», «Subiendo… 45 %», «Guardada en GitHub», «Publicándose…», «Publicada» con
+//   «Reproducir», o «Error: <motivo>» con «Reintentar») y un resumen arriba («2 de 3 publicadas»). Al cerrar la hoja,
+//   las subidas siguen. Ni esta hoja ni la web conocen ningún token.
 // - Las canciones guardadas antes solo en este navegador (ADR-0012) siguen sonando y se pueden borrar desde aquí.
 // - «Importar desde Internet Archive»: prepara una incidencia de importación con la validación de incidencias.js y de
 //   intake.js (la misma lista de bloqueo de 42 plataformas que el backend; ADR-0008).
@@ -9,29 +13,34 @@
 import { evaluateImportForm, buildIssueBody, buildIssueTitle, buildIssueUrl, classifyUrl, PROCESSING_NOTE } from '../cuidador/incidencias.js';
 import { validateImport } from '../intake.js';
 import { opusSupport } from '../cuidador/subida-local.js';
-import {
-  DONE_TEXT,
-  PUBLIC_AUDIO_ACCEPT,
-  PUBLIC_UNSUPPORTED_TEXT,
-  RIGHTS_TEXT,
-  uploadFiles,
-} from '../cuidador/subida-publica.js';
+import { PUBLIC_AUDIO_ACCEPT, PUBLIC_UNSUPPORTED_TEXT, RIGHTS_TEXT } from '../cuidador/subida-publica.js';
+import { progressOf, STATES, statusText, summaryText } from '../cuidador/subida-estado.js';
 import { formatDuration } from '../catalog.js';
 import { el, openDialog, uid } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 
-/** Abre la hoja. ctx aporta deleteLocalSong y la lista de canciones locales. option: 'archive' abre la importación. */
+/** Abre la hoja. ctx aporta uploads (el gestor), addUploads, deleteLocalSong y las canciones locales. option: 'archive'. */
 export function openUploadSheet(ctx, { option = null } = {}) {
   return openDialog({
     title: 'Subir canciones',
     className: 'dialog-upload',
     testid: 'upload-sheet',
-    render: (body) => {
+    render: (body, _close, dialog) => {
+      let cleanup = null;
       const show = (key) => {
-        body.replaceChildren(key === 'archive' ? archivePanel(() => show(null)) : uploadPanel(ctx, () => show('archive')));
+        cleanup?.();
+        cleanup = null;
+        if (key === 'archive') body.replaceChildren(archivePanel(() => show(null)));
+        else {
+          const panel = uploadPanel(ctx, () => show('archive'));
+          cleanup = panel.cleanup;
+          body.replaceChildren(panel.node);
+        }
         const target = body.querySelector('[data-autofocus]') ?? body.querySelector('button, a, input');
         target?.focus();
       };
+      // Al cerrar la hoja solo se deja de pintar: las subidas siguen en la app.
+      dialog?.addEventListener('close', () => cleanup?.());
       show(option);
     },
   });
@@ -46,13 +55,17 @@ function backButton(back) {
 // Subir (para todos)
 // ---------------------------------------------------------------------------
 
-/** Texto del resumen tras subir: cuántas han salido y cuántas no. */
-export function summaryText({ sent = 0, failed = 0 } = {}) {
-  if (sent === 0 && failed === 0) return '';
-  if (sent === 0) return failed === 1 ? 'No se ha podido subir el archivo.' : `No se ha podido subir ninguno de los ${failed} archivos.`;
-  const done = sent === 1 ? `${DONE_TEXT}` : `${sent} canciones subidas: llegarán a todos en un par de minutos.`;
-  return failed === 0 ? done : `${done} ${failed === 1 ? 'Un archivo no se ha podido subir.' : `${failed} archivos no se han podido subir.`}`;
-}
+/** Icono de cada paso (el texto dice lo mismo: el color nunca es lo único que lo indica). */
+export const STATE_ICONS = Object.freeze({
+  [STATES.QUEUED]: 'clock',
+  [STATES.CONVERTING]: 'note',
+  [STATES.SENDING]: 'upload',
+  [STATES.SAVED]: 'check',
+  [STATES.PUBLISHING]: 'clock',
+  [STATES.PUBLISHED]: 'check-circle',
+  [STATES.SLOW]: 'clock',
+  [STATES.ERROR]: 'alert',
+});
 
 function localSection(ctx) {
   const list = el('ul', { class: 'upload-local-list', 'data-testid': 'upload-local-list' });
@@ -79,6 +92,58 @@ function localSection(ctx) {
   return section;
 }
 
+/** Fila de una subida. Se actualiza en su sitio: los botones solo se cambian cuando cambia el paso. */
+function uploadRow(ctx) {
+  const iconSlot = el('span', { class: 'upload-item-icon', 'aria-hidden': 'true' });
+  const name = el('span', { class: 'upload-item-name', 'data-testid': 'upload-item-name' });
+  const status = el('span', { class: 'upload-item-status', 'data-testid': 'upload-item-status' });
+  const bar = el('progress', { class: 'upload-item-progress', max: '100', 'data-testid': 'upload-item-progress' });
+  const actions = el('div', { class: 'upload-item-actions' });
+  const node = el('li', { class: 'upload-item', tabindex: '-1', 'data-testid': 'upload-item' },
+    iconSlot, el('div', { class: 'upload-item-main' }, name, status, bar), actions);
+  let shownState = null;
+
+  const update = (item) => {
+    node.dataset.key = item.key;
+    node.dataset.state = item.state;
+    name.textContent = item.name;
+    name.title = item.name;
+    status.textContent = statusText(item);
+    const progress = progressOf(item);
+    bar.hidden = progress.hidden;
+    bar.setAttribute('aria-label', `Progreso de ${item.name}`);
+    if (progress.value === null) bar.removeAttribute('value');
+    else bar.value = progress.value;
+    if (item.state === shownState) return;
+    shownState = item.state;
+    iconSlot.replaceChildren(icon(STATE_ICONS[item.state] ?? 'note', { size: 20 }));
+    // Si el foco estaba en un botón que desaparece (por ejemplo, «Reintentar»), pasa a la fila.
+    const hadFocus = actions.contains(document.activeElement);
+    const buttons = [];
+    if (item.state === STATES.PUBLISHED && item.songId) {
+      buttons.push(el('button', {
+        type: 'button',
+        class: 'button button-primary button-small',
+        'aria-label': `Reproducir ${item.songTitle ?? item.title}`,
+        'data-testid': 'upload-item-play',
+        on: { click: () => ctx.playSongById(item.songId) },
+      }, icon('play', { size: 16 }), 'Reproducir'));
+    }
+    if (item.state === STATES.ERROR && item.retryable) {
+      buttons.push(el('button', {
+        type: 'button',
+        class: 'button button-outline button-small',
+        'aria-label': `Reintentar ${item.name}`,
+        'data-testid': 'upload-item-retry',
+        on: { click: () => ctx.uploads.retry(item.key) },
+      }, 'Reintentar'));
+    }
+    actions.replaceChildren(...buttons);
+    if (hadFocus) node.focus();
+  };
+  return { node, update };
+}
+
 function uploadPanel(ctx, openArchive) {
   const inputId = uid('archivos');
   // El campo de archivo va oculto: lo abre el botón visible, que sí recibe el foco con el teclado.
@@ -89,10 +154,14 @@ function uploadPanel(ctx, openArchive) {
     'data-testid': 'upload-pick',
     on: { click: () => { if (pick.getAttribute('aria-disabled') !== 'true') input.click(); } },
   }, icon('upload', { size: 20 }), 'Elegir archivos');
-  const progress = el('progress', { class: 'upload-progress', max: '100', value: '0', hidden: true, 'aria-label': 'Progreso de la subida' });
   const status = el('p', { class: 'upload-status', role: 'status', 'data-testid': 'upload-status' });
-  const results = el('ul', { class: 'upload-results', 'data-testid': 'upload-results' });
   const support = el('p', { class: 'upload-note', 'data-testid': 'upload-support' });
+  const summary = el('p', { class: 'upload-summary', 'data-testid': 'upload-summary', hidden: true });
+  const list = el('ul', { class: 'upload-items', 'data-testid': 'upload-items', 'aria-label': 'Subidas' });
+  // Región que anuncia cada cambio de paso (no cada porcentaje) a quien usa un lector de pantalla.
+  const live = el('p', { class: 'sr-only', 'aria-live': 'polite', 'data-testid': 'upload-live' });
+  const rows = new Map();
+  const seen = new Map();
 
   opusSupport().then((result) => {
     if (!result.ok) {
@@ -102,48 +171,53 @@ function uploadPanel(ctx, openArchive) {
     }
   });
 
-  const row = (name, message, ok) => el('li', { class: ok ? 'upload-result is-ok' : 'upload-result is-error', 'data-state': ok ? 'ok' : 'error' },
-    el('span', { class: 'upload-result-name' }, name), ': ', message);
+  const paint = (items, { announce = true } = {}) => {
+    summary.textContent = summaryText(items);
+    summary.hidden = items.length === 0;
+    const changes = [];
+    for (const item of items) {
+      let row = rows.get(item.key);
+      if (!row) {
+        row = uploadRow(ctx);
+        rows.set(item.key, row);
+        list.append(row.node);
+      }
+      row.update(item);
+      if (seen.get(item.key) !== item.state) {
+        if (seen.has(item.key) || item.state !== STATES.QUEUED) changes.push(`${item.name}: ${statusText(item)}`);
+        seen.set(item.key, item.state);
+      }
+    }
+    if (announce && changes.length > 0) live.textContent = changes.join('. ');
+  };
 
-  input.addEventListener('change', async () => {
+  // Los archivos van a la cola de la app; se puede elegir más mientras se suben otros.
+  input.addEventListener('change', () => {
     const files = [...input.files];
     input.value = '';
     if (files.length === 0) return;
-    pick.setAttribute('aria-disabled', 'true');
-    progress.hidden = false;
-    progress.value = '0';
-    results.replaceChildren();
-    try {
-      const result = await uploadFiles(files, {
-        onProgress: ({ index, total, name, stage, fraction }) => {
-          progress.value = String(Math.round(((index + fraction) / total) * 100));
-          const verb = stage === 'enviar' ? 'Subiendo' : 'Convirtiendo';
-          status.textContent = `${verb} ${index + 1} de ${total}: ${name}…`;
-        },
-      });
-      results.replaceChildren(...result.results.map((item) => row(item.name, item.message, item.ok)));
-      status.textContent = summaryText({ sent: result.sent.length, failed: result.failed.length });
-    } catch (error) {
-      status.textContent = error instanceof Error ? error.message : 'No se han podido subir los archivos.';
-    } finally {
-      progress.hidden = true;
-      pick.removeAttribute('aria-disabled');
-      if (support.classList.contains('is-warning')) pick.setAttribute('aria-disabled', 'true');
-    }
+    ctx.addUploads(files);
   });
 
-  return el('div', { class: 'upload-panel', 'data-testid': 'upload-panel' },
+  const uploads = ctx.uploads;
+  paint(uploads?.items() ?? [], { announce: false });
+  const unsubscribe = uploads?.subscribe((items) => paint(items)) ?? (() => {});
+
+  const node = el('div', { class: 'upload-panel', 'data-testid': 'upload-panel' },
     el('p', { class: 'dialog-text', 'data-autofocus': '', tabindex: '-1' },
       'Elige uno o varios archivos de audio (WAV, MP3, M4A, FLAC, OGG u OPUS). Se convierten a Opus en este navegador y se suben a la biblioteca para todos. El título de cada canción es el nombre del archivo.'),
     el('p', { class: 'upload-note', 'data-testid': 'upload-rights' }, RIGHTS_TEXT),
     support,
     el('div', { class: 'upload-row' }, input, pick),
-    progress,
     status,
-    results,
+    summary,
+    list,
+    live,
+    el('p', { class: 'upload-note' }, 'Puedes cerrar esta hoja: las subidas siguen y se avisa cuando cada canción esté en la biblioteca.'),
     localSection(ctx),
     el('button', { type: 'button', class: 'button button-text upload-archive-link', 'data-testid': 'upload-open-archive', on: { click: openArchive } },
       icon('archive', { size: 20 }), 'Importar desde Internet Archive'));
+  return { node, cleanup: unsubscribe };
 }
 
 // ---------------------------------------------------------------------------

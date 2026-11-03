@@ -18,6 +18,7 @@ import {
   LIKED_COLOR,
   LOCAL_COLOR,
   localSongsOf,
+  pendingSongsOf,
   songCountText,
   songCover,
   songsInFolder,
@@ -27,8 +28,26 @@ import { isSongId } from './cuidador/incidencias.js';
 import { openLocalLibrary } from './local-library.js';
 import { createPlayer, nextRepeatMode } from './player.js';
 import { cachedAudioPaths, registerPwa, removeOfflineSongs, saveLibraryOffline } from './pwa.js';
-import { deleteLocalSong as removeLocalRecord, loadLocalSongs } from './cuidador/subida-local.js';
-import { closeMenu, confirmDialog, toast } from './ui/dom.js';
+import {
+  convertToOpus,
+  deleteLocalSong as removeLocalRecord,
+  loadLocalSongs,
+  markLocalPublished,
+  readLocalBytes,
+  saveUploadCopy,
+  titleFromFileName,
+} from './cuidador/subida-local.js';
+import { sendOpus } from './cuidador/subida-publica.js';
+import {
+  activeCount,
+  createUploadTracker,
+  indicatorText,
+  publishedNotice,
+  songsFetcher,
+  STATES as UPLOAD_STATES,
+} from './cuidador/subida-estado.js';
+import { closeMenu, confirmDialog, el, toast } from './ui/dom.js';
+import { icon } from './ui/icons.js';
 import { DOT, likeButton, setPlayButtonState } from './views/components.js';
 import {
   openCoverSheet,
@@ -112,6 +131,10 @@ let userNavigated = false;
 let keepFocusOnce = false;
 let persistenceRequested = false;
 let lastSync = '';
+let uploads = null;
+let uploadSignature = '';
+// Copias locales de subidas ya publicadas que se borran en cuanto dejan de sonar (id → URL de su audio).
+const retiredCopies = new Map();
 
 const dom = {};
 
@@ -133,7 +156,15 @@ function songColor(song) {
 }
 
 const songCoverSrc = (song) => (song?.local ? null : songCover(state.catalog, song));
-const artistOf = (song) => song.artist || (song.local ? 'Subida a este navegador' : 'Artista desconocido');
+/** Etiqueta de una subida que se está publicando: «Publicándose…» o, si ha fallado, «No se ha podido subir». */
+function uploadLabel(song) {
+  return uploads?.byLocalId(song.id)?.state === UPLOAD_STATES.ERROR ? 'No se ha podido subir' : 'Publicándose…';
+}
+const isPendingSong = (song) => Boolean(song && (song.pending ?? state.catalog.songById.get(song.id)?.pending));
+const artistOf = (song) => {
+  if (isPendingSong(song)) return uploadLabel(song);
+  return song.artist || (song.local ? 'Subida a este navegador' : 'Artista desconocido');
+};
 const albumHref = (id) => `#/album/${encodeURIComponent(id)}`;
 
 /** Color de una colección para los degradados: el dominante de su portada si ya se conoce; si no, el generado. */
@@ -247,6 +278,26 @@ function localContext() {
   };
 }
 
+/** «Tus subidas»: las canciones subidas para todos que todavía se están publicando (suenan desde su copia local). */
+function uploadsContext() {
+  const songs = pendingSongsOf(state.catalog);
+  const count = songCountText(songs.length);
+  const label = songs.some((song) => uploadLabel(song) !== 'Publicándose…') ? 'Subidas' : 'Publicándose…';
+  return {
+    contextId: 'subidas',
+    kind: 'uploads',
+    title: 'Tus subidas',
+    owner: 'Solo aquí',
+    subtitle: `${label}${DOT}${count}`,
+    cardSubtitle: `${label}${DOT}${count}`,
+    href: '#/subidas',
+    color: LOCAL_COLOR,
+    iconName: 'upload',
+    cover: null,
+    mosaic: null,
+  };
+}
+
 /** Álbumes de la raíz (parentId null), de un álbum padre o, con undefined, todos. */
 function albumContexts(parentId) {
   const folders = parentId === undefined ? state.catalog.folders : childFolders(state.catalog, parentId);
@@ -260,6 +311,7 @@ function playlistContexts() {
 /** Elementos de la biblioteca: «Me gusta», (todas), las subidas aquí, las listas y todos los álbumes. */
 function libraryContexts({ includeAll = false } = {}) {
   const items = [likedContext()];
+  if (pendingSongsOf(state.catalog).length > 0) items.push(uploadsContext());
   if (includeAll && state.catalog.songs.length > 0) items.push(allSongsContext());
   if (localSongsOf(state.catalog).length > 0) items.push(localContext());
   items.push(...playlistContexts());
@@ -273,6 +325,7 @@ function getContext(contextId) {
   if (contextId === 'me-gusta') return { ...likedContext(), typeLabel: 'Lista', songs: likedSongs() };
   if (contextId === 'canciones') return { ...allSongsContext(), typeLabel: 'Biblioteca', songs: state.catalog.songs };
   if (contextId === 'locales') return { ...localContext(), typeLabel: 'Canciones locales', songs: localSongsOf(state.catalog) };
+  if (contextId === 'subidas') return { ...uploadsContext(), typeLabel: 'Subidas', songs: pendingSongsOf(state.catalog) };
   if (contextId.startsWith('album:')) {
     const folder = state.catalog.folderById.get(contextId.slice('album:'.length));
     if (!folder) return null;
@@ -312,10 +365,10 @@ function quickContexts() {
   });
 }
 
-/** Orden de «Tu biblioteca». «Me gusta» va siempre arriba (fijada, como en Spotify). */
+/** Orden de «Tu biblioteca». «Me gusta» va siempre arriba (fijada, como en Spotify) y, debajo, «Tus subidas». */
 function sortContexts(items, sort) {
-  const pinned = items.filter((item) => item.kind === 'liked');
-  const rest = items.filter((item) => item.kind !== 'liked');
+  const pinned = items.filter((item) => item.kind === 'liked' || item.kind === 'uploads');
+  const rest = items.filter((item) => item.kind !== 'liked' && item.kind !== 'uploads');
   const byTitle = (a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
   if (sort === 'alfabetico') rest.sort(byTitle);
   else if (sort === 'creador') rest.sort((a, b) => (a.owner ?? OWNER).localeCompare(b.owner ?? OWNER, 'es', { sensitivity: 'base' }) || byTitle(a, b));
@@ -412,6 +465,7 @@ function onPlayerChange(playerState) {
   playerUi?.update(playerState);
   syncPlaying();
   savePlayerPrefs(playerState);
+  if (retiredCopies.size > 0) deleteRetiredCopies();
 }
 
 // ---------------------------------------------------------------------------
@@ -599,7 +653,7 @@ function parseRoute(hash) {
   } catch {
     id = null;
   }
-  const simple = { '': 'inicio', buscar: 'buscar', biblioteca: 'biblioteca', 'me-gusta': 'me-gusta', canciones: 'canciones', locales: 'locales' };
+  const simple = { '': 'inicio', buscar: 'buscar', biblioteca: 'biblioteca', 'me-gusta': 'me-gusta', canciones: 'canciones', locales: 'locales', subidas: 'subidas' };
   if (name in simple) return { name: simple[name], id: null };
   // #/carpeta/<id> es la ruta anterior de un álbum: se conserva para los enlaces guardados.
   if ((name === 'album' || name === 'carpeta') && id) return { name: 'album', id };
@@ -611,7 +665,7 @@ function activeContextId() {
   const { name, id } = state.route;
   if (name === 'album') return `album:${id}`;
   if (name === 'lista') return `lista:${id}`;
-  if (name === 'me-gusta' || name === 'canciones' || name === 'locales') return name;
+  if (name === 'me-gusta' || name === 'canciones' || name === 'locales' || name === 'subidas') return name;
   return null;
 }
 
@@ -636,7 +690,7 @@ function goBack() {
 // Sección de la navegación que se marca como activa (teléfono: tres destinos; barra superior: Inicio y Explorar).
 function navSection(route) {
   if (route.name === 'buscar') return 'buscar';
-  if (['biblioteca', 'lista', 'me-gusta', 'locales'].includes(route.name)) return 'biblioteca';
+  if (['biblioteca', 'lista', 'me-gusta', 'locales', 'subidas'].includes(route.name)) return 'biblioteca';
   if (route.name === 'inicio') return 'inicio';
   return null;
 }
@@ -685,7 +739,7 @@ function renderSidebar() {
   const sidebarScroll = dom.sidebar.querySelector('.library-list')?.scrollTop ?? 0;
   const active = document.activeElement;
   const focusKey = dom.sidebar.contains(active) ? active.closest?.('[data-key]')?.dataset.key ?? null : null;
-  dom.sidebar.replaceChildren(...libraryPanel(ctx, 'sidebar'), dom.resize);
+  dom.sidebar.replaceChildren(...libraryPanel(ctx, 'sidebar'), dom.uploadIndicator, dom.resize);
   const list = dom.sidebar.querySelector('.library-list');
   if (list) list.scrollTop = sidebarScroll;
   syncPlaying(true);
@@ -843,6 +897,7 @@ const ctx = {
   songColor,
   songCoverSrc,
   artistOf,
+  uploadLabel,
   colorOf,
   folderName: (id) => state.catalog.folderById.get(id)?.name ?? null,
   albumContext,
@@ -884,6 +939,17 @@ const ctx = {
   editAlbum: (folder) => openEditAlbumSheet(ctx, folder),
   changeCover: (target) => openCoverSheet(ctx, target),
   openUpload: () => openUploadSheet(ctx),
+  addUploads: (files) => addUploads(files),
+  get uploads() {
+    return uploads;
+  },
+  /** Reproduce una canción ya publicada desde la hoja de subida. */
+  playSongById: (songId) => {
+    const song = state.catalog.songById.get(songId);
+    if (!song) return false;
+    playSongs([song], 0, { contextId: null });
+    return true;
+  },
   setSearchQuery,
   setSearchFilter: (filter) => {
     state.searchFilter = filter;
@@ -916,17 +982,127 @@ const ctx = {
 };
 
 // ---------------------------------------------------------------------------
+// Subidas para todos (js/cuidador/subida-estado.js): siguen aunque se cierre la hoja
+// ---------------------------------------------------------------------------
+
+function safeLocalStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Indicador discreto de «Tu biblioteca» (barra lateral): «Publicándose 1 canción». Abre la hoja. */
+function createUploadIndicator() {
+  const text = el('span', { class: 'upload-indicator-text' });
+  const button = el('button', {
+    type: 'button',
+    class: 'upload-indicator',
+    'data-testid': 'upload-indicator',
+    hidden: true,
+    on: { click: () => openUploadSheet(ctx) },
+  }, el('span', { class: 'upload-indicator-dot', 'aria-hidden': 'true' }), icon('upload', { size: 16 }), text);
+  return { button, text };
+}
+
+function onUploadsChange(items) {
+  const count = activeCount(items);
+  dom.uploadIndicatorText.textContent = indicatorText(count);
+  dom.uploadIndicator.hidden = count === 0;
+  dom.uploadIndicator.setAttribute('aria-label', `${indicatorText(count)}. Ver las subidas`);
+  // Solo los cambios de estado (no los porcentajes) cambian las etiquetas de la biblioteca.
+  const signature = items.map((item) => `${item.localId}:${item.state}`).join('|');
+  if (signature !== uploadSignature) {
+    uploadSignature = signature;
+    if (state.ready) render();
+  }
+}
+
+/** Borra las copias locales de subidas ya publicadas que no estén sonando. */
+function deleteRetiredCopies() {
+  const current = document.getElementById('audio')?.src ?? '';
+  for (const [id, url] of [...retiredCopies]) {
+    if (url && current === new URL(url, location.href).href) continue;
+    retiredCopies.delete(id);
+    removeLocalRecord(id).catch(() => {});
+  }
+}
+
+/**
+ * Las subidas que ya están en /data/songs.json: la biblioteca se pone al día sin recargar, la copia local se
+ * sustituye por la canción pública (en «Me gusta», en las listas y en el reproductor, sin cortar lo que suena) y se
+ * avisa: «“<título>” ya está en la biblioteca».
+ */
+async function applyPublished(found, songs) {
+  if (Array.isArray(songs)) state.publicSongs = songs;
+  try {
+    const folders = await fetchJson(DATA_URLS.folders, { cache: 'no-store' });
+    if (Array.isArray(folders)) state.publicFolders = folders;
+  } catch {
+    // Sin carpetas nuevas: valen las de antes.
+  }
+  const replaced = [];
+  for (const { item, song } of found) {
+    if (!item.localId) continue;
+    const copy = state.localSongs.find((local) => local.id === item.localId);
+    state.localSongs = state.localSongs.filter((local) => local.id !== item.localId);
+    replaced.push({ localId: item.localId, songId: song.id, audio: copy?.audio ?? null });
+  }
+  rebuildCatalog();
+  for (const { localId, songId, audio } of replaced) {
+    const publicSong = state.catalog.songById.get(songId);
+    if (publicSong) player.replaceTrack(localId, trackOf(publicSong));
+    try {
+      await library.replaceSong(localId, songId);
+    } catch (error) {
+      console.error('Reminiscencia: no se han podido pasar los «Me gusta» y las listas a la canción publicada.', error);
+    }
+    await markLocalPublished(localId, songId);
+    retiredCopies.set(localId, audio);
+  }
+  deleteRetiredCopies();
+  await refreshLibrary();
+  toast(publishedNotice(found.map(({ song }) => song.title)), { ms: 6000 });
+}
+
+function createUploads() {
+  return createUploadTracker({
+    convert: (file, { onProgress }) => convertToOpus(file, { limits: false, checkStorage: false, onProgress }),
+    saveCopy: (data) => saveUploadCopy(data),
+    readCopy: (id) => readLocalBytes(id),
+    send: (bytes, { fileName, onChunk }) => sendOpus(bytes, { fileName, uploadId: crypto.randomUUID(), onChunk }),
+    fetchSongs: songsFetcher((url, init) => fetch(url, init), DATA_URLS.songs),
+    currentIds: () => state.publicSongs.map((song) => song?.id),
+    onCopy: (song) => {
+      // La canción sale ya en la biblioteca, con la etiqueta «Publicándose…», y se puede escuchar.
+      state.localSongs = [...state.localSongs, song];
+      rebuildCatalog();
+      if (state.ready) render();
+    },
+    onPublished: applyPublished,
+    storage: safeLocalStorage(),
+  });
+}
+
+/** Archivos elegidos en la hoja: a la cola de subidas, con el título del nombre del archivo. */
+function addUploads(files) {
+  requestPersistence();
+  return uploads.add(files, { titleOf: (file) => titleFromFileName(file?.name) });
+}
+
+// ---------------------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------------------
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(url, init = undefined) {
+  const response = await fetch(url, init);
   if (!response.ok) throw new Error(`${url}: ${response.status}`);
   return response.json();
 }
 
 async function loadPublicCatalog() {
-  const [songs, folders] = await Promise.allSettled([fetchJson(DATA_URLS.songs), fetchJson(DATA_URLS.folders)]);
+  const [songs, folders] = await Promise.allSettled([fetchJson(DATA_URLS.songs, { cache: 'no-cache' }), fetchJson(DATA_URLS.folders, { cache: 'no-cache' })]);
   state.publicSongs = songs.status === 'fulfilled' && Array.isArray(songs.value) ? songs.value : [];
   state.publicFolders = folders.status === 'fulfilled' && Array.isArray(folders.value) ? folders.value : [];
   state.loadError = songs.status === 'fulfilled' ? null : 'No se ha podido cargar la biblioteca. Comprueba la conexión y vuelve a intentarlo.';
@@ -941,6 +1117,17 @@ async function start() {
   dom.offline = document.getElementById('offline-banner');
   dom.topInput = document.getElementById('top-search-input');
   dom.topClear = document.getElementById('top-search-clear');
+  const indicator = createUploadIndicator();
+  dom.uploadIndicator = indicator.button;
+  dom.uploadIndicatorText = indicator.text;
+  uploads = createUploads();
+  uploads.subscribe(onUploadsChange);
+  // Cerrar la página con un archivo convirtiéndose o subiéndose lo perdería: el navegador lo pregunta antes.
+  window.addEventListener('beforeunload', (event) => {
+    if (!uploads.busy()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 
   const prefs = readJson(PLAYER_PREFS_KEY);
   player = createPlayer({
@@ -997,6 +1184,7 @@ async function start() {
   state.likes = await library.listLikes();
   if (!library.persistent) toast('Este navegador no deja guardar las listas: se perderán al cerrar la página.', { ms: 8000 });
   state.ready = true;
+  uploads.restore({ pendingCopies: state.localSongs.filter((song) => song.pending) });
   render();
   playerUi.update(player.getState());
   document.documentElement.dataset.ready = 'true';
