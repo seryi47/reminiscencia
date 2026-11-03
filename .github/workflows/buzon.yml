@@ -1,0 +1,188 @@
+name: buzon
+
+# Buzón de canciones (ADR-0014). Quien tiene permiso de escritura sube audio (WAV, MP3, M4A, FLAC u OGG) a
+# audio-library/buzon/ desde la página de subida de GitHub. Este workflow convierte cada archivo a Opus, lo añade al
+# catálogo con el nombre del archivo como título, regenera la parte pública y lo borra del buzón.
+# Licencia: una línea 'Licencia: <texto>' en el mensaje del commit. Con ella la canción entra pública; sin ella,
+# privada, y queda anotado en el resumen del job. Quien sube responde de lo que declara.
+# Los mismos tres jobs que biblioteca.yml (ADR-0008, ADR-0010, ADR-0011). 'autorizar' comprueba el permiso de quien
+# hizo el push. 'procesar' convierte sin token ni credenciales y deja un paquete con el catálogo, el audio y los
+# borrados del buzón. 'publicar' valida el paquete, lo aplica, regenera la parte pública desde el catálogo, confirma y
+# sube a main; el token solo llega al paso que sube. Publicar no ejecuta ffmpeg ni código del procesado.
+# El push del bot no vuelve a lanzar este workflow: GitHub no lanza workflows con pushes hechos con GITHUB_TOKEN.
+# Ningún nombre de archivo ni mensaje de commit se interpola en un script: el procesado los lee del evento.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "audio-library/buzon/**"
+      - "!audio-library/buzon/README.md"
+      - "!audio-library/buzon/.gitkeep"
+
+# El mismo grupo que biblioteca.yml: una escritura al catálogo cada vez. Con queue: max, una subida en espera no se
+# cancela cuando llega otra.
+concurrency:
+  group: library-catalog
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  autorizar:
+    # Quien hizo el push (y quien relanza una ejecución) debe tener permiso de escritura (admin, maintain o write).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      permitido: ${{ steps.permiso.outputs.permitido }}
+    steps:
+      # Sin checkout: este job no ejecuta código del repositorio. Solo consulta el permiso.
+      - name: Comprobar el permiso de quien sube
+        id: permiso
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          RELANZA: ${{ github.triggering_actor }}
+        run: |
+          permitido=true
+          for CUENTA in "$ACTOR" "$RELANZA"; do
+            # Si la consulta falla (por ejemplo, la cuenta no es colaboradora), cuenta como sin permiso.
+            if ! PERMISO=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$CUENTA/permission" --jq .permission); then
+              PERMISO=none
+            fi
+            echo "Permiso de $CUENTA: $PERMISO"
+            case "$PERMISO" in
+              admin|maintain|write) ;;
+              *) permitido=false ;;
+            esac
+          done
+          echo "permitido=$permitido" >> "$GITHUB_OUTPUT"
+          if [ "$permitido" != "true" ]; then
+            echo "Solo las cuentas con permiso de escritura pueden subir canciones al buzón." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+  procesar:
+    needs: autorizar
+    if: needs.autorizar.outputs.permitido == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Sin credenciales en el disco: el procesado no tiene nada con que escribir en el repositorio. Se procesa main
+      # tal como está ahora (una ejecución relanzada no trabaja sobre una copia antigua).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      # Solo main procesa. Va antes de instalar nada: la instalación también ejecuta código del árbol.
+      - name: Guarda de rama
+        run: |
+          mkdir -p "$RUNNER_TEMP/paquete"
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "El buzón solo se procesa desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Instalar ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+
+      - name: Instalar el backend
+        run: pip install -q -e backend
+
+      # Lee los archivos del push en el evento (GITHUB_EVENT_PATH) y escribe el resumen del job: canciones públicas,
+      # privadas por falta de licencia, duplicadas, rechazadas y lo que hay que revisar a mano.
+      - name: Procesar el buzón
+        env:
+          ACTOR: ${{ github.actor }}
+        run: python scripts/buzon.py --resultado "$RUNNER_TEMP/paquete/resultado.json"
+
+      - name: Empaquetar los cambios
+        env:
+          ACTION: buzon
+        run: python scripts/empaquetar_cambios.py --salida "$RUNNER_TEMP/paquete"
+
+      - name: Subir el paquete
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: buzon-paquete
+          path: ${{ runner.temp }}/paquete
+          retention-days: 1
+          if-no-files-found: error
+
+  publicar:
+    needs: [autorizar, procesar]
+    if: needs.autorizar.outputs.permitido == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Obtener main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Preparar Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Descargar el paquete
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: buzon-paquete
+          path: ${{ runner.temp }}/paquete
+
+      # El paquete se valida antes de tocar el repositorio (rutas de la biblioteca, borrados solo del buzón, sin
+      # enlaces simbólicos, base igual a main), y la parte pública se regenera desde el catálogo.
+      - name: Validar, aplicar y regenerar la parte pública
+        id: aplicar_paquete
+        run: python scripts/aplicar_paquete.py --paquete "$RUNNER_TEMP/paquete"
+
+      - name: Confirmar cambios
+        env:
+          ACTOR: ${{ github.actor }}
+        run: |
+          if git diff --cached --quiet; then
+            echo "Sin cambios que guardar."
+            exit 0
+          fi
+          python scripts/check_repo_limits.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "buzón: canciones subidas por $ACTOR"
+
+      # El token solo llega a este paso, y solo para subir. Solo main escribe en el catálogo.
+      - name: Subir a main
+        id: guardar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "El catálogo solo se escribe desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" = "$BASE" ]; then
+            echo "Sin cambios que guardar."
+            exit 0
+          fi
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+          echo "Canciones del buzón guardadas en main." >> "$GITHUB_STEP_SUMMARY"
