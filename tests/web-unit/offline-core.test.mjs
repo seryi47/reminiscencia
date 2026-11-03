@@ -45,7 +45,7 @@ const originals = {
 // Entorno simulado: cachés en memoria, red controlada y listeners del service worker.
 // ---------------------------------------------------------------------------------------------
 
-const env = { stores: new Map(), routes: new Map(), offline: false, handlers: {} };
+const env = { stores: new Map(), routes: new Map(), offline: false, handlers: {}, requests: [] };
 
 /** URL absoluta de una petición (cadena o Request). */
 function urlOf(input) {
@@ -85,6 +85,7 @@ function resetEnvironment() {
   env.stores = new Map();
   env.routes = new Map();
   env.offline = false;
+  env.requests = [];
   globalThis.caches = {
     async open(name) {
       if (!env.stores.has(name)) env.stores.set(name, new FakeCache());
@@ -100,7 +101,9 @@ function resetEnvironment() {
       return [...env.stores.keys()];
     },
   };
-  globalThis.fetch = async (input) => {
+  globalThis.fetch = async (input, init = {}) => {
+    // Se apunta cada petición con su modo de caché HTTP (el del init o el de la Request).
+    env.requests.push({ url: urlOf(input), cache: init.cache ?? (typeof input === 'string' ? 'default' : input.cache) });
     if (env.offline) throw new TypeError('Sin conexión');
     const route = env.routes.get(urlOf(input));
     if (!route) return new Response('No encontrado', { status: 404 });
@@ -557,6 +560,41 @@ describe('service worker (sw.js)', () => {
     env.offline = true;
     const offline = dispatchFetch(new Request(`${ORIGIN}data/songs.json`));
     assert.equal(await (await offline.response).text(), '[{"id":"demo-2"}]');
+  });
+
+  test('los datos nunca salen de una copia vieja: songs.json, folders.json y catalog.json van a la red sin caché HTTP', async () => {
+    // Copia vieja en la caché del shell (la que dejó la instalación) y una versión nueva en el servidor.
+    for (const name of ['songs', 'folders', 'catalog']) env.routes.set(`${ORIGIN}data/${name}.json`, { body: `vieja ${name}` });
+    await runLifecycle('install');
+    for (const name of ['songs', 'folders', 'catalog']) env.routes.set(`${ORIGIN}data/${name}.json`, { body: `nueva ${name}` });
+    env.requests = [];
+    for (const name of ['songs', 'folders', 'catalog']) {
+      const url = `${ORIGIN}data/${name}.json`;
+      const pending = dispatchFetch(new Request(url));
+      assert.equal(await (await pending.response).text(), `nueva ${name}`, `${name}.json viene de la red`);
+      await Promise.all(pending.waits);
+      assert.deepEqual(env.requests.filter((item) => item.url === url).map((item) => item.cache), ['no-store'], `${name}.json sin caché HTTP`);
+      const cache = await caches.open(SHELL);
+      assert.equal(await (await cache.match(url)).text(), `nueva ${name}`, `la copia de respaldo de ${name}.json se actualiza`);
+    }
+    // Sin red, responde la última copia buena.
+    env.offline = true;
+    const offline = dispatchFetch(new Request(`${ORIGIN}data/songs.json`));
+    assert.equal(await (await offline.response).text(), 'nueva songs');
+  });
+
+  test('un error del servidor en los datos no se guarda como copia de respaldo', async () => {
+    env.routes.set(`${ORIGIN}data/songs.json`, { body: 'buena' });
+    await Promise.all(dispatchFetch(new Request(`${ORIGIN}data/songs.json`)).waits);
+    const first = dispatchFetch(new Request(`${ORIGIN}data/songs.json`));
+    await first.response;
+    await Promise.all(first.waits);
+    env.routes.set(`${ORIGIN}data/songs.json`, { body: 'error', status: 500 });
+    const failing = dispatchFetch(new Request(`${ORIGIN}data/songs.json`));
+    assert.equal((await failing.response).status, 500);
+    await Promise.all(failing.waits);
+    const cache = await caches.open(SHELL);
+    assert.equal(await (await cache.match(`${ORIGIN}data/songs.json`)).text(), 'buena');
   });
 
   test('sin red y sin copia, los datos fallan', async () => {
