@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reminiscencia/app_error.dart';
-import 'package:reminiscencia/ui/song_tile.dart';
+import 'package:reminiscencia/ui/cards.dart';
 
 import 'support/fakes.dart';
 
@@ -29,12 +29,18 @@ void main() {
 
       expect(t.source.loads, 2);
       expect(find.textContaining('No hay conexión'), findsNothing);
-      expect(find.byType(SongTile), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(ShelfCard),
+          matching: find.text('Canción s1'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
   testWidgets(
-    'si el audio no se puede preparar, la lista sigue visible y se indica el motivo',
+    'si el audio no se puede preparar, las canciones siguen visibles y se indica el motivo',
     (tester) async {
       setWindow(tester, const Size(400, 800));
       final t = buildTestServices(
@@ -43,7 +49,8 @@ void main() {
       );
       await pumpApp(tester, t.services);
 
-      expect(find.byType(SongTile), findsNWidgets(2));
+      expect(find.text('Canción s1'), findsOneWidget);
+      expect(find.text('Canción s2'), findsOneWidget);
       expect(
         find.textContaining('No se puede preparar el audio'),
         findsOneWidget,
@@ -75,7 +82,12 @@ void main() {
       t.playback.playError = const AppException(
         'El audio no está disponible sin conexión.',
       );
-      await tester.tap(find.byType(SongTile).first);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ShelfCard),
+          matching: find.text('Canción s1'),
+        ),
+      );
       await settle(tester);
 
       expect(find.textContaining('No se pudo reproducir'), findsOneWidget);
@@ -87,21 +99,26 @@ void main() {
   );
 
   testWidgets(
-    'si las listas guardadas no se pueden leer, Favoritos lo dice y no finge estar vacío',
+    'si las listas guardadas no se pueden leer, «Me gusta» lo dice y no finge estar vacía',
     (tester) async {
       setWindow(tester, const Size(400, 800));
       final t = buildTestServices(songs: [fakeSong('s1')]);
       t.repository.readError = const FormatException('JSON roto');
       await pumpApp(tester, t.services);
 
-      await tester.tap(find.text('Favoritos'));
+      await tester.tap(find.text('Tu biblioteca'));
       await settle(tester);
-
       expect(
-        find.textContaining('No se pueden mostrar tus favoritos'),
+        find.textContaining('No se pudieron leer tus listas guardadas'),
         findsOneWidget,
       );
-      expect(find.textContaining('Todavía no tienes favoritos'), findsNothing);
+      await tester.tap(find.text('Canciones que te gustan').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('No se pudieron leer tus listas guardadas'),
+        findsOneWidget,
+      );
       expect(find.text('Reintentar'), findsOneWidget);
     },
   );

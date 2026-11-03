@@ -1,13 +1,16 @@
-/// Ancho (dp) a partir del cual la app usa diseño de tableta: navegación lateral y reproductor junto a la lista.
+/// Ancho (dp) a partir del cual la app usa diseño de tableta: navegación lateral en lugar de la barra inferior.
 const double kTabletBreakpoint = 720;
 
-/// Ancho (dp) de la columna del reproductor en tableta.
-const double kTabletPlayerWidth = 360;
+/// Ancho (dp) de la navegación lateral en tableta.
+const double kTabletRailWidth = 96;
 
-/// Tamaño mínimo (dp) de cualquier botón de reproducción en modo paciente.
-const double kPatientTargetSize = 64;
+/// Objetivo táctil mínimo (dp) de cualquier control.
+const double kMinTouchTarget = 48;
 
-/// Tamaño (dp) de los botones grandes de reproducción en modo paciente.
-const double kPatientButtonSize = 72;
+/// Alto (dp) del minirreproductor que va encima de la barra inferior.
+const double kMiniPlayerHeight = 56;
+
+/// Lado (dp) de la portada en las filas de canción.
+const double kRowArtworkSize = 40;
 
 bool isTabletWidth(double width) => width >= kTabletBreakpoint;

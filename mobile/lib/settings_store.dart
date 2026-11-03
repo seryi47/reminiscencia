@@ -8,9 +8,11 @@ import 'app_settings.dart';
 /// si uno está dañado, solo ese usa su valor por defecto.
 class SettingsStore {
   static const String keyTextScale = 'ajustes.tamanoTexto';
-  static const String keyPatientMode = 'ajustes.modoPaciente';
   static const String keyHighContrast = 'ajustes.altoContraste';
   static const String keyReduceMotion = 'ajustes.reducirAnimaciones';
+
+  /// Clave del antiguo «modo paciente» (versión 1.1). Ya no se lee.
+  static const String legacyKeyPatientMode = 'ajustes.modoPaciente';
 
   Future<AppSettings> read() async {
     final prefs = await SharedPreferences.getInstance();
@@ -18,10 +20,6 @@ class SettingsStore {
     return AppSettings(
       textScale: AppSettings.clampTextScale(
         _safely(() => prefs.getDouble(keyTextScale), defaults.textScale),
-      ),
-      patientMode: _safely(
-        () => prefs.getBool(keyPatientMode),
-        defaults.patientMode,
       ),
       highContrast: _safely(
         () => prefs.getBool(keyHighContrast),
@@ -36,9 +34,12 @@ class SettingsStore {
 
   Future<void> write(AppSettings settings) async {
     final prefs = await SharedPreferences.getInstance();
+    // La app ya no tiene modo paciente: se borra el valor que guardaban las versiones anteriores.
+    if (prefs.containsKey(legacyKeyPatientMode)) {
+      await prefs.remove(legacyKeyPatientMode);
+    }
     final results = await Future.wait<bool>([
       prefs.setDouble(keyTextScale, settings.textScale),
-      prefs.setBool(keyPatientMode, settings.patientMode),
       prefs.setBool(keyHighContrast, settings.highContrast),
       prefs.setBool(keyReduceMotion, settings.reduceMotion),
     ]);

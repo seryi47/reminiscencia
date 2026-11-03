@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 
 import '../app_error.dart';
 import '../collections.dart';
+import '../layout.dart';
+import '../theme.dart';
 
 /// Texto para el usuario de cualquier error de una acción (reproducción, descargas, listas).
 String describeError(Object error) {
@@ -78,12 +80,8 @@ class MessagePanel extends StatelessWidget {
               style: theme.textTheme.bodyLarge,
             ),
             if (label != null && action != null) ...[
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: action,
-                icon: const Icon(Icons.refresh),
-                label: Text(label),
-              ),
+              const SizedBox(height: 24),
+              FilledButton(onPressed: action, child: Text(label)),
             ],
           ],
         ),
@@ -114,8 +112,12 @@ class InlineBanner extends StatelessWidget {
     final action = onAction;
     return Semantics(
       liveRegion: true,
-      child: ColoredBox(
-        color: theme.colorScheme.surfaceContainerHighest,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        decoration: BoxDecoration(
+          color: paletteOf(context).elevated,
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
           child: Row(
@@ -236,6 +238,177 @@ class _NameDialogState extends State<_NameDialog> {
         ),
         FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
       ],
+    );
+  }
+}
+
+/// Etiqueta «N canciones».
+String songCountLabel(int count) =>
+    count == 1 ? '1 canción' : '$count canciones';
+
+/// Duración total en texto corto: «35 min» o «1 h 12 min».
+String formatTotalDuration(double seconds) {
+  final minutes = (seconds / 60).round();
+  if (minutes < 60) return '$minutes min';
+  return '${minutes ~/ 60} h ${minutes % 60} min';
+}
+
+/// Portada generada: las canciones no traen imagen, así que se pinta un degradado estable
+/// a partir del identificador, con un icono encima. Es decorativa: no se anuncia.
+class CoverArt extends StatelessWidget {
+  const CoverArt({
+    super.key,
+    required this.seed,
+    required this.size,
+    this.icon = Icons.music_note_rounded,
+    this.color,
+    this.radius,
+    this.circle = false,
+  });
+
+  final String seed;
+  final double size;
+  final IconData icon;
+
+  /// Color base; si es null, se calcula a partir de [seed].
+  final Color? color;
+  final double? radius;
+  final bool circle;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = color ?? coverColorFor(seed);
+    final dark = Color.lerp(base, Colors.black, 0.55)!;
+    return ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: circle ? BoxShape.circle : BoxShape.rectangle,
+          borderRadius: circle
+              ? null
+              : BorderRadius.circular(radius ?? (size >= 120 ? 8 : 4)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [base, dark],
+          ),
+          boxShadow: size >= 120
+              ? const [
+                  BoxShadow(
+                    color: Color(0x80000000),
+                    blurRadius: 24,
+                    offset: Offset(0, 8),
+                  ),
+                ]
+              : null,
+        ),
+        child: Icon(icon, size: size * 0.42, color: Colors.white),
+      ),
+    );
+  }
+}
+
+/// Superficie pulsable con el color de tarjeta y el de pulsado (#181818 y #282828).
+class PressableSurface extends StatelessWidget {
+  const PressableSurface({
+    super.key,
+    required this.child,
+    required this.onTap,
+    this.color,
+    this.borderRadius = const BorderRadius.all(Radius.circular(8)),
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final Color? color;
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = paletteOf(context);
+    final highContrast = palette.outline == Colors.white;
+    return Material(
+      color: color ?? palette.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: borderRadius,
+        side: highContrast
+            ? BorderSide(color: palette.outline)
+            : BorderSide.none,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        highlightColor: palette.cardPressed,
+        hoverColor: palette.cardPressed,
+        splashColor: Colors.transparent,
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Botón redondo verde de reproducir (o pausar) de las cabeceras de carpeta y lista.
+class PlayCircleButton extends StatelessWidget {
+  const PlayCircleButton({
+    super.key,
+    required this.playing,
+    required this.label,
+    required this.onPressed,
+    this.size = 56,
+  });
+
+  final bool playing;
+
+  /// Lo que se anuncia, por ejemplo «Reproducir «Jazz»».
+  final String label;
+  final VoidCallback? onPressed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = paletteOf(context);
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: label,
+        child: SizedBox.square(
+          dimension: size < kMinTouchTarget ? kMinTouchTarget : size,
+          child: Material(
+            color: palette.accent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onPressed,
+              child: Icon(
+                playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                color: palette.onAccent,
+                size: size * 0.55,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Título de un estante o sección (por ejemplo «Tus listas»).
+class SectionHeading extends StatelessWidget {
+  const SectionHeading(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+      child: Semantics(
+        header: true,
+        child: Text(text, style: Theme.of(context).textTheme.titleLarge),
+      ),
     );
   }
 }

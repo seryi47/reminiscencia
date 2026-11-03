@@ -73,6 +73,8 @@ class FakePlaybackPort implements PlaybackPort {
     NowPlaying.none,
   );
   final ValueNotifier<String?> _error = ValueNotifier<String?>(null);
+  final ValueNotifier<PlaybackProgress> _progress =
+      ValueNotifier<PlaybackProgress>(PlaybackProgress.zero);
 
   /// Si no es null, loadQueue lanza este error (audio que no se puede preparar).
   Object? loadError;
@@ -92,6 +94,12 @@ class FakePlaybackPort implements PlaybackPort {
 
   @override
   ValueListenable<String?> get playbackError => _error;
+
+  @override
+  ValueListenable<PlaybackProgress> get progress => _progress;
+
+  /// Fija la posición que publica el reproductor (para probar la barra de progreso).
+  void setProgress(PlaybackProgress value) => _progress.value = value;
 
   @override
   Future<void> loadQueue(List<Song> songs) async {
@@ -131,19 +139,15 @@ class FakePlaybackPort implements PlaybackPort {
       title: song.title,
       artist: song.artist,
       playing: true,
+      shuffle: _now.value.shuffle,
+      repeat: _now.value.repeat,
     );
   }
 
   @override
   Future<void> togglePlayPause() async {
     log.add('toggle');
-    final now = _now.value;
-    _now.value = NowPlaying(
-      songId: now.songId,
-      title: now.title,
-      artist: now.artist,
-      playing: !now.playing,
-    );
+    _now.value = _now.value.copyWith(playing: !_now.value.playing);
   }
 
   @override
@@ -151,6 +155,22 @@ class FakePlaybackPort implements PlaybackPort {
 
   @override
   Future<void> playPrevious() async => log.add('previous');
+
+  @override
+  Future<void> seek(Duration position) async =>
+      log.add('seek:${position.inSeconds}');
+
+  @override
+  Future<void> setShuffle(bool enabled) async {
+    log.add('shuffle:$enabled');
+    _now.value = _now.value.copyWith(shuffle: enabled);
+  }
+
+  @override
+  Future<void> setRepeat(LoopSetting mode) async {
+    log.add('repeat:${mode.name}');
+    _now.value = _now.value.copyWith(repeat: mode);
+  }
 }
 
 /// Repositorio de listas en memoria. Puede simular fallos de lectura o de escritura.
@@ -185,6 +205,7 @@ class MemoryCollectionsRepository implements CollectionsRepository {
   FakeLibrarySource source,
   FakePlaybackPort playback,
   MemoryCollectionsRepository repository,
+  List<Uri> openedUrls,
 })
 buildTestServices({
   List<Song> songs = const [],
@@ -193,6 +214,8 @@ buildTestServices({
   Object? audioError,
   AppSettings settings = AppSettings.defaults,
   Collections? collections,
+  DateTime? now,
+  bool canOpenUrls = true,
 }) {
   final source = FakeLibrarySource(
     songs: songs,
@@ -202,6 +225,7 @@ buildTestServices({
   final playback = FakePlaybackPort()..loadError = audioError;
   final repository = MemoryCollectionsRepository(collections);
   var ids = 0;
+  final opened = <Uri>[];
   final services = AppServices(
     library: LibraryController(source: source, playback: playback),
     playback: playback,
@@ -210,12 +234,18 @@ buildTestServices({
       newId: () => 'lista${++ids}',
     ),
     settings: SettingsController(initial: settings),
+    openUrl: (uri) async {
+      opened.add(uri);
+      return canOpenUrls;
+    },
+    clock: () => now ?? DateTime(2026, 11, 3, 10),
   );
   return (
     services: services,
     source: source,
     playback: playback,
     repository: repository,
+    openedUrls: opened,
   );
 }
 

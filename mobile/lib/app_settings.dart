@@ -1,8 +1,8 @@
-/// Ajustes de accesibilidad de la app. Clase pura de Dart: no depende de Flutter.
+/// Ajustes de pantalla de la app (iguales para todos: la app no tiene usuarios ni modos).
+/// Clase pura de Dart: no depende de Flutter.
 class AppSettings {
   const AppSettings({
     this.textScale = minTextScale,
-    this.patientMode = false,
     this.highContrast = false,
     this.reduceMotion = false,
   }) : assert(
@@ -20,7 +20,6 @@ class AppSettings {
   static const AppSettings defaults = AppSettings();
 
   final double textScale;
-  final bool patientMode;
   final bool highContrast;
   final bool reduceMotion;
 
@@ -32,13 +31,11 @@ class AppSettings {
 
   AppSettings copyWith({
     double? textScale,
-    bool? patientMode,
     bool? highContrast,
     bool? reduceMotion,
   }) {
     return AppSettings(
       textScale: clampTextScale(textScale ?? this.textScale),
-      patientMode: patientMode ?? this.patientMode,
       highContrast: highContrast ?? this.highContrast,
       reduceMotion: reduceMotion ?? this.reduceMotion,
     );
@@ -48,15 +45,13 @@ class AppSettings {
   bool operator ==(Object other) =>
       other is AppSettings &&
       other.textScale == textScale &&
-      other.patientMode == patientMode &&
       other.highContrast == highContrast &&
       other.reduceMotion == reduceMotion;
 
   @override
-  int get hashCode =>
-      Object.hash(textScale, patientMode, highContrast, reduceMotion);
+  int get hashCode => Object.hash(textScale, highContrast, reduceMotion);
 
   @override
   String toString() =>
-      'AppSettings(textScale: $textScale, patientMode: $patientMode, highContrast: $highContrast, reduceMotion: $reduceMotion)';
+      'AppSettings(textScale: $textScale, highContrast: $highContrast, reduceMotion: $reduceMotion)';
 }
