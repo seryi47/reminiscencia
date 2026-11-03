@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.2.3 (2026-11-03)
+
+- Recompilación de la APK con el importador de YouTube para vídeos individuales y playlists.
+
 ## 1.2.2 (2026-11-03)
 
 - Homeostasia: acepta una URL individual de YouTube o una playlist; las playlists se convierten de cuatro en cuatro y también se procesa el último lote incompleto.
