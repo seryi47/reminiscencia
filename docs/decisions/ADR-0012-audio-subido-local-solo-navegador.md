@@ -1,15 +1,15 @@
 # ADR-0012: Audio subido desde este dispositivo, solo en el navegador
 
-- Estado: aceptada (ampliada a la APK por ADR-0013; sustituida en parte por [ADR-0015](ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) el 2026-11-03, ver la nota de estado)
+- Estado: aceptada (ampliada a la APK por ADR-0013; sustituida en parte por [ADR-0015](ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) y, en la subida de canciones nuevas, por [ADR-0017](ADR-0017-subida-directa-github-web-publica.md), el 2026-11-03; ver las notas de estado)
 - Fecha: 2026-11-02
 - Relaciona: ADR-0003 (audio en GitHub), ADR-0006 (audio publicado en la web), ADR-0007 (catálogo), ADR-0008 (entrada por incidencias) y ADR-0009 (interfaz única y datos locales del cuidador)
 
-> **Nota de estado (2026-11-03, ADR-0017).** La hoja «Subir canciones» ya no guarda canciones nuevas solo en este navegador: todo se sube para todos ([ADR-0017](ADR-0017-subida-directa-github-web-publica.md)). Las canciones locales que ya existan siguen sonando y se pueden borrar. La conversión a Opus de este ADR se reutiliza para la subida, sin sus límites de tamaño y duración.
+> **Nota de estado (2026-11-03, ADR-0017; vigente).** La hoja «Subir canciones» ya no guarda canciones nuevas solo en este navegador: sube siempre para todos ([ADR-0017](ADR-0017-subida-directa-github-web-publica.md)), uno o varios archivos, sin pasos ni límites de tamaño ni por hora, por la función de Vercel `frontend/web/api/subir.js` en trozos de hasta 4 MiB; el workflow `buzon` los publica con la licencia fija de la web. Probado en producción el 2026-11-03 («Prueba subida directa.mp3», publicada como «Prueba subida directa» y despublicada después con la incidencia #21). Las canciones locales que ya existan siguen sonando (`audio/L….opus`, por `sw.js`) y se pueden borrar desde la hoja, en «Guardadas solo en este navegador», o desde el menú de su fila. La conversión a Opus de este ADR (`convertToOpus`) se reutiliza para la subida, sin sus límites de tamaño y duración (`limits: false`, `checkStorage: false`). Lo que este ADR y la nota siguiente dicen de la opción «Solo en este navegador» describe la subida de antes.
 
 > **Nota de estado (2026-11-03).** Con [ADR-0015](ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) la web no tiene usuarios ni modo cuidador: la subida es la opción «Solo en este navegador» de la hoja «Subir canciones», al alcance de cualquiera que use ese navegador. Siguen vigentes el origen, el almacenamiento en `reminiscencia-audio-local`, las tasas de Opus, los límites y el aviso a navegadores sin soporte (decisiones 1 a 5 y 8). Cambian:
 > - **Decisión 6 y consecuencia «Metadatos fuera de la copia»:** la copia cifrada `.rmc` se retiró (ADR-0015, decisión 4), así que el pendiente de confirmar qué entra en ella ya no aplica.
 > - **Decisión 7:** la CSP de producción (`media-src 'self'`) no admite URL de objeto. Con el service worker activo, cada canción local se pide en `audio/L<16 hex>.opus` y `sw.js` la sirve desde IndexedDB, con rangos; sin service worker se usa la URL de objeto, que la CSP bloquea (ADR-0015, decisión 7). El reproductor es el de ADR-0015, sin modo paciente.
-> - **Decisión 9:** `SHELL_VERSION` es hoy 5.
+> - **Decisión 9:** `SHELL_VERSION` era 5 entonces; hoy es 8.
 > - **Consecuencia sobre el borrado:** resuelto el pendiente de los vínculos huérfanos. Al borrar una canción local se quita también de «Me gusta» y de las listas (`forgetSong` en `js/local-library.js`). Ya no hay perfiles a los que vincularla.
 
 ## Contexto
