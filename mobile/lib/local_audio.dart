@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app_error.dart';
 import 'song.dart';
+import 'zip_audio.dart';
 
 /// Subida local de audio desde el teléfono (ADR-0013, espejo de ADR-0012 de la web).
 /// El cuidador elige archivos; se convierten a Ogg Opus y se guardan solo en este teléfono.
@@ -162,12 +163,15 @@ Song songFromRecord(LocalSongRecord record, String filePath) {
 }
 
 /// Archivo que el cuidador ha elegido: nombre visible y ruta en el sistema de ficheros.
+/// Si la canción viene de un ZIP, [zip] dice de dónde sacarla: [path] es entonces la ruta del ZIP y [name]
+/// el nombre base de la canción dentro de él.
 @immutable
 class PickedAudioFile {
-  const PickedAudioFile({required this.name, required this.path});
+  const PickedAudioFile({required this.name, required this.path, this.zip});
 
   final String name;
   final String path;
+  final ZipSongRef? zip;
 }
 
 /// Resultado de convertir una canción en el dispositivo.

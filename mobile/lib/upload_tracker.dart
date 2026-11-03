@@ -12,6 +12,7 @@ import 'library_store.dart';
 import 'local_audio.dart';
 import 'shared_upload.dart';
 import 'song.dart';
+import 'zip_audio.dart';
 
 /// Seguimiento de cada canción subida para todos, de principio a fin: conversión, subida por trozos,
 /// guardado en GitHub y publicación en la web (cuando aparece en `data/songs.json`).
@@ -38,11 +39,15 @@ const String kProvisionalIdPrefix = 'P';
 bool isProvisionalSongId(String id) => id.startsWith(kProvisionalIdPrefix);
 
 String newProvisionalId(Random random) =>
-    kProvisionalIdPrefix +
-    List<String>.generate(
-      8,
-      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
-    ).join();
+    kProvisionalIdPrefix + _randomHex(random);
+
+/// Prefijo de los grupos de un ZIP. No es id de canción.
+const String kZipGroupPrefix = 'Z';
+
+String _randomHex(Random random) => List<String>.generate(
+  8,
+  (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+).join();
 
 enum UploadStage {
   queued,
@@ -136,6 +141,8 @@ class UploadEntry {
     this.baseline,
     this.savedAt,
     this.error,
+    this.groupKey,
+    this.groupName,
   });
 
   /// Id de la canción provisional (`P` + 16 hexadecimales).
@@ -164,6 +171,10 @@ class UploadEntry {
 
   /// Id de la canción publicada.
   String? publishedId;
+
+  /// Grupo del ZIP del que salió (clave `Z…` y nombre del ZIP). Null si se eligió suelta.
+  final String? groupKey;
+  final String? groupName;
 
   /// Porcentaje enviado, por trozos.
   int get percent => parts <= 0 ? 0 : (part * 100 / parts).round();
@@ -231,6 +242,8 @@ class UploadEntry {
     'baseline': baseline?.toList(),
     'saved_at': savedAt?.millisecondsSinceEpoch,
     'error': error,
+    if (groupKey != null) 'group': groupKey,
+    if (groupName != null) 'group_name': groupName,
   };
 
   /// Lanza FormatException si la entrada no es válida.
@@ -252,6 +265,9 @@ class UploadEntry {
     final savedAt = json['saved_at'];
     final error = json['error'];
     final duration = json['duration_s'];
+    final group = json['group'];
+    final groupName = json['group_name'];
+    final grouped = group is String && groupName is String;
     return UploadEntry(
       key: key,
       name: name,
@@ -264,8 +280,59 @@ class UploadEntry {
           ? DateTime.fromMillisecondsSinceEpoch(savedAt)
           : null,
       error: error is String ? error : null,
+      groupKey: grouped ? group : null,
+      groupName: grouped ? groupName : null,
     );
   }
+}
+
+/// Un ZIP elegido: su nombre, cuántos archivos se ignoraron y, si no se pudo abrir, el motivo.
+class UploadGroup {
+  UploadGroup({
+    required this.key,
+    required this.name,
+    required this.songs,
+    this.ignored = 0,
+    this.error,
+  });
+
+  final String key;
+
+  /// Nombre del ZIP («Álbum.zip»).
+  final String name;
+
+  /// Canciones que se sacaron del ZIP.
+  final int songs;
+
+  /// Archivos que no se subieron: carpetas del sistema, ocultos o que no son audio.
+  final int ignored;
+
+  /// Motivo si el ZIP no se pudo abrir (dañado o cifrado).
+  final String? error;
+
+  /// «Álbum.zip: 12 canciones».
+  String get headline {
+    if (error != null) return name;
+    if (songs == 0) return '$name: no tiene canciones';
+    return '$name: $songs ${songs == 1 ? 'canción' : 'canciones'}';
+  }
+
+  /// «Se ignoraron 3 archivos que no son canciones.» Null si no se ignoró ninguno.
+  String? get ignoredText {
+    if (ignored <= 0) return null;
+    return ignored == 1
+        ? 'Se ignoró 1 archivo que no es una canción.'
+        : 'Se ignoraron $ignored archivos que no son canciones.';
+  }
+}
+
+/// Lo que se ve en la lista de subidas: una canción suelta o un ZIP con sus canciones.
+class UploadSection {
+  UploadSection.single(UploadEntry entry) : group = null, entries = [entry];
+  const UploadSection.zip(UploadGroup this.group, this.entries);
+
+  final UploadGroup? group;
+  final List<UploadEntry> entries;
 }
 
 /// Aviso para la persona (por ejemplo, «ya está publicada»).
@@ -386,6 +453,12 @@ class UploadTracker extends ChangeNotifier {
   final Set<String> Function() _knownIds;
 
   final List<UploadEntry> _entries = [];
+
+  /// ZIPs elegidos, por clave.
+  final Map<String, UploadGroup> _groups = {};
+
+  /// Orden de la lista: claves de canciones sueltas y de grupos.
+  final List<String> _layout = [];
   final StreamController<UploadNotice> _notices =
       StreamController<UploadNotice>.broadcast();
   bool _busy = false;
@@ -396,6 +469,27 @@ class UploadTracker extends ChangeNotifier {
   Timer? _timer;
 
   List<UploadEntry> get entries => List.unmodifiable(_entries);
+
+  /// La lista agrupada: cada ZIP con sus canciones, en el orden en que se eligieron.
+  List<UploadSection> get sections {
+    final byGroup = <String, List<UploadEntry>>{};
+    final single = <String, UploadEntry>{};
+    for (final entry in _entries) {
+      final group = entry.groupKey;
+      if (group != null && _groups.containsKey(group)) {
+        (byGroup[group] ??= []).add(entry);
+      } else {
+        single[entry.key] = entry;
+      }
+    }
+    return [
+      for (final key in _layout)
+        if (_groups[key] case final group?)
+          UploadSection.zip(group, List.unmodifiable(byGroup[key] ?? const []))
+        else if (single[key] case final entry?)
+          UploadSection.single(entry),
+    ];
+  }
 
   /// True mientras se convierte o se envía algo.
   bool get busy => _busy;
@@ -416,6 +510,7 @@ class UploadTracker extends ChangeNotifier {
   /// «2 de 3 publicadas».
   String get summary {
     final total = _entries.length;
+    if (total == 0) return 'Ninguna canción para subir';
     final done = _entries.where((e) => e.stage == UploadStage.published).length;
     return '$done de $total ${total == 1 ? 'publicada' : 'publicadas'}';
   }
@@ -429,6 +524,10 @@ class UploadTracker extends ChangeNotifier {
   ];
 
   /// Convierte y sube [files], de uno en uno. Sin red lanza AppException sin crear nada.
+  ///
+  /// Un ZIP no se sube: se leen sus canciones (también las de subcarpetas) y cada una se sube como si se hubiera
+  /// elegida suelta, con su nombre base como título. Si un ZIP está dañado o cifrado, su grupo lleva el error y
+  /// las demás siguen.
   Future<SharedUploadResult> start(List<PickedAudioFile> files) async {
     final shared = uploader;
     if (shared == null) {
@@ -440,17 +539,78 @@ class UploadTracker extends ChangeNotifier {
     if (!await shared.hasConnection()) {
       throw const AppException(kOfflineMessage);
     }
-    final batch = [
-      for (final file in files)
-        UploadEntry(
-          key: newProvisionalId(_random),
-          name: file.name,
-          title: titleFromFileName(file.name),
-          source: file,
-        ),
-    ];
+    _busy = true;
+    _changed();
+    final batch = <UploadEntry>[];
+    final songs = <PickedAudioFile>[];
+    final layout = <String>[];
+    try {
+      for (final file in files) {
+        if (file.zip == null && isZipName(file.name)) {
+          final (group, zipSongs) = await _openZip(file);
+          _groups[group.key] = group;
+          layout.add(group.key);
+          for (final song in zipSongs) {
+            final picked = PickedAudioFile(
+              name: song.name,
+              path: song.zipPath,
+              zip: song,
+            );
+            batch.add(_newEntry(picked, group: group));
+            songs.add(picked);
+          }
+          continue;
+        }
+        final entry = _newEntry(file);
+        layout.add(entry.key);
+        batch.add(entry);
+        songs.add(file);
+      }
+    } finally {
+      _busy = false;
+    }
     _entries.addAll(batch);
-    return _run(batch, files);
+    _layout.addAll(layout);
+    if (batch.isEmpty) {
+      _changed();
+      return const SharedUploadResult([]);
+    }
+    return _run(batch, songs);
+  }
+
+  UploadEntry _newEntry(PickedAudioFile file, {UploadGroup? group}) =>
+      UploadEntry(
+        key: newProvisionalId(_random),
+        name: file.name,
+        title: titleFromFileName(file.name),
+        source: file,
+        groupKey: group?.key,
+        groupName: group?.name,
+      );
+
+  /// Lee las canciones de un ZIP. Si no se puede abrir, el grupo lleva el motivo y no tiene canciones.
+  Future<(UploadGroup, List<ZipSongRef>)> _openZip(PickedAudioFile file) async {
+    final key = kZipGroupPrefix + _randomHex(_random);
+    try {
+      final listing = await listZipAudio(file.path, file.name);
+      return (
+        UploadGroup(
+          key: key,
+          name: file.name,
+          songs: listing.songs.length,
+          ignored: listing.ignored,
+        ),
+        listing.songs,
+      );
+    } catch (error) {
+      final reason = error is AppException
+          ? error.message
+          : '«${file.name}» no se pudo abrir.';
+      return (
+        UploadGroup(key: key, name: file.name, songs: 0, error: reason),
+        const <ZipSongRef>[],
+      );
+    }
   }
 
   /// Vuelve a subir un archivo con error. Si ya estaba convertido, reenvía su Opus sin convertir de nuevo.
@@ -724,6 +884,15 @@ class UploadTracker extends ChangeNotifier {
     _entries.removeWhere(
       (e) => e.stage == UploadStage.published && e.opusPath == null,
     );
+    final keys = {for (final entry in _entries) entry.key};
+    final groupsInUse = {for (final entry in _entries) ?entry.groupKey};
+    // Un ZIP se quita cuando ya no le queda ninguna canción (los que no se pudieron abrir se quedan).
+    _groups.removeWhere(
+      (key, group) => !groupsInUse.contains(key) && group.songs > 0,
+    );
+    _layout.removeWhere(
+      (key) => !keys.contains(key) && !_groups.containsKey(key),
+    );
     _changed();
   }
 
@@ -750,6 +919,28 @@ class UploadTracker extends ChangeNotifier {
         restored.add(entry);
       }
       _entries.insertAll(0, restored);
+      final layout = <String>[];
+      final counts = <String, int>{};
+      for (final entry in restored) {
+        final group = entry.groupKey;
+        if (group == null) {
+          layout.add(entry.key);
+          continue;
+        }
+        if (_groups.containsKey(group)) continue;
+        if (!counts.containsKey(group)) layout.add(group);
+        counts[group] = (counts[group] ?? 0) + 1;
+      }
+      for (final entry in restored) {
+        final group = entry.groupKey;
+        if (group == null || _groups.containsKey(group)) continue;
+        _groups[group] = UploadGroup(
+          key: group,
+          name: entry.groupName!,
+          songs: counts[group]!,
+        );
+      }
+      _layout.insertAll(0, layout);
       await saveTo.deleteOrphans({
         for (final entry in _entries)
           if (entry.opusPath != null ||
