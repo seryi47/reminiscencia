@@ -472,3 +472,16 @@ def test_sin_archivos_pendientes_no_hace_nada(repo):
     result = procesar_buzon(repo=repo, event={"ref": "refs/heads/main"}, actor="ana")
 
     assert result["publicas"] == [] and result["privadas"] == []
+
+
+def test_un_opus_ya_convertido_en_el_navegador_entra_como_cualquier_audio(repo):
+    # La web y la APK convierten a Opus antes de subir, para no llenar el historial de git de WAV (ADR-0017).
+    make_tone(repo / BUZON / "Desde el navegador.opus", seconds=1.0, sample_rate=48000)
+    ruta = f"{BUZON}/Desde el navegador.opus"
+    _commit(repo, CON_LICENCIA)
+
+    result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+
+    [entrada] = result["publicas"]
+    assert _cancion(repo, entrada["song_id"])["title"] == "Desde el navegador"
+    assert not (repo / ruta).exists()

@@ -53,7 +53,7 @@ PORTADAS_SUBDIRECTORY = "portadas"
 PORTADAS_DIRECTORY = f"{BUZON_DIRECTORY}/{PORTADAS_SUBDIRECTORY}"
 # Ficheros fijos del buzón: no son subidas y nunca se procesan ni se borran.
 PLACEHOLDERS = frozenset({"README.md", ".gitkeep"})
-EXTENSIONS = (".wav", ".mp3", ".m4a", ".flac", ".ogg")
+EXTENSIONS = (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus")
 MAX_FILE_BYTES = GIT_BLOCK_FILE_BYTES  # 100 MiB: lo que GitHub deja versionar. Desde el navegador, 25 MiB.
 MAX_NAME_CHARS = 200
 MAX_NAME_BYTES = 255
