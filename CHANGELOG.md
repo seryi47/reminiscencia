@@ -4,9 +4,9 @@
 
 - Recompilación de la APK con el importador de YouTube para vídeos individuales y playlists.
 
-## Sin publicar: título y acceso de Homeostasia (2026-11-03)
+## Sin publicar: APK 1.2.4 (2026-11-03; web desplegada)
 
-- Los vídeos individuales obtienen el título original de los metadatos de YouTube. Si no está disponible, la API devuelve un error explícito en vez de convertir el ID en un título incorrecto.
+- Los vídeos individuales obtienen el título original de oEmbed; si no está disponible, prueban los metadatos de la página y `yt-dlp`. Si ninguna fuente lo devuelve, la API falla explícitamente en vez de convertir el ID en un título incorrecto. Desplegado en producción y verificado con «DESAKATO - Cada Vez (Videoclip Oficial)»; la entrada ya publicada se corrigió por la incidencia #28.
 - Homeostasia queda dedicada a YouTube en la web y la APK; la subida manual continúa en «Subir canciones».
 - Rediseñadas la tarjeta de Homeostasia y su formulario para dar más claridad a la importación.
 - La caché de la web pasa a `SHELL_VERSION = 16`; la APK pasa a 1.2.4+7.
