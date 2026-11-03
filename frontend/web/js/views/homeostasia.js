@@ -25,6 +25,7 @@ const CONFIG = {
   format: 'wav',
   quality: 'original',
   batchSize: 4,
+  convertCreateGap: 2000,
   pollInterval: 3000,
   statusErrorRetries: 5,
   jobTimeout: 600000
@@ -40,6 +41,7 @@ const YOUTUBE_DB_STORE = 'wav';
 // permite reanudar si se cierra la hoja antes de añadirla a la cola.
 const completedVideos = new Set();
 const activeVideos = new Set();
+let nextConvertCreateAt = 0;
 
 // ==================================================
 // UTILIDADES
@@ -118,6 +120,13 @@ function sleep(ms, signal) {
     const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, ms);
     signal?.addEventListener('abort', abort, { once: true });
   });
+}
+
+async function esperarTurnoCreacion(signal) {
+  const now = Date.now();
+  const scheduledAt = Math.max(now, nextConvertCreateAt);
+  nextConvertCreateAt = scheduledAt + CONFIG.convertCreateGap;
+  if (scheduledAt > now) await sleep(scheduledAt - now, signal);
 }
 
 function sanitizeFilename(name) {
@@ -229,6 +238,7 @@ async function listarPlaylist(playlistUrl, signal) {
 // ==================================================
 
 async function crearJob(url, title, signal) {
+  await esperarTurnoCreacion(signal);
   const data = await fetchJson(
     CONVERTER_ENDPOINTS.convert,
     {
@@ -720,12 +730,14 @@ function homeostasiaPanel(ctx, close) {
       }
 
       retryButton.hidden = failedItems.length === 0 && pendingQueueFiles.length === 0;
+      const conversionError = result.errors[0]?.error?.message;
       status.textContent = [
         `Importación procesada: ${result.processed} canciones.`,
         `${result.files.length} WAV preparados para subir.`,
         `${result.errors.length} errores de conversión.`,
+        conversionError ? `Primer error: ${conversionError}` : '',
         queueError
-      ].join(' ');
+      ].filter(Boolean).join(' ');
 
       if (result.errors.length > 0) {
         console.warn(
@@ -831,9 +843,11 @@ function homeostasiaPanel(ctx, close) {
       }
 
       retryButton.hidden = failedItems.length === 0 && pendingQueueFiles.length === 0;
+      const conversionError = result.errors[0]?.error?.message;
       status.textContent =
         `Reintento terminado: ${result.files.length} WAV preparados para subir; ` +
         `${failedItems.length} canciones siguen con error.` +
+        (conversionError ? ` Primer error: ${conversionError}` : '') +
         (queueError ? ` ${queueError}` : '');
     } finally {
       conversionActive = false;

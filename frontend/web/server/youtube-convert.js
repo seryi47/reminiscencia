@@ -25,7 +25,27 @@ export async function handleConvert(request, { fetchImpl = globalThis.fetch } = 
       headers: { ...upstreamHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: canonicalUrl, title: typeof body.title === 'string' ? body.title.slice(0, 200) : '', format: 'wav', quality: 'original' }),
     });
-    if (!upstream.ok) throw new YoutubeApiError(502, 'El servicio de conversión rechazó la canción.');
+    if (!upstream.ok) {
+      let detail = '';
+      try {
+        const upstreamData = await upstream.clone().json();
+        detail = safeUpstreamMessage(upstreamData);
+        if (detail === 'El conversor no pudo completar el trabajo.') detail = '';
+      } catch (error) {
+        console.warn('youtube: respuesta de rechazo de yttowav no JSON', {
+          status: upstream.status,
+          error: error?.name ?? 'Error',
+        });
+      }
+      console.warn('youtube: yttowav rechazó una solicitud de conversión', {
+        status: upstream.status,
+      });
+      const suffix = detail ? `: ${detail}` : '';
+      throw new YoutubeApiError(
+        502,
+        `El servicio de conversión rechazó la canción (HTTP ${upstream.status})${suffix}.`
+      );
+    }
     let data;
     try { data = await upstream.json(); } catch { throw new YoutubeApiError(502, 'El servicio de conversión devolvió una respuesta inválida.'); }
     const jobId = jobIdFrom(data);

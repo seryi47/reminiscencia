@@ -130,6 +130,21 @@ describe('API del importador de YouTube', () => {
     assert.equal(body.url, videoUrl);
   });
 
+  test('explica el código y el mensaje seguro cuando yttowav rechaza la conversión', async () => {
+    const response = await handleConvert(new Request('https://reminiscencia.test/api/youtube/convert', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: videoUrl, title: 'Tema' }),
+    }), {
+      fetchImpl: async () => new Response(JSON.stringify({ error: 'Servicio temporalmente saturado' }), { status: 503 }),
+    });
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), {
+      ok: false,
+      error: 'El servicio de conversión rechazó la canción (HTTP 503): Servicio temporalmente saturado.',
+    });
+  });
+
   test('filtra el estado y transmite un WAV sin aceptar una URL de descarga externa', async () => {
     const status = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123'), {
       fetchImpl: async () => new Response(JSON.stringify({ status: 'completed', downloadUrl: 'https://attacker.test/file' }), { status: 200 }),

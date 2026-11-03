@@ -964,6 +964,67 @@ describe("Subir canciones", () => {
     }),
   );
 
+  prueba("Homeostasia: limita el ritmo de creación de conversiones de YouTube", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      restaurarCatalogo();
+      const createTimes = [];
+      const videos = ["abcdefghijk", "lmnopqrstuv", "wxyzABCDEFG", "HIJKLMNOPQR", "STUVWXYZabc"];
+      await page.setRequestInterception(true);
+      page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.pathname === "/api/youtube/playlist") {
+          void request.respond({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              items: videos.map((id, index) => ({
+                url: `https://www.youtube.com/watch?v=${id}`,
+                title: `Tema ${index + 1}`,
+              })),
+            }),
+          });
+        } else if (url.pathname === "/api/youtube/convert") {
+          createTimes.push(Date.now());
+          void request.respond({
+            status: 502,
+            contentType: "application/json",
+            body: JSON.stringify({
+              ok: false,
+              error: "El servicio de conversión rechazó la canción (HTTP 503): Servicio temporalmente saturado.",
+            }),
+          });
+        } else {
+          void request.continue();
+        }
+      });
+
+      await prepararPagina(page);
+      await openApp(page, server.url);
+      await clickTestid(page, "sidebar-create", "botón Crear");
+      await page.waitForSelector('[data-testid="menu-homeostasia"]');
+      await page.$eval('[data-testid="menu-homeostasia"]', (item) => item.click());
+      await waitVisible(page, "homeostasia-sheet", { context: "hoja Homeostasia" });
+      await page.$eval('[data-testid="homeostasia-playlist-input"]', (input) => {
+        input.value = "https://www.youtube.com/playlist?list=PL123";
+      });
+      await clickTestid(page, "homeostasia-playlist", "Importar de YouTube");
+      await page.waitForFunction(
+        () => /Importación procesada: 5 canciones\./.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+        { timeout: 30000 },
+      );
+
+      assert.equal(createTimes.length, 5);
+      for (let index = 1; index < createTimes.length; index += 1) {
+        assert.ok(
+          createTimes[index] - createTimes[index - 1] >= 1900,
+          `la petición ${index + 1} se envió demasiado pronto`,
+        );
+      }
+      assert.match(await textOf(page, "homeostasia-status"), /5 errores de conversión/);
+      assert.match(await textOf(page, "homeostasia-status"), /HTTP 503/);
+    }),
+  );
+
   prueba("Captura de la hoja con varios estados", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       subidas.length = 0;
