@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## Sin publicar: APK, «Subir canciones» acepta archivos ZIP (2026-11-03)
+
+Pedido del propietario. Sin probar en dispositivo.
+
+### Añadido
+- «Subir canciones» acepta también `.zip`, uno o varios y mezclados con canciones sueltas. El ZIP no se sube: la app lee su índice y saca cada canción de audio (WAV, MP3, M4A, FLAC, OGG u OPUS, también en subcarpetas), de una en una y justo antes de convertirla, que sigue el flujo de siempre (Opus, trozos a `/api/subir` y estados hasta «Publicada»). El título es el nombre del archivo dentro del ZIP, sin ruta ni extensión.
+- Se descomprime a trozos, sin cargar el ZIP en memoria (probado con una entrada de 286 MB: unos 25 MB más de memoria), a `subida/zip/` en la carpeta temporal, con un nombre propio por canción: las rutas del ZIP nunca se usan para escribir (zip-slip). Cada copia se borra en cuanto se convierte, y la carpeta al terminar. Se comprueba el CRC de cada canción. Sin límites de tamaño; todo con la app abierta (un isolate de corta vida para no congelar la interfaz), sin trabajos en segundo plano.
+- Se ignoran carpetas, `__MACOSX/`, ocultos y lo que no es audio, y se dice cuántos («Se ignoraron 3 archivos que no son canciones.»). Un ZIP dañado o con contraseña muestra su error y los demás siguen; una canción dañada dentro del ZIP queda con «Error» y las demás siguen.
+- En «Tu biblioteca» cada ZIP es un grupo («Álbum.zip: 12 canciones») con una fila por canción, debajo del resumen general («0 de 12 publicadas»). El grupo se recuerda al volver a abrir la app.
+- `lib/zip_audio.dart` y la dependencia directa `archive` (Dart puro, ya estaba como transitiva). Pruebas con ZIP generados en la prueba: subcarpetas, `__MACOSX`, ocultos, no-audio, dañado, cifrado, nombres con acentos y zip-slip (`test/zip_audio_test.dart`, `test/zip_upload_test.dart` y una prueba de interfaz en `test/app_structure_test.dart`).
+
 ## Sin publicar: «Subir canciones» muestra cada paso hasta «Publicada» (2026-11-03; en `main`)
 
 Pedido del propietario: la hoja se quedaba en «Subida: llegará a todos en un par de minutos» sin decir si la canción se había subido o publicado.

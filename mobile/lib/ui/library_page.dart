@@ -254,9 +254,9 @@ class _LibraryRow extends StatelessWidget {
   }
 }
 
-/// «Subir canciones»: sin hojas ni confirmaciones. Comprueba la red, elige uno o varios archivos y los sube
-/// a la biblioteca común (convertidos a Opus, de uno en uno). Cada archivo tiene su fila en «Tu biblioteca»
-/// hasta que se publica (ver UploadsPanel).
+/// «Subir canciones»: sin hojas ni confirmaciones. Comprueba la red, elige uno o varios archivos (canciones
+/// sueltas o ZIP con canciones) y los sube a la biblioteca común (convertidos a Opus, de uno en uno). Cada
+/// canción tiene su fila en «Tu biblioteca» hasta que se publica, y las de un ZIP van agrupadas (ver UploadsPanel).
 Future<void> uploadSongs(BuildContext context, AppServices services) async {
   final messenger = ScaffoldMessenger.of(context);
   final library = services.library;

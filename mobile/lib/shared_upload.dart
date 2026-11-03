@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'app_error.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
+import 'zip_audio.dart';
 
 /// Subida «para todos»: cada archivo se convierte a Ogg Opus en el teléfono y se envía, en trozos, a la función
 /// de la web (`/api/subir`), que lo guarda en el buzón del repositorio con el token del servidor. La app no guarda
@@ -217,6 +218,10 @@ class SharedUploader {
 
   /// Sube [files]. Sin red, lanza AppException y no intenta nada.
   ///
+  /// Las canciones de un ZIP ([PickedAudioFile.zip]) se sacan justo antes de convertirlas, de una en una, a un
+  /// archivo temporal de la carpeta `zip/` del directorio de trabajo, y se borran al convertirlas. Al terminar
+  /// se borra esa carpeta entera.
+  ///
   /// [outputFor] da el fichero donde se guarda el Opus de cada archivo; si se da, el Opus se conserva al terminar
   /// (para escucharlo mientras se publica y para reintentar sin volver a convertir) y [onConverted] avisa de que
   /// ya está escrito. Sin [outputFor], el Opus es temporal y se borra. [onItemDone] recibe el resultado de cada
@@ -233,72 +238,97 @@ class SharedUploader {
     _cancelled = false;
     final dir = await _workDir();
     await dir.create(recursive: true);
+    final zipDir = Directory('${dir.path}/zip');
     final items = <UploadItemResult>[];
     String? stopReason;
-    for (var index = 0; index < files.length; index += 1) {
-      final file = files[index];
-      final title = titleFromFileName(file.name);
-      void add(UploadOutcome outcome, String message) {
-        final item = _item(file.name, title, outcome, message);
-        items.add(item);
-        onItemDone?.call(index, item);
-      }
+    try {
+      for (var index = 0; index < files.length; index += 1) {
+        final file = files[index];
+        final title = titleFromFileName(file.name);
+        void add(UploadOutcome outcome, String message) {
+          final item = _item(file.name, title, outcome, message);
+          items.add(item);
+          onItemDone?.call(index, item);
+        }
 
-      if (_cancelled) stopReason ??= _pausedMessage;
-      if (stopReason != null) {
-        add(UploadOutcome.pending, stopReason);
-        continue;
-      }
-      final output = outputFor != null
-          ? await outputFor(index)
-          : File('${dir.path}/${uuidV4(_random)}.opus');
-      var keep = false;
-      try {
-        onProgress?.call(
-          UploadProgress(index: index, total: files.length, title: title),
-        );
-        final ConvertedAudio converted;
-        try {
-          converted = await converter.convert(
-            inputPath: file.path,
-            outputPath: output.path,
-            title: title,
-          );
-        } catch (error) {
-          if (!_cancelled) rethrow;
-          stopReason = _pausedMessage;
+        if (_cancelled) stopReason ??= _pausedMessage;
+        if (stopReason != null) {
           add(UploadOutcome.pending, stopReason);
           continue;
         }
-        if (outputFor != null) {
-          keep = true;
-          onConverted?.call(index, output, converted);
-        }
-        final sent = await _sendItem(
-          output,
-          file.name,
-          (part, parts) => onProgress?.call(
-            UploadProgress(
-              index: index,
-              total: files.length,
+        final output = outputFor != null
+            ? await outputFor(index)
+            : File('${dir.path}/${uuidV4(_random)}.opus');
+        var keep = false;
+        File? extracted;
+        try {
+          onProgress?.call(
+            UploadProgress(index: index, total: files.length, title: title),
+          );
+          var input = file.path;
+          final zip = file.zip;
+          if (zip != null) {
+            await zipDir.create(recursive: true);
+            // Nombre propio, nunca la ruta del ZIP (zip-slip).
+            extracted = File(
+              '${zipDir.path}/${uuidV4(_random)}${zip.dotExtension}',
+            );
+            await extractZipSong(zip, extracted.path);
+            input = extracted.path;
+            if (_cancelled) {
+              stopReason = _pausedMessage;
+              add(UploadOutcome.pending, stopReason);
+              continue;
+            }
+          }
+          final ConvertedAudio converted;
+          try {
+            converted = await converter.convert(
+              inputPath: input,
+              outputPath: output.path,
               title: title,
-              part: part,
-              parts: parts,
+            );
+          } catch (error) {
+            if (!_cancelled) rethrow;
+            stopReason = _pausedMessage;
+            add(UploadOutcome.pending, stopReason);
+            continue;
+          }
+          // La copia sacada del ZIP ya no hace falta: se borra antes de enviar.
+          if (extracted != null) await _deleteQuietly(extracted);
+          if (outputFor != null) {
+            keep = true;
+            onConverted?.call(index, output, converted);
+          }
+          final sent = await _sendItem(
+            output,
+            file.name,
+            (part, parts) => onProgress?.call(
+              UploadProgress(
+                index: index,
+                total: files.length,
+                title: title,
+                part: part,
+                parts: parts,
+              ),
             ),
-          ),
-        );
-        add(sent.item.outcome, sent.item.message);
-        if (sent.connectionLost) stopReason = _lostConnectionMessage;
-      } catch (error) {
-        add(
-          UploadOutcome.failed,
-          error is AppException
-              ? error.message
-              : 'error inesperado al preparar el archivo.',
-        );
-      } finally {
-        if (!keep) await _deleteQuietly(output);
+          );
+          add(sent.item.outcome, sent.item.message);
+          if (sent.connectionLost) stopReason = _lostConnectionMessage;
+        } catch (error) {
+          add(
+            UploadOutcome.failed,
+            error is AppException
+                ? error.message
+                : 'error inesperado al preparar el archivo.',
+          );
+        } finally {
+          if (!keep) await _deleteQuietly(output);
+          if (extracted != null) await _deleteQuietly(extracted);
+        }
       }
+    } finally {
+      await _deleteDirQuietly(zipDir);
     }
     return SharedUploadResult(items);
   }
@@ -358,6 +388,14 @@ class SharedUploader {
     outcome: outcome,
     message: message,
   );
+
+  static Future<void> _deleteDirQuietly(Directory dir) async {
+    try {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    } catch (error) {
+      debugPrint('subida: no se pudo borrar la carpeta temporal: $error');
+    }
+  }
 
   static Future<void> _deleteQuietly(File file) async {
     try {

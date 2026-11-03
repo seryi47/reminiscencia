@@ -7,6 +7,7 @@ import 'common.dart';
 
 /// Estado de las subidas en «Tu biblioteca»: un resumen («2 de 3 publicadas») y una fila por archivo
 /// con su nombre, el paso en el que está, una barra de progreso y, si toca, «Reproducir» o «Reintentar».
+/// Las canciones de un ZIP van agrupadas bajo «Álbum.zip: 12 canciones», con lo que se ignoró o el error.
 class UploadsPanel extends StatelessWidget {
   const UploadsPanel({super.key, required this.services});
 
@@ -16,7 +17,8 @@ class UploadsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final uploads = services.library.uploads;
     final entries = uploads.entries;
-    if (entries.isEmpty) return const SizedBox.shrink();
+    final sections = uploads.sections;
+    if (sections.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final anyPublished = entries.any(
       (e) => e.stage == UploadStage.published && e.opusPath == null,
@@ -49,8 +51,84 @@ class UploadsPanel extends StatelessWidget {
                 ),
             ],
           ),
+          for (final section in sections)
+            if (section.group case final group?)
+              _ZipGroup(
+                services: services,
+                group: group,
+                entries: section.entries,
+              )
+            else
+              _UploadRow(services: services, entry: section.entries.single),
+        ],
+      ),
+    );
+  }
+}
+
+/// Un ZIP: su cabecera y una fila por canción, con sangría.
+class _ZipGroup extends StatelessWidget {
+  const _ZipGroup({
+    required this.services,
+    required this.group,
+    required this.entries,
+  });
+
+  final AppServices services;
+  final UploadGroup group;
+  final List<UploadEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ignored = group.ignoredText;
+    final error = group.error;
+    final label = [group.headline, ?error, ?ignored].join('. ');
+    return Padding(
+      key: Key('upload-group-${group.key}'),
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            container: true,
+            liveRegion: true,
+            label: label,
+            excludeSemantics: true,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    group.headline,
+                    key: Key('upload-group-title-${group.key}'),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        'Error: $error',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  if (ignored != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(ignored, style: theme.textTheme.bodySmall),
+                    ),
+                ],
+              ),
+            ),
+          ),
           for (final entry in entries)
-            _UploadRow(services: services, entry: entry),
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: _UploadRow(services: services, entry: entry),
+            ),
         ],
       ),
     );

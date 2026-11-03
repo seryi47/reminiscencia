@@ -19,6 +19,7 @@ import 'package:reminiscencia/shared_upload.dart';
 import 'package:reminiscencia/upload_tracker.dart';
 
 import 'support/fakes.dart';
+import 'support/zips.dart';
 
 /// Toca el minirreproductor y espera a que el reproductor a pantalla completa termine de abrirse.
 Future<void> openPlayer(WidgetTester tester) async {
@@ -644,6 +645,88 @@ void main() {
         expect(requests, hasLength(2));
         expect(find.text('Guardada en GitHub'), findsOneWidget);
         expect(find.text('Reintentar'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'un ZIP aparece como grupo con una fila por canción, lo ignorado y el resumen; un ZIP dañado, con su error',
+      (tester) async {
+        setWindow(tester, const Size(400, 1200));
+        final zips = Directory('${work.path}/elegidos')..createSync();
+        final album = File('${zips.path}/Álbum.zip')
+          ..writeAsBytesSync(
+            buildZip({
+              'Álbum/01 Canción de cuna.mp3': fakeAudioBytes('1'),
+              'Álbum/CD2/02 Pasodoble.flac': fakeAudioBytes('2'),
+              '__MACOSX/Álbum/._01 Canción de cuna.mp3': fakeAudioBytes('3'),
+              'Álbum/portada.jpg': fakeAudioBytes('4'),
+            }),
+          );
+        final broken = File('${zips.path}/Roto.zip')
+          ..writeAsBytesSync(List<int>.filled(64, 9));
+        final t = servicesWith(
+          uploader: uploader(),
+          pickAudio: () async => [
+            PickedAudioFile(name: 'Álbum.zip', path: album.path),
+            const PickedAudioFile(name: 'Suelta.mp3', path: '/x/s.mp3'),
+            PickedAudioFile(name: 'Roto.zip', path: broken.path),
+          ],
+        );
+        await pumpApp(tester, t.services);
+        await tester.tap(find.text('Tu biblioteca'));
+        await settle(tester);
+        await tapUpload(tester, t.services);
+
+        expect(requests.map((r) => r.headers['X-Nombre-Archivo']), [
+          '01%20Canci%C3%B3n%20de%20cuna.mp3',
+          '02%20Pasodoble.flac',
+          'Suelta.mp3',
+        ]);
+        expect(find.text('Álbum.zip: 2 canciones'), findsOneWidget);
+        expect(
+          find.text('Se ignoraron 2 archivos que no son canciones.'),
+          findsOneWidget,
+        );
+        expect(find.text('01 Canción de cuna.mp3'), findsOneWidget);
+        expect(find.text('02 Pasodoble.flac'), findsOneWidget);
+        expect(find.text('Suelta.mp3'), findsOneWidget);
+        expect(find.text('Roto.zip'), findsOneWidget);
+        expect(
+          find.text('Error: «Roto.zip» está dañado o no es un ZIP válido.'),
+          findsOneWidget,
+        );
+        expect(find.text('Guardada en GitHub'), findsNWidgets(3));
+        expect(find.text('0 de 3 publicadas'), findsOneWidget);
+        expect(
+          tester.getSemantics(
+            find.bySemanticsLabel(
+              'Álbum.zip: 2 canciones. Se ignoraron 2 archivos que no son canciones.',
+            ),
+          ),
+          isSemantics(isLiveRegion: true),
+        );
+        // Las filas del ZIP van dentro de su grupo.
+        final group = find.byWidgetPredicate(
+          (w) =>
+              w.key is ValueKey<String> &&
+              (w.key! as ValueKey<String>).value.startsWith('upload-group-Z') &&
+              !(w.key! as ValueKey<String>).value.contains('title'),
+        );
+        expect(group, findsNWidgets(2));
+        expect(
+          find.descendant(
+            of: group.first,
+            matching: find.text('02 Pasodoble.flac'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: group.first, matching: find.text('Suelta.mp3')),
+          findsNothing,
+        );
+        expect(Directory('${work.path}/zip').existsSync(), isFalse);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       },
     );
 
