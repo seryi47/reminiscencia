@@ -6,11 +6,24 @@ const SW_URL = '/sw.js';
 const SW_SCOPE = '/';
 
 /** Registra sw.js como módulo con alcance '/'. Si el navegador no tiene service workers
- *  o el registro falla, devuelve null y la web sigue funcionando en línea. */
+ *  o el registro falla, devuelve null y la web sigue funcionando en línea.
+ *  Cuando una versión nueva toma el control de una página que ya tenía una anterior, la página se recarga
+ *  una vez: así nadie se queda viendo la interfaz vieja guardada en caché. En la primera visita no recarga. */
 export async function registerPwa() {
   if (!('serviceWorker' in navigator)) return null;
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let reloaded = false;
+  if (typeof navigator.serviceWorker.addEventListener === 'function') {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
+  }
   try {
-    return await navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE, type: 'module' });
+    const registration = await navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE, type: 'module' });
+    if (typeof registration?.update === 'function') registration.update().catch(() => {});
+    return registration;
   } catch (error) {
     console.warn('Reminiscencia: el modo sin conexión no está disponible.', error);
     return null;
