@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 import {
   MAX_PLAYLIST_ITEMS,
@@ -12,10 +13,19 @@ import {
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 45_000;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+const require = createRequire(import.meta.url);
+
+function bundledExecutable() {
+  try {
+    return require('youtube-dl-exec/src/constants').YOUTUBE_DL_PATH;
+  } catch {
+    return '';
+  }
+}
 
 function executable(env) {
   const configured = typeof env?.YTDLP_PATH === 'string' ? env.YTDLP_PATH.trim() : '';
-  return configured || 'yt-dlp';
+  return configured || bundledExecutable() || 'yt-dlp';
 }
 
 export function extractPlaylist({ url, stdout, code, timedOut }) {

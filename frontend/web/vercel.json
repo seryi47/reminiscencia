@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/youtube/playlist.js": {
+      "includeFiles": "node_modules/youtube-dl-exec/bin/yt-dlp"
+    }
+  },
   "headers": [
     {
       "source": "/audio/(.*)\\.opus",
