@@ -147,6 +147,28 @@ def _check_no_links(repo: Path) -> Path:
     return current
 
 
+def _mensaje_de_cabeza(event: Mapping) -> str:
+    head = event.get("head_commit") if isinstance(event, Mapping) else None
+    message = head.get("message") if isinstance(head, Mapping) else None
+    return message if isinstance(message, str) else ""
+
+
+def _archivos_a_procesar(event: Mapping, buzon: Path) -> dict[str, str]:
+    """Las rutas que nombra el evento. Si no nombra ninguna (el evento del push no siempre trae las listas de archivos,
+    y un lanzamiento manual no trae commits), se procesa lo que hay en el buzón en este commit, con el mensaje del
+    último commit del push para la licencia."""
+    files = archivos_del_evento(event) if isinstance(event, Mapping) and "commits" in event else {}
+    if files:
+        return files
+    message = _mensaje_de_cabeza(event)
+    prefix = BUZON_DIRECTORY + "/"
+    return {
+        prefix + item.name: message
+        for item in sorted(buzon.iterdir()) if buzon.is_dir()
+        if item.name not in PLACEHOLDERS and (item.is_file() or item.is_symlink())
+    }
+
+
 def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path | None = None) -> dict:
     """Procesa las subidas del push (ver el docstring del módulo). Deja en el repositorio el catálogo y el audio nuevos,
     la parte pública regenerada y los archivos borrados del buzón; no confirma nada."""
@@ -170,7 +192,7 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     source = UPLOADED_BY + actor
     prefix = BUZON_DIRECTORY + "/"
     try:
-        for path, message in sorted(archivos_del_evento(event).items()):
+        for path, message in sorted(_archivos_a_procesar(event, buzon).items()):
             name = path[len(prefix):]
             if "/" in name:
                 result["revisar"].append({"ruta": path, "motivo": "subcarpeta dentro del buzón"})

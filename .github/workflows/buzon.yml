@@ -19,6 +19,8 @@ on:
       - "audio-library/buzon/**"
       - "!audio-library/buzon/README.md"
       - "!audio-library/buzon/.gitkeep"
+  # A mano, para reprocesar lo que quede en el buzón (entra privado si no hay línea «Licencia:»).
+  workflow_dispatch:
 
 # El mismo grupo que biblioteca.yml: una escritura al catálogo cada vez. Con queue: max, una subida en espera no se
 # cancela cuando llega otra.

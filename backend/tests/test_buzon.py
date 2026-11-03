@@ -441,3 +441,34 @@ def test_el_script_sin_evento_falla_con_un_json_de_error(repo, tmp_path, capsys)
     assert _script().main(["--resultado", str(resultado)], env={"ACTOR": "ana"}, root=repo) == 1
 
     assert "error" in json.loads(resultado.read_text(encoding="utf-8"))
+
+
+# --- Eventos sin listas de archivos y lanzamiento manual -------------------------------------------------------------
+
+
+def test_si_el_evento_no_trae_listas_se_procesa_lo_que_hay_en_el_buzon(repo):
+    ruta = _subir(repo, "Sin listas.wav")
+    _commit(repo, CON_LICENCIA)
+    evento = {"commits": [{"message": CON_LICENCIA}], "head_commit": {"message": CON_LICENCIA}}
+
+    result = procesar_buzon(repo=repo, event=evento, actor="ana")
+
+    [entrada] = result["publicas"]
+    assert _cancion(repo, entrada["song_id"])["title"] == "Sin listas"
+    assert not (repo / ruta).exists()
+
+
+def test_un_lanzamiento_manual_sin_commits_procesa_lo_pendiente_como_privado(repo):
+    _subir(repo, "Pendiente.wav")
+    _commit(repo, SIN_LICENCIA)
+
+    result = procesar_buzon(repo=repo, event={"ref": "refs/heads/main", "inputs": {}}, actor="ana")
+
+    [entrada] = result["privadas"]
+    assert _cancion(repo, entrada["song_id"])["public"] is False
+
+
+def test_sin_archivos_pendientes_no_hace_nada(repo):
+    result = procesar_buzon(repo=repo, event={"ref": "refs/heads/main"}, actor="ana")
+
+    assert result["publicas"] == [] and result["privadas"] == []
