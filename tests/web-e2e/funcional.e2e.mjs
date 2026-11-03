@@ -1029,6 +1029,8 @@ describe("Subir canciones", () => {
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       restaurarCatalogo();
       const createTimes = [];
+      const traceIds = [];
+      const pollNumbers = [];
       let attempts = 0;
       let statusAttempts = 0;
       await page.setRequestInterception(true);
@@ -1045,6 +1047,7 @@ describe("Subir canciones", () => {
         } else if (url.pathname === "/api/youtube/convert") {
           attempts += 1;
           createTimes.push(Date.now());
+          traceIds.push(request.headers()["x-homeostasia-trace"]);
           if (attempts === 1) {
             void request.respond({
               status: 503,
@@ -1060,13 +1063,21 @@ describe("Subir canciones", () => {
           }
         } else if (url.pathname === "/api/youtube/status") {
           statusAttempts += 1;
+          traceIds.push(request.headers()["x-homeostasia-trace"]);
+          pollNumbers.push(request.headers()["x-homeostasia-poll"]);
           const status = statusAttempts === 1 ? "queued"
             : statusAttempts === 2 ? "processing"
               : "error";
           void request.respond({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify({ status, error: "Error simulado de conversión." }),
+            body: JSON.stringify({
+              status,
+              queuePosition: status === "queued" ? 37 : undefined,
+              queueLength: status === "queued" ? 50 : undefined,
+              progress: status === "processing" ? 42 : undefined,
+              error: "Error simulado de conversión.",
+            }),
           });
         } else {
           void request.continue();
@@ -1084,11 +1095,11 @@ describe("Subir canciones", () => {
       });
       await clickTestid(page, "homeostasia-playlist", "Importar de YouTube");
       await page.waitForFunction(
-        () => /en cola/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+        () => /en cola \(posición 37 de 50\)/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
         { timeout: 10000 },
       );
       await page.waitForFunction(
-        () => /procesándose/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+        () => /procesándose \(42 %\)/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
         { timeout: 10000 },
       );
       await page.waitForFunction(
@@ -1099,6 +1110,9 @@ describe("Subir canciones", () => {
       assert.equal(attempts, 2);
       assert.equal(statusAttempts, 3);
       assert.ok(createTimes[1] - createTimes[0] >= 1900);
+      assert.ok(traceIds.every((traceId) => traceId === traceIds[0]));
+      assert.match(traceIds[0], /^[a-f0-9-]{32,36}$/i);
+      assert.deepEqual(pollNumbers, ["1", "2", "3"]);
       assert.match(await textOf(page, "homeostasia-status"), /Error simulado de conversión/);
     }),
   );

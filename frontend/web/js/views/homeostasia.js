@@ -221,9 +221,19 @@ function retryDelay(error, attempt) {
   return delay + Math.random() * Math.min(3000, Math.max(500, delay * 0.1));
 }
 
-function conversionStatusLabel(status) {
-  if (status === 'queued') return 'en cola';
-  if (status === 'processing') return 'procesándose';
+function conversionStatusLabel({ status, queuePosition, queueLength, progress } = {}) {
+  if (status === 'queued') {
+    const queue = Number.isSafeInteger(queuePosition) && Number.isSafeInteger(queueLength)
+      ? ` (posición ${queuePosition} de ${queueLength})`
+      : '';
+    return `en cola${queue}`;
+  }
+  if (status === 'processing') {
+    const percentage = typeof progress === 'number' && Number.isFinite(progress)
+      ? ` (${Math.round(progress)} %)`
+      : '';
+    return `procesándose${percentage}`;
+  }
   if (status === 'completed' || status === 'done') return 'preparando la descarga WAV';
   return status || 'estado desconocido';
 }
@@ -265,7 +275,7 @@ async function listarPlaylist(playlistUrl, signal) {
 // CREAR CONVERSIÓN EN YTTOWAV
 // ==================================================
 
-async function crearJob(url, title, signal, deadline, onRetry) {
+async function crearJob(url, title, signal, deadline, onRetry, traceId) {
   let data;
   for (let attempt = 1; attempt <= CONFIG.convertCreateAttempts; attempt++) {
     await esperarTurnoCreacion(signal, deadline);
@@ -276,7 +286,8 @@ async function crearJob(url, title, signal, deadline, onRetry) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Accept: '*/*'
+            Accept: '*/*',
+            'X-Homeostasia-Trace': traceId
           },
           body: JSON.stringify({ url, title: title || '' })
         },
@@ -321,15 +332,23 @@ async function crearJob(url, title, signal, deadline, onRetry) {
 // CONSULTAR ESTADO Y DESCARGAR WAV
 // ==================================================
 
-async function esperarYDescargar(jobId, signal, deadline, onStatus) {
+async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId) {
   let consecutiveStatusErrors = 0;
+  let poll = 0;
 
   while (Date.now() < deadline) {
     let data;
     try {
+      poll++;
       data = await fetchJson(
         `${CONVERTER_ENDPOINTS.status}?jobId=${encodeURIComponent(jobId)}`,
-        { headers: { Accept: 'application/json' } },
+        {
+          headers: {
+            Accept: 'application/json',
+            'X-Homeostasia-Trace': traceId,
+            'X-Homeostasia-Poll': String(poll)
+          }
+        },
         signal
       );
     } catch (error) {
@@ -351,7 +370,22 @@ async function esperarYDescargar(jobId, signal, deadline, onStatus) {
     const status = (
       data.status || ''
     ).toLowerCase();
-    onStatus?.(status);
+    onStatus?.({
+      status,
+      queuePosition: data.queuePosition,
+      queueLength: data.queueLength,
+      progress: data.progress
+    });
+    if (poll === 1 || poll % 10 === 0 || (status !== 'queued' && status !== 'processing')) {
+      console.info('Homeostasia: estado de conversión', {
+        traceId,
+        poll,
+        status,
+        queuePosition: data.queuePosition,
+        queueLength: data.queueLength,
+        progress: data.progress
+      });
+    }
 
     if (status === 'error') {
       throw new Error(
@@ -422,11 +456,12 @@ async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
 
   activeVideos.add(videoId);
   try {
+    const traceId = globalThis.crypto.randomUUID();
     const deadline = Date.now() + CONFIG.jobTimeout;
     const cached = await readCachedWav(videoId);
     const blob = cached?.blob || await (async () => {
-      const jobId = await crearJob(item.url, item.title, signal, deadline, onRetry);
-      return esperarYDescargar(jobId, signal, deadline, onStatus);
+      const jobId = await crearJob(item.url, item.title, signal, deadline, onRetry, traceId);
+      return esperarYDescargar(jobId, signal, deadline, onStatus, traceId);
     })();
 
     const filename =

@@ -155,6 +155,23 @@ describe('API del importador de YouTube', () => {
     });
     assert.deepEqual(await status.json(), { status: 'completed' });
 
+    const queuedStatus = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123', {
+      headers: { 'x-homeostasia-trace': '0123456789abcdef0123456789abcdef', 'x-homeostasia-poll': '1' },
+    }), {
+      fetchImpl: async () => new Response(JSON.stringify({
+        status: 'queued',
+        queuePosition: 37,
+        queueLength: 50,
+        progress: 0,
+      }), { status: 200 }),
+    });
+    assert.deepEqual(await queuedStatus.json(), {
+      status: 'queued',
+      queuePosition: 37,
+      queueLength: 50,
+      progress: 0,
+    });
+
     const invalidStatus = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123'), {
       fetchImpl: async () => new Response(JSON.stringify({}), { status: 200 }),
     });
@@ -165,6 +182,16 @@ describe('API del importador de YouTube', () => {
       fetchImpl: async () => new Response(JSON.stringify({ status: 'processing', downloadUrl: '/api/download/?jobId=job_123' }), { status: 200 }),
     });
     assert.deepEqual(await statusByUrl.json(), { status: 'completed' });
+
+    const invalidQueueMetrics = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123'), {
+      fetchImpl: async () => new Response(JSON.stringify({
+        status: 'queued',
+        queuePosition: '37',
+        queueLength: 50,
+        progress: 101,
+      }), { status: 200 }),
+    });
+    assert.deepEqual(await invalidQueueMetrics.json(), { status: 'queued', queueLength: 50 });
 
     const wav = new Uint8Array(48);
     wav.set(new TextEncoder().encode('RIFF'), 0);

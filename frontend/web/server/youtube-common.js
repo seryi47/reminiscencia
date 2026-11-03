@@ -131,3 +131,13 @@ export function safeUpstreamMessage(data) {
   const message = data?.errorText || data?.error || data?.message;
   return typeof message === 'string' && message.trim() ? message.trim().slice(0, 300) : 'El conversor no pudo completar el trabajo.';
 }
+
+export function diagnosticContext(request) {
+  const traceId = request.headers.get('x-homeostasia-trace') ?? '';
+  const poll = Number(request.headers.get('x-homeostasia-poll'));
+  return {
+    traceId: /^[a-f0-9-]{32,36}$/i.test(traceId) ? traceId : null,
+    requestId: request.headers.get('x-vercel-id')?.slice(0, 100) || null,
+    poll: Number.isSafeInteger(poll) && poll > 0 && poll <= 100_000 ? poll : null,
+  };
+}

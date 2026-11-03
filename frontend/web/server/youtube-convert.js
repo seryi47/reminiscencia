@@ -2,6 +2,7 @@ import {
   CONVERTER_API,
   YoutubeApiError,
   canonicalVideoUrl,
+  diagnosticContext,
   fetchWithTimeout,
   jobIdFrom,
   json,
@@ -14,6 +15,8 @@ import {
 } from './youtube-common.js';
 
 export async function handleConvert(request, { fetchImpl = globalThis.fetch } = {}) {
+  const startedAt = Date.now();
+  const diagnostic = diagnosticContext(request);
   try {
     if (request.method !== 'POST') throw new YoutubeApiError(405, 'Solo se admite POST.');
     const body = await readJson(request);
@@ -38,7 +41,9 @@ export async function handleConvert(request, { fetchImpl = globalThis.fetch } = 
         });
       }
       console.warn('youtube: yttowav rechazó una solicitud de conversión', {
+        ...diagnostic,
         status: upstream.status,
+        durationMs: Date.now() - startedAt,
       });
       const suffix = detail ? `: ${detail}` : '';
       const retryable = [408, 425, 429, 500, 502, 503, 504].includes(upstream.status);
@@ -53,6 +58,13 @@ export async function handleConvert(request, { fetchImpl = globalThis.fetch } = 
     try { data = await upstream.json(); } catch { throw new YoutubeApiError(502, 'El servicio de conversión devolvió una respuesta inválida.'); }
     const jobId = jobIdFrom(data);
     if (!jobId) throw new YoutubeApiError(502, 'El conversor no devolvió un identificador de trabajo.');
+    if (diagnostic.traceId) {
+      console.info('youtube: conversión aceptada', {
+        ...diagnostic,
+        upstreamStatus: upstream.status,
+        durationMs: Date.now() - startedAt,
+      });
+    }
     return json(200, { jobId });
   } catch (error) {
     return publicError(error);
