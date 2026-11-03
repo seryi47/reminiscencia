@@ -13,9 +13,10 @@ Estructura del paquete:
                                   estado: A (nuevo), M (modificado) o D (borrado)
   cambios/<ruta>                  contenido de cada fichero A o M
 
-La acción 'buzon' (workflow buzon.yml, ADR-0014) es la única que puede borrar archivos de audio-library/buzon/ y de
-audio-library/buzon/portadas/, y solo borrarlos: nunca añadirlos ni cambiarlos. Solo se admiten nombres válidos del
-buzón (sonidos.buzon.nombre_valido) y nunca sus ficheros fijos (README.md, .gitkeep).
+La acción 'buzon' (workflow buzon.yml, ADR-0014) es la única que puede borrar archivos de audio-library/buzon/, de
+audio-library/buzon/portadas/ y los trozos y manifiestos de audio-library/buzon/.partes/<UUID>/ (ADR-0017), y solo
+borrarlos: nunca añadirlos ni cambiarlos. Solo se admiten nombres válidos del buzón (sonidos.buzon.nombre_valido o
+sonidos.buzon.ruta_de_partes) y nunca sus ficheros fijos (README.md, .gitkeep).
 
 Portadas (ADR-0016): audio-library/covers/<ID>.jpg (se añade, cambia o borra con el catálogo) y su copia pública,
 frontend/web/covers/<ID>.jpg, que la publicación regenera. ID es S o F seguida de 16 hexadecimales; solo .jpg.
@@ -32,7 +33,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from sonidos.buzon import BUZON_DIRECTORY, PLACEHOLDERS, PORTADAS_DIRECTORY, nombre_valido
+from sonidos.buzon import BUZON_DIRECTORY, PLACEHOLDERS, PORTADAS_DIRECTORY, nombre_valido, ruta_de_partes
 from sonidos.issue_request import ACTIONS as ISSUE_ACTIONS
 from sonidos.portadas import COVER_NAME, COVERS_DIRECTORY, WEB_COVERS_DIRECTORY
 from sonidos.publish import sync_public
@@ -97,9 +98,11 @@ def ruta_permitida(ruta: object) -> bool:
 
 def ruta_buzon(ruta: object) -> bool:
     """Un archivo directo del buzón o de su carpeta de portadas, con nombre válido, que no sea uno de sus ficheros
-    fijos (ADR-0014, ADR-0016)."""
+    fijos (ADR-0014, ADR-0016), o un trozo o un manifiesto de una subida por trozos (ADR-0017)."""
     if not isinstance(ruta, str):
         return False
+    if ruta_de_partes(ruta):
+        return True
     directory, _, name = ruta.rpartition("/")
     return directory in (BUZON_DIRECTORY, PORTADAS_DIRECTORY) and name not in PLACEHOLDERS and nombre_valido(name)
 

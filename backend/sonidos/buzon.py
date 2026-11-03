@@ -26,6 +26,17 @@ push). Máximo 10 MiB. Se convierte a JPEG de 640×640 (sonidos.portadas) en aud
 apunta a ella y se borra del buzón. No necesita línea de licencia. Un id que no existe, un nombre que no es un id o
 una imagen que no es válida se rechazan y se borran, con el motivo en el resumen. Las canciones se procesan antes que
 las portadas.
+
+Subidas por trozos desde la web pública y la APK (ADR-0017): la función de Vercel guarda cada trozo de un Ogg Opus en
+audio-library/buzon/.partes/<id>/<índice>.part (id: UUID en minúsculas; índices desde 0) con un commit por trozo, y
+con el último escribe audio-library/buzon/.partes/<id>/manifiesto.json, {"nombre": "<nombre>.opus", "partes": N}, en
+un commit con la línea «Licencia: …». Una carpeta sin manifiesto es una subida en curso y se ignora. Con manifiesto y
+las N partes, se unen en orden en audio-library/buzon/<nombre>.opus (con un sufijo « (2)», « (3)»... si ese nombre ya
+está), se borra la carpeta de partes y el archivo se procesa como cualquier otro, con la licencia del commit que trajo
+el manifiesto. Si este push no trae el manifiesto (otra ejecución de la cola llegó antes a main), se usa la licencia
+que la función declara siempre (WEB_LICENSE): esas carpetas solo las escribe la función de la web.
+- Un manifiesto que no es válido (forma, nombre o número de partes) se rechaza y se borra la carpeta.
+- Se dejan para revisar: un id que no es un UUID, enlaces simbólicos, elementos que no son partes y partes que faltan.
 """
 
 from __future__ import annotations
@@ -54,12 +65,21 @@ PORTADAS_DIRECTORY = f"{BUZON_DIRECTORY}/{PORTADAS_SUBDIRECTORY}"
 # Ficheros fijos del buzón: no son subidas y nunca se procesan ni se borran.
 PLACEHOLDERS = frozenset({"README.md", ".gitkeep"})
 EXTENSIONS = (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus")
-MAX_FILE_BYTES = GIT_BLOCK_FILE_BYTES  # 100 MiB: lo que GitHub deja versionar. Desde el navegador, 25 MiB.
+MAX_FILE_BYTES = GIT_BLOCK_FILE_BYTES  # 100 MiB: lo que GitHub deja versionar.
 MAX_NAME_CHARS = 200
 MAX_NAME_BYTES = 255
 MAX_TITLE_CHARS = 200
 MAX_LICENSE_CHARS = 300
 UPLOADED_BY = "Subida por "
+# Subidas por trozos (ADR-0017).
+PARTES_SUBDIRECTORY = ".partes"
+PARTES_DIRECTORY = f"{BUZON_DIRECTORY}/{PARTES_SUBDIRECTORY}"
+PARTES_MANIFEST = "manifiesto.json"
+MAX_PARTES = 1000
+MAX_MANIFEST_BYTES = 4096
+WEB_LICENSE = "Subida desde la web pública; quien la sube declara tener derecho a publicarla"
+_UPLOAD_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_PART_NAME = re.compile(r"(?:0|[1-9][0-9]{0,2})\.part")  # índices de 0 a 999: como mucho MAX_PARTES partes
 
 # Nombre de una cuenta de GitHub: letras, números y guiones, hasta 39 caracteres.
 _ACTOR = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
@@ -122,6 +142,17 @@ def licencia_desde_mensaje(message: object) -> str | None:
     return text
 
 
+def ruta_de_partes(ruta: object) -> bool:
+    """Un trozo (<índice>.part) o el manifiesto de una subida por trozos: audio-library/buzon/.partes/<UUID>/<nombre>.
+    Son las únicas rutas de .partes que el paquete puede borrar."""
+    if not isinstance(ruta, str) or not ruta.startswith(PARTES_DIRECTORY + "/"):
+        return False
+    upload_id, separator, name = ruta[len(PARTES_DIRECTORY) + 1:].partition("/")
+    if not separator or "/" in name or not _UPLOAD_ID.fullmatch(upload_id):
+        return False
+    return name == PARTES_MANIFEST or _PART_NAME.fullmatch(name) is not None
+
+
 def actor_valido(actor: object) -> str:
     if not isinstance(actor, str) or not _ACTOR.fullmatch(actor):
         raise BuzonError("la cuenta que sube no tiene un nombre de GitHub válido")
@@ -171,7 +202,8 @@ def _archivos_a_procesar(event: Mapping, buzon: Path) -> dict[str, str]:
     último commit del push para la licencia."""
     files = archivos_del_evento(event) if isinstance(event, Mapping) and "commits" in event else {}
     if files:
-        return files
+        # Los trozos de .partes no se procesan uno a uno: los une _unir_partes cuando llega su manifiesto.
+        return {path: message for path, message in files.items() if not path.startswith(PARTES_DIRECTORY + "/")}
     message = _mensaje_de_cabeza(event)
     files: dict[str, str] = {}
     for directory, prefix in ((buzon, BUZON_DIRECTORY + "/"), (buzon / PORTADAS_SUBDIRECTORY, PORTADAS_DIRECTORY + "/")):
@@ -209,6 +241,8 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     prefix = BUZON_DIRECTORY + "/"
     portadas_prefix = PORTADAS_DIRECTORY + "/"
     archivos = _archivos_a_procesar(event, buzon)
+    del_evento = archivos_del_evento(event) if isinstance(event, Mapping) and "commits" in event else {}
+    archivos.update(_unir_partes(buzon, result, del_evento))
     portadas = {path: message for path, message in archivos.items() if path.startswith(portadas_prefix)}
     try:
         for path, message in sorted(archivos.items()):
@@ -277,6 +311,96 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
         catalog_path=catalog_path, audio_dir=audio_dir, web_dir=repo / "frontend" / "web", covers_dir=covers_dir,
     )
     return result
+
+
+def _leer_manifiesto(path: Path) -> tuple[str, int] | None:
+    """(nombre, partes) de un manifiesto de partes válido, o None. Forma exacta {"nombre", "partes"}, nombre válido
+    del buzón terminado en .opus y entre 1 y MAX_PARTES partes."""
+    try:
+        if path.stat().st_size > MAX_MANIFEST_BYTES:
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict) or set(data) != {"nombre", "partes"}:
+        return None
+    nombre, partes = data["nombre"], data["partes"]
+    if not isinstance(nombre, str) or not nombre_valido(nombre) or not nombre.lower().endswith(".opus") or len(nombre) <= 5:
+        return None
+    if isinstance(partes, bool) or not isinstance(partes, int) or not 1 <= partes <= MAX_PARTES:
+        return None
+    return nombre, partes
+
+
+def _nombre_libre(buzon: Path, nombre: str) -> str:
+    """El nombre, o el nombre con « (2)», « (3)»... si ya hay un archivo así en el buzón (sin distinguir mayúsculas).
+    Nunca sobrescribe."""
+    taken = {item.name.casefold() for item in buzon.iterdir()}
+    if nombre.casefold() not in taken:
+        return nombre
+    stem = nombre[:-len(".opus")]
+    for number in range(2, 10_000):
+        suffix = f" ({number}).opus"
+        base = stem
+        while base and not nombre_valido(base + suffix):
+            base = base[:-1].rstrip(". ")
+        candidate = (base or "Sin título") + suffix
+        if candidate.casefold() not in taken:
+            return candidate
+    raise BuzonError("no hay un nombre libre en el buzón para una subida por trozos")
+
+
+def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str]) -> dict[str, str]:
+    """Une las subidas por trozos completas de audio-library/buzon/.partes/ (ver el docstring del módulo). Devuelve las
+    rutas del buzón de los archivos unidos con el mensaje de commit del que se lee su licencia."""
+    directory = buzon / PARTES_SUBDIRECTORY
+    if directory.is_symlink():
+        result["revisar"].append({"ruta": PARTES_DIRECTORY, "motivo": "enlace simbólico"})
+        return {}
+    if not directory.is_dir():
+        return {}
+    unidas: dict[str, str] = {}
+    for entry in sorted(directory.iterdir()):
+        if entry.name in PLACEHOLDERS:
+            continue
+        ruta = f"{PARTES_DIRECTORY}/{entry.name}"
+        if entry.is_symlink() or not entry.is_dir():
+            result["revisar"].append({"ruta": ruta, "motivo": "no es una carpeta de partes"})
+            continue
+        if not _UPLOAD_ID.fullmatch(entry.name):
+            result["revisar"].append({"ruta": ruta, "motivo": "carpeta de partes con un id que no es un UUID"})
+            continue
+        manifest = entry / PARTES_MANIFEST
+        if not manifest.exists() and not manifest.is_symlink():
+            continue  # subida en curso: faltan trozos por llegar
+        children = sorted(entry.iterdir())
+        if any(child.is_symlink() or not child.is_file() or not ruta_de_partes(f"{ruta}/{child.name}")
+               for child in children):
+            result["revisar"].append({"ruta": ruta, "motivo": "la carpeta de partes tiene elementos que no son partes"})
+            continue
+        spec = _leer_manifiesto(manifest)
+        if spec is None:
+            result["rechazados"].append({"archivo": f"{PARTES_SUBDIRECTORY}/{entry.name}",
+                                         "motivo": "el manifiesto de partes no es válido"})
+            shutil.rmtree(entry)
+            continue
+        nombre, total = spec
+        names = {child.name for child in children} - {PARTES_MANIFEST}
+        expected = {f"{index}.part" for index in range(total)}
+        if expected - names:
+            result["revisar"].append({"ruta": ruta, "motivo": f"faltan {len(expected - names)} de {total} partes"})
+            continue
+        if names - expected:
+            result["revisar"].append({"ruta": ruta, "motivo": "hay más partes de las que dice el manifiesto"})
+            continue
+        final = _nombre_libre(buzon, nombre)
+        with (buzon / final).open("xb") as joined:
+            for index in range(total):
+                with (entry / f"{index}.part").open("rb") as part:
+                    shutil.copyfileobj(part, joined)
+        shutil.rmtree(entry)
+        unidas[f"{BUZON_DIRECTORY}/{final}"] = del_evento.get(f"{ruta}/{PARTES_MANIFEST}", f"Licencia: {WEB_LICENSE}")
+    return unidas
 
 
 def _procesar_portada(data: dict, result: dict, *, path: str, name: str, directory: Path, covers_dir: Path,

@@ -485,3 +485,220 @@ def test_un_opus_ya_convertido_en_el_navegador_entra_como_cualquier_audio(repo):
     [entrada] = result["publicas"]
     assert _cancion(repo, entrada["song_id"])["title"] == "Desde el navegador"
     assert not (repo / ruta).exists()
+
+
+# --- Subidas por trozos desde la web (ADR-0017) ---------------------------------------------------------------------
+
+PARTES = f"{BUZON}/.partes"
+UPLOAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e"
+LICENCIA_WEB = "Subida desde la web: Vals\n\nLicencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla"
+
+
+@pytest.fixture
+def opus_bytes(tmp_path: Path) -> bytes:
+    """Un Ogg Opus sintético de 2 s a 48 kHz, como el que convierte el navegador."""
+    return make_tone(tmp_path / "fuente" / "tono.opus", seconds=2.0, sample_rate=48000).read_bytes()
+
+
+def _trozos(repo: Path, data: bytes, partes: int, *, upload_id: str = UPLOAD_ID, nombre: str = "Vals.opus",
+            manifiesto: object = True, faltan: tuple[int, ...] = ()) -> list[str]:
+    """Escribe los trozos de data (y el manifiesto) en .partes/<upload_id>/ y devuelve sus rutas."""
+    folder = repo / PARTES / upload_id
+    folder.mkdir(parents=True, exist_ok=True)
+    size = -(-len(data) // partes)
+    rutas = []
+    for index in range(partes):
+        if index in faltan:
+            continue
+        (folder / f"{index}.part").write_bytes(data[index * size:(index + 1) * size])
+        rutas.append(f"{PARTES}/{upload_id}/{index}.part")
+    if manifiesto is not None and manifiesto is not False:
+        contenido = {"nombre": nombre, "partes": partes} if manifiesto is True else manifiesto
+        texto = contenido if isinstance(contenido, str) else json.dumps(contenido)
+        (folder / "manifiesto.json").write_text(texto, encoding="utf-8")
+        rutas.append(f"{PARTES}/{upload_id}/manifiesto.json")
+    return rutas
+
+
+def test_las_partes_con_manifiesto_se_unen_en_orden_y_entran_publicas(repo, opus_bytes):
+    rutas = _trozos(repo, opus_bytes, 3)
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+
+    [entrada] = result["publicas"]
+    assert entrada["archivo"] == "Vals.opus"
+    assert entrada["licencia"] == buzon.WEB_LICENSE
+    cancion = _cancion(repo, entrada["song_id"])
+    assert cancion["title"] == "Vals" and cancion["public"] is True
+    assert cancion["sha256"] == __import__("hashlib").sha256(opus_bytes).hexdigest()
+    assert not (repo / PARTES / UPLOAD_ID).exists()
+    assert not (repo / BUZON / "Vals.opus").exists()
+    assert result["revisar"] == [] and result["rechazados"] == []
+
+
+def test_una_subida_en_curso_sin_manifiesto_se_ignora(repo, opus_bytes):
+    rutas = _trozos(repo, opus_bytes, 3, manifiesto=None)
+    _commit(repo, "Subida desde la web: Vals (trozo 3 de 3)")
+
+    result = procesar_buzon(repo=repo, event=_evento(("trozos", rutas)), actor="ana")
+
+    assert result["publicas"] == [] and result["privadas"] == []
+    assert result["revisar"] == [] and result["rechazados"] == []
+    assert sorted(path.name for path in (repo / PARTES / UPLOAD_ID).iterdir()) == ["0.part", "1.part", "2.part"]
+
+
+def test_un_push_solo_de_trozos_no_procesa_lo_demas_del_buzon(repo, opus_bytes):
+    _subir(repo, "Pendiente.wav")
+    rutas = _trozos(repo, opus_bytes, 2, manifiesto=None)
+    _commit(repo, "trozos")
+
+    result = procesar_buzon(repo=repo, event=_evento(("trozos", rutas)), actor="ana")
+
+    assert result["privadas"] == [] and result["publicas"] == []
+    assert (repo / BUZON / "Pendiente.wav").exists()
+
+
+def test_si_faltan_partes_se_deja_para_revisar_sin_borrar_nada(repo, opus_bytes):
+    rutas = _trozos(repo, opus_bytes, 3, faltan=(1,))
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+
+    assert result["publicas"] == []
+    assert result["revisar"] == [{"ruta": f"{PARTES}/{UPLOAD_ID}", "motivo": "faltan 1 de 3 partes"}]
+    assert (repo / PARTES / UPLOAD_ID / "manifiesto.json").exists()
+
+
+def test_si_hay_mas_partes_que_en_el_manifiesto_se_deja_para_revisar(repo, opus_bytes):
+    rutas = _trozos(repo, opus_bytes, 3, manifiesto={"nombre": "Vals.opus", "partes": 2})
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+
+    assert result["revisar"][0]["motivo"] == "hay más partes de las que dice el manifiesto"
+    assert (repo / PARTES / UPLOAD_ID / "2.part").exists()
+
+
+@pytest.mark.parametrize(
+    "manifiesto",
+    [
+        "esto no es JSON",
+        {"nombre": "Vals.opus"},
+        {"nombre": "Vals.opus", "partes": 2, "otra": 1},
+        {"nombre": "Vals.wav", "partes": 2},
+        {"nombre": ".opus", "partes": 2},
+        {"nombre": "../Vals.opus", "partes": 2},
+        {"nombre": "Vals.opus", "partes": 0},
+        {"nombre": "Vals.opus", "partes": 1001},
+        {"nombre": "Vals.opus", "partes": "2"},
+        {"nombre": "Vals.opus", "partes": True},
+        ["Vals.opus", 2],
+    ],
+)
+def test_un_manifiesto_incorrecto_se_rechaza_y_se_borra_la_carpeta(repo, opus_bytes, manifiesto):
+    rutas = _trozos(repo, opus_bytes, 2, manifiesto=manifiesto)
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+
+    assert result["rechazados"] == [{"archivo": f".partes/{UPLOAD_ID}", "motivo": "el manifiesto de partes no es válido"}]
+    assert result["publicas"] == [] and result["privadas"] == []
+    assert not (repo / PARTES / UPLOAD_ID).exists()
+
+
+@pytest.mark.parametrize(
+    "upload_id",
+    ["no-es-un-uuid", UPLOAD_ID.upper(), UPLOAD_ID[:-1], UPLOAD_ID + "0", "0f8fad5bd9cb469fa16570867728950e"],
+)
+def test_un_id_que_no_es_un_uuid_se_deja_para_revisar(repo, opus_bytes, upload_id):
+    rutas = _trozos(repo, opus_bytes, 2, upload_id=upload_id)
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+
+    assert result["revisar"] == [{"ruta": f"{PARTES}/{upload_id}", "motivo": "carpeta de partes con un id que no es un UUID"}]
+    assert result["publicas"] == []
+    assert (repo / PARTES / upload_id / "manifiesto.json").exists()
+
+
+def test_elementos_que_no_son_partes_se_dejan_para_revisar(repo, opus_bytes):
+    rutas = _trozos(repo, opus_bytes, 2)
+    (repo / PARTES / UPLOAD_ID / "otro.txt").write_text("x", encoding="utf-8")
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+
+    assert result["revisar"][0]["motivo"] == "la carpeta de partes tiene elementos que no son partes"
+    assert (repo / PARTES / UPLOAD_ID / "0.part").exists()
+
+
+def test_al_unir_nunca_se_sobrescribe_un_archivo_del_buzon(repo, opus_bytes):
+    (repo / BUZON / "Vals.opus").write_bytes(b"otro archivo que espera en el buzon")
+    rutas = _trozos(repo, opus_bytes, 2)
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+
+    [entrada] = result["publicas"]
+    assert entrada["archivo"] == "Vals (2).opus"
+    assert _cancion(repo, entrada["song_id"])["title"] == "Vals (2)"
+    assert (repo / BUZON / "Vals.opus").read_bytes() == b"otro archivo que espera en el buzon"
+
+
+def test_si_el_push_no_trae_el_manifiesto_se_usa_la_licencia_de_la_web(repo, opus_bytes):
+    # Otra ejecución de la cola (por ejemplo, la de un trozo anterior) llega a main cuando el manifiesto ya está.
+    _trozos(repo, opus_bytes, 2)
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento(("otra cosa", [f"{BUZON}/README.md"])), actor="ana")
+
+    [entrada] = result["publicas"]
+    assert entrada["licencia"] == buzon.WEB_LICENSE
+
+
+def test_ruta_de_partes():
+    for ruta in (f"{PARTES}/{UPLOAD_ID}/0.part", f"{PARTES}/{UPLOAD_ID}/999.part", f"{PARTES}/{UPLOAD_ID}/manifiesto.json"):
+        assert buzon.ruta_de_partes(ruta), ruta
+    for ruta in (
+        f"{PARTES}/{UPLOAD_ID}/1000.part", f"{PARTES}/{UPLOAD_ID}/01.part", f"{PARTES}/{UPLOAD_ID}/a.part",
+        f"{PARTES}/{UPLOAD_ID.upper()}/0.part", f"{PARTES}/{UPLOAD_ID}/sub/0.part", f"{PARTES}/{UPLOAD_ID}",
+        f"{PARTES}/../catalog.json", f"{BUZON}/{UPLOAD_ID}/0.part", None,
+    ):
+        assert not buzon.ruta_de_partes(ruta), ruta
+
+
+def test_el_paquete_borra_las_partes_solo_con_la_accion_buzon(tmp_path):
+    borrar = [{"ruta": f"{PARTES}/{UPLOAD_ID}/0.part", "estado": "D"},
+              {"ruta": f"{PARTES}/{UPLOAD_ID}/manifiesto.json", "estado": "D"}]
+    accion, cambios = paquete.read_manifest(_manifiesto(tmp_path / "ok", "buzon", borrar), head="a" * 40)
+    assert accion == "buzon" and [cambio.state for cambio in cambios] == ["D", "D"]
+    for nombre, accion, cambios in [
+        ("import", "import", borrar),
+        ("anadir", "buzon", [{"ruta": f"{PARTES}/{UPLOAD_ID}/0.part", "estado": "A"}]),
+        ("uuid", "buzon", [{"ruta": f"{PARTES}/no-uuid/0.part", "estado": "D"}]),
+    ]:
+        with pytest.raises(PaqueteError):
+            paquete.read_manifest(_manifiesto(tmp_path / nombre, accion, cambios), head="a" * 40)
+
+
+def test_procesar_empaquetar_y_publicar_una_subida_por_trozos(repo, tmp_path, opus_bytes):
+    rutas = _trozos(repo, opus_bytes, 2)
+    _commit(repo, LICENCIA_WEB)
+    trabajo = tmp_path / "procesar"
+    subprocess.run(["git", "clone", "-q", str(repo), str(trabajo)], check=True)
+
+    result = procesar_buzon(repo=trabajo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+    package = tmp_path / "paquete"
+    paquete.package_processing_changes(trabajo, package, action="buzon")
+    manifiesto = json.loads((package / "manifiesto.json").read_text(encoding="utf-8"))
+    song_id = result["publicas"][0]["song_id"]
+    assert {(item["ruta"], item["estado"]) for item in manifiesto["cambios"]} == {
+        *((ruta, "D") for ruta in rutas), (CATALOG, "M"), (f"audio-library/audio/{song_id}.opus", "A"),
+    }
+
+    paquete.publish_package(package, repo, head=paquete.head_commit(repo))
+
+    staged = _git(repo, "diff", "--cached", "--name-status", "--no-renames").splitlines()
+    assert f"D\t{PARTES}/{UPLOAD_ID}/manifiesto.json" in staged
+    assert f"A\tfrontend/web/audio/{song_id}.opus" in staged

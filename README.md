@@ -2,7 +2,7 @@
 
 Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado (2026-11-03):** la web pública y la app Android funcionan sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)): no hay perfiles, modos paciente ni cuidador, PIN ni registro del estudio, y todos ven la misma biblioteca, hoy con 10 canciones públicas (las privadas no se muestran). La biblioteca se gestiona con incidencias de GitHub (ADR-0008) y con el buzón de subida (ADR-0014); no hay panel de administración. Pendiente: las 18 referencias abiertas de `BIBLIOGRAPHY.md` (no verificadas), decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015) y los estudios con personas.
+**Estado (2026-11-03):** la web pública y la app Android funcionan sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)): no hay perfiles, modos paciente ni cuidador, PIN ni registro del estudio, y todos ven la misma biblioteca, hoy con 10 canciones públicas (las privadas no se muestran). La biblioteca se gestiona con incidencias de GitHub (ADR-0008) y con el buzón de subida (ADR-0014), al que la web sube para todos con la función `/api/subir` (ADR-0017); no hay panel de administración. Pendiente: las 18 referencias abiertas de `BIBLIOGRAPHY.md` (no verificadas), decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015) y los estudios con personas.
 
 | Qué | Dónde |
 |---|---|
@@ -17,7 +17,7 @@ https://reminiscencia.vercel.app abre directamente en **Inicio** con la música.
 
 - **Inicio**: saludo, accesos rápidos y estantes con las carpetas, lo añadido y tus listas.
 - **Buscar**: por título o artista, con «Explorar todo».
-- **Tu biblioteca**: «Canciones que te gustan», tus listas, las carpetas y lo que has subido a este navegador.
+- **Tu biblioteca**: «Canciones que te gustan», tus listas, las carpetas y las canciones guardadas antes solo en este navegador.
 - **Reproductor** (abajo; en el teléfono, minirreproductor y pantalla completa): reproducir, anterior, siguiente, aleatorio, repetir (no, toda la cola o una canción), volumen y «Añadir a la cola».
 - **Sin conexión**: una carpeta o una lista se descarga desde su barra de acciones para escucharla sin internet.
 
@@ -25,18 +25,23 @@ Las listas y los «Me gusta» se guardan **solo en este navegador** (IndexedDB).
 
 ## Cómo subir canciones
 
-El botón **Subir canciones** abre una hoja con tres caminos. Ninguno usa contraseñas ni tokens: los dos últimos solo abren GitHub en otra pestaña.
+El botón **Subir canciones** sube siempre **para todos** (ADR-0017): eliges uno o varios archivos (WAV, MP3, M4A, FLAC, OGG u OPUS) y no hay que hacer nada más. No hace falta cuenta ni contraseña.
 
-### Solo en este navegador
+- Cada archivo se convierte a Opus en el propio navegador, para que pese poco, y se envía, de uno en uno y en orden, a la función de la web `/api/subir`, en trozos de hasta 4 MB. La hoja muestra el progreso y, por archivo, «Subida: llegará a todos en un par de minutos» o el error.
+- El título de cada canción es el nombre del archivo sin la extensión (`Mi canción.mp3` pasa a «Mi canción»). Los caracteres que el buzón no admite (`:`, `/`, comillas...) se cambian por espacios; si el nombre ya está en el buzón, se añade « (2)».
+- La función guarda los trozos en el buzón del repositorio (`audio-library/buzon/.partes/<id>/`) con un commit cada uno, y con el último escribe el manifiesto y la línea «Licencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla». El workflow `buzon` une los trozos, convierte, cataloga y publica: la canción entra **pública** en la web y en la APK.
+- **Al subir, declaras que tienes derecho a publicar estos archivos.** La web no lo comprueba. Lo subido queda en el historial de git aunque se retire después: no subas nada sin derechos ni grabaciones o datos de pacientes.
+- No hay límite de subidas ni de tamaño por archivo; el buzón rechaza un archivo unido de más de 100 MiB (unas cuatro horas de Opus). Un navegador sin conversión a Opus (WebCodecs) no puede subir: usa Chrome o Edge actualizados.
+- La función necesita la variable de entorno `GITHUB_TOKEN` en Vercel (token personal de una cuenta con permiso de escritura, con «Contents: write»). El token nunca llega al navegador. Sin ella, la hoja muestra que la subida no está configurada.
 
-Elige archivos de tu dispositivo (WAV, MP3, M4A, OGG o FLAC; hasta 60 MB y 20 minutos cada uno). Se convierten a Opus en el propio navegador y se guardan solo en él: no se suben a ningún servidor ni van a GitHub, y nadie más las ve (ADR-0012). Aparecen en Tu biblioteca y se borran desde el menú de su fila; al borrarlas salen también de tus listas y de «Me gusta». La app Android tiene lo mismo como «Solo en este teléfono», con FFmpeg (ADR-0013).
+Las canciones que se guardaron antes **solo en este navegador** (ADR-0012) siguen sonando en Tu biblioteca y se borran desde la hoja, en «Guardadas solo en este navegador», o desde el menú de su fila. La app Android usa la misma función `/api/subir` (ADR-0017).
 
-### Para todos (buzón)
+### Desde GitHub (con permiso de escritura)
 
-Para que una canción entre en la biblioteca pública y la vean la web y la APK. Hace falta **permiso de escritura en el repositorio**: la hoja de la web y la de la APK solo abren la página de subida de GitHub (ADR-0014).
+Quien tiene **permiso de escritura en el repositorio** puede seguir subiendo al buzón desde GitHub (ADR-0014), por ejemplo para declarar otra licencia:
 
 1. Abre la página de subida del buzón: https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon
-2. Arrastra los archivos: WAV, MP3, M4A, FLAC u OGG. El título de cada canción será el nombre del archivo sin la extensión (`Mi canción.mp3` pasa a «Mi canción»).
+2. Arrastra los archivos: WAV, MP3, M4A, FLAC, OGG u OPUS. El título de cada canción será el nombre del archivo sin la extensión.
 3. En la descripción del commit, escribe una línea con la licencia:
 
    ```
@@ -47,7 +52,7 @@ Para que una canción entre en la biblioteca pública y la vean la web y la APK.
 
 El workflow `buzon` convierte cada archivo a Opus, lo añade al catálogo, regenera la parte pública y lo borra del buzón. Con la línea `Licencia:`, las canciones entran **públicas** con esa licencia y la fuente «Subida por <tu cuenta>». Sin ella, entran **privadas** y el resumen de la ejecución lo indica; para publicarlas, sube otra vez el mismo archivo con la línea `Licencia:`. **Quien sube responde de la licencia que declara.**
 
-Si una ejecución no llega a procesar lo subido, quien tenga permiso de escritura puede lanzar el workflow `buzon` a mano desde Actions; lo que procesa así entra **privado**, porque no hay mensaje de commit del que leer la licencia.
+Si una ejecución no llega a procesar lo subido, quien tenga permiso de escritura puede lanzar el workflow `buzon` a mano desde Actions; lo que procesa así entra **privado**, porque no hay mensaje de commit del que leer la licencia. Excepción: las subidas por trozos de la web completas entran públicas con la licencia de la web (ADR-0017).
 
 Se rechazan, y se borran del buzón, los archivos que no son de audio y los de más de 100 MiB. Los enlaces simbólicos, las subcarpetas y los nombres con caracteres raros se quedan en el buzón para revisarlos a mano. El resultado está en la pestaña Actions, en el resumen de la ejecución `buzon`.
 
@@ -65,9 +70,9 @@ Las portadas se suben al mismo buzón, en su carpeta `portadas` (ADR-0016): http
 - Si el id no existe o la imagen no es válida, se rechaza, se borra del buzón y el motivo sale en el resumen de la ejecución.
 - Sube solo portadas que puedas usar: quedan en el historial de git y, las públicas, en la web. Nunca fotografías de pacientes ni de otras personas.
 
-### Desde Internet Archive
+### Importar desde Internet Archive
 
-Para importar un ítem de Internet Archive con licencia (o un fichero de audio directo con licencia declarada). La hoja valida la dirección en el navegador, con la misma lista de bloqueo de 42 plataformas que el backend, y abre en GitHub una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. Solo se procesan las incidencias de cuentas con permiso de escritura (job `autorizar`). La canción entra **privada** hasta que se publica por incidencia (abajo). YouTube y las plataformas de streaming no se admiten.
+En la hoja, «Importar desde Internet Archive». Para importar un ítem de Internet Archive con licencia (o un fichero de audio directo con licencia declarada). La hoja valida la dirección en el navegador, con la misma lista de bloqueo de 42 plataformas que el backend, y abre en GitHub una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. Solo se procesan las incidencias de cuentas con permiso de escritura (job `autorizar`). La canción entra **privada** hasta que se publica por incidencia (abajo). YouTube y las plataformas de streaming no se admiten.
 
 ## Cambios en la biblioteca por incidencia
 

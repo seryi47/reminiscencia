@@ -1,33 +1,26 @@
-// Hoja «Subir canciones»: tres caminos.
-// 1. «Solo en este navegador»: convierte a Opus y guarda en IndexedDB (js/cuidador/subida-local.js; ADR-0012).
-// 2. «Para todos»: abre en otra pestaña la subida de GitHub al buzón del repositorio (sin tokens ni API).
-// 3. «Desde Internet Archive»: prepara una incidencia de importación con la validación de incidencias.js y de
-//    intake.js (la misma lista de bloqueo de 42 plataformas que el backend; ADR-0008).
+// Hoja «Subir canciones» (ADR-0017): una sola forma de subir archivos.
+// - Subir: la persona elige uno o varios archivos; cada uno se convierte a Opus en este navegador y se envía, de uno en
+//   uno y en orden, a la función del propio origen /api/subir (js/cuidador/subida-publica.js), que lo guarda en el
+//   buzón del repositorio para que llegue a todos. Ni esta hoja ni la web conocen ningún token.
+// - Las canciones guardadas antes solo en este navegador (ADR-0012) siguen sonando y se pueden borrar desde aquí.
+// - «Importar desde Internet Archive»: prepara una incidencia de importación con la validación de incidencias.js y de
+//   intake.js (la misma lista de bloqueo de 42 plataformas que el backend; ADR-0008).
 
 import { evaluateImportForm, buildIssueBody, buildIssueTitle, buildIssueUrl, classifyUrl, PROCESSING_NOTE } from '../cuidador/incidencias.js';
 import { validateImport } from '../intake.js';
+import { opusSupport } from '../cuidador/subida-local.js';
 import {
-  addLocalFiles,
-  LOCAL_AUDIO_ACCEPT,
-  MAX_DURATION_S,
-  MAX_FILE_BYTES,
-  opusSupport,
-  UNSUPPORTED_TEXT,
-} from '../cuidador/subida-local.js';
+  DONE_TEXT,
+  PUBLIC_AUDIO_ACCEPT,
+  PUBLIC_UNSUPPORTED_TEXT,
+  RIGHTS_TEXT,
+  uploadFiles,
+} from '../cuidador/subida-publica.js';
 import { formatDuration } from '../catalog.js';
 import { el, openDialog, uid } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 
-/** Dirección de la subida de GitHub al buzón de la biblioteca. */
-export const GITHUB_UPLOAD_URL = 'https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon';
-
-const OPTIONS = Object.freeze([
-  Object.freeze({ key: 'local', icon: 'device', title: 'Solo en este navegador', text: 'Se convierten y se guardan aquí. Nadie más las ve ni salen de este dispositivo.' }),
-  Object.freeze({ key: 'todos', icon: 'people', title: 'Para todos', text: 'Súbelas al repositorio en GitHub para que entren en la biblioteca pública.' }),
-  Object.freeze({ key: 'archive', icon: 'archive', title: 'Desde Internet Archive', text: 'Pide importar un ítem con licencia mediante una incidencia en GitHub.' }),
-]);
-
-/** Abre la hoja. ctx aporta onLocalAdded, deleteLocalSong y la lista de canciones locales. */
+/** Abre la hoja. ctx aporta deleteLocalSong y la lista de canciones locales. option: 'archive' abre la importación. */
 export function openUploadSheet(ctx, { option = null } = {}) {
   return openDialog({
     title: 'Subir canciones',
@@ -35,7 +28,7 @@ export function openUploadSheet(ctx, { option = null } = {}) {
     testid: 'upload-sheet',
     render: (body) => {
       const show = (key) => {
-        body.replaceChildren(key ? panelFor(key, ctx, () => show(null)) : chooser(show));
+        body.replaceChildren(key === 'archive' ? archivePanel(() => show(null)) : uploadPanel(ctx, () => show('archive')));
         const target = body.querySelector('[data-autofocus]') ?? body.querySelector('button, a, input');
         target?.focus();
       };
@@ -44,71 +37,73 @@ export function openUploadSheet(ctx, { option = null } = {}) {
   });
 }
 
-function chooser(show) {
-  return el('div', { class: 'upload-chooser' },
-    el('p', { class: 'dialog-text' }, '¿Dónde quieres que estén las canciones?'),
-    el('ul', { class: 'upload-options' },
-      OPTIONS.map((item) => el('li', {},
-        el('button', { type: 'button', class: 'upload-option', 'data-testid': `upload-option-${item.key}`, on: { click: () => show(item.key) } },
-          el('span', { class: 'upload-option-icon', 'aria-hidden': 'true' }, icon(item.icon, { size: 24 })),
-          el('span', { class: 'upload-option-text' },
-            el('span', { class: 'upload-option-title' }, item.title),
-            el('span', { class: 'upload-option-desc' }, item.text)))))));
-}
-
 function backButton(back) {
   return el('button', { type: 'button', class: 'button button-text upload-back', 'data-testid': 'upload-back', on: { click: back } },
-    icon('chevron-left', { size: 20 }), 'Otras opciones');
-}
-
-function panelFor(key, ctx, back) {
-  if (key === 'todos') return publicPanel(back);
-  if (key === 'archive') return archivePanel(back);
-  return localPanel(ctx, back);
+    icon('chevron-left', { size: 20 }), 'Volver a Subir canciones');
 }
 
 // ---------------------------------------------------------------------------
-// Solo en este navegador
+// Subir (para todos)
 // ---------------------------------------------------------------------------
 
-function localPanel(ctx, back) {
+/** Texto del resumen tras subir: cuántas han salido y cuántas no. */
+export function summaryText({ sent = 0, failed = 0 } = {}) {
+  if (sent === 0 && failed === 0) return '';
+  if (sent === 0) return failed === 1 ? 'No se ha podido subir el archivo.' : `No se ha podido subir ninguno de los ${failed} archivos.`;
+  const done = sent === 1 ? `${DONE_TEXT}` : `${sent} canciones subidas: llegarán a todos en un par de minutos.`;
+  return failed === 0 ? done : `${done} ${failed === 1 ? 'Un archivo no se ha podido subir.' : `${failed} archivos no se han podido subir.`}`;
+}
+
+function localSection(ctx) {
+  const list = el('ul', { class: 'upload-local-list', 'data-testid': 'upload-local-list' });
+  const section = el('section', { class: 'upload-local', 'data-testid': 'upload-local' },
+    el('h3', { class: 'upload-subtitle' }, 'Guardadas solo en este navegador'),
+    el('p', { class: 'upload-note' }, 'Son de antes: siguen sonando aquí y puedes borrarlas.'),
+    list);
+  const paint = () => {
+    const songs = ctx.localSongs();
+    section.hidden = songs.length === 0;
+    list.replaceChildren(...songs.map((song) => el('li', { class: 'upload-local-row', 'data-song-id': song.id },
+      el('span', { class: 'upload-local-text' },
+        el('span', { class: 'add-title' }, song.title),
+        el('span', { class: 'track-artist' }, formatDuration(song.durationS ?? song.duration_s ?? NaN))),
+      el('button', {
+        type: 'button',
+        class: 'button button-outline',
+        'aria-label': `Borrar ${song.title} de este navegador`,
+        'data-testid': 'upload-delete',
+        on: { click: async () => { if (await ctx.deleteLocalSong(song)) paint(); } },
+      }, 'Borrar'))));
+  };
+  paint();
+  return section;
+}
+
+function uploadPanel(ctx, openArchive) {
   const inputId = uid('archivos');
   // El campo de archivo va oculto: lo abre el botón visible, que sí recibe el foco con el teclado.
-  const input = el('input', { id: inputId, type: 'file', accept: LOCAL_AUDIO_ACCEPT, multiple: true, hidden: true, 'data-testid': 'upload-file-input' });
+  const input = el('input', { id: inputId, type: 'file', accept: PUBLIC_AUDIO_ACCEPT, multiple: true, hidden: true, 'data-testid': 'upload-file-input' });
   const pick = el('button', {
     type: 'button',
     class: 'button button-primary upload-pick',
     'data-testid': 'upload-pick',
     on: { click: () => { if (pick.getAttribute('aria-disabled') !== 'true') input.click(); } },
   }, icon('upload', { size: 20 }), 'Elegir archivos');
-  const progress = el('progress', { class: 'upload-progress', max: '100', value: '0', hidden: true, 'aria-label': 'Progreso de la conversión' });
+  const progress = el('progress', { class: 'upload-progress', max: '100', value: '0', hidden: true, 'aria-label': 'Progreso de la subida' });
   const status = el('p', { class: 'upload-status', role: 'status', 'data-testid': 'upload-status' });
-  const failures = el('ul', { class: 'upload-failures', 'data-testid': 'upload-failures' });
-  const mine = el('ul', { class: 'upload-local-list', 'data-testid': 'upload-local-list' });
+  const results = el('ul', { class: 'upload-results', 'data-testid': 'upload-results' });
   const support = el('p', { class: 'upload-note', 'data-testid': 'upload-support' });
-
-  const paintMine = () => {
-    const songs = ctx.localSongs();
-    mine.replaceChildren(...songs.map((song) => el('li', { class: 'upload-local-row', 'data-song-id': song.id },
-      el('span', { class: 'upload-local-text' },
-        el('span', { class: 'add-title' }, song.title),
-        el('span', { class: 'track-artist' }, formatDuration(song.durationS ?? NaN))),
-      el('button', {
-        type: 'button',
-        class: 'button button-outline',
-        'aria-label': `Borrar ${song.title} de este navegador`,
-        'data-testid': 'upload-delete',
-        on: { click: async () => { if (await ctx.deleteLocalSong(song)) paintMine(); } },
-      }, 'Borrar'))));
-    if (songs.length === 0) mine.append(el('li', { class: 'empty-text' }, 'Todavía no has subido ninguna.'));
-  };
 
   opusSupport().then((result) => {
     if (!result.ok) {
-      support.textContent = UNSUPPORTED_TEXT;
+      support.textContent = PUBLIC_UNSUPPORTED_TEXT;
       support.classList.add('is-warning');
+      pick.setAttribute('aria-disabled', 'true');
     }
   });
+
+  const row = (name, message, ok) => el('li', { class: ok ? 'upload-result is-ok' : 'upload-result is-error', 'data-state': ok ? 'ok' : 'error' },
+    el('span', { class: 'upload-result-name' }, name), ': ', message);
 
   input.addEventListener('change', async () => {
     const files = [...input.files];
@@ -116,66 +111,39 @@ function localPanel(ctx, back) {
     if (files.length === 0) return;
     pick.setAttribute('aria-disabled', 'true');
     progress.hidden = false;
-    failures.replaceChildren();
+    progress.value = '0';
+    results.replaceChildren();
     try {
-      const result = await addLocalFiles(files, {
-        onProgress: ({ index, total, name, fraction }) => {
+      const result = await uploadFiles(files, {
+        onProgress: ({ index, total, name, stage, fraction }) => {
           progress.value = String(Math.round(((index + fraction) / total) * 100));
-          status.textContent = `Convirtiendo ${index + 1} de ${total}: ${name}…`;
+          const verb = stage === 'enviar' ? 'Subiendo' : 'Convirtiendo';
+          status.textContent = `${verb} ${index + 1} de ${total}: ${name}…`;
         },
       });
-      if (result.added.length > 0) await ctx.onLocalAdded(result.added);
-      const added = result.added.length;
-      status.textContent = added === 0
-        ? 'No se ha añadido ninguna canción.'
-        : `${added === 1 ? 'Se ha añadido 1 canción' : `Se han añadido ${added} canciones`} a este navegador.`;
-      failures.replaceChildren(...result.failed.map((item) => el('li', {}, `${item.name}: ${item.message}`)));
+      results.replaceChildren(...result.results.map((item) => row(item.name, item.message, item.ok)));
+      status.textContent = summaryText({ sent: result.sent.length, failed: result.failed.length });
     } catch (error) {
-      status.textContent = error instanceof Error ? error.message : 'No se pudieron añadir los archivos.';
+      status.textContent = error instanceof Error ? error.message : 'No se han podido subir los archivos.';
     } finally {
       progress.hidden = true;
       pick.removeAttribute('aria-disabled');
-      paintMine();
+      if (support.classList.contains('is-warning')) pick.setAttribute('aria-disabled', 'true');
     }
   });
-  paintMine();
 
-  return el('div', { class: 'upload-panel', 'data-testid': 'upload-panel-local' },
-    backButton(back),
-    el('h3', { class: 'upload-panel-title', 'data-autofocus': '', tabindex: '-1' }, 'Solo en este navegador'),
-    el('p', { class: 'dialog-text' },
-      `Elige archivos de audio (WAV, MP3, M4A, OGG o FLAC). Se convierten a Opus y se guardan solo en este navegador: no se envían a ningún servidor. Hasta ${Math.round(MAX_FILE_BYTES / (1024 * 1024))} MB y ${MAX_DURATION_S / 60} minutos por archivo.`),
-    el('p', { class: 'upload-note' }, 'Si borras los datos del sitio o cambias de dispositivo, se pierden.'),
+  return el('div', { class: 'upload-panel', 'data-testid': 'upload-panel' },
+    el('p', { class: 'dialog-text', 'data-autofocus': '', tabindex: '-1' },
+      'Elige uno o varios archivos de audio (WAV, MP3, M4A, FLAC, OGG u OPUS). Se convierten a Opus en este navegador y se suben a la biblioteca para todos. El título de cada canción es el nombre del archivo.'),
+    el('p', { class: 'upload-note', 'data-testid': 'upload-rights' }, RIGHTS_TEXT),
     support,
     el('div', { class: 'upload-row' }, input, pick),
     progress,
     status,
-    failures,
-    el('h3', { class: 'upload-subtitle' }, 'Subidas a este navegador'),
-    mine);
-}
-
-// ---------------------------------------------------------------------------
-// Para todos (GitHub)
-// ---------------------------------------------------------------------------
-
-function publicPanel(back) {
-  return el('div', { class: 'upload-panel', 'data-testid': 'upload-panel-todos' },
-    backButton(back),
-    el('h3', { class: 'upload-panel-title', 'data-autofocus': '', tabindex: '-1' }, 'Para todos'),
-    el('p', { class: 'dialog-text' }, 'Las canciones se suben al buzón del repositorio en GitHub y entran en la biblioteca pública cuando se procesan.'),
-    el('ul', { class: 'upload-rules', 'data-testid': 'upload-rules' },
-      el('li', {}, 'Hace falta una cuenta de GitHub con permiso de escritura en el repositorio.'),
-      el('li', {}, 'La web de GitHub admite hasta 25 MB por archivo.'),
-      el('li', {}, 'El mensaje del commit debe llevar una línea «Licencia: …» (por ejemplo, «Licencia: CC BY 4.0»). Sin ella, las canciones quedan privadas.'),
-      el('li', {}, 'Quien sube las canciones responde de esa declaración de licencia.')),
-    el('a', {
-      class: 'button button-primary',
-      href: GITHUB_UPLOAD_URL,
-      target: '_blank',
-      rel: 'noopener noreferrer',
-      'data-testid': 'upload-github-link',
-    }, 'Abrir la subida en GitHub', el('span', { class: 'sr-only' }, ' (se abre en otra pestaña)'), icon('external', { size: 18 })));
+    results,
+    localSection(ctx),
+    el('button', { type: 'button', class: 'button button-text upload-archive-link', 'data-testid': 'upload-open-archive', on: { click: openArchive } },
+      icon('archive', { size: 20 }), 'Importar desde Internet Archive'));
 }
 
 // ---------------------------------------------------------------------------

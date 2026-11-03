@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## Sin publicar: «Subir canciones» sube para todos, directo a GitHub (2026-11-03; en `main`)
+
+Decisión del propietario en [ADR-0017](docs/decisions/ADR-0017-subida-directa-github-web-publica.md), que sustituye en ADR-0008 «ni token ni funciones de Vercel en la web». Sin probar en Vercel ni en GitHub.
+
+### Cambiado
+- La hoja «Subir canciones» tiene una sola opción: eliges uno o varios archivos (WAV, MP3, M4A, FLAC, OGG u OPUS), se convierten a Opus en el navegador y se suben, de uno en uno y en orden, para todos. Progreso por archivo y resultado («Subida: llegará a todos en un par de minutos» o el error). Texto fijo, sin casilla: «Al subir, declaras que tienes derecho a publicar estos archivos». El título es el nombre del archivo sin extensión.
+- Ya no se elige «Solo en este navegador» ni «Para todos». Las canciones locales que ya existan siguen sonando y se borran desde la hoja («Guardadas solo en este navegador», solo si hay alguna). «Desde Internet Archive» pasa a «Importar desde Internet Archive», dentro de la misma hoja.
+- `convertToOpus` (`js/cuidador/subida-local.js`) admite `limits: false` y `checkStorage: false`: la subida para todos no tiene límite de tamaño ni de duración.
+- Buzón (`backend/sonidos/buzon.py`): une las subidas por trozos de `audio-library/buzon/.partes/<UUID>/` cuando llega su `manifiesto.json` (sin sobrescribir: sufijo si el nombre existe), borra las partes y procesa el archivo con la licencia del commit del manifiesto. Ignora las carpetas sin manifiesto; rechaza y borra las de manifiesto no válido; deja para revisar ids que no son UUID, partes que faltan y elementos que no son partes. `sonidos.paquete` admite borrar esas partes con la acción `buzon`.
+- `SHELL_VERSION` pasa a 8 (módulo nuevo `js/cuidador/subida-publica.js` en `SHELL_ASSETS`).
+
+### Añadido
+- Función de Vercel `frontend/web/api/subir.js` (Node, sin dependencias): `POST /api/subir` con el trozo en el cuerpo (hasta 4 MiB) y las cabeceras `X-Nombre-Archivo`, `X-Subida-Id`, `X-Parte` y `X-Partes`. Cada trozo es un commit en `main` (API de git de GitHub, con reintento si `main` cambia) en `audio-library/buzon/.partes/<id>/<índice>.part`; el último añade el manifiesto y la línea «Licencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla», que lanza el workflow `buzon`. Valida Ogg Opus en el primer trozo, el nombre y la ruta, nunca sobrescribe y responde en JSON en español. El token sale solo de la variable de entorno `GITHUB_TOKEN` de Vercel y nunca va a registros ni respuestas. Sin límite por hora ni de tamaño de archivo (hasta 1000 trozos).
+- Cliente `frontend/web/js/cuidador/subida-publica.js`: trozos de 4 MiB, un UUID por archivo, reintentos ante fallos de red y errores temporales.
+- Pruebas: `tests/web-unit/api-subir.test.mjs` (GitHub simulado), `tests/web-unit/subida-publica.test.mjs`, pruebas de extremo a extremo de la subida con la función simulada en el servidor de pruebas (`helpers/servidor.mjs` admite funciones) y pruebas del buzón con partes reales de un Opus sintético (`backend/tests/test_buzon.py`).
+
+### Retirado
+- La subida nueva «Solo en este navegador» (ADR-0012) y el enlace «Para todos» a la página de subida de GitHub en la web. La subida desde GitHub sigue disponible para quien tiene permiso de escritura (README).
+
 ## Sin publicar: APK, «Subir canciones» directo a la biblioteca común (2026-11-03; en `main`)
 
 Orden del propietario. Necesita la función `frontend/web/api/subir.js` desplegada en Vercel; sin probar en dispositivo.

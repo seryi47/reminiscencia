@@ -23,6 +23,8 @@ on:
       - "!audio-library/buzon/README.md"
       - "!audio-library/buzon/.gitkeep"
       - "!audio-library/buzon/portadas/.gitkeep"
+      # Los trozos intermedios de una subida desde la web no lanzan nada: solo el commit con el manifiesto.
+      - "!audio-library/buzon/.partes/**/*.part"
   # A mano, para reprocesar lo que quede en el buzón (entra privado si no hay línea «Licencia:»).
   workflow_dispatch:
 

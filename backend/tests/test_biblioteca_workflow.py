@@ -133,8 +133,11 @@ def test_permissions_are_declared_on_the_job_not_on_the_whole_workflow():
 
 
 def test_web_has_no_administration_code():
-    for folder in ("admin", "api", "lib"):
+    for folder in ("admin", "lib"):
         assert not (ROOT / "frontend" / "web" / folder).exists()
+    # La única función de Vercel es la subida al buzón (ADR-0017, que sustituye en esto a ADR-0008).
+    api = ROOT / "frontend" / "web" / "api"
+    assert sorted(path.name for path in api.iterdir()) == ["subir.js"]
 
 
 # --- Corrección de la ronda 2 (2026-11-02): procesado separado de la publicación -----------------

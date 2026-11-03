@@ -145,10 +145,8 @@ const PANTALLAS = [
     },
   },
   { nombre: "Hoja Subir canciones", preparar: (page, vp) => openUpload(page, vp) },
-  { nombre: "Subir: solo en este navegador", preparar: (page, vp) => openUpload(page, vp, "local") },
-  { nombre: "Subir: para todos", preparar: (page, vp) => openUpload(page, vp, "todos") },
   {
-    nombre: "Subir: desde Internet Archive, con error",
+    nombre: "Subir: importar desde Internet Archive, con error",
     preparar: async (page, vp) => {
       await openUpload(page, vp, "archive");
       await fillField(await page.$('[data-testid="archive-url"]'), "https://youtu.be/abc");

@@ -83,13 +83,14 @@ export async function createPlaylist(page, viewport) {
   return page.evaluate(() => decodeURIComponent(location.hash.split("/")[2] ?? ""));
 }
 
-/** Abre la hoja «Subir canciones» y, si se indica, una de sus opciones (local, todos o archive). */
+/** Abre la hoja «Subir canciones» (ADR-0017) y, con option "archive", la importación desde Internet Archive. */
 export async function openUpload(page, viewport, option = null) {
   await createMenu(page, viewport, "upload");
   await waitVisible(page, "upload-sheet", { context: "hoja Subir canciones" });
-  if (option) {
-    await clickTestid(page, `upload-option-${option}`, `opción ${option}`);
-    await waitVisible(page, `upload-panel-${option}`, { context: `panel ${option}` });
+  await waitVisible(page, "upload-panel", { context: "panel de subida" });
+  if (option === "archive") {
+    await clickTestid(page, "upload-open-archive", "Importar desde Internet Archive");
+    await waitVisible(page, "upload-panel-archive", { context: "panel de Internet Archive" });
   }
 }
 
