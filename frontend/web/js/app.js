@@ -35,9 +35,9 @@ import {
   markLocalPublished,
   readLocalBytes,
   saveUploadCopy,
-  titleFromFileName,
 } from './cuidador/subida-local.js';
 import { sendOpus } from './cuidador/subida-publica.js';
+import { expandSelection } from './cuidador/subida-zip.js';
 import {
   activeCount,
   createUploadTracker,
@@ -1085,10 +1085,20 @@ function createUploads() {
   });
 }
 
-/** Archivos elegidos en la hoja: a la cola de subidas, con el título del nombre del archivo. */
+// Las selecciones se preparan en orden (abrir el directorio de un ZIP es asíncrono): así, una segunda selección hecha
+// mientras se abre un ZIP grande no se cuela delante.
+let pendingSelection = Promise.resolve();
+
+/**
+ * Archivos elegidos en la hoja: a la cola de subidas, con el título del nombre del archivo. Cada ZIP se abre aquí (solo
+ * su directorio) y cada canción suya entra como una subida de su grupo (subida-zip.js); el ZIP no se sube.
+ */
 function addUploads(files) {
   requestPersistence();
-  return uploads.add(files, { titleOf: (file) => titleFromFileName(file?.name) });
+  const list = Array.from(files ?? []);
+  const run = pendingSelection.then(async () => uploads.addSources(await expandSelection(list)));
+  pendingSelection = run.catch((error) => console.error('Reminiscencia: fallo al preparar la selección de archivos.', error));
+  return run;
 }
 
 // ---------------------------------------------------------------------------

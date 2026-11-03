@@ -2,7 +2,7 @@
 // nada, reproduce, busca desde la barra superior, abre álbumes (con portadas publicadas), panel «Reproduciendo», crea y
 // edita listas locales (nombre, descripción y foto), «Me gusta», cola, hojas de edición de canciones y álbumes
 // (incidencias de GitHub), «Subir canciones» para todos (conversión real a Opus y envío por trozos a /api/subir, con la
-// función simulada en el servidor de pruebas; ADR-0017), canciones locales de antes (suenan y se borran), «Importar
+// función simulada en el servidor de pruebas; ADR-0017; también desde archivos ZIP), canciones locales de antes (suenan y se borran), «Importar
 // desde Internet Archive» y escucha sin conexión. Catálogo de prueba ficticio (helpers/catalogo-prueba.mjs).
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
@@ -32,6 +32,7 @@ import {
 } from "./helpers/flujos.mjs";
 import { capture, launchBrowser, VIEWPORTS, withPage } from "./helpers/navegador.mjs";
 import { startStaticServer } from "./helpers/servidor.mjs";
+import { buildZip } from "./helpers/zip.mjs";
 
 let server;
 let browser;
@@ -863,6 +864,73 @@ describe("Subir canciones", () => {
       await page.waitForSelector('[data-testid="track-row"][data-song-id="S00000000000000c1"]');
       assert.equal(await page.evaluate(() => window.__sinRecargar), true, "sin recargar la página");
       assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("reminiscencia.subidas") ?? "null")), null, "ya no queda nada pendiente");
+      restaurarCatalogo();
+    }),
+  );
+
+  prueba("Un ZIP con subcarpetas, __MACOSX y otros archivos, mezclado con una suelta y un ZIP dañado: cada canción sube y se publica en su grupo", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      subidas.length = 0;
+      restaurarCatalogo();
+      await prepararPagina(page);
+      await openApp(page, server.url);
+      await openUpload(page, VIEWPORTS.escritorio);
+      assert.match(await page.$eval('[data-testid="upload-file-input"]', (input) => input.accept), /\.zip/);
+
+      const dir = await mkdtemp(join(tmpdir(), "reminiscencia-e2e-zip-"));
+      const album = join(dir, "Álbum de prueba.zip");
+      await writeFile(album, buildZip([
+        { path: "Disco/", data: [] },
+        { path: "Disco/01 Vals del zip.wav", data: wavTone(1.5), method: 8 },
+        { path: "Disco/Cara B/02 Copla del zip.wav", data: wavTone(1.5), method: 0 },
+        { path: "__MACOSX/Disco/._01 Vals del zip.wav", data: Buffer.from("metadatos") },
+        { path: "Disco/portada.jpg", data: Buffer.from("no es audio") },
+      ]));
+      const roto = join(dir, "Roto.zip");
+      await writeFile(roto, Buffer.from("esto no es un ZIP de verdad"));
+      const [suelta] = await wavFiles(["Suelta del zip.wav"]);
+      const soporte = await textOf(page, "upload-support").catch(() => "");
+      assert.equal(soporte, "", `Este Chrome no convierte a Opus: ${soporte}`);
+      const input = await page.$('[data-testid="upload-file-input"]');
+      await input.uploadFile(album, suelta, roto);
+      await waitRows(page, 4);
+
+      // Solo se envía el Opus de cada canción, de una en una y con su nombre base: el ZIP nunca.
+      assert.deepEqual(subidas.map((item) => [item.name, item.index, item.total]), [
+        ["01 Vals del zip.wav", 0, 1],
+        ["02 Copla del zip.wav", 0, 1],
+        ["Suelta del zip.wav", 0, 1],
+      ]);
+      for (const item of subidas) assert.equal(item.body.subarray(0, 4).toString("latin1"), "OggS", `${item.name} va en Ogg Opus`);
+
+      const grupos = await page.$$eval('[data-testid="upload-group"]', (groups) => groups.map((group) => [
+        group.querySelector('[data-testid="upload-group-title"]').textContent,
+        group.querySelector('[data-testid="upload-group-note"]')?.textContent ?? "",
+        [...group.querySelectorAll('[data-testid="upload-item-name"]')].map((node) => node.textContent),
+      ]));
+      assert.deepEqual(grupos, [
+        ["Álbum de prueba.zip: 2 canciones", "Se ignoraron 2 archivos que no son canciones (carpetas del sistema, ocultos u otros tipos).", ["01 Vals del zip.wav", "02 Copla del zip.wav"]],
+        ["Roto.zip: ninguna canción", "", ["Roto.zip"]],
+      ]);
+      const suelto = await page.$$eval('[data-testid="upload-items"] > [data-testid="upload-item"]', (rows) => rows.map((row) => row.querySelector('[data-testid="upload-item-name"]').textContent));
+      assert.deepEqual(suelto, ["Suelta del zip.wav"], "la suelta va fuera de los grupos");
+      await waitState(page, "02 Copla del zip.wav", "publicandose");
+      await waitState(page, "Suelta del zip.wav", "publicandose");
+      assert.deepEqual((await filas(page)).find((fila) => fila[1] === "Roto.zip"), ["error", "Roto.zip", "Error: El archivo ZIP está dañado o no es un ZIP válido."]);
+      assert.equal(await page.$('[data-testid="upload-group"] [data-testid="upload-item-retry"]'), null, "un ZIP dañado no ofrece Reintentar");
+      assert.equal(await textOf(page, "upload-summary"), "0 de 4 publicadas · 1 con error");
+      assert.match(await page.$eval('[data-testid="upload-live"]', (node) => node.textContent), /Álbum de prueba\.zip: 2 canciones|Publicándose/);
+
+      publicar(
+        { id: "S00000000000000e1", title: "01 Vals del zip" },
+        { id: "S00000000000000e2", title: "02 Copla del zip" },
+        { id: "S00000000000000e3", title: "Suelta del zip" },
+      );
+      for (const nombre of ["01 Vals del zip.wav", "02 Copla del zip.wav", "Suelta del zip.wav"]) await waitState(page, nombre, "publicada");
+      assert.equal(await textOf(page, "upload-summary"), "3 de 4 publicadas · 1 con error");
+      await capture(page, "subida-zip");
+      const fallos = (await wcagViolations(page)).filter((v) => v.impacto === "serious" || v.impacto === "critical");
+      assert.deepEqual(fallos, []);
       restaurarCatalogo();
     }),
   );

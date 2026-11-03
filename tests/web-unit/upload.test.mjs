@@ -21,7 +21,7 @@ describe('Subir canciones (para todos)', () => {
   });
 
   test('el código del navegador no usa tokens ni la API de GitHub: solo habla con /api/subir', () => {
-    for (const file of ['views/upload.js', 'app.js', 'cuidador/incidencias.js', 'cuidador/subida-publica.js', 'cuidador/subida-local.js', 'cuidador/subida-estado.js']) {
+    for (const file of ['views/upload.js', 'app.js', 'cuidador/incidencias.js', 'cuidador/subida-publica.js', 'cuidador/subida-local.js', 'cuidador/subida-estado.js', 'cuidador/subida-zip.js', 'cuidador/zip.js']) {
       const source = readFileSync(new URL(`../../frontend/web/js/${file}`, import.meta.url), 'utf8');
       assert.doesNotMatch(source, /api\.github\.com/, file);
       assert.doesNotMatch(source, /Authorization|access_token|ghp_|github_pat_|GITHUB_TOKEN/i, file);

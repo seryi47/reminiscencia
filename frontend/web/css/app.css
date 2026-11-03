@@ -2611,6 +2611,44 @@ button:disabled {
   margin-bottom: 16px;
 }
 
+/* Grupo de un ZIP: cabecera «Álbum.zip: 12 canciones», lo ignorado y sus filas, un poco sangradas (DESIGN §12). */
+.upload-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 4px;
+}
+
+.upload-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--text-m);
+  font-weight: 700;
+}
+
+.upload-group-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--text-2);
+}
+
+.upload-group-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.upload-group-note {
+  margin: 0 0 4px 28px;
+}
+
+.upload-group-items {
+  margin: 0 0 0 12px;
+}
+
 .upload-item {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) auto;
