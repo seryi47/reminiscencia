@@ -7,6 +7,7 @@ import '../services.dart';
 import '../song.dart';
 import '../theme.dart';
 import 'common.dart';
+import 'library_edit.dart';
 import 'playlist_flows.dart';
 
 /// Fila de una canción: portada de 40 px, título, artista y menú. La que suena va en verde.
@@ -54,7 +55,12 @@ class SongRow extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
                 child: Row(
                   children: [
-                    CoverArt(seed: song.id, size: kRowArtworkSize),
+                    CatalogCover(
+                      covers: services.covers,
+                      cover: song.cover,
+                      seed: song.id,
+                      size: kRowArtworkSize,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ExcludeSemantics(
@@ -131,6 +137,7 @@ String songDetails(Song song) {
 }
 
 /// Menú de una canción en una hoja inferior: «Me gusta», añadir a una lista, quitar de la lista y borrar.
+/// Las canciones de la biblioteca común añaden las acciones de edición, que se piden en GitHub.
 Future<void> showSongMenu(
   BuildContext context,
   AppServices services,
@@ -181,7 +188,12 @@ class _SongMenu extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Row(
                 children: [
-                  CoverArt(seed: song.id, size: 48),
+                  CatalogCover(
+                    covers: services.covers,
+                    cover: song.cover,
+                    seed: song.id,
+                    size: 48,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -244,6 +256,18 @@ class _SongMenu extends StatelessWidget {
                   close();
                   confirmDeleteLocal(hostContext, services.library, song);
                 },
+              ),
+            if (isEditableSong(song))
+              ...libraryEditTiles(
+                hostContext: hostContext,
+                services: services,
+                close: close,
+                editDetails: () =>
+                    editSongDetailsFlow(hostContext, services, song),
+                addToAlbum: () =>
+                    addSongToAlbumFlow(hostContext, services, song),
+                coverId: song.id,
+                coverWhat: 'la canción',
               ),
             if (song.license.isNotEmpty)
               Padding(

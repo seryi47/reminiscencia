@@ -16,7 +16,7 @@ String greetingFor(DateTime time) {
   return 'Buenas noches';
 }
 
-/// Inicio: saludo, accesos rápidos en cuadrícula y estantes (carpetas, añadidas recientemente, tus listas).
+/// Inicio: saludo, accesos rápidos en cuadrícula y estantes (álbumes, añadidas recientemente, tus listas).
 class HomePage extends StatelessWidget {
   const HomePage({super.key, required this.services});
 
@@ -27,7 +27,7 @@ class HomePage extends StatelessWidget {
     final library = services.library;
     final collections = services.collections;
     return ListenableBuilder(
-      listenable: Listenable.merge([library, collections]),
+      listenable: Listenable.merge([library, collections, services.covers]),
       builder: (context, _) {
         final theme = Theme.of(context);
         final header = Padding(
@@ -58,7 +58,7 @@ class HomePage extends StatelessWidget {
         );
         final body = _body(context);
         return RefreshIndicator(
-          onRefresh: () => library.load(),
+          onRefresh: () => library.refresh(),
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
@@ -160,7 +160,7 @@ class HomePage extends StatelessWidget {
     ];
   }
 
-  /// Accesos rápidos: «Me gusta», tus listas, las carpetas y, si hay, lo subido en este teléfono. Hasta 8.
+  /// Accesos rápidos: «Me gusta», tus listas, los álbumes y, si hay, lo subido en este teléfono. Hasta 8.
   List<CollectionRef> _quickRefs() {
     final library = services.library;
     final refs = <CollectionRef>[
@@ -181,6 +181,7 @@ class HomePage extends StatelessWidget {
       title: view.title,
       icon: view.icon,
       color: view.color,
+      image: view.image,
       onTap: () => openCollection(context, services, view.ref),
     );
   }
@@ -196,7 +197,7 @@ class HomePage extends StatelessWidget {
       children: [
         if (folders.isNotEmpty)
           Shelf(
-            title: 'Carpetas',
+            title: 'Álbumes',
             children: [
               for (final folder in folders)
                 _collectionCard(context, FolderRef(folder.id)),
@@ -228,9 +229,10 @@ class HomePage extends StatelessWidget {
     return ShelfCard(
       seed: ref.key,
       title: view.title,
-      subtitle: view.subtitle,
+      subtitle: view.cardSubtitle,
       icon: view.icon,
       color: view.color,
+      image: view.image,
       onTap: () => openCollection(context, services, ref),
     );
   }
@@ -245,6 +247,7 @@ class HomePage extends StatelessWidget {
       title: song.title,
       subtitle: details,
       icon: Icons.music_note_rounded,
+      image: services.covers.imageFor(song.cover),
       semanticHint: 'reproducir',
       onTap: () => runWithNotice(
         context,

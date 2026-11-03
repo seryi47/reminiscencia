@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
 import 'app_error.dart';
+import 'covers.dart';
 import 'library_store.dart';
 import 'playback.dart';
 import 'playback_plan.dart';
@@ -18,7 +19,7 @@ import 'song.dart';
 class SonidosAudioHandler extends BaseAudioHandler
     with QueueHandler, SeekHandler
     implements PlaybackPort {
-  SonidosAudioHandler(this._store) {
+  SonidosAudioHandler(this._store, [this._covers]) {
     _player.playbackEventStream.listen(
       (_) => _broadcastState(),
       onError: (Object error, StackTrace stackTrace) => _onPlaybackError(error),
@@ -32,6 +33,7 @@ class SonidosAudioHandler extends BaseAudioHandler
       final items = queue.value;
       if (index != null && index >= 0 && index < items.length) {
         mediaItem.add(items[index]);
+        _fillArtwork(index);
       }
       _publish();
     });
@@ -39,6 +41,9 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   final LibraryStore _store;
+
+  /// Portadas guardadas: la notificación usa el fichero local (file://), nunca descarga por su cuenta.
+  final CoverCache? _covers;
   final AudioPlayer _player = AudioPlayer();
   final ValueNotifier<NowPlaying> _now = ValueNotifier<NowPlaying>(
     NowPlaying.none,
@@ -131,6 +136,7 @@ class SonidosAudioHandler extends BaseAudioHandler
             artist: song.artist.isEmpty ? null : song.artist,
             album: 'Reminiscencia',
             duration: Duration(milliseconds: (song.durationS * 1000).round()),
+            artUri: _artUriOf(song),
           ),
         )
         .toList();
@@ -177,7 +183,40 @@ class SonidosAudioHandler extends BaseAudioHandler
     _queueSongs = songs;
     _queueIds = [for (final song in songs) song.id];
     mediaItem.add(items.first);
+    _fillArtwork(0);
     _publish();
+  }
+
+  Uri? _artUriOf(Song song) {
+    final file = _covers?.fileFor(song.cover);
+    return file == null ? null : Uri.file(file.path);
+  }
+
+  /// Si la canción que suena tiene portada pero aún no está guardada, la descarga una vez y la pone
+  /// en la notificación. Si mientras tanto cambió de canción, no toca nada.
+  void _fillArtwork(int index) {
+    final covers = _covers;
+    if (covers == null ||
+        index >= _queueSongs.length ||
+        index >= queue.value.length) {
+      return;
+    }
+    final song = _queueSongs[index];
+    final cover = song.cover;
+    final item = queue.value[index];
+    if (cover == null || item.id != song.id || item.artUri != null) return;
+    unawaited(
+      covers.ensure(cover).then((ok) {
+        final art = ok ? _artUriOf(song) : null;
+        if (art == null) return;
+        final items = [...queue.value];
+        final at = items.indexWhere((item) => item.id == song.id);
+        if (at < 0) return;
+        items[at] = items[at].copyWith(artUri: art);
+        queue.add(items);
+        if (mediaItem.value?.id == song.id) mediaItem.add(items[at]);
+      }),
+    );
   }
 
   @override

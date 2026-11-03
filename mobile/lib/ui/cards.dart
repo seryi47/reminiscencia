@@ -14,12 +14,14 @@ class QuickTile extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.color,
+    this.image,
   });
 
   final String seed;
   final String title;
   final IconData icon;
   final Color? color;
+  final ImageProvider? image;
   final VoidCallback onTap;
 
   @override
@@ -42,6 +44,7 @@ class QuickTile extends StatelessWidget {
                 icon: icon,
                 color: color,
                 radius: 0,
+                image: image,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -72,6 +75,7 @@ class ShelfCard extends StatelessWidget {
     required this.onTap,
     this.color,
     this.semanticHint,
+    this.image,
   });
 
   static const double width = 156;
@@ -81,6 +85,7 @@ class ShelfCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Color? color;
+  final ImageProvider? image;
   final VoidCallback onTap;
 
   /// Qué pasa al tocarla, para los lectores de pantalla (por ejemplo «reproducir»).
@@ -109,6 +114,7 @@ class ShelfCard extends StatelessWidget {
                   icon: icon,
                   color: color,
                   radius: 6,
+                  image: image,
                 ),
                 const SizedBox(height: 8),
                 Text(

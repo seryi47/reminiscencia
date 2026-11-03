@@ -18,28 +18,75 @@ String cleanPlaylistName(String raw) {
   return collapsed;
 }
 
-/// Lista de reproducción local: un nombre y las canciones (por id), sin repetir.
+/// Longitud máxima de la descripción de una lista.
+const int kMaxPlaylistDescriptionLength = 300;
+
+/// Valida la descripción de una lista: recortada, sin caracteres de control (se admiten saltos de línea)
+/// y como mucho [kMaxPlaylistDescriptionLength] caracteres. Puede quedar vacía.
+String cleanPlaylistDescription(String raw) {
+  final clean = raw
+      .replaceAll('\r\n', '\n')
+      .replaceAll(RegExp(r'[\u0000-\u0009\u000b-\u001f\u007f-\u009f]'), ' ')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .trim();
+  if (clean.runes.length > kMaxPlaylistDescriptionLength) {
+    throw AppException(
+      'La descripción no puede tener más de $kMaxPlaylistDescriptionLength caracteres.',
+    );
+  }
+  return clean;
+}
+
+/// Nombre de fichero válido para la portada propia de una lista (se guarda solo en el teléfono).
+final RegExp kPlaylistCoverFileName = RegExp(r'^[A-Za-z0-9_-]{1,80}\.jpg$');
+
+/// Lista de reproducción local: nombre, descripción, portada propia (opcional) y las canciones (por id), sin repetir.
 class Playlist {
   Playlist({
     required this.id,
     required this.name,
+    this.description = '',
+    this.coverFile,
     Iterable<String> songIds = const [],
   }) : songIds = List<String>.unmodifiable(songIds);
 
   final String id;
   final String name;
+
+  /// Descripción escrita por el usuario. Vacía si no tiene.
+  final String description;
+
+  /// Nombre del fichero de la portada elegida del teléfono (ver PlaylistCoverStore), o null.
+  final String? coverFile;
   final List<String> songIds;
 
-  Playlist copyWith({String? name, Iterable<String>? songIds}) {
+  Playlist copyWith({
+    String? name,
+    String? description,
+    Iterable<String>? songIds,
+    Object? coverFile = _keep,
+  }) {
     return Playlist(
       id: id,
       name: name ?? this.name,
+      description: description ?? this.description,
+      coverFile: identical(coverFile, _keep)
+          ? this.coverFile
+          : coverFile as String?,
       songIds: songIds ?? this.songIds,
     );
   }
 
-  Map<String, Object> toJson() => {'id': id, 'name': name, 'songs': songIds};
+  Map<String, Object> toJson() => {
+    'id': id,
+    'name': name,
+    if (description.isNotEmpty) 'description': description,
+    'cover': ?coverFile,
+    'songs': songIds,
+  };
 }
+
+const Object _keep = Object();
 
 /// Favoritos y listas del usuario. Clase pura: el guardado en disco está en collections_store.dart.
 class Collections {
@@ -89,6 +136,32 @@ class Collections {
     final index = _indexOf(id);
     final cleanName = cleanPlaylistName(name);
     _playlists[index] = _playlists[index].copyWith(name: cleanName);
+  }
+
+  /// Cambia el nombre y la descripción. Valida los dos antes de cambiar nada.
+  void editPlaylist(
+    String id, {
+    required String name,
+    required String description,
+  }) {
+    final index = _indexOf(id);
+    final cleanName = cleanPlaylistName(name);
+    final cleanDescription = cleanPlaylistDescription(description);
+    _playlists[index] = _playlists[index].copyWith(
+      name: cleanName,
+      description: cleanDescription,
+    );
+  }
+
+  /// Pone (o quita, con null) la portada propia. Devuelve el fichero anterior, para borrarlo.
+  String? setPlaylistCover(String id, String? coverFile) {
+    if (coverFile != null && !kPlaylistCoverFileName.hasMatch(coverFile)) {
+      throw ArgumentError.value(coverFile, 'coverFile');
+    }
+    final index = _indexOf(id);
+    final previous = _playlists[index].coverFile;
+    _playlists[index] = _playlists[index].copyWith(coverFile: coverFile);
+    return previous;
   }
 
   void deletePlaylist(String id) {
@@ -175,8 +248,27 @@ class Collections {
         }
       }
     }
+    final rawDescription = item['description'];
+    final rawCover = item['cover'];
+    String description = '';
+    if (rawDescription is String) {
+      try {
+        description = cleanPlaylistDescription(rawDescription);
+      } on AppException {
+        description = '';
+      }
+    }
     try {
-      return Playlist(id: id, name: cleanPlaylistName(name), songIds: songIds);
+      return Playlist(
+        id: id,
+        name: cleanPlaylistName(name),
+        description: description,
+        coverFile:
+            rawCover is String && kPlaylistCoverFileName.hasMatch(rawCover)
+            ? rawCover
+            : null,
+        songIds: songIds,
+      );
     } on AppException {
       return null;
     }

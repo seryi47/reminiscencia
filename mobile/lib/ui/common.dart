@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../app_error.dart';
 import '../collections.dart';
+import '../covers.dart';
 import '../layout.dart';
 import '../theme.dart';
 
@@ -253,8 +254,8 @@ String formatTotalDuration(double seconds) {
   return '${minutes ~/ 60} h ${minutes % 60} min';
 }
 
-/// Portada generada: las canciones no traen imagen, así que se pinta un degradado estable
-/// a partir del identificador, con un icono encima. Es decorativa: no se anuncia.
+/// Portada: la imagen de la canción, del álbum o de la lista si la hay; si no (o mientras carga, o si falla),
+/// un degradado estable calculado a partir del identificador, con un icono encima. Es decorativa: no se anuncia.
 class CoverArt extends StatelessWidget {
   const CoverArt({
     super.key,
@@ -264,6 +265,7 @@ class CoverArt extends StatelessWidget {
     this.color,
     this.radius,
     this.circle = false,
+    this.image,
   });
 
   final String seed;
@@ -275,19 +277,43 @@ class CoverArt extends StatelessWidget {
   final double? radius;
   final bool circle;
 
+  /// Imagen de la portada (guardada en el teléfono). Null: solo el degradado.
+  final ImageProvider? image;
+
   @override
   Widget build(BuildContext context) {
     final base = color ?? coverColorFor(seed);
     final dark = Color.lerp(base, Colors.black, 0.55)!;
+    final shape = circle ? BoxShape.circle : BoxShape.rectangle;
+    final borderRadius = circle
+        ? null
+        : BorderRadius.circular(radius ?? (size >= 120 ? 8 : 4));
+    final picture = image;
+    Widget? overlay;
+    if (picture != null) {
+      // Se decodifica al tamaño en que se pinta: una portada de 640 px no ocupa memoria de más en una fila de 40 dp.
+      final pixels = (size * MediaQuery.devicePixelRatioOf(context)).round();
+      overlay = Image(
+        key: const Key('cover-image'),
+        image: ResizeImage.resizeIfNeeded(pixels, pixels, picture),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        excludeFromSemantics: true,
+        errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+      );
+      overlay = circle
+          ? ClipOval(child: overlay)
+          : ClipRRect(borderRadius: borderRadius!, child: overlay);
+    }
     return ExcludeSemantics(
       child: Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
-          shape: circle ? BoxShape.circle : BoxShape.rectangle,
-          borderRadius: circle
-              ? null
-              : BorderRadius.circular(radius ?? (size >= 120 ? 8 : 4)),
+          shape: shape,
+          borderRadius: borderRadius,
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -303,7 +329,61 @@ class CoverArt extends StatelessWidget {
                 ]
               : null,
         ),
-        child: Icon(icon, size: size * 0.42, color: Colors.white),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: Icon(icon, size: size * 0.42, color: Colors.white),
+            ),
+            ?overlay,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Portada de la web (canción o álbum) por su ruta (`covers/<id>.jpg`). Se repinta cuando termina de bajar.
+class CatalogCover extends StatelessWidget {
+  const CatalogCover({
+    super.key,
+    required this.covers,
+    required this.cover,
+    required this.seed,
+    required this.size,
+    this.icon = Icons.music_note_rounded,
+    this.color,
+    this.radius,
+  });
+
+  final CoverImages covers;
+  final String? cover;
+  final String seed;
+  final double size;
+  final IconData icon;
+  final Color? color;
+  final double? radius;
+
+  @override
+  Widget build(BuildContext context) {
+    if (cover == null) {
+      return CoverArt(
+        seed: seed,
+        size: size,
+        icon: icon,
+        color: color,
+        radius: radius,
+      );
+    }
+    return ListenableBuilder(
+      listenable: covers,
+      builder: (context, _) => CoverArt(
+        seed: seed,
+        size: size,
+        icon: icon,
+        color: color,
+        radius: radius,
+        image: covers.imageFor(cover),
       ),
     );
   }
@@ -348,7 +428,7 @@ class PressableSurface extends StatelessWidget {
   }
 }
 
-/// Botón redondo verde de reproducir (o pausar) de las cabeceras de carpeta y lista.
+/// Botón redondo verde de reproducir (o pausar) de las cabeceras de álbum y lista.
 class PlayCircleButton extends StatelessWidget {
   const PlayCircleButton({
     super.key,

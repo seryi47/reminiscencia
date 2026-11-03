@@ -1,4 +1,6 @@
 import 'collections_controller.dart';
+import 'covers.dart';
+import 'image_picker.dart';
 import 'library_controller.dart';
 import 'playback.dart';
 import 'settings_store.dart';
@@ -12,7 +14,9 @@ class AppServices {
     required this.playback,
     required this.collections,
     required this.settings,
+    this.covers = const NoCoverImages(),
     this.openUrl = openInBrowser,
+    this.pickImage = pickImageFromDevice,
     this.clock = DateTime.now,
   });
 
@@ -21,8 +25,14 @@ class AppServices {
   final CollectionsController collections;
   final SettingsController settings;
 
-  /// Abre direcciones en el navegador (subida «Para todos»).
+  /// Portadas de la web guardadas en el teléfono.
+  final CoverImages covers;
+
+  /// Abre direcciones en el navegador (subida «Para todos» y peticiones a la biblioteca común).
   final UrlOpener openUrl;
+
+  /// Elige una imagen del teléfono (portada propia de una lista).
+  final ImagePicker pickImage;
 
   /// Hora actual (saludo de Inicio). Se sustituye en pruebas.
   final DateTime Function() clock;

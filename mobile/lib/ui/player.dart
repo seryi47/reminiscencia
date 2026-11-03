@@ -158,7 +158,14 @@ class MiniPlayer extends StatelessWidget {
                                 padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
                                 child: Row(
                                   children: [
-                                    CoverArt(seed: songId, size: 40),
+                                    CatalogCover(
+                                      covers: services.covers,
+                                      cover: services.library
+                                          .songOrNull(songId)
+                                          ?.cover,
+                                      seed: songId,
+                                      size: 40,
+                                    ),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
@@ -364,7 +371,13 @@ class FullPlayerPage extends StatelessWidget {
                             color: palette.inkMuted,
                           )
                         else
-                          CoverArt(seed: songId, size: artwork),
+                          CatalogCover(
+                            key: const Key('player-artwork'),
+                            covers: services.covers,
+                            cover: services.library.songOrNull(songId)?.cover,
+                            seed: songId,
+                            size: artwork,
+                          ),
                         const SizedBox(height: 32),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center,

@@ -12,9 +12,9 @@ import 'common.dart';
 import 'playlist_flows.dart';
 
 /// Filtro de Tu biblioteca.
-enum LibraryFilter { all, playlists, folders }
+enum LibraryFilter { all, playlists, albums }
 
-/// Tu biblioteca: «Canciones que te gustan», tus listas, las carpetas del catálogo y lo subido en este teléfono.
+/// Tu biblioteca: «Canciones que te gustan», tus listas, los álbumes del catálogo y lo subido en este teléfono.
 /// Arriba, «Subir canciones» (solo en este teléfono o para todos) y crear una lista.
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key, required this.services});
@@ -34,7 +34,7 @@ class _LibraryPageState extends State<LibraryPage> {
     final library = services.library;
     final collections = services.collections;
     return ListenableBuilder(
-      listenable: Listenable.merge([library, collections]),
+      listenable: Listenable.merge([library, collections, services.covers]),
       builder: (context, _) {
         final theme = Theme.of(context);
         final refs = _refs();
@@ -117,7 +117,7 @@ class _LibraryPageState extends State<LibraryPage> {
                     const SizedBox(width: 8),
                     _chip('Listas', LibraryFilter.playlists),
                     const SizedBox(width: 8),
-                    _chip('Carpetas', LibraryFilter.folders),
+                    _chip('Álbumes', LibraryFilter.albums),
                   ],
                 ),
               ),
@@ -136,8 +136,8 @@ class _LibraryPageState extends State<LibraryPage> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
                   child: Text(
-                    _filter == LibraryFilter.folders
-                        ? 'El catálogo todavía no tiene carpetas.'
+                    _filter == LibraryFilter.albums
+                        ? 'El catálogo todavía no tiene álbumes.'
                         : 'Todavía no tienes listas. Crea una con «Crear lista».',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyLarge,
@@ -173,7 +173,7 @@ class _LibraryPageState extends State<LibraryPage> {
         const LikedRef(),
         for (final playlist in playlists) PlaylistRef(playlist.id),
       ],
-      LibraryFilter.folders => [
+      LibraryFilter.albums => [
         for (final folder in folders) FolderRef(folder.id),
       ],
     };
@@ -220,6 +220,7 @@ class _LibraryRow extends StatelessWidget {
                 size: 64,
                 icon: view.icon,
                 color: view.color,
+                image: view.image,
               ),
               const SizedBox(width: 12),
               Expanded(

@@ -7,7 +7,7 @@ import 'common.dart';
 /// Color fijo de «Canciones que te gustan».
 const Color kLikedColor = Color(0xFF4B2FBF);
 
-/// Una colección de canciones que se abre en su propia página: carpeta del catálogo, lista propia,
+/// Una colección de canciones que se abre en su propia página: álbum del catálogo, lista propia,
 /// «Me gusta», lo subido en este teléfono, todo el catálogo o lo añadido recientemente.
 sealed class CollectionRef {
   const CollectionRef();
@@ -66,25 +66,45 @@ class CollectionView {
     this.color,
     this.missing = 0,
     this.emptyMessage = 'Aquí no hay canciones todavía.',
+    this.artist = '',
+    this.description = '',
+    this.image,
   });
 
   final CollectionRef ref;
   final String title;
 
-  /// Tipo, para el subtítulo: «Lista», «Carpeta»…
+  /// Tipo, para el subtítulo: «Lista», «Álbum»…
   final String kind;
   final List<Song> songs;
   final IconData icon;
   final Color? color;
 
-  /// False si la lista o la carpeta ya no existe.
+  /// False si la lista o el álbum ya no existe.
   final bool exists;
 
   /// Canciones guardadas en la lista que ya no están en la biblioteca.
   final int missing;
   final String emptyMessage;
 
-  String get subtitle => '$kind · ${songCountLabel(songs.length)}';
+  /// Artista del álbum. Vacío en las listas o si no se conoce.
+  final String artist;
+
+  /// Descripción de una lista propia. Vacía si no tiene.
+  final String description;
+
+  /// Portada (de la web o elegida del teléfono). Null: degradado.
+  final ImageProvider? image;
+
+  /// «Álbum · Artista · 12 canciones».
+  String get subtitle => [
+    kind,
+    if (artist.isNotEmpty) artist,
+    songCountLabel(songs.length),
+  ].join(' · ');
+
+  /// Subtítulo corto de las tarjetas: el artista del álbum, o el tipo y las canciones.
+  String get cardSubtitle => artist.isNotEmpty ? artist : subtitle;
 }
 
 /// Resuelve [ref] con el estado actual de la biblioteca y de las listas.
@@ -127,9 +147,12 @@ CollectionView resolveCollection(AppServices services, CollectionRef ref) {
         );
       }
       final songs = pick(playlist.songIds);
+      final coverFile = services.collections.coverFileOf(playlist);
       return CollectionView(
         ref: ref,
         title: playlist.name,
+        description: playlist.description,
+        image: coverFile == null ? null : FileImage(coverFile),
         kind: 'Lista',
         songs: songs,
         icon: Icons.queue_music_rounded,
@@ -145,14 +168,16 @@ CollectionView resolveCollection(AppServices services, CollectionRef ref) {
       final folder = library.folderOrNull(id);
       return CollectionView(
         ref: ref,
-        title: folder?.name ?? 'Carpeta',
-        kind: 'Carpeta',
+        title: folder?.name ?? 'Álbum',
+        kind: 'Álbum',
+        artist: folder?.artist ?? '',
+        image: services.covers.imageFor(folder?.cover),
         songs: folder == null ? const [] : library.songsInFolder(id),
-        icon: Icons.folder_rounded,
+        icon: Icons.album_rounded,
         exists: folder != null,
         emptyMessage: folder == null
-            ? 'Esta carpeta ya no está en la biblioteca.'
-            : 'No hay canciones en esta carpeta.',
+            ? 'Este álbum ya no está en la biblioteca.'
+            : 'No hay canciones en este álbum.',
       );
     case LocalRef():
       return CollectionView(

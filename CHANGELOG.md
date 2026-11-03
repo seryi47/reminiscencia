@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## Sin publicar: APK con portadas, álbumes y edición por GitHub (2026-11-03; en `main`)
+
+### Añadido
+- Portadas de canciones y álbumes (`cover: "covers/<id>.jpg"` en `data/songs.json` y `data/folders.json`) en tarjetas, filas, minirreproductor, reproductor completo y notificación. Caché en disco (`lib/covers.dart`) que se ve sin red; cada portada se descarga una vez, sin sondeos; «Guardar para escuchar sin conexión» también las baja (después, solo en Wi-Fi), y solo al refrescar a mano se pregunta si cambiaron (`If-None-Match`). Sin portada, el degradado de siempre.
+- Edición de la biblioteca común en el menú de canción y de álbum: «Editar detalles», «Añadir a un álbum», «Crear álbum» y «Cambiar portada». Las tres primeras abren una incidencia nueva con la etiqueta `biblioteca` (`action: organize`, `payload` con `edit_song`, `create_folder` o `edit_folder`), validada antes (nombre de 1 a 80 caracteres, artista de 0 a 80, una línea; álbumes `F` + 16 o 10 hexadecimales). «Cambiar portada» abre la subida de GitHub en `audio-library/buzon/portadas` y muestra el ID para el nombre del archivo, con botón de copiar (solo canciones `S` y álbumes `F`). Hace falta permiso de escritura.
+- Listas propias con descripción y portada elegida del teléfono, recortada y reducida a 640 px y guardada solo en él (`listas-portadas/`, excluida de la copia de Android). Dependencia nueva: `image` (pura Dart).
+- Pruebas: `covers_test.dart`, `library_requests_test.dart`, `library_ui_test.dart` y `playlist_details_test.dart` (164 pruebas Flutter en verde). Sin probar en dispositivo.
+
+### Cambiado
+- «Carpetas» pasa a llamarse «Álbumes» en toda la APK, con el artista como subtítulo; Buscar encuentra álbumes también por artista. «Renombrar lista» pasa a «Editar detalles» (nombre y descripción).
+
 ## Sin publicar: portadas y álbumes con artista (2026-11-03; en `main`)
 
 Decisión en [ADR-0016](docs/decisions/ADR-0016-portadas-y-albumes.md). Sin probar en GitHub.

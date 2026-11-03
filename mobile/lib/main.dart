@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'collections_controller.dart';
 import 'collections_store.dart';
+import 'covers.dart';
 import 'library_controller.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
 import 'local_audio_convert.dart';
 import 'network.dart';
 import 'offline_choice.dart';
+import 'playlist_covers.dart';
 import 'services.dart';
 import 'settings_store.dart';
 import 'sonidos_audio_handler.dart';
@@ -18,10 +20,19 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerFontLicense();
   final libraryStore = LibraryStore();
+  final covers = CoverCache(base: kLibraryBase);
+  final playlistCovers = FilePlaylistCoverStore();
+  // Solo leen un índice pequeño y crean carpetas: no bloquean el arranque si fallan.
+  await Future.wait([
+    covers.init(),
+    playlistCovers.init().catchError((Object error) {
+      debugPrint('listas: no se pudo preparar la carpeta de portadas: $error');
+    }),
+  ]);
   final SonidosAudioHandler handler;
   try {
     handler = await AudioService.init(
-      builder: () => SonidosAudioHandler(libraryStore),
+      builder: () => SonidosAudioHandler(libraryStore, covers),
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'es.orbitalabs.reminiscencia.audio',
         androidNotificationChannelName: 'Reproducción',
@@ -36,6 +47,7 @@ Future<void> main() async {
   final settings = SettingsController(store: SettingsStore());
   final collections = CollectionsController(
     repository: FileCollectionsRepository(),
+    covers: playlistCovers,
   );
   await Future.wait([settings.load(), collections.load()]);
   runApp(
@@ -50,8 +62,10 @@ Future<void> main() async {
           ),
           offline: SharedPrefsOfflineChoice(),
           network: const ConnectivityNetworkInfo(),
+          covers: covers,
         ),
         playback: handler,
+        covers: covers,
         collections: collections,
         settings: settings,
       ),
