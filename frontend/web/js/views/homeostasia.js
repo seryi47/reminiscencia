@@ -25,6 +25,7 @@ const CONFIG = {
   format: 'wav',
   quality: 'original',
   batchSize: 4,
+  convertCreateAttempts: 6,
   convertCreateGap: 2000,
   pollInterval: 3000,
   statusErrorRetries: 5,
@@ -122,9 +123,12 @@ function sleep(ms, signal) {
   });
 }
 
-async function esperarTurnoCreacion(signal) {
+async function esperarTurnoCreacion(signal, deadline) {
   const now = Date.now();
   const scheduledAt = Math.max(now, nextConvertCreateAt);
+  if (scheduledAt >= deadline) {
+    throw new Error('Se ha agotado el tiempo de espera de la conversión.');
+  }
   nextConvertCreateAt = scheduledAt + CONFIG.convertCreateGap;
   if (scheduledAt > now) await sleep(scheduledAt - now, signal);
 }
@@ -195,9 +199,26 @@ async function fetchJson(url, init = {}, signal) {
   if (!response.ok) {
     const error = new Error(data?.error || `Error de red: ${response.status}`);
     error.status = response.status;
+    error.retryAfter = response.headers.get('retry-after');
     throw error;
   }
   return data;
+}
+
+function retryDelay(error, attempt) {
+  const retryAfter = error.retryAfter?.trim();
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const serverDelay = Number.isFinite(seconds)
+      ? seconds * 1000
+      : Date.parse(retryAfter) - Date.now();
+    if (Number.isFinite(serverDelay)) {
+      const delay = Math.min(Math.max(0, serverDelay), 300000);
+      return delay + Math.random() * Math.min(3000, Math.max(500, delay * 0.1));
+    }
+  }
+  const delay = Math.min(10000 * (2 ** (attempt - 1)), 90000);
+  return delay + Math.random() * Math.min(3000, Math.max(500, delay * 0.1));
 }
 
 async function listarPlaylist(playlistUrl, signal) {
@@ -237,20 +258,43 @@ async function listarPlaylist(playlistUrl, signal) {
 // CREAR CONVERSIÓN EN YTTOWAV
 // ==================================================
 
-async function crearJob(url, title, signal) {
-  await esperarTurnoCreacion(signal);
-  const data = await fetchJson(
-    CONVERTER_ENDPOINTS.convert,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: '*/*'
-      },
-      body: JSON.stringify({ url, title: title || '' })
-    },
-    signal
-  );
+async function crearJob(url, title, signal, deadline, onRetry) {
+  let data;
+  for (let attempt = 1; attempt <= CONFIG.convertCreateAttempts; attempt++) {
+    await esperarTurnoCreacion(signal, deadline);
+    try {
+      data = await fetchJson(
+        CONVERTER_ENDPOINTS.convert,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: '*/*'
+          },
+          body: JSON.stringify({ url, title: title || '' })
+        },
+        signal
+      );
+      break;
+    } catch (error) {
+      const retryable = error?.name !== 'AbortError' && (
+        error.status === undefined ||
+        [408, 425, 429, 503, 504].includes(error.status)
+      );
+      if (!retryable || attempt === CONFIG.convertCreateAttempts) throw error;
+      const delay = retryDelay(error, attempt);
+      if (Date.now() + delay >= deadline) {
+        throw new Error('Se ha agotado el tiempo de espera de la conversión.');
+      }
+      const retryInSeconds = Math.ceil(delay / 1000);
+      console.warn(
+        `Homeostasia: yttowav rechazó temporalmente la creación; reintento ${attempt + 1}/${CONFIG.convertCreateAttempts} en ${retryInSeconds} s.`,
+        error.message
+      );
+      onRetry?.({ attempt: attempt + 1, retryInSeconds, message: error.message });
+      await sleep(delay, signal);
+    }
+  }
 
   const jobId =
     data.jobId ||
@@ -270,13 +314,10 @@ async function crearJob(url, title, signal) {
 // CONSULTAR ESTADO Y DESCARGAR WAV
 // ==================================================
 
-async function esperarYDescargar(jobId, signal) {
-  const startTime = Date.now();
+async function esperarYDescargar(jobId, signal, deadline) {
   let consecutiveStatusErrors = 0;
 
-  while (
-    Date.now() - startTime < CONFIG.jobTimeout
-  ) {
+  while (Date.now() < deadline) {
     let data;
     try {
       data = await fetchJson(
@@ -295,7 +336,7 @@ async function esperarYDescargar(jobId, signal) {
           `No se pudo consultar el estado de la conversión tras ${consecutiveStatusErrors} intentos: ${error.message}`
         );
       }
-      await sleep(CONFIG.pollInterval, signal);
+      await sleep(Math.min(CONFIG.pollInterval, deadline - Date.now()), signal);
       continue;
     }
     consecutiveStatusErrors = 0;
@@ -348,7 +389,7 @@ async function esperarYDescargar(jobId, signal) {
       return blob;
     }
 
-    await sleep(CONFIG.pollInterval, signal);
+    await sleep(Math.min(CONFIG.pollInterval, deadline - Date.now()), signal);
   }
 
   throw new Error(
@@ -360,7 +401,7 @@ async function esperarYDescargar(jobId, signal) {
 // CONVERTIR UNA CANCIÓN A WAV
 // ==================================================
 
-async function convertirCancion(item, index, total, signal) {
+async function convertirCancion(item, index, total, signal, onRetry) {
   const videoId = getVideoId(item.url);
 
   if (!videoId || completedVideos.has(videoId) || activeVideos.has(videoId) || cachedRecord(videoId)?.state === 'queued') {
@@ -373,10 +414,11 @@ async function convertirCancion(item, index, total, signal) {
 
   activeVideos.add(videoId);
   try {
+    const deadline = Date.now() + CONFIG.jobTimeout;
     const cached = await readCachedWav(videoId);
     const blob = cached?.blob || await (async () => {
-      const jobId = await crearJob(item.url, item.title, signal);
-      return esperarYDescargar(jobId, signal);
+      const jobId = await crearJob(item.url, item.title, signal, deadline, onRetry);
+      return esperarYDescargar(jobId, signal, deadline);
     })();
 
     const filename =
@@ -462,7 +504,18 @@ async function convertirPlaylist(items, onProgress, signal) {
           item,
           i + position + 1,
           total,
-          signal
+          signal,
+          ({ attempt, retryInSeconds, message }) => onProgress({
+            processed,
+            total,
+            completed: files.length,
+            failed: errors.length,
+            active: started - processed,
+            current: item.title,
+            retryAttempt: attempt,
+            retryInSeconds,
+            error: message
+          })
         );
         processed++;
 
@@ -693,9 +746,19 @@ function homeostasiaPanel(ctx, close) {
           completed,
           failed,
           active,
+          retryAttempt,
+          retryInSeconds,
+          error,
           current
         }) => {
           if (destroyed) return;
+
+          if (retryAttempt) {
+            status.textContent =
+              `yttowav está temporalmente saturado. Reintento ${retryAttempt}/${CONFIG.convertCreateAttempts} en ${retryInSeconds} s. ` +
+              (error || '');
+            return;
+          }
 
           status.textContent =
             `Conversión: ${processed} de ${total} terminadas; ${active} en curso. ` +
@@ -812,8 +875,14 @@ function homeostasiaPanel(ctx, close) {
     try {
       const result = await convertirPlaylist(
         retryItems,
-        ({ processed, total, completed, failed, active, current }) => {
+        ({ processed, total, completed, failed, active, retryAttempt, retryInSeconds, error, current }) => {
           if (destroyed) return;
+          if (retryAttempt) {
+            status.textContent =
+              `yttowav está temporalmente saturado. Reintento ${retryAttempt}/${CONFIG.convertCreateAttempts} en ${retryInSeconds} s. ` +
+              (error || '');
+            return;
+          }
           status.textContent =
             `Reintentando: ${processed} de ${total} terminadas; ${active} en curso. ` +
             `Correctas: ${completed}. Errores: ${failed}.` +

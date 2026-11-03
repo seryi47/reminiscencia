@@ -20,10 +20,11 @@ const PLAYLIST_ID = /^[A-Za-z0-9_-]{1,200}$/;
 const JOB_ID = /^[A-Za-z0-9_-]{1,200}$/;
 
 export class YoutubeApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, headers = {}) {
     super(message);
     this.name = 'YoutubeApiError';
     this.status = status;
+    this.headers = headers;
   }
 }
 
@@ -104,7 +105,7 @@ export async function fetchWithTimeout(fetchImpl, url, init = {}, timeoutMs = 30
     return await fetchImpl(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error?.name === 'AbortError') throw new YoutubeApiError(504, 'El servicio externo tardó demasiado en responder.');
-    throw new YoutubeApiError(502, 'No se ha podido conectar con el servicio externo.');
+    throw new YoutubeApiError(503, 'No se ha podido conectar con el servicio externo.');
   } finally {
     clearTimeout(timer);
   }
@@ -121,7 +122,7 @@ export function upstreamHeaders() {
 }
 
 export function publicError(error) {
-  if (error instanceof YoutubeApiError) return json(error.status, { ok: false, error: error.message });
+  if (error instanceof YoutubeApiError) return json(error.status, { ok: false, error: error.message }, error.headers);
   console.error('youtube: fallo inesperado', error?.name ?? 'Error');
   return json(500, { ok: false, error: 'No se pudo completar la operación de YouTube.' });
 }

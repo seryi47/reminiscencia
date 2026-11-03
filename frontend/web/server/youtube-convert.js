@@ -41,9 +41,12 @@ export async function handleConvert(request, { fetchImpl = globalThis.fetch } = 
         status: upstream.status,
       });
       const suffix = detail ? `: ${detail}` : '';
+      const retryable = [408, 425, 429, 500, 502, 503, 504].includes(upstream.status);
+      const retryAfter = upstream.headers.get('retry-after');
       throw new YoutubeApiError(
-        502,
-        `El servicio de conversión rechazó la canción (HTTP ${upstream.status})${suffix}.`
+        retryable ? 503 : 422,
+        `El servicio de conversión rechazó la canción (HTTP ${upstream.status})${suffix}.`,
+        retryAfter ? { 'Retry-After': retryAfter } : {}
       );
     }
     let data;

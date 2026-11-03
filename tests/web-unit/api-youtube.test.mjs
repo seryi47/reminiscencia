@@ -136,9 +136,13 @@ describe('API del importador de YouTube', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ url: videoUrl, title: 'Tema' }),
     }), {
-      fetchImpl: async () => new Response(JSON.stringify({ error: 'Servicio temporalmente saturado' }), { status: 503 }),
+      fetchImpl: async () => new Response(JSON.stringify({ error: 'Servicio temporalmente saturado' }), {
+        status: 503,
+        headers: { 'retry-after': '30' },
+      }),
     });
-    assert.equal(response.status, 502);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('retry-after'), '30');
     assert.deepEqual(await response.json(), {
       ok: false,
       error: 'El servicio de conversión rechazó la canción (HTTP 503): Servicio temporalmente saturado.',

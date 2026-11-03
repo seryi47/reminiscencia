@@ -986,11 +986,11 @@ describe("Subir canciones", () => {
         } else if (url.pathname === "/api/youtube/convert") {
           createTimes.push(Date.now());
           void request.respond({
-            status: 502,
+            status: 422,
             contentType: "application/json",
             body: JSON.stringify({
               ok: false,
-              error: "El servicio de conversión rechazó la canción (HTTP 503): Servicio temporalmente saturado.",
+              error: "El servicio de conversión rechazó la canción (HTTP 400): URL de prueba inválida.",
             }),
           });
         } else {
@@ -1021,7 +1021,65 @@ describe("Subir canciones", () => {
         );
       }
       assert.match(await textOf(page, "homeostasia-status"), /5 errores de conversión/);
-      assert.match(await textOf(page, "homeostasia-status"), /HTTP 503/);
+      assert.match(await textOf(page, "homeostasia-status"), /HTTP 400/);
+    }),
+  );
+
+  prueba("Homeostasia: reintenta un 503 temporal de yttowav", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      restaurarCatalogo();
+      const createTimes = [];
+      let attempts = 0;
+      await page.setRequestInterception(true);
+      page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.pathname === "/api/youtube/playlist") {
+          void request.respond({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              items: [{ url: "https://www.youtube.com/watch?v=abcdefghijk", title: "Tema de prueba" }],
+            }),
+          });
+        } else if (url.pathname === "/api/youtube/convert") {
+          attempts += 1;
+          createTimes.push(Date.now());
+          if (attempts === 1) {
+            void request.respond({
+              status: 503,
+              headers: { "content-type": "application/json", "retry-after": "0" },
+              body: JSON.stringify({ ok: false, error: "El servicio está saturado (HTTP 503)." }),
+            });
+          } else {
+            void request.respond({
+              status: 422,
+              contentType: "application/json",
+              body: JSON.stringify({ ok: false, error: "El servicio rechazó la URL (HTTP 400)." }),
+            });
+          }
+        } else {
+          void request.continue();
+        }
+      });
+
+      await prepararPagina(page);
+      await openApp(page, server.url);
+      await clickTestid(page, "sidebar-create", "botón Crear");
+      await page.waitForSelector('[data-testid="menu-homeostasia"]');
+      await page.$eval('[data-testid="menu-homeostasia"]', (item) => item.click());
+      await waitVisible(page, "homeostasia-sheet", { context: "hoja Homeostasia" });
+      await page.$eval('[data-testid="homeostasia-playlist-input"]', (input) => {
+        input.value = "https://www.youtube.com/playlist?list=PL123";
+      });
+      await clickTestid(page, "homeostasia-playlist", "Importar de YouTube");
+      await page.waitForFunction(
+        () => /Importación procesada: 1 canciones\./.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+        { timeout: 30000 },
+      );
+
+      assert.equal(attempts, 2);
+      assert.ok(createTimes[1] - createTimes[0] >= 1900);
+      assert.match(await textOf(page, "homeostasia-status"), /HTTP 400/);
     }),
   );
 
