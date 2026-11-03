@@ -19,12 +19,13 @@ export const LIBRARY_SORTS = Object.freeze([
   Object.freeze({ key: 'creador', label: 'Creador' }),
 ]);
 
-/** Abre el menú «Crear»: Lista, Álbum y Subir canciones. */
+/** Abre el menú «Crear»: Lista, Álbum, Subir canciones y Homeostasia. */
 function openCreateMenu(ctx, anchor) {
   openMenu(anchor, [
     { label: 'Lista', description: 'Crea una lista con canciones. Se guarda en este navegador.', icon: 'list', testid: 'menu-create-playlist', action: () => { ctx.createPlaylist(); return false; } },
     { label: 'Álbum', description: 'Pide un álbum nuevo en la biblioteca para todos (en GitHub).', icon: 'album', testid: 'menu-create-album', action: viaDialog(() => ctx.createAlbum()) },
     { label: 'Subir canciones', description: 'Para todos: canciones sueltas o un ZIP. También desde Internet Archive.', icon: 'upload', testid: 'menu-upload', action: viaDialog(() => ctx.openUpload()) },
+    { label: 'Homeostasia', description: 'Envía archivos a GitHub para la biblioteca.', icon: 'note', testid: 'menu-homeostasia', action: viaDialog(() => ctx.openHomeostasia()) },
   ], { label: 'Crear' });
 }
 

@@ -63,6 +63,7 @@ import { renderCollection } from './views/collection.js';
 import { libraryPanel, renderLibraryPage, renderSection } from './views/library.js';
 import { mountPlayerUi } from './views/player-ui.js';
 import { openUploadSheet } from './views/upload.js';
+import { openHomeostasiaSheet } from './views/homeostasia.js';
 
 const DATA_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
 const PLAYER_PREFS_KEY = 'reminiscencia.reproductor';
@@ -939,6 +940,7 @@ const ctx = {
   editAlbum: (folder) => openEditAlbumSheet(ctx, folder),
   changeCover: (target) => openCoverSheet(ctx, target),
   openUpload: () => openUploadSheet(ctx),
+  openHomeostasia: () => openHomeostasiaSheet(ctx),
   addUploads: (files) => addUploads(files),
   get uploads() {
     return uploads;

@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Sin publicar: web, botón «Homeostasia» en el menú «Crear» (2026-11-03)
+
+Pedido del propietario: un botón nuevo en «Crear», conectado con GitHub, con toda su lógica en un solo archivo.
+
+### Añadido
+- `js/views/homeostasia.js`: hoja «Homeostasia» con «Enviar a GitHub». Los archivos elegidos (audio o ZIP) entran en la misma cola que «Subir canciones» (`ctx.addUploads`): Opus en el navegador, trozos a `/api/subir` y el workflow `buzon` los publica. Muestra el resumen («0 de 1 publicada») y «Ver el progreso» abre «Subir canciones».
+- Menú «Crear»: cuarta opción «Homeostasia». `SHELL_VERSION` pasa a 12.
+- Prueba de extremo a extremo: un WAV elegido en «Homeostasia» llega a `/api/subir` en Ogg Opus y se publica.
+
 ## Sin publicar: web, «Subir canciones» acepta archivos ZIP (2026-11-03)
 
 Pedido del propietario: subir un álbum entero en un ZIP, o varios, mezclados con canciones sueltas.

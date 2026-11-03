@@ -156,7 +156,7 @@ describe("Escritorio (1440 × 900)", () => {
       expectSize("Alto de «Crear»", crear.height, 32);
       await clickTestid(page, "sidebar-create", "Crear");
       const opciones = await page.$$eval('[role="menu"] .menu-label', (items) => items.map((item) => item.textContent));
-      assert.deepEqual(opciones, ["Lista", "Álbum", "Subir canciones"]);
+      assert.deepEqual(opciones, ["Lista", "Álbum", "Subir canciones", "Homeostasia"]);
       await page.keyboard.press("Escape");
       assert.deepEqual(await page.$$eval('[data-testid^="sidebar-chip-"]', (chips) => chips.map((chip) => chip.textContent)), ["Listas", "Álbumes"]);
       await waitVisible(page, "sidebar-search-toggle");
