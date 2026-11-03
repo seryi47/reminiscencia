@@ -1117,6 +1117,87 @@ describe("Subir canciones", () => {
     }),
   );
 
+  prueba("Homeostasia: detener y reanudar reutiliza el mismo trabajo externo", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      restaurarCatalogo();
+      const createdJobs = [];
+      const polledJobs = [];
+      let statusAttempts = 0;
+      await page.setRequestInterception(true);
+      page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.pathname === "/api/youtube/playlist") {
+          void request.respond({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              items: [{ url: "https://www.youtube.com/watch?v=abcdefghijk", title: "Tema de prueba" }],
+            }),
+          });
+        } else if (url.pathname === "/api/youtube/convert") {
+          createdJobs.push(JSON.parse(request.postData() ?? "{}"));
+          void request.respond({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ jobId: "job_resume_123" }),
+          });
+        } else if (url.pathname === "/api/youtube/status") {
+          statusAttempts += 1;
+          polledJobs.push(new URL(request.url()).searchParams.get("jobId"));
+          const status = statusAttempts === 1 ? "queued" : "error";
+          void request.respond({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              status,
+              ...(status === "queued" ? { queuePosition: 8, queueLength: 50 } : {}),
+              ...(status === "error" ? { error: "Error simulado al reanudar." } : {}),
+            }),
+          });
+        } else {
+          void request.continue();
+        }
+      });
+
+      await prepararPagina(page);
+      await openApp(page, server.url);
+      await clickTestid(page, "sidebar-create", "botón Crear");
+      await page.waitForSelector('[data-testid="menu-homeostasia"]');
+      await page.$eval('[data-testid="menu-homeostasia"]', (item) => item.click());
+      await waitVisible(page, "homeostasia-sheet", { context: "hoja Homeostasia" });
+      await page.$eval('[data-testid="homeostasia-playlist-input"]', (input) => {
+        input.value = "https://www.youtube.com/playlist?list=PL123";
+      });
+      await clickTestid(page, "homeostasia-playlist", "Importar de YouTube");
+      await page.waitForFunction(
+        () => /en cola \(posición 8 de 50\)/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+      );
+      await clickTestid(page, "homeostasia-stop", "Detener seguimiento");
+      await page.waitForFunction(
+        () => /Seguimiento detenido/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+      );
+      assert.equal(statusAttempts, 1);
+
+      await page.keyboard.press("Escape");
+      await page.waitForSelector('[data-testid="homeostasia-sheet"]', { hidden: true });
+      await clickTestid(page, "sidebar-create", "botón Crear");
+      await page.waitForSelector('[data-testid="menu-homeostasia"]');
+      await page.$eval('[data-testid="menu-homeostasia"]', (item) => item.click());
+      await waitVisible(page, "homeostasia-sheet", { context: "hoja Homeostasia reabierta" });
+      await page.$eval('[data-testid="homeostasia-playlist-input"]', (input) => {
+        input.value = "https://www.youtube.com/playlist?list=PL123";
+      });
+      await clickTestid(page, "homeostasia-playlist", "Importar de YouTube");
+      await page.waitForFunction(
+        () => /Importación procesada: 1 canciones\./.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+      );
+
+      assert.equal(createdJobs.length, 1);
+      assert.deepEqual(polledJobs, ["job_resume_123", "job_resume_123"]);
+      assert.match(await textOf(page, "homeostasia-status"), /Error simulado al reanudar/);
+    }),
+  );
+
   prueba("Captura de la hoja con varios estados", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       subidas.length = 0;

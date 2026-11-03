@@ -172,6 +172,15 @@ describe('API del importador de YouTube', () => {
       progress: 0,
     });
 
+    const expiredStatus = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123'), {
+      fetchImpl: async () => new Response(JSON.stringify({ error: 'Job not found.' }), { status: 404 }),
+    });
+    assert.equal(expiredStatus.status, 404);
+    assert.deepEqual(await expiredStatus.json(), {
+      ok: false,
+      error: 'La conversión ya no está disponible.',
+    });
+
     const invalidStatus = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123'), {
       fetchImpl: async () => new Response(JSON.stringify({}), { status: 200 }),
     });

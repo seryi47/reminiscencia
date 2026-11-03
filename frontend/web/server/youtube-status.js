@@ -20,7 +20,12 @@ export async function handleStatus(request, { fetchImpl = globalThis.fetch } = {
     if (!jobId) throw new YoutubeApiError(400, 'El identificador de trabajo no es válido.');
     const upstream = await fetchWithTimeout(fetchImpl, `${CONVERTER_API}/api/status?jobId=${encodeURIComponent(jobId)}`, { headers: upstreamHeaders() });
     upstreamStatus = upstream.status;
-    if (!upstream.ok) throw new YoutubeApiError(502, 'No se pudo consultar el estado de la conversión.');
+    if (!upstream.ok) {
+      if (upstream.status === 404) {
+        throw new YoutubeApiError(404, 'La conversión ya no está disponible.');
+      }
+      throw new YoutubeApiError(502, 'No se pudo consultar el estado de la conversión.');
+    }
     let data;
     try { data = await upstream.json(); } catch { throw new YoutubeApiError(502, 'El conversor devolvió un estado inválido.'); }
     const status = typeof data?.status === 'string' ? data.status.toLowerCase().slice(0, 40) : '';

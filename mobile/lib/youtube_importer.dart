@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_error.dart';
 import 'library_store.dart';
@@ -13,6 +15,9 @@ const int kYoutubeMaxPlaylistItems = 200;
 const int kYoutubeMaxWavBytes = 256 * 1024 * 1024;
 const int kYoutubeMaxTitleRunes = 120;
 const int kYoutubeConcurrency = 4;
+const int kYoutubeConvertCreateAttempts = 6;
+const int kYoutubeStatusErrorRetries = 5;
+const Duration kYoutubeConvertCreateGap = Duration(seconds: 2);
 const Duration kYoutubePollInterval = Duration(seconds: 3);
 const Duration kYoutubeJobTimeout = Duration(minutes: 10);
 const Duration kYoutubeRequestTimeout = Duration(seconds: 45);
@@ -45,18 +50,60 @@ class YoutubeImportProgress {
     required this.total,
     required this.title,
     required this.phase,
+    this.queuePosition,
+    this.queueLength,
+    this.progress,
   });
 
   final int index;
   final int total;
   final String title;
   final String phase;
+  final int? queuePosition;
+  final int? queueLength;
+  final double? progress;
 
   String get message => '${index + 1} de $total: $phase «$title»';
 }
 
 typedef YoutubeImportProgressCallback =
     void Function(YoutubeImportProgress progress);
+
+class YoutubeHttpException extends AppException {
+  const YoutubeHttpException(
+    super.message, {
+    required this.statusCode,
+    this.retryAfter,
+  });
+
+  final int statusCode;
+  final String? retryAfter;
+}
+
+class YoutubeImportCancellation {
+  final Completer<void> _cancelled = Completer<void>();
+
+  bool get isCancelled => _cancelled.isCompleted;
+
+  Future<void> get whenCancelled => _cancelled.future;
+
+  void cancel() {
+    if (!isCancelled) _cancelled.complete();
+  }
+
+  void throwIfCancelled() {
+    if (isCancelled) {
+      throw const AppException('Se detuvo el seguimiento de la conversión.');
+    }
+  }
+}
+
+class _PendingYoutubeJob {
+  const _PendingYoutubeJob({required this.jobId, required this.traceId});
+
+  final String jobId;
+  final String traceId;
+}
 
 /// Cliente Android de los proxies de YouTube de la web.
 ///
@@ -68,19 +115,29 @@ class YoutubeImporter {
     required this.client,
     Uri? base,
     Future<Directory> Function()? tempDir,
+    Future<void> Function(Duration)? wait,
+    DateTime Function()? clock,
   }) : base = base ?? Uri.parse(kLibraryBase),
-       _tempDir = tempDir ?? getTemporaryDirectory;
+       _tempDir = tempDir ?? getTemporaryDirectory,
+       _wait = wait ?? Future<void>.delayed,
+       _clock = clock ?? DateTime.now;
 
   final http.Client client;
   final Uri base;
   final Future<Directory> Function() _tempDir;
+  final Future<void> Function(Duration) _wait;
+  final DateTime Function() _clock;
   final Random _random = Random.secure();
+  DateTime? _nextConvertCreateAt;
 
   Future<List<YoutubeImportedAudio>> importPlaylist(
     String playlistUrl, {
     YoutubeImportProgressCallback? onProgress,
+    YoutubeImportCancellation? cancellation,
   }) async {
-    final tracks = await listPlaylist(playlistUrl);
+    cancellation?.throwIfCancelled();
+    final tracks = await listPlaylist(playlistUrl, cancellation: cancellation);
+    cancellation?.throwIfCancelled();
     final root = await _tempDir();
     final importDir = Directory(
       '${root.path}/youtube-import-${DateTime.now().microsecondsSinceEpoch}-${_random.nextInt(1 << 20)}',
@@ -101,6 +158,7 @@ class YoutubeImporter {
           total: tracks.length,
           directory: importDir,
           onProgress: onProgress,
+          cancellation: cancellation,
         );
       }
     }
@@ -127,17 +185,19 @@ class YoutubeImporter {
     }
   }
 
-  Future<List<YoutubeTrack>> listPlaylist(String value) async {
+  Future<List<YoutubeTrack>> listPlaylist(
+    String value, {
+    YoutubeImportCancellation? cancellation,
+  }) async {
     final url = _youtubeImportUrl(value.trim());
     if (url == null) {
-      throw const AppException(
-        'La URL de YouTube no es válida.',
-      );
+      throw const AppException('La URL de YouTube no es válida.');
     }
     final response = await _get(
       _endpoint(
         'api/youtube/playlist',
       ).replace(queryParameters: {'url': value.trim()}),
+      cancellation: cancellation,
     );
     final data = _json(response);
     final rawItems = data['items'];
@@ -175,7 +235,18 @@ class YoutubeImporter {
     required int total,
     required Directory directory,
     YoutubeImportProgressCallback? onProgress,
+    YoutubeImportCancellation? cancellation,
   }) async {
+    cancellation?.throwIfCancelled();
+    final videoId = _videoId(track.url);
+    if (videoId == null) {
+      throw const AppException(
+        'El enlace de YouTube no contiene un vídeo válido.',
+      );
+    }
+    final pending = await _readPendingJob(videoId);
+    final traceId = pending?.traceId ?? _newTraceId();
+    final deadline = _clock().add(kYoutubeJobTimeout);
     onProgress?.call(
       YoutubeImportProgress(
         index: index,
@@ -184,30 +255,114 @@ class YoutubeImporter {
         phase: 'convirtiendo',
       ),
     );
-    final converted = _json(
-      await _post(_endpoint('api/youtube/convert'), {
-        'url': track.url,
-        'title': track.title,
-      }),
-    );
-    final jobId = converted['jobId'];
-    if (jobId is! String || jobId.trim().isEmpty) {
-      throw const AppException('El conversor no devolvió un trabajo válido.');
-    }
-
-    final deadline = DateTime.now().add(kYoutubeJobTimeout);
-    while (true) {
-      final status = _json(
-        await _get(
-          _endpoint(
-            'api/youtube/status',
-          ).replace(queryParameters: {'jobId': jobId}),
-        ),
+    final jobId =
+        pending?.jobId ??
+        await _createJob(
+          track,
+          deadline: deadline,
+          traceId: traceId,
+          index: index,
+          total: total,
+          onProgress: onProgress,
+          cancellation: cancellation,
+        );
+    if (pending == null) {
+      await _savePendingJob(
+        videoId,
+        _PendingYoutubeJob(jobId: jobId, traceId: traceId),
       );
+    }
+    var poll = 0;
+    var statusErrors = 0;
+    String? previousState;
+    while (true) {
+      cancellation?.throwIfCancelled();
+      poll++;
+      late Map<String, dynamic> status;
+      try {
+        status = _json(
+          await _get(
+            _endpoint(
+              'api/youtube/status',
+            ).replace(queryParameters: {'jobId': jobId}),
+            headers: {
+              'X-Homeostasia-Trace': traceId,
+              'X-Homeostasia-Poll': '$poll',
+            },
+            cancellation: cancellation,
+          ),
+        );
+        statusErrors = 0;
+      } on Object catch (error) {
+        if (error is YoutubeHttpException && error.statusCode == 404) {
+          await _removePendingJob(videoId);
+          throw const AppException(
+            'La conversión ya no está disponible. Inicia de nuevo para crear otro trabajo.',
+          );
+        }
+        final retryable = error is YoutubeHttpException
+            ? error.statusCode == 408 ||
+                  error.statusCode == 429 ||
+                  error.statusCode >= 500
+            : error is AppException;
+        if (!retryable) rethrow;
+        statusErrors++;
+        if (statusErrors >= kYoutubeStatusErrorRetries) {
+          throw AppException(
+            'No se pudo consultar el estado de «${track.title}» tras '
+            '$statusErrors intentos: '
+            '${error is AppException ? error.message : 'error desconocido'}',
+          );
+        }
+        onProgress?.call(
+          YoutubeImportProgress(
+            index: index,
+            total: total,
+            title: track.title,
+            phase:
+                'no se pudo consultar el estado; reintento '
+                '$statusErrors/$kYoutubeStatusErrorRetries en 3 s'
+                '${error is AppException ? ': ${error.message}' : ''}',
+          ),
+        );
+        await _waitCancellable(kYoutubePollInterval, cancellation);
+        cancellation?.throwIfCancelled();
+        continue;
+      }
       final state = status['status'] is String
           ? (status['status'] as String).toLowerCase()
           : 'processing';
+      final queuePosition = _safeInteger(status['queuePosition']);
+      final queueLength = _safeInteger(status['queueLength']);
+      final progress = _safeProgress(status['progress']);
+      final phase = _statusPhase(
+        state,
+        queuePosition: queuePosition,
+        queueLength: queueLength,
+        progress: progress,
+      );
+      onProgress?.call(
+        YoutubeImportProgress(
+          index: index,
+          total: total,
+          title: track.title,
+          phase: phase,
+          queuePosition: queuePosition,
+          queueLength: queueLength,
+          progress: progress,
+        ),
+      );
+      if (poll == 1 || poll % 10 == 0 || state != previousState) {
+        developer.log(
+          'Traza $traceId; estado de conversión: $state; consulta $poll'
+          '${queuePosition == null ? '' : '; posición $queuePosition'}'
+          '${progress == null ? '' : '; progreso ${progress.round()} %'}',
+          name: 'Homeostasia',
+        );
+      }
+      previousState = state;
       if (state == 'error' || state == 'failed') {
+        await _removePendingJob(videoId);
         throw AppException(
           status['error'] is String
               ? status['error'] as String
@@ -220,9 +375,10 @@ class YoutubeImporter {
           'La conversión de «${track.title}» tardó demasiado.',
         );
       }
-      await Future<void>.delayed(kYoutubePollInterval);
+      await _waitCancellable(kYoutubePollInterval, cancellation);
     }
 
+    cancellation?.throwIfCancelled();
     onProgress?.call(
       YoutubeImportProgress(
         index: index,
@@ -238,7 +394,9 @@ class YoutubeImporter {
         'api/youtube/download',
       ).replace(queryParameters: {'jobId': jobId}),
       output,
+      cancellation: cancellation,
     );
+    await _removePendingJob(videoId);
     return YoutubeImportedAudio(
       name: '$safeTitle.wav',
       path: output.path,
@@ -246,10 +404,188 @@ class YoutubeImporter {
     );
   }
 
-  Future<http.Response> _get(Uri uri) async {
+  Future<String> _createJob(
+    YoutubeTrack track, {
+    required DateTime deadline,
+    required String traceId,
+    required int index,
+    required int total,
+    YoutubeImportProgressCallback? onProgress,
+    YoutubeImportCancellation? cancellation,
+  }) async {
+    for (var attempt = 1; attempt <= kYoutubeConvertCreateAttempts; attempt++) {
+      cancellation?.throwIfCancelled();
+      await _waitForCreateTurn(deadline);
+      cancellation?.throwIfCancelled();
+      late Map<String, dynamic> converted;
+      try {
+        converted = _json(
+          await _post(
+            _endpoint('api/youtube/convert'),
+            {'url': track.url, 'title': track.title},
+            headers: {'X-Homeostasia-Trace': traceId},
+            cancellation: cancellation,
+          ),
+        );
+      } on Object catch (error) {
+        final retryable = error is YoutubeHttpException
+            ? const {408, 425, 429, 503, 504}.contains(error.statusCode)
+            : error is AppException;
+        if (!retryable || attempt == kYoutubeConvertCreateAttempts) {
+          rethrow;
+        }
+        final delay = _retryDelay(error, attempt);
+        if (_clock().add(delay).isAfter(deadline)) {
+          throw const AppException(
+            'Se agotó el tiempo de espera al crear la conversión.',
+          );
+        }
+        final retryInSeconds = (delay.inMilliseconds / 1000).ceil();
+        onProgress?.call(
+          YoutubeImportProgress(
+            index: index,
+            total: total,
+            title: track.title,
+            phase:
+                'yttowav está saturado; reintento '
+                '${attempt + 1}/$kYoutubeConvertCreateAttempts en '
+                '$retryInSeconds s'
+                '${error is AppException ? ': ${error.message}' : ''}',
+          ),
+        );
+        developer.log(
+          'Traza $traceId; rechazo temporal al crear el trabajo; intento ${attempt + 1}/'
+          '$kYoutubeConvertCreateAttempts en ${retryInSeconds}s'
+          '${error is YoutubeHttpException ? '; HTTP ${error.statusCode}' : ''}',
+          name: 'Homeostasia',
+          level: 900,
+        );
+        await _waitCancellable(delay, cancellation);
+        continue;
+      }
+
+      final jobId = converted['jobId'];
+      if (jobId is! String || jobId.trim().isEmpty) {
+        throw const AppException('El conversor no devolvió un trabajo válido.');
+      }
+      return jobId;
+    }
+    throw const AppException('No se pudo crear el trabajo de conversión.');
+  }
+
+  Future<_PendingYoutubeJob?> _readPendingJob(String videoId) async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_pendingJobKey(videoId));
+    if (raw == null) return null;
     try {
+      final data = jsonDecode(raw);
+      if (data is Map && data['jobId'] is String && data['traceId'] is String) {
+        return _PendingYoutubeJob(
+          jobId: data['jobId'] as String,
+          traceId: data['traceId'] as String,
+        );
+      }
+    } on FormatException catch (error) {
+      throw AppException('No se pudo leer el seguimiento guardado: $error');
+    }
+    throw const AppException(
+      'El seguimiento guardado de YouTube no es válido.',
+    );
+  }
+
+  Future<void> _savePendingJob(String videoId, _PendingYoutubeJob job) async {
+    final preferences = await SharedPreferences.getInstance();
+    final saved = await preferences.setString(
+      _pendingJobKey(videoId),
+      jsonEncode({'jobId': job.jobId, 'traceId': job.traceId}),
+    );
+    if (!saved) {
+      throw const AppException(
+        'La conversión ya se creó, pero no se pudo guardar su seguimiento. No la reintentes ahora.',
+      );
+    }
+  }
+
+  Future<void> _removePendingJob(String videoId) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_pendingJobKey(videoId));
+  }
+
+  String _pendingJobKey(String videoId) => 'homeostasia.youtube.job.$videoId';
+
+  Future<void> _waitCancellable(
+    Duration duration,
+    YoutubeImportCancellation? cancellation,
+  ) async {
+    cancellation?.throwIfCancelled();
+    if (cancellation == null) {
+      await _wait(duration);
+      return;
+    }
+    await Future.any<void>([_wait(duration), cancellation.whenCancelled]);
+    cancellation.throwIfCancelled();
+  }
+
+  Future<void> _waitForCreateTurn(DateTime deadline) async {
+    final now = _clock();
+    final scheduledAt =
+        _nextConvertCreateAt == null || _nextConvertCreateAt!.isBefore(now)
+        ? now
+        : _nextConvertCreateAt!;
+    if (!scheduledAt.isBefore(deadline)) {
+      throw const AppException(
+        'Se agotó el tiempo de espera al crear la conversión.',
+      );
+    }
+    _nextConvertCreateAt = scheduledAt.add(kYoutubeConvertCreateGap);
+    final delay = scheduledAt.difference(now);
+    if (delay > Duration.zero) await _wait(delay);
+  }
+
+  Duration _retryDelay(Object error, int attempt) {
+    if (error is YoutubeHttpException && error.retryAfter != null) {
+      final seconds = num.tryParse(error.retryAfter!.trim());
+      final serverDelay = seconds != null
+          ? Duration(milliseconds: (seconds * 1000).round())
+          : _httpDateDelay(error.retryAfter!);
+      if (serverDelay != null) {
+        final milliseconds = serverDelay.inMilliseconds
+            .clamp(0, 300000)
+            .toInt();
+        final jitter = milliseconds == 0
+            ? 0
+            : _random.nextInt(min(3000, max(500, milliseconds ~/ 10)) + 1);
+        return Duration(milliseconds: milliseconds + jitter);
+      }
+    }
+    final baseMs = min(10000 * (1 << (attempt - 1)), 90000);
+    final jitter = _random.nextInt(min(3000, max(500, baseMs ~/ 10)) + 1);
+    return Duration(milliseconds: baseMs + jitter);
+  }
+
+  Duration? _httpDateDelay(String value) {
+    try {
+      final until = HttpDate.parse(value).difference(_clock());
+      return until.isNegative ? Duration.zero : until;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<http.Response> _get(
+    Uri uri, {
+    Map<String, String> headers = const {},
+    YoutubeImportCancellation? cancellation,
+  }) async {
+    try {
+      final request = http.AbortableRequest(
+        'GET',
+        uri,
+        abortTrigger: cancellation?.whenCancelled,
+      )..headers.addAll({'Accept': 'application/json', ...headers});
       final response = await client
-          .get(uri, headers: const {'Accept': 'application/json'})
+          .send(request)
+          .then(http.Response.fromStream)
           .timeout(kYoutubeRequestTimeout);
       return _check(response);
     } on TimeoutException {
@@ -261,17 +597,28 @@ class YoutubeImporter {
     }
   }
 
-  Future<http.Response> _post(Uri uri, Map<String, String> body) async {
+  Future<http.Response> _post(
+    Uri uri,
+    Map<String, String> body, {
+    Map<String, String> headers = const {},
+    YoutubeImportCancellation? cancellation,
+  }) async {
     try {
-      final response = await client
-          .post(
-            uri,
-            headers: const {
+      final request =
+          http.AbortableRequest(
+              'POST',
+              uri,
+              abortTrigger: cancellation?.whenCancelled,
+            )
+            ..headers.addAll({
               'Accept': 'application/json',
               'Content-Type': 'application/json',
-            },
-            body: jsonEncode(body),
-          )
+              ...headers,
+            })
+            ..body = jsonEncode(body);
+      final response = await client
+          .send(request)
+          .then(http.Response.fromStream)
           .timeout(kYoutubeRequestTimeout);
       return _check(response);
     } on TimeoutException {
@@ -290,21 +637,77 @@ class YoutubeImporter {
     try {
       final data = jsonDecode(response.body);
       if (data is Map && data['error'] is String) {
-        throw AppException(data['error'] as String);
+        throw YoutubeHttpException(
+          data['error'] as String,
+          statusCode: response.statusCode,
+          retryAfter: response.headers['retry-after'],
+        );
       }
     } on FormatException {
       // Se usa el mensaje genérico de abajo.
     }
-    throw AppException(
+    throw YoutubeHttpException(
       'La web respondió con el código ${response.statusCode}.',
+      statusCode: response.statusCode,
+      retryAfter: response.headers['retry-after'],
     );
   }
 
-  Future<void> _downloadWav(Uri uri, File output) async {
+  String _newTraceId() {
+    String hex(int length) => List.generate(
+      length,
+      (_) => _random.nextInt(16).toRadixString(16),
+    ).join();
+    return '${hex(8)}-${hex(4)}-4${hex(3)}-'
+        '${(8 + _random.nextInt(4)).toRadixString(16)}${hex(3)}-${hex(12)}';
+  }
+
+  static int? _safeInteger(Object? value) =>
+      value is int && value >= 0 && value <= 1000000 ? value : null;
+
+  static double? _safeProgress(Object? value) =>
+      value is num && value.isFinite && value >= 0 && value <= 100
+      ? value.toDouble()
+      : null;
+
+  static String _statusPhase(
+    String state, {
+    int? queuePosition,
+    int? queueLength,
+    double? progress,
+  }) {
+    if (state == 'queued') {
+      final position = queuePosition != null && queueLength != null
+          ? ' (posición $queuePosition de $queueLength)'
+          : '';
+      return 'en cola$position';
+    }
+    if (state == 'processing' || state == 'downloading') {
+      final percent = progress == null ? '' : ' (${progress.round()} %)';
+      return 'procesándose$percent';
+    }
+    if (state == 'completed' || state == 'done') {
+      return 'preparando la descarga WAV';
+    }
+    return state;
+  }
+
+  Future<void> _downloadWav(
+    Uri uri,
+    File output, {
+    YoutubeImportCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
     http.StreamedResponse response;
     try {
       response = await client
-          .send(http.Request('GET', uri)..headers['Accept'] = 'audio/wav')
+          .send(
+            http.AbortableRequest(
+              'GET',
+              uri,
+              abortTrigger: cancellation?.whenCancelled,
+            )..headers['Accept'] = 'audio/wav',
+          )
           .timeout(kYoutubeDownloadTimeout);
     } on TimeoutException {
       throw const AppException('La descarga del WAV tardó demasiado.');
@@ -320,6 +723,7 @@ class YoutubeImporter {
         if (data is Map && data['error'] is String) {
           throw AppException(data['error'] as String);
         }
+        cancellation?.throwIfCancelled();
       } on FormatException {
         // Se usa el mensaje genérico de abajo.
       }
@@ -340,6 +744,7 @@ class YoutubeImporter {
         await for (final chunk in response.stream.timeout(
           kYoutubeDownloadTimeout,
         )) {
+          cancellation?.throwIfCancelled();
           bytes += chunk.length;
           if (bytes > kYoutubeMaxWavBytes) {
             throw const AppException(
@@ -358,6 +763,7 @@ class YoutubeImporter {
     } finally {
       await sink.close();
     }
+    cancellation?.throwIfCancelled();
     if (bytes <= 44 || !_validWavPrefix(prefix)) {
       await _deleteQuietly(output);
       throw const AppException('El conversor no devolvió un WAV válido.');
@@ -378,9 +784,7 @@ class YoutubeImporter {
 
   static Uri? _youtubeImportUrl(String value) {
     final uri = Uri.tryParse(value);
-    if (uri == null ||
-        uri.scheme != 'https' ||
-        uri.userInfo.isNotEmpty) {
+    if (uri == null || uri.scheme != 'https' || uri.userInfo.isNotEmpty) {
       return null;
     }
     const hosts = {
@@ -405,7 +809,8 @@ class YoutubeImporter {
       return uri;
     }
     if (uri.pathSegments.length == 2 &&
-        (uri.pathSegments.first == 'shorts' || uri.pathSegments.first == 'embed') &&
+        (uri.pathSegments.first == 'shorts' ||
+            uri.pathSegments.first == 'embed') &&
         _validId(uri.pathSegments.last)) {
       return uri;
     }

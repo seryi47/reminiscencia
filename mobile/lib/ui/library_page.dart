@@ -83,19 +83,21 @@ class _LibraryPageState extends State<LibraryPage> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    FilledButton.icon(
-                      key: const Key('upload-songs'),
-                      onPressed: library.importing
-                          ? null
-                          : () => uploadSongs(context, services),
-                      icon: const Icon(Icons.upload_rounded),
-                      label: const Text('Subir canciones'),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.icon(
+                        key: const Key('upload-songs'),
+                        onPressed: library.importing
+                            ? null
+                            : () => uploadSongs(context, services),
+                        icon: const Icon(Icons.upload_rounded),
+                        label: const Text('Subir canciones'),
+                      ),
                     ),
+                    const SizedBox(height: 10),
                     HomeostasiaButton(services: services),
                   ],
                 ),

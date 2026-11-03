@@ -64,8 +64,10 @@ function saveImportRecord(videoId, record) {
     const records = importRecords();
     records[videoId] = { ...records[videoId], ...record, updatedAt: Date.now() };
     globalThis.localStorage?.setItem(IMPORT_STORAGE_KEY, JSON.stringify({ version: IMPORT_STORAGE_VERSION, records }));
+    return true;
   } catch (error) {
     console.warn('Homeostasia: no se pudo guardar el estado de YouTube.', error);
+    return false;
   }
 }
 
@@ -222,6 +224,7 @@ function retryDelay(error, attempt) {
 }
 
 function conversionStatusLabel({ status, queuePosition, queueLength, progress } = {}) {
+  if (status === 'resuming') return 'retomando el trabajo anterior';
   if (status === 'queued') {
     const queue = Number.isSafeInteger(queuePosition) && Number.isSafeInteger(queueLength)
       ? ` (posición ${queuePosition} de ${queueLength})`
@@ -275,7 +278,7 @@ async function listarPlaylist(playlistUrl, signal) {
 // CREAR CONVERSIÓN EN YTTOWAV
 // ==================================================
 
-async function crearJob(url, title, signal, deadline, onRetry, traceId) {
+async function crearJob(url, title, signal, deadline, onRetry, traceId, onCreated) {
   let data;
   for (let attempt = 1; attempt <= CONFIG.convertCreateAttempts; attempt++) {
     await esperarTurnoCreacion(signal, deadline);
@@ -325,6 +328,7 @@ async function crearJob(url, title, signal, deadline, onRetry, traceId) {
     );
   }
 
+  onCreated?.(jobId);
   return jobId;
 }
 
@@ -332,7 +336,7 @@ async function crearJob(url, title, signal, deadline, onRetry, traceId) {
 // CONSULTAR ESTADO Y DESCARGAR WAV
 // ==================================================
 
-async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId) {
+async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId, videoId) {
   let consecutiveStatusErrors = 0;
   let poll = 0;
 
@@ -354,6 +358,10 @@ async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId) {
     } catch (error) {
       if (error?.name === 'AbortError') throw error;
       if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
+        if (error.status === 404) {
+          saveImportRecord(videoId, { state: 'expired', jobId: null });
+          error.message = 'La conversión ya no está disponible. Puedes iniciar una nueva.';
+        }
         throw error;
       }
       consecutiveStatusErrors++;
@@ -388,6 +396,7 @@ async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId) {
     }
 
     if (status === 'error') {
+      saveImportRecord(videoId, { state: 'failed', jobId: null });
       throw new Error(
         data.errorText ||
         data.error ||
@@ -456,12 +465,40 @@ async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
 
   activeVideos.add(videoId);
   try {
-    const traceId = globalThis.crypto.randomUUID();
+    const saved = cachedRecord(videoId);
+    const pendingJob = saved?.state === 'converting' && typeof saved.jobId === 'string'
+      ? saved.jobId
+      : null;
+    const traceId = pendingJob && typeof saved.traceId === 'string'
+      ? saved.traceId
+      : globalThis.crypto.randomUUID();
     const deadline = Date.now() + CONFIG.jobTimeout;
     const cached = await readCachedWav(videoId);
     const blob = cached?.blob || await (async () => {
-      const jobId = await crearJob(item.url, item.title, signal, deadline, onRetry, traceId);
-      return esperarYDescargar(jobId, signal, deadline, onStatus, traceId);
+      const jobId = pendingJob || await crearJob(
+        item.url,
+        item.title,
+        signal,
+        deadline,
+        onRetry,
+        traceId,
+        (createdJobId) => {
+          if (!saveImportRecord(videoId, {
+            title: item.title,
+            state: 'converting',
+            jobId: createdJobId,
+            traceId
+          })) {
+            throw new Error(
+              'La conversión se creó, pero no se pudo guardar su seguimiento. No vuelvas a iniciarla todavía.'
+            );
+          }
+        }
+      );
+      if (pendingJob) {
+        onStatus?.({ status: 'resuming' });
+      }
+      return esperarYDescargar(jobId, signal, deadline, onStatus, traceId, videoId);
     })();
 
     const filename =
@@ -478,7 +515,7 @@ async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
 
     completedVideos.add(videoId);
     await cacheWav(videoId, item.title, blob);
-    saveImportRecord(videoId, { title: item.title, filename, state: 'converted' });
+    saveImportRecord(videoId, { title: item.title, filename, state: 'converted', jobId: null });
 
     return {
       success: true,
@@ -525,6 +562,7 @@ async function convertirPlaylist(items, onProgress, signal) {
     i < items.length;
     i += CONFIG.batchSize
   ) {
+    if (signal?.aborted) break;
     const batch = items.slice(
       i,
       i + CONFIG.batchSize
@@ -696,6 +734,20 @@ function homeostasiaPanel(ctx, close) {
     }
   }, 'Reintentar canciones fallidas');
 
+  const stopButton = el('button', {
+    type: 'button',
+    class: 'button button-text',
+    'data-testid': 'homeostasia-stop',
+    hidden: true,
+    on: {
+      click: () => {
+        importerController?.abort();
+        stopButton.disabled = true;
+        status.textContent = 'Deteniendo consultas… La conversión externa puede continuar.';
+      }
+    }
+  }, 'Detener seguimiento');
+
   // ------------------------------------------------
   // ESTADO Y PROGRESO
   // ------------------------------------------------
@@ -772,6 +824,8 @@ function homeostasiaPanel(ctx, close) {
     playlistButton.disabled = true;
     pick.disabled = true;
     playlistInput.disabled = true;
+    stopButton.hidden = false;
+    stopButton.disabled = false;
 
     progress.hidden = true;
 
@@ -828,6 +882,7 @@ function homeostasiaPanel(ctx, close) {
         },
         controller.signal
       );
+      stopButton.hidden = true;
 
       // IMPORTANTE:
       // Los WAV pasan por la misma cola de publicación
@@ -854,7 +909,10 @@ function homeostasiaPanel(ctx, close) {
 
       retryButton.hidden = failedItems.length === 0 && pendingQueueFiles.length === 0;
       const conversionError = result.errors[0]?.error?.message;
-      status.textContent = [
+      status.textContent = controller.signal.aborted
+        ? `Seguimiento detenido. ${result.files.length} WAV listos para añadir; ` +
+          `${failedItems.length} canciones se podrán reanudar después. La conversión externa puede continuar.`
+        : [
         `Importación procesada: ${result.processed} canciones.`,
         `${result.files.length} WAV preparados para subir.`,
         `${result.errors.length} errores de conversión.`,
@@ -879,13 +937,15 @@ function homeostasiaPanel(ctx, close) {
         error
       );
 
-      status.textContent =
-        error.message ||
-        'Error procesando la playlist.';
+      status.textContent = controller.signal.aborted
+        ? 'Seguimiento detenido. La conversión externa puede continuar; puedes reanudarla con el mismo trabajo.'
+        : error.message || 'Error procesando la playlist.';
 
     } finally {
       conversionActive = false;
       if (importerController === controller) importerController = null;
+      stopButton.hidden = true;
+      stopButton.disabled = false;
 
       if (!destroyed) {
         playlistButton.disabled = false;
@@ -931,6 +991,8 @@ function homeostasiaPanel(ctx, close) {
     playlistButton.disabled = true;
     pick.disabled = true;
     playlistInput.disabled = true;
+    stopButton.hidden = false;
+    stopButton.disabled = false;
 
     try {
       const result = await convertirPlaylist(
@@ -956,6 +1018,7 @@ function homeostasiaPanel(ctx, close) {
         },
         controller.signal
       );
+      stopButton.hidden = true;
 
       failedItems = result.errors.map(({ item }) => item).filter(Boolean);
       let queueError = '';
@@ -979,14 +1042,18 @@ function homeostasiaPanel(ctx, close) {
 
       retryButton.hidden = failedItems.length === 0 && pendingQueueFiles.length === 0;
       const conversionError = result.errors[0]?.error?.message;
-      status.textContent =
-        `Reintento terminado: ${result.files.length} WAV preparados para subir; ` +
-        `${failedItems.length} canciones siguen con error.` +
-        (conversionError ? ` Primer error: ${conversionError}` : '') +
-        (queueError ? ` ${queueError}` : '');
+      status.textContent = controller.signal.aborted
+        ? `Seguimiento detenido. ${result.files.length} WAV listos para añadir; ` +
+          `${failedItems.length} canciones se podrán reanudar después. La conversión externa puede continuar.`
+        : `Reintento terminado: ${result.files.length} WAV preparados para subir; ` +
+          `${failedItems.length} canciones siguen con error.` +
+          (conversionError ? ` Primer error: ${conversionError}` : '') +
+          (queueError ? ` ${queueError}` : '');
     } finally {
       conversionActive = false;
       if (importerController === controller) importerController = null;
+      stopButton.hidden = true;
+      stopButton.disabled = false;
       if (!destroyed) {
         playlistButton.disabled = false;
         pick.disabled = false;
@@ -1048,6 +1115,7 @@ function homeostasiaPanel(ctx, close) {
     ),
 
     retryButton,
+    stopButton,
     status,
     progress
   );

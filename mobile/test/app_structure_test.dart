@@ -464,7 +464,7 @@ void main() {
     }
 
     testWidgets(
-      'Homeostasia: los archivos elegidos van a GitHub por /api/subir, como «Subir canciones»',
+      'Homeostasia: los archivos elegidos entran en la biblioteca común',
       (tester) async {
         setWindow(tester, const Size(400, 900));
         final t = servicesWith(
@@ -482,6 +482,10 @@ void main() {
           await tester.pump(const Duration(milliseconds: 50));
         }
         expect(find.byKey(const Key('homeostasia-sheet')), findsOneWidget);
+        expect(find.text('Desde tu dispositivo'), findsOneWidget);
+        expect(find.text('O desde YouTube'), findsOneWidget);
+        expect(find.text('Importar música'), findsOneWidget);
+        expect(find.textContaining('GitHub'), findsNothing);
         await tester.ensureVisible(find.byKey(const Key('homeostasia-pick')));
         await settle(tester);
         await tester.runAsync(() async {

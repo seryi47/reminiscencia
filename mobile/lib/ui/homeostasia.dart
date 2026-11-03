@@ -4,13 +4,10 @@ import '../app_error.dart';
 import '../local_audio.dart';
 import '../services.dart';
 import '../shared_upload.dart';
+import '../theme.dart';
 import '../youtube_importer.dart';
 import 'common.dart';
 
-/// «Homeostasia»: toda la lógica del botón vive en este archivo (como `js/views/homeostasia.js` en la web).
-/// Lo que se elige aquí va a GitHub por el mismo camino que «Subir canciones» (ADR-0017): la cola de subidas de la
-/// app lo convierte a Opus en el teléfono, lo envía por trozos a /api/subir y el workflow buzon lo cataloga y lo
-/// publica. Un ZIP se descomprime en el teléfono y sube cada canción; el ZIP no se sube.
 class HomeostasiaButton extends StatelessWidget {
   const HomeostasiaButton({super.key, required this.services});
 
@@ -18,11 +15,64 @@ class HomeostasiaButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      key: const Key('homeostasia'),
-      onPressed: () => openHomeostasiaSheet(context, services),
-      icon: const Icon(Icons.music_note_rounded),
-      label: const Text('Homeostasia'),
+    final palette = paletteOf(context);
+    final theme = Theme.of(context);
+    return Material(
+      color: palette.card,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        key: const Key('homeostasia'),
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => openHomeostasiaSheet(context, services),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              colors: [palette.accent.withValues(alpha: 0.16), palette.card],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: palette.outline.withValues(alpha: 0.5)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: palette.accent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  Icons.graphic_eq_rounded,
+                  color: palette.onAccent,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Homeostasia', style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Añade música desde tu dispositivo o YouTube',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: palette.inkMuted,
+                size: 17,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -50,6 +100,7 @@ class _HomeostasiaSheet extends StatefulWidget {
 class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
   String? _status;
   bool _working = false;
+  YoutubeImportCancellation? _youtubeCancellation;
   late final TextEditingController _playlistController;
 
   @override
@@ -61,6 +112,7 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
 
   @override
   void dispose() {
+    _youtubeCancellation?.cancel();
     widget.services.library.uploads.removeListener(_onUploads);
     _playlistController.dispose();
     super.dispose();
@@ -123,35 +175,53 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
       _show('Pega una URL de YouTube.');
       return;
     }
+    final cancellation = YoutubeImportCancellation();
     setState(() {
       _working = true;
+      _youtubeCancellation = cancellation;
       _status = 'Leyendo YouTube…';
     });
     List<YoutubeImportedAudio>? imported;
     try {
       imported = await importer.importPlaylist(
         youtubeUrl,
+        cancellation: cancellation,
         onProgress: (progress) {
-          if (mounted) _show(progress.message);
+          if (mounted && !cancellation.isCancelled) _show(progress.message);
         },
       );
       if (!mounted) return;
       final audios = imported;
-      setState(() => _status = 'Añadiendo ${audios.length} canciones…');
+      setState(() {
+        _youtubeCancellation = null;
+        _status = 'Añadiendo ${audios.length} canciones…';
+      });
       final result = await widget.services.library.uploadShared([
         for (final audio in audios)
           PickedAudioFile(name: audio.name, path: audio.path),
       ]);
       if (mounted) _show(describeUploadResult(result));
     } catch (error) {
-      _show(
-        error is AppException
-            ? error.message
-            : 'No se pudo importar desde YouTube: ${describeError(error)}',
-      );
+      if (cancellation.isCancelled) {
+        _show(
+          'Seguimiento detenido. La conversión externa puede continuar; '
+          'al volver a importarla se retomará el mismo trabajo.',
+        );
+      } else {
+        _show(
+          error is AppException
+              ? error.message
+              : 'No se pudo importar desde YouTube: ${describeError(error)}',
+        );
+      }
     } finally {
       if (imported != null) await importer.cleanup(imported);
-      if (mounted) setState(() => _working = false);
+      if (mounted) {
+        setState(() {
+          _youtubeCancellation = null;
+          _working = false;
+        });
+      }
     }
   }
 
@@ -172,16 +242,62 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Homeostasia', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 12),
-              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: paletteOf(context).accent,
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Icon(
+                      Icons.graphic_eq_rounded,
+                      color: paletteOf(context).onAccent,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Homeostasia',
+                          style: theme.textTheme.headlineSmall,
+                        ),
+                        Text(
+                          'Añade música a tu biblioteca',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text('Desde tu dispositivo', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 10),
               FilledButton.icon(
                 key: const Key('homeostasia-pick'),
                 onPressed: _working ? null : _send,
-                icon: const Icon(Icons.upload_rounded),
-                label: const Text('Añadir archivos'),
+                icon: const Icon(Icons.library_add_rounded),
+                label: const Text('Seleccionar archivos'),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: paletteOf(context).outline)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'O desde YouTube',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  Expanded(child: Divider(color: paletteOf(context).outline)),
+                ],
+              ),
+              const SizedBox(height: 16),
               TextField(
                 key: const Key('homeostasia-youtube-url'),
                 controller: _playlistController,
@@ -195,18 +311,60 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
                 ),
               ),
               const SizedBox(height: 8),
-              FilledButton.tonalIcon(
-                key: const Key('homeostasia-youtube-import'),
-                onPressed: _working ? null : _importYoutube,
-                icon: const Icon(Icons.playlist_add_rounded),
-                label: const Text('Importar de YouTube'),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  key: const Key('homeostasia-youtube-import'),
+                  onPressed: _working ? null : _importYoutube,
+                  icon: const Icon(Icons.music_video_rounded),
+                  label: const Text('Importar música'),
+                ),
               ),
+              if (_youtubeCancellation != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.center,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      _youtubeCancellation?.cancel();
+                      _show(
+                        'Deteniendo consultas… La conversión externa puede continuar.',
+                      );
+                    },
+                    icon: const Icon(Icons.pause_circle_outline_rounded),
+                    label: const Text('Detener seguimiento'),
+                  ),
+                ),
+              ],
               if (_status != null) ...[
                 const SizedBox(height: 12),
-                Text(
-                  _status!,
-                  key: const Key('homeostasia-status'),
-                  style: theme.textTheme.bodyMedium,
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: paletteOf(context).elevated,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        _working
+                            ? Icons.sync_rounded
+                            : Icons.info_outline_rounded,
+                        size: 19,
+                        color: paletteOf(context).accent,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _status!,
+                          key: const Key('homeostasia-status'),
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ],
