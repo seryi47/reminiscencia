@@ -1,5 +1,5 @@
 // Service worker de Reminiscencia (módulo, alcance '/'): shell sin conexión, portadas (covers/<id>.jpg, en su
-// propia caché), canciones descargadas para escuchar sin conexión, canciones subidas a este navegador (audio/L….opus, desde IndexedDB; ADR-0012 y ADR-0014) y datos
+// propia caché), canciones descargadas para escuchar sin conexión, canciones subidas a este navegador (audio/L….opus, desde IndexedDB; ADR-0012 y ADR-0015) y datos
 // con respaldo de caché. Se registra desde js/pwa.js. Al cambiar el shell, sube SHELL_VERSION en js/offline-core.js.
 import {
   audioCacheName,

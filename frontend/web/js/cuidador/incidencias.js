@@ -10,7 +10,7 @@
 // «Editar detalles» de una canción o de un álbum, «Añadir a un álbum» y «Crear álbum». Las carpetas del catálogo se
 // llaman «Álbumes» en toda la interfaz; el contrato conserva sus nombres (create_folder, edit_folder, folder_id).
 // La carpeta js/cuidador/ conserva su nombre por las referencias de la documentación (CLAUDE.md, ADR-0005 y
-// ADR-0008); ya no hay modo cuidador (ADR-0014).
+// ADR-0008); ya no hay modo cuidador (ADR-0015).
 
 export const REPO = 'seryi47/reminiscencia';
 export const ISSUE_LABEL = 'biblioteca';

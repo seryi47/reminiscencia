@@ -1,4 +1,4 @@
-// Listas propias y «Me gusta», guardadas solo en este navegador (IndexedDB), sin cuenta ni servidor (ADR-0014).
+// Listas propias y «Me gusta», guardadas solo en este navegador (IndexedDB), sin cuenta ni servidor (ADR-0015).
 // Base «reminiscencia-biblioteca», versión 1: almacén «playlists» (clave id) y almacén «likes» (clave songId).
 // Una lista guarda { id, name, description, cover, songIds, createdAt, updatedAt }: description es texto de una línea
 // (puede faltar en las listas antiguas) y cover, una portada propia JPEG/PNG/WebP en data: (js/cover-image.js) o null.

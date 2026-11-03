@@ -125,7 +125,7 @@ export function isDataRequest(url) {
 const LOCAL_AUDIO_PATTERN = /^\/audio\/(L[0-9a-f]{16})\.opus$/;
 
 /** Identificador de una canción subida a este navegador si la ruta es /audio/L<16 hex>.opus (la sirve el service
- *  worker desde IndexedDB; ADR-0014), o null. */
+ *  worker desde IndexedDB; ADR-0015), o null. */
 export function localAudioId(url) {
   const path = pathOf(url);
   const match = path === null ? null : LOCAL_AUDIO_PATTERN.exec(path);

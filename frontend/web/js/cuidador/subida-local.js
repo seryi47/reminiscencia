@@ -3,7 +3,7 @@
 // empaqueta como Ogg Opus (el mismo contenedor que el catálogo) y se guarda en una base de IndexedDB de este navegador.
 // Nada sale del dispositivo: no hay fetch ni POST con el audio y no entra en el catálogo público.
 //
-// Reproducción (ADR-0014): con el service worker activo, cada canción local se sirve en audio/<id>.opus desde esta
+// Reproducción (ADR-0015): con el service worker activo, cada canción local se sirve en audio/<id>.opus desde esta
 // base (sw.js), una ruta del propio origen que admite la política de contenido (media-src 'self'). Sin service
 // worker se usa una URL de objeto (blob:).
 //
