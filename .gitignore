@@ -48,3 +48,6 @@ audio-library/staging/
 
 # Worktrees y estado de sesión de Claude Code (nunca se versionan)
 .claude/
+
+# Herramienta personal local — NO se publica (uso propio, contenido propio)
+/local-tools/
