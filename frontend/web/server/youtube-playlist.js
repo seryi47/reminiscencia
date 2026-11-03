@@ -90,8 +90,10 @@ export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = pro
   try {
     if (request.method !== 'GET') throw new YoutubeApiError(405, 'Solo se admite GET.');
     const value = new URL(request.url).searchParams.get('url') ?? '';
-    const url = youtubeUrl(value, { playlist: true });
-    if (!url) throw new YoutubeApiError(400, 'La URL de la playlist de YouTube no es válida.');
+    // yt-dlp también acepta un vídeo individual, igual que el script de
+    // escritorio que sirve de referencia para este importador.
+    const url = youtubeUrl(value, { playlist: true }) || youtubeUrl(value);
+    if (!url) throw new YoutubeApiError(400, 'La URL de YouTube no es válida.');
     const result = await runYtdlp(url, { spawnImpl, env });
     return json(200, { items: extractPlaylist({ url, ...result }) });
   } catch (error) {

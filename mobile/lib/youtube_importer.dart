@@ -128,10 +128,10 @@ class YoutubeImporter {
   }
 
   Future<List<YoutubeTrack>> listPlaylist(String value) async {
-    final url = _playlistUrl(value.trim());
+    final url = _youtubeImportUrl(value.trim());
     if (url == null) {
       throw const AppException(
-        'La URL debe ser una playlist de YouTube (https://www.youtube.com/playlist?list=…).',
+        'La URL de YouTube no es válida.',
       );
     }
     final response = await _get(
@@ -376,14 +376,11 @@ class YoutubeImporter {
     throw const AppException('La web devolvió una respuesta inválida.');
   }
 
-  static Uri? _playlistUrl(String value) {
+  static Uri? _youtubeImportUrl(String value) {
     final uri = Uri.tryParse(value);
-    final list = uri?.queryParameters['list'];
     if (uri == null ||
         uri.scheme != 'https' ||
-        uri.userInfo.isNotEmpty ||
-        list == null ||
-        !RegExp(r'^[A-Za-z0-9_-]{1,200}$').hasMatch(list)) {
+        uri.userInfo.isNotEmpty) {
       return null;
     }
     const hosts = {
@@ -392,7 +389,27 @@ class YoutubeImporter {
       'm.youtube.com',
       'music.youtube.com',
     };
-    return hosts.contains(uri.host.toLowerCase()) ? uri : null;
+    final host = uri.host.toLowerCase();
+    if (host == 'youtu.be') {
+      final id = uri.pathSegments.isEmpty ? '' : uri.pathSegments.first;
+      return _validId(id) ? uri : null;
+    }
+    if (!hosts.contains(host)) {
+      return null;
+    }
+    final list = uri.queryParameters['list'];
+    if (list != null && RegExp(r'^[A-Za-z0-9_-]{1,200}$').hasMatch(list)) {
+      return uri;
+    }
+    if (uri.path == '/watch' && _validId(uri.queryParameters['v'] ?? '')) {
+      return uri;
+    }
+    if (uri.pathSegments.length == 2 &&
+        (uri.pathSegments.first == 'shorts' || uri.pathSegments.first == 'embed') &&
+        _validId(uri.pathSegments.last)) {
+      return uri;
+    }
+    return null;
   }
 
   static String? _videoId(String value) {

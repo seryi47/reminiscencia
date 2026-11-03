@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 1.2.2 (2026-11-03)
+
+- Homeostasia: acepta una URL individual de YouTube o una playlist; las playlists se convierten de cuatro en cuatro y también se procesa el último lote incompleto.
+- Homeostasia: simplifica la hoja y elimina el texto informativo redundante.
+
 ## 1.2.1 (2026-11-03)
 
 - APK: espera a guardar el estado final de una subida antes de considerarla terminada, para que las subidas pendientes se recuperen correctamente al volver a abrir la app.

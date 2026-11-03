@@ -1,8 +1,5 @@
 
-import {
-  PUBLIC_AUDIO_ACCEPT,
-  RIGHTS_TEXT
-} from '../cuidador/subida-publica.js';
+import { PUBLIC_AUDIO_ACCEPT } from '../cuidador/subida-publica.js';
 
 import { summaryText } from '../cuidador/subida-estado.js';
 import { ZIP_ACCEPT } from '../cuidador/subida-zip.js';
@@ -145,7 +142,7 @@ function getVideoId(url) {
   }
 }
 
-function validatePlaylistUrl(value) {
+function validateYoutubeImportUrl(value) {
   try {
     const url = new URL(value);
 
@@ -153,14 +150,25 @@ function validatePlaylistUrl(value) {
       'youtube.com',
       'www.youtube.com',
       'm.youtube.com',
-      'music.youtube.com'
+      'music.youtube.com',
+      'youtu.be'
     ];
 
-    if (!validHosts.includes(url.hostname)) {
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || !validHosts.includes(host)) {
       return false;
     }
 
-    return url.protocol === 'https:' && url.searchParams.has('list');
+    if (host === 'youtu.be') {
+      return /^[A-Za-z0-9_-]{11}$/.test(url.pathname.slice(1).split('/')[0] || '');
+    }
+    if (url.searchParams.has('list')) {
+      return /^[A-Za-z0-9_-]{1,200}$/.test(url.searchParams.get('list') || '');
+    }
+    if (url.pathname === '/watch') {
+      return /^[A-Za-z0-9_-]{11}$/.test(url.searchParams.get('v') || '');
+    }
+    return /^\/(?:shorts|embed)\/[A-Za-z0-9_-]{11}$/.test(url.pathname);
   } catch {
     return false;
   }
@@ -522,7 +530,8 @@ function homeostasiaPanel(ctx, close) {
   const playlistInput = el('input', {
     type: 'url',
     class: 'input',
-    placeholder: 'Pega aquí la URL de una playlist de YouTube',
+    placeholder: 'Pega aquí una playlist o vídeo de YouTube',
+    'aria-label': 'Playlist o vídeo de YouTube',
     'data-testid': 'homeostasia-playlist-input'
   });
 
@@ -534,7 +543,7 @@ function homeostasiaPanel(ctx, close) {
       click: importarPlaylist
     }
   },
-    'Importar playlist de YouTube'
+    'Importar de YouTube'
   );
 
   const retryButton = el('button', {
@@ -609,7 +618,7 @@ function homeostasiaPanel(ctx, close) {
       return;
     }
 
-    if (!validatePlaylistUrl(playlistUrl)) {
+    if (!validateYoutubeImportUrl(playlistUrl)) {
       status.textContent =
         'La URL de YouTube no es válida.';
 
@@ -628,13 +637,13 @@ function homeostasiaPanel(ctx, close) {
 
     try {
       status.textContent =
-        'Leyendo la playlist de YouTube…';
+        'Leyendo YouTube…';
 
       const items = await listarPlaylist(playlistUrl, controller.signal);
 
       if (items.length === 0) {
         throw new Error(
-          'No se han encontrado canciones en la playlist.'
+          'No se han encontrado canciones en YouTube.'
         );
       }
 
@@ -686,7 +695,7 @@ function homeostasiaPanel(ctx, close) {
 
       retryButton.hidden = failedItems.length === 0 && pendingQueueFiles.length === 0;
       status.textContent = [
-        `Playlist procesada: ${result.processed} canciones.`,
+        `Importación procesada: ${result.processed} canciones.`,
         `${result.files.length} WAV preparados para subir.`,
         `${result.errors.length} errores de conversión.`,
         queueError
@@ -705,7 +714,7 @@ function homeostasiaPanel(ctx, close) {
 
     } catch (error) {
       console.error(
-        'Error importando playlist:',
+        'Error importando desde YouTube:',
         error
       );
 
@@ -843,22 +852,6 @@ function homeostasiaPanel(ctx, close) {
     },
 
     el(
-      'p',
-      {
-        class: 'dialog-text',
-        'data-autofocus': '',
-        tabindex: '-1'
-      },
-      'Selecciona archivos de audio (WAV, MP3, M4A, FLAC, OGG u OPUS) o ZIP con canciones. También puedes importar una playlist de YouTube. Los archivos se procesarán y se enviarán a GitHub para que la biblioteca los publique.'
-    ),
-
-    el(
-      'p',
-      { class: 'upload-note' },
-      RIGHTS_TEXT
-    ),
-
-    el(
       'div',
       { class: 'upload-row' },
       input,
@@ -868,18 +861,6 @@ function homeostasiaPanel(ctx, close) {
     el(
       'div',
       { class: 'homeostasia-playlist' },
-
-      el(
-        'p',
-        { class: 'dialog-text' },
-        'Importar canciones desde YouTube'
-      ),
-
-      el(
-        'p',
-        { class: 'upload-note' },
-        'Introduce una playlist de YouTube. Las canciones se convertirán a WAV en lotes de cuatro y se incorporarán automáticamente a la cola de publicación.'
-      ),
 
       el(
         'div',

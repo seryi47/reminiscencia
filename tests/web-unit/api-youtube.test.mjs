@@ -52,6 +52,23 @@ describe('API del importador de YouTube', () => {
     assert.match((await failed.json()).error, /No se pudo leer/);
   });
 
+  test('acepta un vídeo individual, incluidos los enlaces cortos', async () => {
+    let invocation;
+    const response = await handlePlaylist(playlistRequest('https://youtu.be/abcdefghijk'), {
+      env: { YTDLP_PATH: '/opt/yt-dlp' },
+      spawnImpl(command, args) {
+        invocation = { command, args };
+        return fakeProcess('abcdefghijk\tVídeo individual\n');
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { items: [
+      { url: videoUrl, title: 'Vídeo individual' },
+    ] });
+    assert.equal(invocation.command, '/opt/yt-dlp');
+    assert.equal(invocation.args.at(-1), 'https://youtu.be/abcdefghijk');
+  });
+
   test('fija WAV/original y solo devuelve el identificador del job', async () => {
     let body;
     const response = await handleConvert(new Request('https://reminiscencia.test/api/youtube/convert', {
@@ -74,6 +91,11 @@ describe('API del importador de YouTube', () => {
       fetchImpl: async () => new Response(JSON.stringify({ status: 'completed', downloadUrl: 'https://attacker.test/file' }), { status: 200 }),
     });
     assert.deepEqual(await status.json(), { status: 'completed' });
+
+    const statusByUrl = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123'), {
+      fetchImpl: async () => new Response(JSON.stringify({ status: 'processing', downloadUrl: '/api/download/?jobId=job_123' }), { status: 200 }),
+    });
+    assert.deepEqual(await statusByUrl.json(), { status: 'completed' });
 
     const wav = new Uint8Array(48);
     wav.set(new TextEncoder().encode('RIFF'), 0);

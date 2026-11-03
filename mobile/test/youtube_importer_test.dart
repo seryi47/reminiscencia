@@ -73,6 +73,24 @@ void main() {
     },
   );
 
+  test('acepta un enlace corto de vídeo de YouTube', () async {
+    late Uri requested;
+    final importer = YoutubeImporter(
+      client: MockClient((request) async {
+        requested = request.url;
+        return http.Response(jsonEncode({'items': [
+          {'url': 'https://www.youtube.com/watch?v=abcdefghijk', 'title': 'Vídeo'},
+        ]}), 200);
+      }),
+      base: Uri.parse('https://example.test/'),
+    );
+
+    final tracks = await importer.listPlaylist('https://youtu.be/abcdefghijk');
+
+    expect(tracks.single.title, 'Vídeo');
+    expect(requested.queryParameters['url'], 'https://youtu.be/abcdefghijk');
+  });
+
   test('traduce el error JSON del proxy', () async {
     final importer = YoutubeImporter(
       client: MockClient(
