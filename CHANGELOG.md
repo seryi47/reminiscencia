@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Sin publicar: web, botón «Homeostasia» en el menú «Crear» (2026-11-03)
+## Sin publicar: web y APK, botón «Homeostasia» (2026-11-03)
 
 Pedido del propietario: un botón nuevo en «Crear», conectado con GitHub, con toda su lógica en un solo archivo.
 
@@ -8,6 +8,7 @@ Pedido del propietario: un botón nuevo en «Crear», conectado con GitHub, con 
 - `js/views/homeostasia.js`: hoja «Homeostasia» con «Enviar a GitHub». Los archivos elegidos (audio o ZIP) entran en la misma cola que «Subir canciones» (`ctx.addUploads`): Opus en el navegador, trozos a `/api/subir` y el workflow `buzon` los publica. Muestra el resumen («0 de 1 publicada») y «Ver el progreso» abre «Subir canciones».
 - Menú «Crear»: cuarta opción «Homeostasia». `SHELL_VERSION` pasa a 12.
 - Prueba de extremo a extremo: un WAV elegido en «Homeostasia» llega a `/api/subir` en Ogg Opus y se publica.
+- APK: botón «Homeostasia» en «Tu biblioteca», junto a «Subir canciones», con toda su lógica en `mobile/lib/ui/homeostasia.dart`: hoja con «Enviar a GitHub» que usa la misma cola de subidas (`uploadShared`) y muestra el resumen. Prueba de widget nueva (217 en verde).
 
 ## Sin publicar: web, «Subir canciones» acepta archivos ZIP (2026-11-03)
 

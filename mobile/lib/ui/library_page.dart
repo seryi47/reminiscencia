@@ -8,6 +8,7 @@ import '../theme.dart';
 import 'collection_page.dart';
 import 'collection_ref.dart';
 import 'common.dart';
+import 'homeostasia.dart';
 import 'playlist_flows.dart';
 import 'uploads_panel.dart';
 
@@ -95,6 +96,7 @@ class _LibraryPageState extends State<LibraryPage> {
                       icon: const Icon(Icons.upload_rounded),
                       label: const Text('Subir canciones'),
                     ),
+                    HomeostasiaButton(services: services),
                   ],
                 ),
               ),
