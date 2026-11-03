@@ -714,7 +714,10 @@ class UploadTracker extends ChangeNotifier {
     } finally {
       _busy = false;
       _changed();
-      unawaited(_persist());
+      // La subida no se considera terminada hasta que el estado guardado refleja
+      // al menos la etapa actual. Si se deja en segundo plano, otra instancia
+      // puede restaurar una etapa intermedia y marcarla erróneamente como fallida.
+      await _persist();
     }
   }
 
