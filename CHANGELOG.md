@@ -4,6 +4,14 @@
 
 - Recompilación de la APK con el importador de YouTube para vídeos individuales y playlists.
 
+## Sin publicar: título y acceso de Homeostasia (2026-11-03)
+
+- Los vídeos individuales obtienen el título original de los metadatos de YouTube. Si no está disponible, la API devuelve un error explícito en vez de convertir el ID en un título incorrecto.
+- Homeostasia queda dedicada a YouTube en la web y la APK; la subida manual continúa en «Subir canciones».
+- Rediseñadas la tarjeta de Homeostasia y su formulario para dar más claridad a la importación.
+- La caché de la web pasa a `SHELL_VERSION = 16`; la APK pasa a 1.2.4+7.
+- Añadidas pruebas para extracción del título y para mantener separada la subida manual.
+
 ## 1.2.2 (2026-11-03)
 
 - Homeostasia: acepta una URL individual de YouTube o una playlist; las playlists se convierten de cuatro en cuatro y también se procesa el último lote incompleto.
@@ -19,9 +27,9 @@
 Pedido del propietario: un botón nuevo en «Crear», conectado con GitHub, con toda su lógica en un solo archivo.
 
 ### Añadido
-- `js/views/homeostasia.js`: hoja «Homeostasia» con acciones diferenciadas para archivos y YouTube. Los archivos elegidos (audio o ZIP) entran en la misma cola que «Subir canciones» (`ctx.addUploads`): Opus en el navegador, trozos a `/api/subir` y el workflow `buzon` los publica. Muestra el resumen y «Ver el progreso» abre «Subir canciones».
-- El importador usa `/api/youtube/playlist` y proxies del mismo origen para yttowav, limita a cuatro conversiones simultáneas, valida WAVs y permite reintentar fallos. Guarda `jobId`/traza por vídeo en `localStorage` y reanuda el mismo trabajo al volver a importar; una respuesta 404 limpia el identificador para un intento nuevo. «Detener seguimiento» o cerrar la hoja detiene las consultas del cliente, no la conversión externa. La conversión real contra yttowav queda pendiente de verificar desde un despliegue con red; el runtime necesita `yt-dlp` mediante `YTDLP_PATH` o `PATH`.
-- Diagnóstico en producción: yttowav aceptó el trabajo pero informó `queued`, posición 37 de 50; las consultas repetidas eran sondeos del estado cada tres segundos, no nuevas conversiones. Homeostasia ahora muestra posición/progreso y envía trazas para correlacionar el navegador con logs muestreados del servidor, sin registrar URL, título ni ID del trabajo. La descarga real sigue pendiente.
+- `js/views/homeostasia.js`: hoja «Homeostasia» que importa vídeos y playlists de YouTube. Los WAV entran en la misma cola que «Subir canciones» (`ctx.addUploads`): Opus en el navegador, trozos a `/api/subir` y el workflow `buzon` los publica. Muestra el resumen y «Ver el progreso» abre «Subir canciones».
+- El importador usa `/api/youtube/playlist` y proxies del mismo origen para yttowav, limita a cuatro conversiones simultáneas, valida WAVs y permite reintentar fallos. Guarda `jobId`/traza por vídeo en `localStorage` y reanuda el mismo trabajo al volver a importar; una respuesta 404 limpia el identificador para un intento nuevo. «Detener seguimiento» o cerrar la hoja detiene las consultas del cliente, no la conversión externa. El runtime necesita `yt-dlp` mediante `YTDLP_PATH` o `PATH`.
+- Diagnóstico en producción: las consultas repetidas eran sondeos del mismo estado, no nuevas conversiones. Una prueba posterior completó conversión, descarga y publicación; el WAV pasó FFmpeg y el Opus se reprodujo en Chrome de escritorio. La reproducción en un Android físico sigue pendiente.
 - Menú «Crear»: cuarta opción «Homeostasia». `SHELL_VERSION` pasa a 12.
 - PWA: `SHELL_VERSION` pasa a 15 para que los navegadores sustituyan el módulo Homeostasia guardado en la caché.
 - Prueba de extremo a extremo: un WAV elegido en «Homeostasia» llega a `/api/subir` en Ogg Opus y se publica.

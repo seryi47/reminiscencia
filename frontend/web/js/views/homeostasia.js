@@ -1,9 +1,6 @@
 
-import { PUBLIC_AUDIO_ACCEPT } from '../cuidador/subida-publica.js';
-
 import { summaryText } from '../cuidador/subida-estado.js';
-import { ZIP_ACCEPT } from '../cuidador/subida-zip.js';
-import { el, openDialog, uid } from '../ui/dom.js';
+import { el, openDialog } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 
 // ==================================================
@@ -677,50 +674,27 @@ function homeostasiaPanel(ctx, close) {
   let pendingQueueIds = [];
 
   // ------------------------------------------------
-  // SELECTOR DE ARCHIVOS
-  // ------------------------------------------------
-
-  const input = el('input', {
-    id: uid('homeostasia'),
-    type: 'file',
-    accept: `${PUBLIC_AUDIO_ACCEPT},${ZIP_ACCEPT}`,
-    multiple: true,
-    hidden: true,
-    'data-testid': 'homeostasia-file-input'
-  });
-
-  const pick = el('button', {
-    type: 'button',
-    class: 'button button-primary upload-pick',
-    'data-testid': 'homeostasia-pick',
-    on: {
-      click: () => input.click()
-    }
-  },
-    icon('upload', { size: 20 }),
-    'Añadir archivos'
-  );
-
-  // ------------------------------------------------
-  // IMPORTADOR DE PLAYLIST
+  // IMPORTADOR DE VÍDEOS Y PLAYLISTS
   // ------------------------------------------------
 
   const playlistInput = el('input', {
     type: 'url',
     class: 'input',
-    placeholder: 'Pega aquí una playlist o vídeo de YouTube',
-    'aria-label': 'Playlist o vídeo de YouTube',
+    placeholder: 'Pega el enlace de un vídeo o playlist',
+    'aria-label': 'Enlace de vídeo o playlist de YouTube',
+    autocomplete: 'url',
     'data-testid': 'homeostasia-playlist-input'
   });
 
   const playlistButton = el('button', {
     type: 'button',
-    class: 'button button-primary',
+    class: 'homeostasia-submit',
     'data-testid': 'homeostasia-playlist',
     on: {
       click: importarPlaylist
     }
   },
+    icon('note', { size: 18 }),
     'Importar de YouTube'
   );
 
@@ -772,29 +746,6 @@ function homeostasiaPanel(ctx, close) {
   }, 'Ver el progreso');
 
   // ------------------------------------------------
-  // SUBIDA MANUAL DE ARCHIVOS
-  // ------------------------------------------------
-
-  input.addEventListener('change', async () => {
-    const files = [...input.files];
-
-    input.value = '';
-
-    if (files.length === 0) return;
-
-    try {
-      await ctx.addUploads(files);
-      status.textContent = files.length === 1
-        ? `Añadiendo «${files[0].name}»…`
-        : `Añadiendo ${files.length} archivos…`;
-      progress.hidden = false;
-    } catch (error) {
-      console.error('Error añadiendo archivos a la cola de Homeostasia:', error);
-      status.textContent = error.message || 'No se pudieron añadir los archivos a la cola de subidas.';
-    }
-  });
-
-  // ------------------------------------------------
   // IMPORTAR PLAYLIST DE YOUTUBE
   // ------------------------------------------------
 
@@ -822,7 +773,6 @@ function homeostasiaPanel(ctx, close) {
     importerController = controller;
 
     playlistButton.disabled = true;
-    pick.disabled = true;
     playlistInput.disabled = true;
     stopButton.hidden = false;
     stopButton.disabled = false;
@@ -949,7 +899,6 @@ function homeostasiaPanel(ctx, close) {
 
       if (!destroyed) {
         playlistButton.disabled = false;
-        pick.disabled = false;
         playlistInput.disabled = false;
       }
     }
@@ -989,7 +938,6 @@ function homeostasiaPanel(ctx, close) {
     const controller = new AbortController();
     importerController = controller;
     playlistButton.disabled = true;
-    pick.disabled = true;
     playlistInput.disabled = true;
     stopButton.hidden = false;
     stopButton.disabled = false;
@@ -1056,7 +1004,6 @@ function homeostasiaPanel(ctx, close) {
       stopButton.disabled = false;
       if (!destroyed) {
         playlistButton.disabled = false;
-        pick.disabled = false;
         playlistInput.disabled = false;
       }
     }
@@ -1095,23 +1042,13 @@ function homeostasiaPanel(ctx, close) {
 
     el(
       'div',
-      { class: 'homeostasia-options' },
-      el(
-        'section',
-        { class: 'homeostasia-option' },
-        el('div', { class: 'homeostasia-option-head' },
-          el('span', { class: 'homeostasia-option-icon' }, icon('upload', { size: 22 })),
-          el('h3', { class: 'homeostasia-option-title' }, 'Añadir archivos')),
-        el('div', { class: 'upload-row' }, input, pick)
-      ),
-      el(
-        'section',
-        { class: 'homeostasia-option homeostasia-playlist' },
-        el('div', { class: 'homeostasia-option-head' },
-          el('span', { class: 'homeostasia-option-icon' }, icon('note', { size: 22 })),
-          el('h3', { class: 'homeostasia-option-title' }, 'Desde YouTube')),
-        el('div', { class: 'upload-row' }, playlistInput, playlistButton)
-      )
+      { class: 'homeostasia-card' },
+      el('div', { class: 'homeostasia-card-head' },
+        el('span', { class: 'homeostasia-card-icon' }, icon('note', { size: 24 })),
+        el('div', {},
+          el('h3', { class: 'homeostasia-card-title' }, 'Tu música, desde YouTube'),
+          el('p', { class: 'homeostasia-card-description' }, 'Pega un vídeo o una playlist. Prepararemos las canciones para añadirlas a la biblioteca.'))),
+      el('div', { class: 'homeostasia-form' }, playlistInput, playlistButton)
     ),
 
     retryButton,

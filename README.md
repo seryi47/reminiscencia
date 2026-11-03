@@ -2,12 +2,12 @@
 
 Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado (2026-11-03):** la web pública y la app Android funcionan sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)): no hay perfiles, modos paciente ni cuidador, PIN ni registro del estudio, y todos ven la misma biblioteca, hoy con 10 canciones públicas (las privadas no se muestran). La biblioteca se gestiona con incidencias de GitHub (ADR-0008) y con el buzón de subida (ADR-0014), al que la web y la APK suben para todos con la función `/api/subir` (ADR-0017; probado en producción el 2026-11-03 con «Prueba subida directa.mp3», publicada como «Prueba subida directa» y despublicada después con la incidencia #21); no hay panel de administración. Las canciones y las carpetas (álbumes) tienen portada (ADR-0016), y el importador toma el artista y el año de Internet Archive. Pendiente: las 18 referencias abiertas de `BIBLIOGRAPHY.md` (no verificadas), decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015) y los estudios con personas.
+**Estado (2026-11-03):** la web pública y la app Android funcionan sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)): no hay perfiles, modos paciente ni cuidador, PIN ni registro del estudio, y todos ven la misma biblioteca: 23 canciones catalogadas, 12 públicas y 11 privadas. Las privadas no se muestran. La biblioteca se gestiona con incidencias de GitHub (ADR-0008) y con el buzón de subida (ADR-0014), al que la web y la APK suben para todos con la función `/api/subir` (ADR-0017; probado en producción el 2026-11-03 con «Prueba subida directa.mp3», publicada como «Prueba subida directa» y despublicada después con la incidencia #21); no hay panel de administración. Las canciones y las carpetas (álbumes) tienen portada (ADR-0016), y el importador toma el artista y el año de Internet Archive. Pendiente: las 18 referencias abiertas de `BIBLIOGRAPHY.md` (no verificadas), decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015) y los estudios con personas.
 
 | Qué | Dónde |
 |---|---|
 | Escuchar (público) | https://reminiscencia.vercel.app |
-| App Android | `mobile/` (lee la biblioteca de la web; versión 1.2.0+3) |
+| App Android | `mobile/` (lee la biblioteca de la web; versión 1.2.4+7) |
 | Cambios en la biblioteca | Incidencias con la etiqueta `biblioteca`, procesadas por el workflow `biblioteca` |
 | Subir canciones para todos | «Subir canciones» en la web o en la APK (función `/api/subir`), procesada por el workflow `buzon`; con permiso de escritura, también la página de subida de `audio-library/buzon/` |
 
@@ -72,16 +72,16 @@ Las portadas se suben al mismo buzón, en su carpeta `portadas` (ADR-0016): http
 - Si el id no existe o la imagen no es válida, se rechaza, se borra del buzón y el motivo sale en el resumen de la ejecución.
 - Sube solo portadas que puedas usar: quedan en el historial de git y, las públicas, en la web. Nunca fotografías de pacientes ni de otras personas.
 
-### Importar playlists propias de YouTube desde Homeostasia
+### Importar vídeos y playlists propias de YouTube desde Homeostasia
 
-Homeostasia conserva la cola existente de «Subir canciones»: tanto los archivos elegidos a mano como los WAV importados terminan en `ctx.addUploads`, se convierten a Ogg Opus, se envían por fragmentos a `/api/subir` y los publica el workflow `buzon`. La importación no crea una ruta alternativa de publicación.
+Homeostasia sirve para importar vídeos o playlists de YouTube. La subida manual de archivos está en su opción independiente, «Subir canciones». Los WAV importados terminan en `ctx.addUploads`, se convierten a Ogg Opus, se envían por fragmentos a `/api/subir` y los publica el workflow `buzon`; la importación no crea una ruta alternativa de publicación.
 
-La APK ofrece el mismo flujo desde `mobile/lib/ui/homeostasia.dart`: consulta los proxies `/api/youtube/*`, convierte y valida los WAV en el teléfono y después llama a `LibraryController.uploadShared`, de modo que también termina en `/api/subir` y en el workflow `buzon`. También limita las creaciones a una cada dos segundos, reintenta errores transitorios de creación hasta seis veces respetando `Retry-After`, reintenta cinco errores temporales de consulta de estado, muestra la posición y el progreso de la cola externa, y envía un UUID de traza para diagnóstico sin registrar datos de la canción.
+La APK ofrece el mismo flujo desde `mobile/lib/ui/homeostasia.dart`: consulta los proxies `/api/youtube/*`, convierte y valida los WAV en el teléfono y después llama a `LibraryController.uploadShared`, de modo que también termina en `/api/subir` y en el workflow `buzon`. Ambas interfaces limitan las creaciones a una cada dos segundos, reintentan errores transitorios de creación hasta seis veces respetando `Retry-After`, reintentan cinco errores temporales de consulta de estado, muestran la posición y el progreso de la cola externa, y envían un UUID de traza para diagnóstico sin registrar datos de la canción.
 
 El flujo de YouTube es:
 
-1. El navegador valida una URL `https://www.youtube.com/playlist?list=...` y llama a `GET /api/youtube/playlist?url=...`.
-2. La función serverless ejecuta `yt-dlp` con argumentos separados, `--flat-playlist` y un máximo de 200 elementos. Solo devuelve IDs y títulos; no descarga vídeos ni acepta URLs que no sean de YouTube.
+1. La interfaz valida una URL HTTPS de un vídeo o playlist de YouTube y llama a `GET /api/youtube/playlist?url=...`.
+2. Para una playlist, la función serverless ejecuta `yt-dlp` con argumentos separados, `--flat-playlist` y un máximo de 200 elementos. Para un vídeo individual, obtiene el título original de los metadatos de su página pública; si no puede leerlo, devuelve un error en vez de guardar un nombre basado solo en el ID. No descarga audio en este paso ni acepta URLs que no sean de YouTube.
 3. El navegador encola como máximo cuatro trabajos a la vez, separa dos segundos la creación de cada trabajo para evitar ráfagas y reintenta errores transitorios hasta seis veces con espera exponencial, respetando `Retry-After`. Las llamadas a `api.yttowav.org` pasan por `POST /api/youtube/convert`, `GET /api/youtube/status` y `GET /api/youtube/download`; el backend fija `format: wav` y `quality: original`, valida el identificador y transmite el WAV sin cargarlo completo en memoria. Si yttowav rechaza una creación, la interfaz recibe el código HTTP y el mensaje de error seguro del proveedor.
 4. Cada WAV debe tener cabecera RIFF/WAVE y contenido. Tras descargarlo se convierte en `File` y vuelve a la cola original. Los errores son por canción y se pueden reintentar.
 
@@ -92,7 +92,7 @@ Configuración del servidor:
 - `YTDLP_PATH`: ruta absoluta al ejecutable `yt-dlp`; si no existe se intenta `yt-dlp` desde `PATH`. En producción debe instalarse o incluirse ese ejecutable en el runtime de Vercel. La función devuelve un error explícito si falta.
 - No se necesita ninguna clave para yttowav en el frontend. `GITHUB_TOKEN` sigue siendo únicamente la variable de `/api/subir`.
 
-La API externa de yttowav no publica una especificación estable de sus endpoints. El script original y la integración usan sus rutas observadas (`/api/convert`, `/api/status` y `/api/download/?jobId=...`), además de comprobar estados, identificadores, origen de descarga y cabecera WAV. En producción, el 2026-11-03, yttowav rechazó varias creaciones con HTTP 503; después aceptó trabajos que seguían `queued`. En una consulta directa, la posición de un trabajo pasó de 37 a 33 de una cola de 50. No era una creación en bucle: la web sondeaba el trabajo aceptado cada tres segundos. Una consulta posterior devolvió 404 («Job not found»): ese trabajo expiró o el proveedor lo limpió y no se recuperó su WAV. Homeostasia muestra la posición/progreso del proveedor y registra trazas correlacionadas; los logs muestreados omiten URL, título e identificador del trabajo. La conversión y descarga completas siguen pendientes de validación.
+La API externa de yttowav no publica una especificación estable de sus endpoints. El script original y la integración usan sus rutas observadas (`/api/convert`, `/api/status` y `/api/download/?jobId=...`), además de comprobar estados, identificadores, origen de descarga y cabecera WAV. En la prueba real del 2026-11-03, una conversión pasó por la cola, descargó el WAV y se publicó en la biblioteca; cuatro respuestas 502 temporales de estado fueron seguidas por respuestas correctas para el mismo trabajo. El WAV se decodificó completo con FFmpeg y el audio publicado se reprodujo en Chrome de escritorio, también mediante una respuesta parcial HTTP 206. La escucha en un dispositivo Android real sigue pendiente; el error del navegador integrado de VS Code también apareció con una canción anterior del catálogo.
 
 ### Importar desde Internet Archive
 

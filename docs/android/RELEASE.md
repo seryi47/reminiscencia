@@ -2,7 +2,7 @@
 
 Procedimiento para publicar una versión nueva de la app Android (`mobile/`, paquete `es.orbitalabs.reminiscencia`). La compilación, la firma y la release de GitHub las hace el workflow [android](../../.github/workflows/android.yml).
 
-> **Estado a 2026-11-02: el job de producción no está verificado.** La compilación de release necesita la firma en GitHub Actions: el job `Producción` de `android.yml` firma el APK solo si los cuatro secretos de firma están en el repositorio. La clave de firma no se sube a GitHub, por decisión del propietario, así que ese job no se ha ejecutado con la clave real. Sin los secretos, una etiqueta `android-v*` falla en `Producción` y no se crea la release. Mientras tanto, la única verificación disponible es la local, descrita en la sección [Verificar la firma](#verificar-la-firma).
+> **Estado a 2026-11-03: versión local 1.2.4+7; la release de producción no está verificada.** La compilación de release necesita la firma en GitHub Actions: el job `Producción` de `android.yml` firma el APK solo si los cuatro secretos de firma están en el repositorio. La clave de firma no se sube a GitHub, por decisión del propietario, así que ese job no se ha ejecutado con la clave real. Sin los secretos, una etiqueta `android-v*` falla en `Producción` y no se crea la release. Mientras tanto, la única verificación disponible es la local, descrita en la sección [Verificar la firma](#verificar-la-firma).
 
 ## Antes de empezar
 
@@ -16,7 +16,7 @@ En `mobile/pubspec.yaml`, la línea `version:` tiene la forma `X.Y.Z+B`:
 - `X.Y.Z` es el nombre de versión (versionName) que ve el usuario.
 - `B` es el número de compilación (versionCode). Es un entero que debe ser mayor que el de la versión publicada antes.
 
-Ejemplo: `version: 1.2.0+3`. La etiqueta de la release debe ser `android-v1.2.0`.
+Versión preparada: `version: 1.2.4+7`. La etiqueta de la release debe ser `android-v1.2.4`.
 
 ## 2. Comprobar el código
 
@@ -66,8 +66,8 @@ La versión debe estar en `main`. Después etiqueta ese commit:
 
 ```
 git checkout main && git pull
-git tag -a android-v1.2.0 -m "App Android 1.2.0"
-git push origin android-v1.2.0
+git tag -a android-v1.2.4 -m "App Android 1.2.4"
+git push origin android-v1.2.4
 ```
 
 ## 6. Qué hace la CI
@@ -77,7 +77,7 @@ Al subir una etiqueta `android-v*`, el workflow `android`:
 1. Comprueba que la etiqueta coincide con la versión de `mobile/pubspec.yaml`.
 2. Ejecuta `flutter analyze` y `flutter test`, compila el APK de depuración y lo verifica.
 3. Compila el APK de producción con la clave de los secretos y comprueba que su huella coincide con la de referencia. Si no coincide, no publica nada. **Hoy este paso no puede completarse**: los secretos de firma no están cargados en GitHub (ver el estado al principio).
-4. Crea la release `android-v1.2.0` con `reminiscencia-1.2.0-arm64-v8a.apk`, `reminiscencia-1.2.0-armeabi-v7a.apk`, `reminiscencia-1.2.0-x86_64.apk`, `reminiscencia-1.2.0-debug.apk` y `SHA256SUMS.txt`. Cada teléfono descarga solo el suyo.
+4. Crea la release `android-v1.2.4` con `reminiscencia-1.2.4-arm64-v8a.apk`, `reminiscencia-1.2.4-armeabi-v7a.apk`, `reminiscencia-1.2.4-x86_64.apk`, `reminiscencia-1.2.4-debug.apk` y `SHA256SUMS.txt`. Cada teléfono descarga solo el suyo.
 
 Para probar sin publicar, lanza el workflow a mano desde la pestaña Actions de GitHub (botón Run workflow). Compila y verifica, pero no crea ninguna release. Sin secretos de firma, esa ejecución solo avisa y omite el APK de producción.
 
@@ -92,8 +92,8 @@ Para probar sin publicar, lanza el workflow a mano desde la pestaña Actions de 
 - **La etiqueta no coincide con la versión.** Corrige la etiqueta o `mobile/pubspec.yaml`. Si ya se creó la release de una etiqueta equivocada, bórrala con su etiqueta antes de volver a empezar:
 
   ```
-  gh release delete android-v1.2.0 --cleanup-tag --yes
-  git tag -d android-v1.2.0
+  gh release delete android-v1.2.4 --cleanup-tag --yes
+  git tag -d android-v1.2.4
   ```
 
 - **El almacén no se abre.** El paso «Comprobar el almacén de firma» falla si `ANDROID_KEYSTORE_PASSWORD` o `ANDROID_KEY_ALIAS` no son correctos. Revisa esos dos secretos antes de volver a lanzar el workflow.

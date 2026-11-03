@@ -1,6 +1,6 @@
 # Arquitectura de Reminiscencia
 
-- Estado: 2026-11-03, con la interfaz sin usuarios de [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md), el buzón de [ADR-0014](../decisions/ADR-0014-buzon-de-canciones.md), las portadas y álbumes de [ADR-0016](../decisions/ADR-0016-portadas-y-albumes.md), la subida para todos por `/api/subir` de [ADR-0017](../decisions/ADR-0017-subida-directa-github-web-publica.md) y la integración web de playlists propias de YouTube, con `yt-dlp` configurado y la API externa verificada en producción. La descarga WAV completa sigue pendiente: el trabajo aceptado en la prueba pasó por la cola, pero después devolvió 404 («Job not found»).
+- Estado: 2026-11-03, con la interfaz sin usuarios de [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md), el buzón de [ADR-0014](../decisions/ADR-0014-buzon-de-canciones.md), las portadas y álbumes de [ADR-0016](../decisions/ADR-0016-portadas-y-albumes.md), la subida para todos por `/api/subir` de [ADR-0017](../decisions/ADR-0017-subida-directa-github-web-publica.md) y la importación de vídeos y playlists de YouTube. Una prueba real completó conversión, descarga y publicación; el audio se reprodujo en Chrome de escritorio. La reproducción en un Android físico queda pendiente, y el error del navegador integrado de VS Code no se reprodujo en Chrome.
 - Documentos relacionados: `docs/decisions/` (ADR), [GITHUB_STORAGE.md](GITHUB_STORAGE.md) (almacenamiento y límites), `docs/audio-processing/AUDIO_ENGINE.md`, `docs/datos/DATABASE.md`, `docs/user-experience/DESIGN.md`.
 
 ## Visión general
@@ -28,8 +28,8 @@ flowchart LR
     CI["CI: backend, web, web-e2e y android"]
   end
   FUENTES["Internet Archive o URL directa con licencia"]
-  YT["Playlist propia de YouTube"]
-  YTDLP["yt-dlp: metadatos flat, máximo 200"]
+  YT["Vídeo o playlist propia de YouTube"]
+  YTDLP["yt-dlp: metadatos flat de playlist, máximo 200"]
   YTTOWAV["api.yttowav.org"]
   VERCEL["Vercel: sirve frontend/web"]
   SUBIR["Función de Vercel api/subir.js (GITHUB_TOKEN)"]
@@ -38,9 +38,10 @@ flowchart LR
   APP["App Android (Flutter)"]
 
   NAVEG -->|"Desde Internet Archive abre la incidencia"| ISSUE
-  NAVEG -->|"URL de playlist"| YTAPI
+  NAVEG -->|"URL de vídeo o playlist"| YTAPI
   YTAPI -->|"spawn con argumentos separados"| YTDLP
   YTDLP -->|"IDs y títulos, sin descargar vídeos"| YTAPI
+  YTAPI -->|"título original de vídeo individual"| YT
   YTAPI -->|"crear job, consultar y transmitir WAV"| YTTOWAV
   YTAPI -->|"File WAV a la cola existente"| NAVEG
   NAVEG -->|"Subir canciones: Opus en trozos de 4 MiB"| SUBIR
@@ -71,7 +72,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 |---|---|---|
 | Buzón | `audio-library/buzon/` | Carpeta de paso. La función `/api/subir` deja aquí los trozos de cada subida de la web o la APK (`.partes/<id>/` y su `manifiesto.json`; ADR-0017), y quien tiene permiso de escritura puede subir audio desde la página de subida de GitHub (ADR-0014). Las portadas van en `portadas/` (ADR-0016). `buzon.yml` lo convierte, lo da de alta y lo borra de aquí. |
 | Función de subida | `frontend/web/api/subir.js` | `POST /api/subir`, Node sin dependencias. Recibe un trozo de hasta 4 MiB con las cabeceras `X-Nombre-Archivo`, `X-Subida-Id`, `X-Parte` y `X-Partes` (hasta 1000 trozos), valida Ogg Opus en el primero y lo guarda con un commit en `main` por la API de git de GitHub, con `GITHUB_TOKEN` de Vercel. Con el último escribe el manifiesto y la línea «Licencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla». Sin límites de tamaño ni por hora, por decisión del propietario (ADR-0017). |
-| Importación YouTube | `frontend/web/api/youtube/`, `frontend/web/server/youtube-*.js` y `js/views/homeostasia.js` | `GET /api/youtube/playlist` ejecuta `yt-dlp --flat-playlist` (máximo 200 elementos, timeout 45 s) para devolver IDs y títulos, sin descargar vídeos. `POST /api/youtube/convert`, `GET /api/youtube/status` y `GET /api/youtube/download` son un proxy del mismo origen a yttowav; validan entradas, espacian dos segundos las creaciones, reintentan hasta seis veces los errores transitorios respetando `Retry-After`, muestran el estado y la posición/progreso de cola, y transmiten WAV con límite de 256 MiB. Web y Android persisten `jobId`/traza por vídeo y reanudan el trabajo existente; si el proxy devuelve 404, el siguiente intento puede crear uno nuevo. Detener o cerrar la interfaz detiene el sondeo local, no la conversión externa. Trazas UUID correlacionan cliente y logs Vercel; los registros muestreados omiten URL, título e ID del trabajo. El WAV vuelve a `ctx.addUploads` y sigue el flujo de `/api/subir` y `buzon`. Requiere `yt-dlp` instalado o empaquetado y `YTDLP_PATH` si no está en `PATH`; una respuesta de producción informó `queued`, posición 37 de 50. |
+| Importación YouTube | `frontend/web/api/youtube/`, `frontend/web/server/youtube-*.js` y `js/views/homeostasia.js` | `GET /api/youtube/playlist` ejecuta `yt-dlp --flat-playlist` (máximo 200 elementos, timeout 45 s) para playlists; para vídeos individuales obtiene el título original de la página pública y no usa el ID como título de reserva. No descarga audio en esta etapa. `POST /api/youtube/convert`, `GET /api/youtube/status` y `GET /api/youtube/download` son un proxy del mismo origen a yttowav; validan entradas, espacian dos segundos las creaciones, reintentan hasta seis veces los errores transitorios respetando `Retry-After`, muestran el estado y la posición/progreso de cola, y transmiten WAV con límite de 256 MiB. Web y Android persisten `jobId`/traza por vídeo y reanudan el trabajo existente; si el proxy devuelve 404, el siguiente intento puede crear uno nuevo. Detener o cerrar la interfaz detiene el sondeo local, no la conversión externa. Trazas UUID correlacionan cliente y logs Vercel; los registros muestreados omiten URL, título e ID del trabajo. El WAV vuelve a `ctx.addUploads` y sigue el flujo de `/api/subir` y `buzon`. Requiere `yt-dlp` instalado o empaquetado y `YTDLP_PATH` si no está en `PATH`; una prueba real completó la descarga y publicación. |
 | Catálogo | `audio-library/indexes/catalog.json` | Fuente de verdad: carpetas, canciones, licencia, huella SHA-256, origen y el indicador `public`. Versión 1. |
 | Audio de la biblioteca | `audio-library/audio/<id>.opus` | Opus de todas las canciones, también de las no publicadas. Lo genera la importación (`backend/sonidos/pipeline.py`). |
 | Audio publicado | `frontend/web/audio/<id>.opus` | Copia de las canciones con `public: true`. Lo sincroniza `backend/sonidos/publish.py`. |
@@ -85,7 +86,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 | Subida para todos | `js/cuidador/subida-publica.js` y `js/views/upload.js` | Hoja «Subir canciones»: uno o varios archivos, convertidos y enviados de uno en uno, en trozos, a `/api/subir`; progreso y resultado por archivo. No conoce ningún token (ADR-0017). |
 | Importación desde la web | `js/cuidador/incidencias.js` y `js/intake.js` | Validan la petición de «Importar desde Internet Archive» y preparan la incidencia (ADR-0008). La carpeta `js/cuidador/` conserva el nombre aunque ya no hay modo cuidador. |
 | Pruebas de la web | `tests/web-unit/` (`node:test`), `tests/web-e2e/` (puppeteer-core y axe-core) | Lógica sin navegador, y pruebas de extremo a extremo y de accesibilidad con Chrome. |
-| App Android | `mobile/` | Flutter 1.2.0+3, sin usuarios y con el aspecto de la app de Spotify. Lee la biblioteca de la web y guarda copia local; listas y «Me gusta» en `colecciones.json` del teléfono. Sube para todos por `/api/subir` (`lib/shared_upload.dart`, ADR-0017). ADR-0004 y ADR-0013. |
+| App Android | `mobile/` | Flutter 1.2.4+7, sin usuarios y con el aspecto de la app de Spotify. Lee la biblioteca de la web y guarda copia local; listas y «Me gusta» en `colecciones.json` del teléfono. «Subir canciones» sube para todos por `/api/subir` (`lib/shared_upload.dart`, ADR-0017); Homeostasia importa vídeos y playlists de YouTube. ADR-0004 y ADR-0013. |
 | Backend | `backend/sonidos/` | `catalog`, `intake`, `sources`, `pipeline`, `buzon`, `paquete`, `publish`, `probe`, `compression`, `hashing`, `limits` e `issue_request`. `release.py` existe, pero ningún workflow lo usa. |
 | Scripts | `scripts/` | `issue_request.py`, `empaquetar_cambios.py`, `ci_library.py`, `buzon.py`, `aplicar_paquete.py`, `responder_incidencia.py`, `check_repo_limits.py`, `smoke_produccion.mjs` (comprueba la web pública) y `android/verify_apk.sh`. |
 | Investigación | Raíz del repositorio | `BIBLIOGRAPHY.md`, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`. |
@@ -134,10 +135,10 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 - Portadas de canciones y álbumes, y álbumes con artista (ADR-0016). El importador toma el artista y el año de Internet Archive.
 - Web y APK sin usuarios, con el aspecto de Spotify (ADR-0015): sin perfiles, modos, PIN, registro del estudio ni copia `.rmc`. Listas y «Me gusta» solo en el dispositivo.
 - Audio local de antes: las canciones guardadas «Solo en este navegador» (ADR-0012) o «Solo en este teléfono» (ADR-0013) siguen sonando y se borran; ya no se guardan nuevas (ADR-0017).
-- APK 1.2.0+3; `android.yml` publica, por etiqueta `android-vX.Y.Z`, un APK de producción por arquitectura. Sin ejecuciones todavía.
+- APK 1.2.4+7; `android.yml` publica, por etiqueta `android-vX.Y.Z`, un APK de producción por arquitectura. La compilación local está validada; aún no se ha probado en un dispositivo físico ni publicado como release.
 - Comprobador de producción: `scripts/smoke_produccion.mjs`.
-- Pruebas: 342 unitarias de la web y 705 del backend en verde (2026-11-03, local, sobre `6d62aee`); `web-e2e.yml` en verde sobre `ae22479`.
-- Biblioteca actual: 17 canciones en el catálogo, 10 publicadas, 7 privadas (entre ellas, las de prueba del buzón) y ninguna carpeta.
+- Pruebas locales (2026-11-03): 402 unitarias de la web, 141 E2E y accesibilidad, 715 del backend y 225 de Flutter; `flutter analyze` sin incidencias.
+- Biblioteca actual: 23 canciones en el catálogo, 12 publicadas, 11 privadas (entre ellas, las de prueba del buzón) y ninguna carpeta.
 - Investigación: bibliografía, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`.
 - CI: `backend.yml`, `biblioteca.yml`, `buzon.yml`, `web.yml`, `web-e2e.yml` y `android.yml`.
 

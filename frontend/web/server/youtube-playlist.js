@@ -42,7 +42,10 @@ export function extractPlaylist({ url, stdout, code, timedOut }) {
     if (tab < 0) continue;
     const id = line.slice(0, tab).trim();
     if (!VIDEO_ID.test(id) || seen.has(id)) continue;
-    const title = line.slice(tab + 1).trim().slice(0, 200) || 'audio';
+    const title = line.slice(tab + 1).trim().slice(0, 200);
+    if (!title) {
+      throw new YoutubeApiError(502, 'YouTube no devolvió el título original de un vídeo de la playlist.');
+    }
     seen.add(id);
     items.push({ url: canonicalVideoUrl(id), title });
     if (items.length >= MAX_PLAYLIST_ITEMS) break;
@@ -90,8 +93,7 @@ function runYtdlp(url, { spawnImpl = nodeSpawn, env = process.env } = {}) {
   });
 }
 
-function parseInitialData(html) {
-  const marker = 'ytInitialData = ';
+function parseAssignedJson(html, marker) {
   const markerAt = String(html ?? '').indexOf(marker);
   if (markerAt < 0) return null;
   const start = markerAt + marker.length;
@@ -118,6 +120,57 @@ function parseInitialData(html) {
   return null;
 }
 
+function decodeHtmlEntities(value) {
+  return String(value ?? '').replace(/&(#(?:x[\da-f]+|\d+)|amp|quot|apos|lt|gt|#39);/gi, (match, entity) => {
+    const named = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' };
+    if (entity[0] !== '#') return named[entity.toLowerCase()] ?? match;
+    const code = entity[1].toLowerCase() === 'x'
+      ? Number.parseInt(entity.slice(2), 16)
+      : Number.parseInt(entity.slice(1), 10);
+    return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
+      ? String.fromCodePoint(code)
+      : match;
+  });
+}
+
+function metaContent(html, property) {
+  const tags = String(html ?? '').matchAll(/<meta\b[^>]*>/gi);
+  for (const [tag] of tags) {
+    const attributes = Object.fromEntries(
+      [...tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)]
+        .map(([, name, doubleQuoted, singleQuoted, unquoted]) => [
+          name.toLowerCase(),
+          doubleQuoted ?? singleQuoted ?? unquoted ?? '',
+        ]),
+    );
+    if ((attributes.property ?? attributes.name ?? '').toLowerCase() === property) {
+      return decodeHtmlEntities(attributes.content).trim();
+    }
+  }
+  return '';
+}
+
+export function extractVideoTitleHtml(html) {
+  const playerResponse = parseAssignedJson(html, 'ytInitialPlayerResponse = ');
+  const playerTitle = playerResponse?.videoDetails?.title;
+  if (typeof playerTitle === 'string' && playerTitle.trim()) {
+    return decodeHtmlEntities(playerTitle).trim().slice(0, 200);
+  }
+
+  const openGraphTitle = metaContent(html, 'og:title');
+  if (openGraphTitle) return openGraphTitle.slice(0, 200);
+
+  const pageTitle = String(html ?? '').match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  const cleanedTitle = decodeHtmlEntities(pageTitle).replace(/\s*-\s*YouTube\s*$/i, '').trim();
+  return cleanedTitle && cleanedTitle.toLowerCase() !== 'youtube'
+    ? cleanedTitle.slice(0, 200)
+    : null;
+}
+
+function parseInitialData(html) {
+  return parseAssignedJson(html, 'ytInitialData = ');
+}
+
 function textFrom(value) {
   if (typeof value?.simpleText === 'string') return value.simpleText;
   if (Array.isArray(value?.runs)) return value.runs.map((run) => run?.text || '').join('');
@@ -128,9 +181,10 @@ export function extractPlaylistHtml(html) {
   const items = [];
   const seen = new Set();
   const add = (id, title = '') => {
-    if (!VIDEO_ID.test(id) || seen.has(id) || items.length >= MAX_PLAYLIST_ITEMS) return;
+    const originalTitle = String(title ?? '').trim().slice(0, 200);
+    if (!VIDEO_ID.test(id) || !originalTitle || seen.has(id) || items.length >= MAX_PLAYLIST_ITEMS) return;
     seen.add(id);
-    items.push({ url: canonicalVideoUrl(id), title: String(title || `YouTube ${id}`).trim().slice(0, 200) });
+    items.push({ url: canonicalVideoUrl(id), title: originalTitle });
   };
   const visit = (value) => {
     if (items.length >= MAX_PLAYLIST_ITEMS || value === null || value === undefined) return;
@@ -140,8 +194,6 @@ export function extractPlaylistHtml(html) {
     Object.values(value).forEach(visit);
   };
   visit(parseInitialData(html));
-  if (items.length > 0) return items;
-  for (const id of String(html ?? '').matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)) add(id[1]);
   return items;
 }
 
@@ -157,6 +209,20 @@ async function readPlaylistHtml(url, fetchImpl) {
   return extractPlaylistHtml(await response.text());
 }
 
+async function readVideoTitle(url, fetchImpl) {
+  const response = await fetchWithTimeout(fetchImpl, canonicalVideoUrl(videoId(url.href)), {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml',
+      'Accept-Encoding': 'gzip, deflate',
+      'User-Agent': upstreamHeaders()['User-Agent'],
+    },
+  }, HTML_TIMEOUT_MS);
+  if (!response.ok) throw new YoutubeApiError(502, 'No se pudo leer el título original del vídeo de YouTube.');
+  const title = extractVideoTitleHtml(await response.text());
+  if (!title) throw new YoutubeApiError(502, 'YouTube no devolvió el título original del vídeo.');
+  return title;
+}
+
 export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = process.env, fetchImpl = globalThis.fetch } = {}) {
   try {
     if (request.method !== 'GET') throw new YoutubeApiError(405, 'Solo se admite GET.');
@@ -167,9 +233,10 @@ export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = pro
 
     // Para un único vídeo no hace falta enumerar nada con yt-dlp. Esto evita
     // que un bloqueo de la API de YouTube en la IP de Vercel impida convertir
-    // enlaces individuales, y conserva la URL original que acepta yttowav.
+    // enlaces individuales. Leemos el título de la página pública para que el
+    // nombre del archivo y el del catálogo no se reduzcan al ID del vídeo.
     if (!playlistUrl) {
-      return json(200, { items: [{ url: url.href, title: `YouTube ${videoId(url.href)}` }] });
+      return json(200, { items: [{ url: url.href, title: await readVideoTitle(url, fetchImpl) }] });
     }
 
     try {

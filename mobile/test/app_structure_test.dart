@@ -464,15 +464,10 @@ void main() {
     }
 
     testWidgets(
-      'Homeostasia: los archivos elegidos entran en la biblioteca común',
+      'Homeostasia se centra en YouTube y la subida manual sigue separada',
       (tester) async {
         setWindow(tester, const Size(400, 900));
-        final t = servicesWith(
-          uploader: uploader(),
-          pickAudio: () async => const [
-            PickedAudioFile(name: 'Tema homeostasia.wav', path: '/x/h.wav'),
-          ],
-        );
+        final t = servicesWith(uploader: uploader());
         await pumpApp(tester, t.services);
         await tester.tap(find.text('Tu biblioteca'));
         await settle(tester);
@@ -482,26 +477,13 @@ void main() {
           await tester.pump(const Duration(milliseconds: 50));
         }
         expect(find.byKey(const Key('homeostasia-sheet')), findsOneWidget);
-        expect(find.text('Desde tu dispositivo'), findsOneWidget);
-        expect(find.text('O desde YouTube'), findsOneWidget);
+        expect(find.text('Añade un vídeo o una playlist'), findsOneWidget);
         expect(find.text('Importar música'), findsOneWidget);
-        expect(find.textContaining('GitHub'), findsNothing);
-        await tester.ensureVisible(find.byKey(const Key('homeostasia-pick')));
-        await settle(tester);
-        await tester.runAsync(() async {
-          await tester.tap(find.byKey(const Key('homeostasia-pick')));
-        });
-        await realWork(tester, t.services);
-
-        expect(requests, hasLength(1));
+        expect(find.byKey(const Key('homeostasia-pick')), findsNothing);
+        expect(find.byKey(const Key('upload-songs')), findsOneWidget);
         expect(
-          requests.single.headers['X-Nombre-Archivo'],
-          'Tema%20homeostasia.wav',
-        );
-        expect(find.byKey(const Key('homeostasia-status')), findsOneWidget);
-        expect(
-          tester.widget<Text>(find.byKey(const Key('homeostasia-status'))).data,
-          contains('de 1 publicada'),
+          find.textContaining('Añade música desde tu dispositivo'),
+          findsNothing,
         );
       },
     );

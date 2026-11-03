@@ -13,7 +13,7 @@ Estado a 2026-11-03, según `main`: web y APK sin usuarios y con el aspecto de S
 | 2. Motor de audio | En curso | Experimento objetivo de compresión (cinco grabaciones, 2026-10-31) | — | Prueba perceptual MUSHRA; variantes en GitHub Releases; silencios, picos y calidad de señal |
 | 3. Servicio y administración | En curso | Catálogo; importación; publicación y despublicación por incidencias, probadas con incidencias reales; buzón de subida (`buzon.yml`, ADR-0014), probado por las vías privada y pública; subida desde la web y la APK por `/api/subir` (ADR-0017), probada en producción; administración retirada | — | Cola compartida del buzón con `biblioteca.yml`; borrado de canciones |
 | 4. Web pública | Implementada sin usuarios | Interfaz sin usuarios con el aspecto de Spotify (ADR-0015, DESIGN 3.0): listas y «Me gusta» en este navegador, uso sin conexión, «Subir canciones» para todos por `/api/subir` (ADR-0017), portadas y álbumes (ADR-0016) e «Importar desde Internet Archive» (incidencia, lista de bloqueo de 42 entradas); desplegada desde `main` | — | Lectores de pantalla y dispositivos reales; `added_at` en los datos públicos; llevar listas a otro navegador (DESIGN §15) |
-| 5. Android | En curso | App 1.2.0+3 sin usuarios, con el aspecto de Spotify, listas y «Me gusta» en el teléfono, copia sin conexión y «Subir canciones» para todos por `/api/subir` (ADR-0017); workflow `android.yml` con release separada por arquitectura | — | Primera ejecución de `android.yml` y release `android-v1.2.0`; firma de producción en CI; pruebas en dispositivo físico; copia de seguridad de la clave |
+| 5. Android | En curso | App 1.2.4+7 sin usuarios, con el aspecto de Spotify, listas y «Me gusta» en el teléfono, copia sin conexión, «Subir canciones» para todos por `/api/subir` (ADR-0017) e importación de YouTube desde Homeostasia; APK compilada localmente | — | Release `android-v1.2.4`; firma de producción en CI; pruebas en dispositivo físico; copia de seguridad de la clave |
 | 6. Investigación de campo | Pendiente | — | — | Decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015); protocolo y aprobación ética; estudio piloto |
 
 ## Fase 0: investigación (en curso)
@@ -94,7 +94,7 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 - [x] Listas, favoritos, ajustes persistentes, diseño de tableta e icono propio (integrado el 2026-10-31). El modo paciente se retiró en la 1.2.0 (ADR-0015).
 - [x] Versión 1.2.0+3: sin usuarios, aspecto de la app de Spotify, «Me gusta», «Subir canciones» (en `main` el 2026-11-03). Desde `b148b74` (merge `3d97a37`) sube para todos por `/api/subir`, como la web (ADR-0017).
 - [x] Release por etiqueta con un APK de producción por arquitectura (`arm64-v8a`, `armeabi-v7a` y `x86_64`) y `SHA256SUMS.txt`.
-- [ ] Etiqueta `android-v1.2.0` y su release en GitHub.
+- [ ] Etiqueta `android-v1.2.4` y su release en GitHub.
 - [x] Workflow `android.yml` en `main`: análisis, pruebas, APK de depuración y de producción, y release por etiqueta `android-vX.Y.Z`.
 - [ ] Primera ejecución de `android.yml` en GitHub Actions. Todavía no hay ninguna, y el APK de producción necesita cuatro secretos de firma que hoy no existen en el repositorio.
 - [x] Reproducción en streaming y en segundo plano, notificación y auriculares (emulador Android 15).

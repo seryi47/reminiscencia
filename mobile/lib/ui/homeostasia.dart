@@ -18,58 +18,83 @@ class HomeostasiaButton extends StatelessWidget {
     final palette = paletteOf(context);
     final theme = Theme.of(context);
     return Material(
-      color: palette.card,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        key: const Key('homeostasia'),
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => openHomeostasiaSheet(context, services),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              colors: [palette.accent.withValues(alpha: 0.16), palette.card],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(24),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: palette.accent.withValues(alpha: 0.08),
+              blurRadius: 22,
+              offset: const Offset(0, 8),
             ),
-            border: Border.all(color: palette.outline.withValues(alpha: 0.5)),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: palette.accent,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  Icons.graphic_eq_rounded,
-                  color: palette.onAccent,
-                  size: 26,
-                ),
+          ],
+        ),
+        child: InkWell(
+          key: const Key('homeostasia'),
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => openHomeostasiaSheet(context, services),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                colors: [palette.accent.withValues(alpha: 0.2), palette.card],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Homeostasia', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Añade música desde tu dispositivo o YouTube',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ],
+              border: Border.all(color: palette.accent.withValues(alpha: 0.24)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: palette.accent,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(
+                    Icons.music_video_rounded,
+                    color: palette.onAccent,
+                    size: 27,
+                  ),
                 ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: palette.inkMuted,
-                size: 17,
-              ),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Homeostasia',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Importa música desde YouTube',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: palette.cardPressed.withValues(alpha: 0.8),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.arrow_forward_rounded,
+                    color: palette.ink,
+                    size: 19,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -123,40 +148,6 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
     if (!mounted || _status == null) return;
     final summary = widget.services.library.uploads.summary;
     if (summary.isNotEmpty) setState(() => _status = summary);
-  }
-
-  Future<void> _send() async {
-    if (_working) return;
-    final library = widget.services.library;
-    if (!await library.canUpload()) {
-      _show(kOfflineMessage);
-      return;
-    }
-    final List<PickedAudioFile> files;
-    try {
-      files = await widget.services.pickAudio();
-    } catch (error) {
-      _show('No se pudieron elegir los archivos: ${describeError(error)}');
-      return;
-    }
-    if (files.isEmpty || !mounted) return;
-    setState(() => _working = true);
-    setState(() {
-      _status = files.length == 1
-          ? 'Añadiendo «${files.first.name}»…'
-          : 'Añadiendo ${files.length} archivos…';
-    });
-    try {
-      await library.uploadShared(files);
-    } catch (error) {
-      _show(
-        error is AppException
-            ? error.message
-            : 'No se pudo enviar: ${describeError(error)}',
-      );
-    } finally {
-      if (mounted) setState(() => _working = false);
-    }
   }
 
   Future<void> _importYoutube() async {
@@ -266,7 +257,7 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
                           style: theme.textTheme.headlineSmall,
                         ),
                         Text(
-                          'Añade música a tu biblioteca',
+                          'Importa música desde YouTube',
                           style: theme.textTheme.bodySmall,
                         ),
                       ],
@@ -275,49 +266,55 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
                 ],
               ),
               const SizedBox(height: 24),
-              Text('Desde tu dispositivo', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                key: const Key('homeostasia-pick'),
-                onPressed: _working ? null : _send,
-                icon: const Icon(Icons.library_add_rounded),
-                label: const Text('Seleccionar archivos'),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(child: Divider(color: paletteOf(context).outline)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      'O desde YouTube',
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: paletteOf(context).card,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: paletteOf(context).outline.withValues(alpha: 0.65),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Añade un vídeo o una playlist',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Pega el enlace y prepararemos las canciones para la biblioteca.',
                       style: theme.textTheme.bodySmall,
                     ),
-                  ),
-                  Expanded(child: Divider(color: paletteOf(context).outline)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                key: const Key('homeostasia-youtube-url'),
-                controller: _playlistController,
-                enabled: !_working,
-                keyboardType: TextInputType.url,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  labelText: 'Playlist o vídeo de YouTube',
-                  hintText: 'https://www.youtube.com/playlist?list=…',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  key: const Key('homeostasia-youtube-import'),
-                  onPressed: _working ? null : _importYoutube,
-                  icon: const Icon(Icons.music_video_rounded),
-                  label: const Text('Importar música'),
+                    const SizedBox(height: 18),
+                    TextField(
+                      key: const Key('homeostasia-youtube-url'),
+                      controller: _playlistController,
+                      enabled: !_working,
+                      keyboardType: TextInputType.url,
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(
+                        labelText: 'Vídeo o playlist de YouTube',
+                        hintText: 'https://youtu.be/…',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(16)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        key: const Key('homeostasia-youtube-import'),
+                        onPressed: _working ? null : _importYoutube,
+                        icon: const Icon(Icons.music_video_rounded),
+                        label: const Text('Importar música'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (_youtubeCancellation != null) ...[

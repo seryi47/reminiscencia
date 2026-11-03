@@ -24,3 +24,7 @@ El trabajo de producción consultado el 2026-11-03 pasó de la posición 37 a la
 - Un trabajo vencido no genera reintentos de creación automáticos: se informa del 404, se olvida el ID y la persona decide cuándo volver a intentarlo.
 - Borrar los datos del navegador o desinstalar la aplicación también borra el identificador local; no existe un registro central para recuperar el trabajo.
 - No se afirma que la conversión ni la publicación se hayan completado hasta descargar el WAV y observar el estado posterior de la cola común.
+
+## Validación posterior
+
+El 2026-11-03 una prueba autorizada posterior completó la conversión, descargó y validó el WAV y publicó la canción en el catálogo. Las respuestas temporales 502 fueron seguidas por consultas correctas al mismo trabajo; no se crearon conversiones repetidas. La reproducción del Opus publicado se comprobó en Chrome de escritorio. La reproducción en un Android físico sigue pendiente.

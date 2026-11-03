@@ -935,9 +935,8 @@ describe("Subir canciones", () => {
     }),
   );
 
-  prueba("Homeostasia: los archivos elegidos van a GitHub por /api/subir y se publican", () =>
+  prueba("Homeostasia se centra en YouTube y deja la subida manual en su opción propia", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
-      subidas.length = 0;
       restaurarCatalogo();
       await prepararPagina(page);
       await openApp(page, server.url);
@@ -945,19 +944,16 @@ describe("Subir canciones", () => {
       await page.waitForSelector('[data-testid="menu-homeostasia"]');
       await page.$eval('[data-testid="menu-homeostasia"]', (item) => item.click());
       await waitVisible(page, "homeostasia-sheet", { context: "hoja Homeostasia" });
-      const [archivo] = await wavFiles(["Tema homeostasia.wav"]);
-      const input = await page.$('[data-testid="homeostasia-file-input"]');
-      await input.uploadFile(archivo);
-      await page.waitForFunction(() => /Tema homeostasia\.wav|publicada/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""));
-      for (let espera = 0; subidas.length === 0 && espera < 600; espera += 1) await new Promise((resolve) => setTimeout(resolve, 100));
-      await page.waitForFunction(() => /0 de 1 publicada/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""), { timeout: 60000 });
-      assert.deepEqual(subidas.map((item) => [item.name, item.index, item.total]), [["Tema homeostasia.wav", 0, 1]]);
-      assert.equal(subidas[0].body.subarray(0, 4).toString("latin1"), "OggS", "va en Ogg Opus");
-
-      publicar({ id: "S00000000000000f1", title: "Tema homeostasia" });
-      await page.waitForFunction(() => /1 de 1 publicada/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""), { timeout: 60000 });
-      await clickTestid(page, "homeostasia-progress", "Ver el progreso");
+      assert.equal(await page.$('[data-testid="homeostasia-file-input"]'), null);
+      assert.equal(await page.$('[data-testid="homeostasia-pick"]'), null);
+      assert.ok(await page.$('[data-testid="homeostasia-playlist-input"]'));
+      assert.match(await textOf(page, "homeostasia-panel"), /Pega un vídeo o una playlist/);
+      await clickTestid(page, "homeostasia-sheet-close", "Cerrar Homeostasia");
+      await waitHidden(page, "homeostasia-sheet");
+      await clickTestid(page, "sidebar-create", "botón Crear");
+      await clickTestid(page, "menu-upload", "Subir canciones");
       await waitVisible(page, "upload-sheet", { context: "hoja Subir canciones" });
+      assert.ok(await page.$('[data-testid="upload-file-input"]'), "la subida manual sigue disponible en Subir canciones");
       const fallos = (await wcagViolations(page)).filter((v) => v.impacto === "serious" || v.impacto === "critical");
       assert.deepEqual(fallos, []);
       restaurarCatalogo();
