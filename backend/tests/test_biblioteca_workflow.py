@@ -288,3 +288,12 @@ def test_processing_packages_without_the_public_part_it_regenerates():
     assert "scripts/empaquetar_cambios.py" in procesar
     script = (ROOT / "scripts" / "empaquetar_cambios.py").read_text(encoding="utf-8")
     assert "package_processing_changes(" in script
+
+
+def test_processing_checks_out_the_current_main_and_not_the_event_commit():
+    # Las peticiones esperan en cola: con el commit del evento, la segunda de una tanda partía de un main viejo
+    # y publicar la rechazaba por base desfasada (seis incidencias fallidas el 2026-11-03).
+    _, procesar, _ = _jobs(_workflow_text())
+    checkout = procesar[procesar.index("actions/checkout"):]
+    checkout = checkout[: checkout.index("- name:")]
+    assert re.search(r"^\s*ref: main\s*$", checkout, re.M)

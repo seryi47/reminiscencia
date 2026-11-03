@@ -106,8 +106,11 @@ jobs:
       aplicar: ${{ steps.aplicar.outcome }}
     steps:
       # Sin credenciales en el disco: el procesado no tiene nada con que escribir en el repositorio.
+      # ref: main, no el commit del evento: las peticiones esperan en cola y, cuando les llega el turno, main ya
+      # tiene la anterior. Con el commit del evento, publicar las rechazaba por base desfasada.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           persist-credentials: false
 
       # Solo main procesa. Va antes de instalar nada: la instalación también ejecuta código del árbol.
