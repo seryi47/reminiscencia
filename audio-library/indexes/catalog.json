@@ -226,6 +226,22 @@
       "size_bytes": 264678,
       "added_at": "2026-11-03T09:12:11+00:00",
       "public": false
+    },
+    {
+      "id": "Sb5f387d07d3dd304",
+      "title": "prueba-licencia",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "CC0 1.0 (tono sintético generado para pruebas)",
+      "source": "Subida por seryi47",
+      "sha256": "b5f387d07d3dd30440943f138ff9dd24868978921dd83bce78277acd9e97a7c7",
+      "duration_s": 3.0,
+      "codec": "pcm_s16le",
+      "size_bytes": 264678,
+      "added_at": "2026-11-03T10:27:59+00:00",
+      "public": true
     }
   ]
 }
