@@ -172,8 +172,8 @@ export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = pro
       return json(200, { items: [{ url: url.href, title: `YouTube ${videoId(url.href)}` }] });
     }
 
-    const result = await runYtdlp(url, { spawnImpl, env });
     try {
+      const result = await runYtdlp(url, { spawnImpl, env });
       return json(200, { items: extractPlaylist({ url, ...result }) });
     } catch (error) {
       // YouTube suele bloquear yt-dlp desde IPs de nube, pero la página pública

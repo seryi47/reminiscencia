@@ -80,6 +80,23 @@ describe('API del importador de YouTube', () => {
     assert.equal((await response.json()).items.length, 2);
   });
 
+  test('usa el fallback también si yt-dlp no llega a arrancar', async () => {
+    const html = 'ytInitialData = ' + JSON.stringify({ contents: [
+      { videoId: 'abcdefghijk', title: { simpleText: 'Primera' } },
+    ] }) + ';';
+    const response = await handlePlaylist(playlistRequest('https://www.youtube.com/playlist?list=PL123'), {
+      spawnImpl: () => {
+        const child = new EventEmitter();
+        child.kill = () => {};
+        queueMicrotask(() => child.emit('error', Object.assign(new Error('yt-dlp no disponible'), { code: 'EFAIL' })));
+        return child;
+      },
+      fetchImpl: async () => new Response(html, { status: 200 }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).items, [{ url: videoUrl, title: 'Primera' }]);
+  });
+
   test('fija WAV/original y solo devuelve el identificador del job', async () => {
     let body;
     const response = await handleConvert(new Request('https://reminiscencia.test/api/youtube/convert', {
