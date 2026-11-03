@@ -24,7 +24,7 @@ function openCreateMenu(ctx, anchor) {
   openMenu(anchor, [
     { label: 'Lista', description: 'Crea una lista con canciones. Se guarda en este navegador.', icon: 'list', testid: 'menu-create-playlist', action: () => { ctx.createPlaylist(); return false; } },
     { label: 'Álbum', description: 'Pide un álbum nuevo en la biblioteca para todos (en GitHub).', icon: 'album', testid: 'menu-create-album', action: viaDialog(() => ctx.createAlbum()) },
-    { label: 'Subir canciones', description: 'Solo aquí, para todos o desde Internet Archive.', icon: 'upload', testid: 'menu-upload', action: viaDialog(() => ctx.openUpload()) },
+    { label: 'Subir canciones', description: 'Para todos: canciones sueltas o un ZIP. También desde Internet Archive.', icon: 'upload', testid: 'menu-upload', action: viaDialog(() => ctx.openUpload()) },
   ], { label: 'Crear' });
 }
 
