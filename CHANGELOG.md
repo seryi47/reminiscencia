@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## Sin publicar: APK, estado de cada subida hasta que se publica (2026-11-03; rama `feat/apk-subida-estado`)
+
+Sin probar en dispositivo.
+
+### Cambiado
+- «Subir canciones» muestra en «Tu biblioteca» una fila por archivo con el nombre (truncado), el estado y una barra de progreso: «Convirtiendo a Opus…», «Subiendo… 45 %» (por trozos), «Guardada en GitHub», «Publicándose… (suele tardar 2–3 minutos)» y «Publicada» con «Reproducir», o «Error: <motivo>» con «Reintentar». Arriba, el resumen («2 de 3 publicadas»). Sustituye al diálogo de resultados.
+- En cuanto termina la conversión, la canción aparece en «Todas las canciones» y en «Añadidas recientemente» con el título del archivo sin extensión y «Publicándose…», y suena desde su copia Opus local. Si la subida falla, queda con «Error» y «Reintentar», que reenvía el mismo Opus sin convertir de nuevo.
+- Publicada de verdad: tras guardarse en GitHub, la app lee `data/songs.json` cada 20 s hasta que aparece una canción nueva (un id que no estaba antes de subir) con ese título, como mucho 10 minutos y solo con la app en primer plano (sin temporizadores ni peticiones en segundo plano; al volver se comprueba enseguida). Si se pasa, «Sigue procesándose; aparecerá en la biblioteca cuando termine», y la reconoce la siguiente sincronización normal. Al publicarse, la biblioteca se sincroniza sola, sale un aviso en cualquier pestaña y la canción pública sustituye a la provisional sin cortar la reproducción; la copia local se borra cuando ya no suena ni está en la cola.
+- Lo que queda por publicar se guarda en `biblioteca-local/subidas/` (fuera de la copia de seguridad) y se sigue comprobando al volver.
+- Accesibilidad: cada fila y el resumen son regiones vivas con el estado; botones de 48 dp.
+
+### Añadido
+- `lib/upload_tracker.dart`, `lib/ui/uploads_panel.dart` y `test/upload_tracker_test.dart` (estados, detección con `songs.json` simulado, error y reintento, primer plano y segundo plano, recuperación y sustitución en la biblioteca), más pruebas de interfaz en `test/app_structure_test.dart`.
+
 ## Sin publicar: «Subir canciones» sube para todos, directo a GitHub (2026-11-03; en `main`)
 
 Decisión del propietario en [ADR-0017](docs/decisions/ADR-0017-subida-directa-github-web-publica.md), que sustituye en ADR-0008 «ni token ni funciones de Vercel en la web». Sin probar en Vercel ni en GitHub.

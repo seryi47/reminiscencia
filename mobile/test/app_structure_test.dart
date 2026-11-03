@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reminiscencia/image_picker.dart';
 import 'package:reminiscencia/layout.dart';
 import 'package:reminiscencia/library_controller.dart';
 import 'package:reminiscencia/local_audio.dart';
@@ -15,6 +16,7 @@ import 'package:reminiscencia/ui/home_page.dart';
 import 'package:reminiscencia/ui/player.dart';
 import 'package:reminiscencia/ui/song_row.dart';
 import 'package:reminiscencia/shared_upload.dart';
+import 'package:reminiscencia/upload_tracker.dart';
 
 import 'support/fakes.dart';
 
@@ -383,12 +385,18 @@ void main() {
   group('Subir canciones', () {
     late Directory work;
     late List<http.Request> requests;
+    late FakePollTimer timers;
+    late FakePublishedSongs published;
 
     setUp(() {
       work = Directory.systemTemp.createTempSync('subida_ui');
       requests = [];
+      timers = FakePollTimer();
+      published = FakePublishedSongs();
     });
-    tearDown(() {
+    tearDown(() async {
+      // Deja terminar las escrituras del índice de subidas.
+      await Future<void>.delayed(const Duration(milliseconds: 60));
       if (work.existsSync()) work.deleteSync(recursive: true);
     });
 
@@ -410,25 +418,56 @@ void main() {
       retryDelay: Duration.zero,
     );
 
-    /// Toca «Subir canciones» y espera, con E/S real, a que termine la subida.
-    Future<void> tapUpload(WidgetTester tester, AppServices services) async {
+    ({
+      AppServices services,
+      FakeLibrarySource source,
+      FakePlaybackPort playback,
+      MemoryCollectionsRepository repository,
+      List<Uri> openedUrls,
+      FakeCoverImages covers,
+      FakeCoverStore coverStore,
+      MemoryPlaylistCoverStore playlistCovers,
+    })
+    servicesWith({
+      required SharedUploader uploader,
+      AudioFilesPicker? pickAudio,
+    }) => buildTestServices(
+      songs: songs,
+      uploader: uploader,
+      pickAudio: pickAudio,
+      published: published,
+      uploadsStore: UploadsStore(
+        root: () async => Directory('${work.path}/subidas'),
+      ),
+      pollTimer: timers.call,
+    );
+
+    /// Deja correr la E/S real (conversión, índice, peticiones) y pinta.
+    Future<void> realWork(WidgetTester tester, AppServices services) async {
       await tester.runAsync(() async {
-        await tester.tap(find.byKey(const Key('upload-songs')));
         await Future<void>.delayed(const Duration(milliseconds: 50));
         for (var i = 0; i < 100 && services.library.importing; i++) {
           await Future<void>.delayed(const Duration(milliseconds: 20));
         }
+        await Future<void>.delayed(const Duration(milliseconds: 50));
       });
-      await tester.pumpAndSettle();
+      await settle(tester);
+    }
+
+    /// Toca «Subir canciones» y espera, con E/S real, a que termine la subida.
+    Future<void> tapUpload(WidgetTester tester, AppServices services) async {
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const Key('upload-songs')));
+      });
+      await realWork(tester, services);
     }
 
     testWidgets(
-      'una sola opción: sube directamente, sin hojas ni confirmación, con el aviso fijo',
+      'una fila por archivo con nombre, estado y barra, y el resumen; al publicarse, «Publicada» y aviso',
       (tester) async {
-        setWindow(tester, const Size(400, 800));
+        setWindow(tester, const Size(400, 900));
         var picks = 0;
-        final t = buildTestServices(
-          songs: songs,
+        final t = servicesWith(
           uploader: uploader(),
           pickAudio: () async {
             picks++;
@@ -443,6 +482,7 @@ void main() {
         await settle(tester);
 
         expect(find.text(kUploadRightsNotice), findsOneWidget);
+        expect(find.byKey(const Key('uploads-panel')), findsNothing);
         await tapUpload(tester, t.services);
 
         expect(picks, 1);
@@ -453,15 +493,90 @@ void main() {
           'Canci%C3%B3n%20de%20cuna.mp3',
           'Charleston.wav',
         ]);
-        // Resultado por archivo, con el título sin extensión.
-        expect(find.text('Canción de cuna'), findsOneWidget);
-        expect(find.text('Charleston'), findsOneWidget);
-        expect(find.text(kUploadedMessage), findsNWidgets(2));
         expect(t.openedUrls, isEmpty, reason: 'ya no abre GitHub');
+        expect(find.byType(AlertDialog), findsNothing);
 
-        await tester.tap(find.text('Aceptar'));
-        await tester.pumpAndSettle();
-        expect(find.text('Canción de cuna'), findsNothing);
+        // Una fila por archivo, con el nombre, el estado y la barra.
+        expect(find.text('Canción de cuna.mp3'), findsOneWidget);
+        expect(find.text('Charleston.wav'), findsOneWidget);
+        expect(find.text('Guardada en GitHub'), findsNWidgets(2));
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('uploads-panel')),
+            matching: find.byType(LinearProgressIndicator),
+          ),
+          findsNWidgets(2),
+        );
+        expect(find.text('0 de 2 publicadas'), findsOneWidget);
+        // Ya suena desde la copia local, antes de publicarse.
+        expect(find.text('Reproducir'), findsNWidgets(2));
+        expect(
+          tester.getSemantics(
+            find.bySemanticsLabel('Charleston.wav: Guardada en GitHub'),
+          ),
+          isSemantics(isLiveRegion: true),
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+        // Primera comprobación (20 s después): todavía no está.
+        await tester.runAsync(() async {
+          timers.fire();
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await settle(tester);
+        expect(
+          find.text('Publicándose… (suele tardar 2–3 minutos)'),
+          findsNWidgets(2),
+        );
+
+        // Aparece en songs.json: «Publicada», resumen y aviso con «Reproducir».
+        published.songs.add(const PublishedSong('S77', 'Charleston'));
+        await tester.runAsync(() async {
+          timers.fire();
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await settle(tester);
+        expect(find.text('Publicada'), findsOneWidget);
+        expect(find.text('1 de 2 publicadas'), findsOneWidget);
+        expect(find.text('«Charleston» ya está publicada.'), findsOneWidget);
+        expect(
+          tester.getSemantics(
+            find.bySemanticsLabel('Charleston.wav: Publicada'),
+          ),
+          isSemantics(isLiveRegion: true),
+        );
+        expect(t.source.loads, greaterThan(1), reason: 'se sincronizó sola');
+      },
+    );
+
+    testWidgets(
+      'en cuanto se convierte aparece en Inicio con «Publicándose…» y suena desde la copia local',
+      (tester) async {
+        setWindow(tester, const Size(400, 900));
+        final t = servicesWith(
+          uploader: uploader(),
+          pickAudio: () async => const [
+            PickedAudioFile(name: 'Vals nuevo.mp3', path: '/x/v.mp3'),
+          ],
+        );
+        await pumpApp(tester, t.services);
+        await tester.tap(find.text('Tu biblioteca'));
+        await settle(tester);
+        await tapUpload(tester, t.services);
+
+        await tester.tap(find.text('Inicio'));
+        await settle(tester);
+        expect(find.text('Vals nuevo'), findsWidgets);
+        expect(find.text('Publicándose…'), findsWidgets);
+
+        await tester.tap(find.text('Tu biblioteca'));
+        await settle(tester);
+        await tester.tap(find.text('Reproducir'));
+        await settle(tester);
+        final playing = t.playback.nowPlaying.value.songId!;
+        expect(playing, startsWith('P'));
+        expect(t.services.library.songOrNull(playing)?.title, 'Vals nuevo');
       },
     );
 
@@ -470,8 +585,7 @@ void main() {
     ) async {
       setWindow(tester, const Size(400, 800));
       var picks = 0;
-      final t = buildTestServices(
-        songs: songs,
+      final t = servicesWith(
         uploader: uploader(online: false),
         pickAudio: () async {
           picks++;
@@ -488,36 +602,54 @@ void main() {
       expect(requests, isEmpty);
     });
 
-    testWidgets('un error de la web se muestra en el archivo', (tester) async {
-      setWindow(tester, const Size(400, 800));
-      final t = buildTestServices(
-        songs: songs,
-        uploader: uploader(
-          reply: (_) => http.Response(
-            jsonEncode({'ok': false, 'error': 'Formato no admitido.'}),
-            415,
+    testWidgets(
+      'un error de la web se muestra en su fila con «Reintentar», que lo vuelve a subir',
+      (tester) async {
+        setWindow(tester, const Size(400, 900));
+        var fail = true;
+        final t = servicesWith(
+          uploader: uploader(
+            reply: (_) => fail
+                ? http.Response(
+                    jsonEncode({'ok': false, 'error': 'Formato no admitido.'}),
+                    415,
+                  )
+                : http.Response(
+                    jsonEncode({'ok': true, 'ruta': 'r', 'nombre': 'n'}),
+                    200,
+                  ),
           ),
-        ),
-        pickAudio: () async => const [
-          PickedAudioFile(name: 'Rara.flac', path: '/x/r.flac'),
-        ],
-      );
-      await pumpApp(tester, t.services);
-      await tester.tap(find.text('Tu biblioteca'));
-      await settle(tester);
-      await tapUpload(tester, t.services);
+          pickAudio: () async => const [
+            PickedAudioFile(name: 'Rara.flac', path: '/x/r.flac'),
+          ],
+        );
+        await pumpApp(tester, t.services);
+        await tester.tap(find.text('Tu biblioteca'));
+        await settle(tester);
+        await tapUpload(tester, t.services);
 
-      expect(find.text('Rara'), findsOneWidget);
-      expect(
-        find.text('No se pudo subir: Formato no admitido.'),
-        findsOneWidget,
-      );
-      expect(requests, hasLength(1));
-    });
+        expect(find.text('Rara.flac'), findsOneWidget);
+        expect(find.text('Error: Formato no admitido.'), findsOneWidget);
+        expect(find.text('Reintentar'), findsOneWidget);
+        expect(find.text('0 de 1 publicada'), findsOneWidget);
+        expect(requests, hasLength(1));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+
+        fail = false;
+        await tester.runAsync(() async {
+          await tester.tap(find.text('Reintentar'));
+        });
+        await realWork(tester, t.services);
+
+        expect(requests, hasLength(2));
+        expect(find.text('Guardada en GitHub'), findsOneWidget);
+        expect(find.text('Reintentar'), findsNothing);
+      },
+    );
 
     testWidgets('si se cancela el selector no pasa nada', (tester) async {
       setWindow(tester, const Size(400, 800));
-      final t = buildTestServices(songs: songs, uploader: uploader());
+      final t = servicesWith(uploader: uploader());
       await pumpApp(tester, t.services);
       await tester.tap(find.text('Tu biblioteca'));
       await settle(tester);
@@ -525,6 +657,7 @@ void main() {
 
       expect(requests, isEmpty);
       expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const Key('uploads-panel')), findsNothing);
     });
   });
 

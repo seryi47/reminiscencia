@@ -6,6 +6,7 @@ import '../playback.dart';
 import '../services.dart';
 import '../song.dart';
 import '../theme.dart';
+import '../upload_tracker.dart';
 import 'common.dart';
 import 'library_edit.dart';
 import 'playlist_flows.dart';
@@ -36,6 +37,7 @@ class SongRow extends StatelessWidget {
       builder: (context, now, _) {
         final current = now.songId == song.id;
         final details = songDetails(song);
+        final uploadFailed = song.uploadStatus == kUploadErrorLabel;
         return Semantics(
           container: true,
           button: true,
@@ -80,7 +82,9 @@ class SongRow extends StatelessWidget {
                               children: [
                                 if (song.local) ...[
                                   Icon(
-                                    Icons.phone_android_rounded,
+                                    song.provisional
+                                        ? Icons.cloud_upload_outlined
+                                        : Icons.phone_android_rounded,
                                     size: 14,
                                     color: palette.inkMuted,
                                   ),
@@ -102,6 +106,21 @@ class SongRow extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (uploadFailed)
+                      Semantics(
+                        button: true,
+                        label: 'Reintentar la subida de «${song.title}»',
+                        onTap: () => _retry(context),
+                        excludeSemantics: true,
+                        child: TextButton(
+                          onPressed: () => _retry(context),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                            tapTargetSize: MaterialTapTargetSize.padded,
+                          ),
+                          child: const Text('Reintentar'),
+                        ),
+                      ),
                     IconButton(
                       tooltip: 'Más opciones de «${song.title}»',
                       icon: Icon(
@@ -124,10 +143,18 @@ class SongRow extends StatelessWidget {
       },
     );
   }
+
+  Future<void> _retry(BuildContext context) => runWithNotice(
+    context,
+    () => services.library.retryUpload(song.id),
+    failurePrefix: 'No se pudo reintentar',
+  );
 }
 
-/// «Artista · año», o lo que haya. Las canciones subidas dicen dónde están.
+/// «Artista · año», o lo que haya. Las canciones subidas dicen dónde están; las que se están publicando, su estado.
 String songDetails(Song song) {
+  final status = song.uploadStatus;
+  if (status != null) return status;
   final parts = [
     if (song.artist.isNotEmpty) song.artist,
     if (song.year != null) '${song.year}',
@@ -214,61 +241,86 @@ class _SongMenu extends StatelessWidget {
               ),
             ),
             const Divider(height: 1),
-            ListTile(
-              leading: Icon(
-                liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: liked ? theme.colorScheme.primary : null,
+            if (song.provisional) ...[
+              if (song.uploadStatus == kUploadErrorLabel)
+                ListTile(
+                  leading: const Icon(Icons.refresh_rounded),
+                  title: const Text('Reintentar la subida'),
+                  onTap: () {
+                    close();
+                    runWithNotice(
+                      hostContext,
+                      () => services.library.retryUpload(song.id),
+                      failurePrefix: 'No se pudo reintentar',
+                    );
+                  },
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Text(
+                  'Suena desde la copia de este teléfono. Cuando se publique podrás añadirla a «Me gusta» y a tus listas.',
+                  style: theme.textTheme.bodySmall,
+                ),
               ),
-              title: Text(liked ? 'Quitar de Me gusta' : 'Añadir a Me gusta'),
-              onTap: () {
-                close();
-                runWithNotice(hostContext, () async {
-                  await collections.toggleFavorite(song.id);
-                }, failurePrefix: 'No se pudo cambiar «Me gusta»');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.playlist_add_rounded),
-              title: const Text('Añadir a una lista'),
-              onTap: () {
-                close();
-                showAddToPlaylistDialog(hostContext, services, song);
-              },
-            ),
-            if (playlistId != null)
+            ] else ...[
               ListTile(
-                leading: const Icon(Icons.remove_circle_outline_rounded),
-                title: const Text('Quitar de esta lista'),
+                leading: Icon(
+                  liked
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  color: liked ? theme.colorScheme.primary : null,
+                ),
+                title: Text(liked ? 'Quitar de Me gusta' : 'Añadir a Me gusta'),
                 onTap: () {
                   close();
-                  runWithNotice(
-                    hostContext,
-                    () => collections.removeSong(playlistId!, song.id),
-                    failurePrefix: 'No se pudo quitar la canción',
-                  );
+                  runWithNotice(hostContext, () async {
+                    await collections.toggleFavorite(song.id);
+                  }, failurePrefix: 'No se pudo cambiar «Me gusta»');
                 },
               ),
-            if (song.local)
               ListTile(
-                leading: const Icon(Icons.delete_outline_rounded),
-                title: const Text('Borrar de este teléfono'),
+                leading: const Icon(Icons.playlist_add_rounded),
+                title: const Text('Añadir a una lista'),
                 onTap: () {
                   close();
-                  confirmDeleteLocal(hostContext, services.library, song);
+                  showAddToPlaylistDialog(hostContext, services, song);
                 },
               ),
-            if (isEditableSong(song))
-              ...libraryEditTiles(
-                hostContext: hostContext,
-                services: services,
-                close: close,
-                editDetails: () =>
-                    editSongDetailsFlow(hostContext, services, song),
-                addToAlbum: () =>
-                    addSongToAlbumFlow(hostContext, services, song),
-                coverId: song.id,
-                coverWhat: 'la canción',
-              ),
+              if (playlistId != null)
+                ListTile(
+                  leading: const Icon(Icons.remove_circle_outline_rounded),
+                  title: const Text('Quitar de esta lista'),
+                  onTap: () {
+                    close();
+                    runWithNotice(
+                      hostContext,
+                      () => collections.removeSong(playlistId!, song.id),
+                      failurePrefix: 'No se pudo quitar la canción',
+                    );
+                  },
+                ),
+              if (song.local)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded),
+                  title: const Text('Borrar de este teléfono'),
+                  onTap: () {
+                    close();
+                    confirmDeleteLocal(hostContext, services.library, song);
+                  },
+                ),
+              if (isEditableSong(song))
+                ...libraryEditTiles(
+                  hostContext: hostContext,
+                  services: services,
+                  close: close,
+                  editDetails: () =>
+                      editSongDetailsFlow(hostContext, services, song),
+                  addToAlbum: () =>
+                      addSongToAlbumFlow(hostContext, services, song),
+                  coverId: song.id,
+                  coverWhat: 'la canción',
+                ),
+            ],
             if (song.license.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),

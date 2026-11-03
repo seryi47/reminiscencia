@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../layout.dart';
 import '../services.dart';
 import '../theme.dart';
+import '../upload_tracker.dart';
+import 'common.dart';
 import 'home_page.dart';
 import 'library_page.dart';
 import 'player.dart';
@@ -29,23 +33,53 @@ class _HomeShellState extends State<HomeShell> {
     for (final tab in AppTab.values) tab: GlobalKey<NavigatorState>(),
   };
   late final AppLifecycleListener _lifecycle;
+  StreamSubscription<UploadNotice>? _notices;
 
   @override
   void initState() {
     super.initState();
+    final library = widget.services.library;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.services.library.ensureLoaded();
+      if (mounted) library.ensureLoaded();
     });
-    // Sin temporizadores: la biblioteca se sincroniza al volver a primer plano (si pasó un tiempo)
-    // y la conversión de archivos locales se para al salir de la app.
+    // La biblioteca se sincroniza al volver a primer plano (si pasó un tiempo). Al salir de la app se para la
+    // conversión y la comprobación de lo que se está publicando; al volver, se comprueba enseguida.
+    final state = WidgetsBinding.instance.lifecycleState;
+    library.uploads.setForeground(
+      state == null || state == AppLifecycleState.resumed,
+    );
     _lifecycle = AppLifecycleListener(
-      onResume: () => widget.services.library.syncIfStale(),
-      onPause: () => widget.services.library.pauseImport(),
+      onResume: () {
+        library.resumeUploads();
+        library.syncIfStale();
+      },
+      onPause: () => library.pauseImport(),
+    );
+    // Aviso en cualquier pestaña cuando se publica una subida.
+    _notices = library.uploads.notices.listen(_showNotice);
+  }
+
+  void _showNotice(UploadNotice notice) {
+    if (!mounted) return;
+    final library = widget.services.library;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(notice.message),
+        action: SnackBarAction(
+          label: 'Reproducir',
+          onPressed: () => runWithNotice(
+            context,
+            () => library.playUpload(notice.key),
+            failurePrefix: 'No se pudo reproducir',
+          ),
+        ),
+      ),
     );
   }
 
   @override
   void dispose() {
+    _notices?.cancel();
     _lifecycle.dispose();
     super.dispose();
   }
