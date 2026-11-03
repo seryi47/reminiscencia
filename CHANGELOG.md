@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## Sin publicar: el buzón acepta ZIP con canciones (2026-11-03; rama `feat/buzon-zip`)
+
+Pedido del propietario: subir un álbum entero por la página de GitHub en un solo `.zip`.
+
+### Añadido
+- `sonidos.buzon`: un `.zip` del buzón se descomprime con `zipfile`, entrada a entrada, en un directorio temporal fuera del repositorio; cada canción (WAV, MP3, M4A, FLAC, OGG u Opus, también en subcarpetas) se convierte, se cataloga y se publica con la licencia del commit, y el ZIP se borra del buzón. El título es el nombre de su archivo sin ruta ni extensión.
+- Seguridad: solo se usa el nombre base de cada entrada, copiada a un nombre fijo (protección zip-slip, rutas absolutas y `..`); se ignoran y se cuentan carpetas, `__MACOSX/`, ocultos, enlaces simbólicos, lo que no es un archivo y lo que no es audio. Un ZIP cifrado o dañado se rechaza entero con su motivo y se borra. Sin límite de tamaño (orden del propietario).
+- Resultado y resumen del job: lista `zips` con las canciones de cada ZIP y lo ignorado.
+- Pruebas: ZIP generados en la prueba (stored y deflate, subcarpetas, `__MACOSX`, no audio, zip-slip, dañado, cifrado, nombres raros y UTF-8 sin marca) con tonos sintéticos de ffmpeg, y el ciclo procesar, empaquetar y publicar. Suite de `backend/`: 715 pruebas en verde.
+
 ## Sin publicar: «Subir canciones» muestra cada paso hasta «Publicada» (2026-11-03; en `main`)
 
 Pedido del propietario: la hoja se quedaba en «Subida: llegará a todos en un par de minutos» sin decir si la canción se había subido o publicado.

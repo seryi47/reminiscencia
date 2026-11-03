@@ -5,7 +5,9 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import unicodedata
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -701,4 +703,224 @@ def test_procesar_empaquetar_y_publicar_una_subida_por_trozos(repo, tmp_path, op
 
     staged = _git(repo, "diff", "--cached", "--name-status", "--no-renames").splitlines()
     assert f"D\t{PARTES}/{UPLOAD_ID}/manifiesto.json" in staged
+    assert f"A\tfrontend/web/audio/{song_id}.opus" in staged
+
+
+# --- ZIP con canciones ---------------------------------------------------------------------------------------------
+
+
+def _tono(tmp_path: Path, extension: str, frequency: int) -> bytes:
+    rate = 48000 if extension == ".opus" else 44100  # libopus solo codifica a 48 kHz (y submúltiplos)
+    destino = tmp_path / "tonos" / f"{frequency}{extension}"
+    return make_tone(destino, seconds=0.5, frequency=frequency, sample_rate=rate).read_bytes()
+
+
+def _zip(repo: Path, nombre: str, entradas: list[tuple], *, compression: int = zipfile.ZIP_DEFLATED) -> str:
+    """Escribe audio-library/buzon/<nombre> con las entradas (nombre o ZipInfo, bytes)."""
+    destino = repo / BUZON / nombre
+    with zipfile.ZipFile(destino, "w", compression=compression) as archive:
+        for entrada, data in entradas:
+            if isinstance(entrada, zipfile.ZipInfo):
+                entrada.compress_type = compression
+            archive.writestr(entrada, data)
+    return f"{BUZON}/{nombre}"
+
+
+def _estado(repo: Path) -> list[str]:
+    salida = _git(repo, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "--untracked-files=all")
+    return sorted(item[3:] for item in salida.split("\0") if item)
+
+
+@pytest.mark.parametrize("compression", [zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED])
+def test_un_zip_publica_cada_cancion_con_el_nombre_de_su_archivo_y_se_borra(repo, tmp_path, compression):
+    enlace = zipfile.ZipInfo("Disco/enlace.mp3")
+    enlace.external_attr = (0o120777 << 16)
+    ruta = _zip(repo, "Álbum de 1960.zip", [
+        ("Disco/", b""),
+        ("Disco/Cara A/01 Vals.mp3", _tono(tmp_path, ".mp3", 300)),
+        ("Disco/Cara B/02 Copla.FLAC", _tono(tmp_path, ".flac", 350)),
+        ("Bolero.wav", _tono(tmp_path, ".wav", 400)),
+        ("Tango.m4a", _tono(tmp_path, ".m4a", 450)),
+        ("Disco/Pasodoble.ogg", _tono(tmp_path, ".ogg", 500)),
+        ("Nana.opus", _tono(tmp_path, ".opus", 550)),
+        ("__MACOSX/Disco/._01 Vals.mp3", b"\x00\x05\x16\x07basura de macOS"),
+        ("Disco/.DS_Store", b"basura"),
+        ("Disco/._Bolero.wav", b"basura"),
+        ("Disco/portada.jpg", b"\xff\xd8\xff no es audio"),
+        ("notas.txt", b"hola"),
+        (enlace, b"../../indexes/catalog.json"),
+    ], compression=compression)
+    _commit(repo, CON_LICENCIA)
+
+    result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+
+    titulos = {item["titulo"] for item in result["publicas"]}
+    assert titulos == {"01 Vals", "02 Copla", "Bolero", "Tango", "Pasodoble", "Nana"}
+    assert {item["archivo"] for item in result["publicas"]} == {
+        "Álbum de 1960.zip/01 Vals.mp3", "Álbum de 1960.zip/02 Copla.FLAC", "Álbum de 1960.zip/Bolero.wav",
+        "Álbum de 1960.zip/Tango.m4a", "Álbum de 1960.zip/Pasodoble.ogg", "Álbum de 1960.zip/Nana.opus",
+    }
+    for item in result["publicas"]:
+        song = _cancion(repo, item["song_id"])
+        assert song["public"] is True and song["license"] == "CC BY 4.0 (grabación propia)"
+        assert song["source"] == "Subida por ana"
+        assert (repo / "audio-library/audio" / f"{song['id']}.opus").stat().st_size > 0
+        assert (repo / "frontend/web/audio" / f"{song['id']}.opus").exists()
+    assert result["zips"] == [{
+        "archivo": "Álbum de 1960.zip", "canciones": 6,
+        "ignorados": {"carpetas": 1, "macosx": 1, "ocultos": 2, "enlaces": 1, "no_audio": 2},
+    }]
+    assert result["rechazados"] == result["revisar"] == []
+    assert not (repo / ruta).exists()
+    # Del ZIP solo llegan al repositorio el audio convertido y el catálogo: nada extraído ni temporal.
+    ids = {item["song_id"] for item in result["publicas"]}
+    permitidas = {
+        ruta, CATALOG, *(f"audio-library/audio/{song_id}.opus" for song_id in ids),
+        *(f"frontend/web/audio/{song_id}.opus" for song_id in ids),
+        *(f"frontend/web/data/{name}" for name in ("songs.json", "folders.json", "catalog.json")),
+    }
+    estado = set(_estado(repo))
+    assert estado <= permitidas
+    assert {ruta, CATALOG, *(f"audio-library/audio/{song_id}.opus" for song_id in ids)} <= estado
+    resumen = buzon.resumen_markdown(result)
+    assert "ZIP descomprimidos" in resumen and "6 canción(es)" in resumen and "2 que no son audio" in resumen
+
+
+def test_un_zip_sin_licencia_entra_privado_y_las_repetidas_no_se_duplican(repo, tmp_path):
+    tono = _tono(tmp_path, ".wav", 600)
+    ruta = _zip(repo, "privado.zip", [("a/Uno.wav", tono), ("b/Uno.wav", tono), ("Dos.wav", _tono(tmp_path, ".wav", 650))])
+    _commit(repo, SIN_LICENCIA)
+
+    result = procesar_buzon(repo=repo, event=_evento((SIN_LICENCIA, [ruta])), actor="ana")
+
+    assert sorted(item["titulo"] for item in result["privadas"]) == ["Dos", "Uno"]
+    assert [item["titulo"] for item in result["duplicadas"]] == ["Uno"]
+    assert all(_cancion(repo, item["song_id"])["public"] is False for item in result["privadas"])
+    assert not (repo / ruta).exists()
+
+
+def test_un_zip_con_rutas_peligrosas_nunca_escribe_fuera_y_usa_solo_el_nombre_base(repo, tmp_path):
+    tono = _tono(tmp_path, ".wav", 700)
+    ruta = _zip(repo, "trampa.zip", [
+        ("../../../../evil.wav", tono),
+        ("/tmp/absoluta.wav", tono),
+        ("C:/Windows/disco.wav", tono),
+        ("..\\..\\invertida.wav", tono),
+        ("bien/../../fuera.wav", tono),
+        ("carpeta/../../audio-library/indexes/catalog.json", b"{}"),
+        ("../../audio-library/audio/Sdeadbeefdeadbeef.opus", tono),
+        ("dentro/Buena.wav", _tono(tmp_path, ".wav", 750)),
+    ])
+    _commit(repo, CON_LICENCIA)
+    antes = _catalogo(repo)
+
+    result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+
+    assert [item["titulo"] for item in result["publicas"]] == ["Buena"]
+    assert result["zips"][0]["ignorados"] == {"rutas_peligrosas": 7}
+    assert len(_catalogo(repo)["songs"]) == len(antes["songs"]) + 1
+    for nombre in ("evil.wav", "absoluta.wav", "disco.wav", "invertida.wav", "fuera.wav"):
+        assert not list(tmp_path.rglob(nombre)), nombre
+        assert not (Path(tempfile.gettempdir()) / nombre).exists(), nombre
+    assert not (repo / "audio-library/audio/Sdeadbeefdeadbeef.opus").exists()
+
+
+def test_un_zip_danado_se_rechaza_entero_y_se_borra(repo, tmp_path):
+    ruta = _zip(repo, "roto.zip", [("Uno.wav", _tono(tmp_path, ".wav", 800)), ("Dos.wav", _tono(tmp_path, ".wav", 850))],
+                compression=zipfile.ZIP_STORED)
+    data = bytearray((repo / ruta).read_bytes())
+    data[len(data) // 2] ^= 0xFF  # un byte del audio de dentro: el CRC ya no cuadra
+    (repo / ruta).write_bytes(bytes(data))
+    (repo / BUZON / "falso.zip").write_bytes(b"esto no es un zip")
+    (repo / BUZON / "vacio.zip").write_bytes(b"")
+    _commit(repo, CON_LICENCIA)
+    antes = _catalogo(repo)
+
+    result = procesar_buzon(
+        repo=repo, event=_evento((CON_LICENCIA, [ruta, f"{BUZON}/falso.zip", f"{BUZON}/vacio.zip"])), actor="ana",
+    )
+
+    motivos = {item["archivo"]: item["motivo"] for item in result["rechazados"]}
+    assert set(motivos) == {"roto.zip", "falso.zip", "vacio.zip"}
+    assert "dañado" in motivos["roto.zip"] and "dañado" in motivos["falso.zip"]
+    assert result["publicas"] == result["zips"] == []
+    assert _catalogo(repo) == antes
+    assert sorted(path.name for path in (repo / BUZON).iterdir()) == ["README.md"]
+
+
+def test_un_zip_cifrado_se_rechaza_y_se_borra(repo, tmp_path):
+    ruta = _zip(repo, "cifrado.zip", [("Secreta.wav", _tono(tmp_path, ".wav", 900)), ("Abierta.wav", _tono(tmp_path, ".wav", 950))],
+                compression=zipfile.ZIP_STORED)
+    # zipfile no escribe ZIP cifrados: se marca la primera entrada como cifrada en su cabecera local y en el directorio
+    # central (bit 0 de los indicadores), como la dejaría un compresor con contraseña.
+    data = bytearray((repo / ruta).read_bytes())
+    assert data[:4] == b"PK\x03\x04"
+    data[6] |= 0x1
+    central = data.index(b"PK\x01\x02")
+    data[central + 8] |= 0x1
+    (repo / ruta).write_bytes(bytes(data))
+    _commit(repo, CON_LICENCIA)
+    antes = _catalogo(repo)
+
+    result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+
+    assert result["rechazados"] == [
+        {"archivo": "cifrado.zip", "motivo": "el ZIP está cifrado (con contraseña): no se puede descomprimir"},
+    ]
+    assert _catalogo(repo) == antes
+    assert not (repo / ruta).exists()
+
+
+def test_una_entrada_del_zip_que_no_es_audio_aunque_lo_parezca_se_rechaza_sin_parar_las_demas(repo, tmp_path):
+    ruta = _zip(repo, "mezcla.zip", [("falso.mp3", b"no es audio"), ("vacio.wav", b""), ("Real.wav", _tono(tmp_path, ".wav", 1000))])
+    _commit(repo, CON_LICENCIA)
+
+    result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+
+    motivos = {item["archivo"]: item["motivo"] for item in result["rechazados"]}
+    assert motivos == {"mezcla.zip/falso.mp3": "no es audio (ffprobe no encuentra una pista de audio)",
+                       "mezcla.zip/vacio.wav": "está vacío"}
+    assert [item["titulo"] for item in result["publicas"]] == ["Real"]
+    assert result["zips"][0]["canciones"] == 3
+
+
+def test_los_nombres_de_dentro_del_zip_se_limpian_para_el_titulo(repo, tmp_path):
+    ruta = _zip(repo, "raros.zip", [("x/Can\u202eción\u0007 rara.wav", _tono(tmp_path, ".wav", 1050)),
+                                    ("\u200b.mp3", _tono(tmp_path, ".mp3", 1100))])
+    _commit(repo, CON_LICENCIA)
+
+    result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+
+    assert sorted(item["titulo"] for item in result["publicas"]) == ["Can ción rara", "Sin título"]
+    assert all(not buzon._has_control(item["archivo"]) for item in result["publicas"])
+
+
+def test_un_nombre_utf8_sin_la_marca_se_lee_como_utf8():
+    info = zipfile.ZipInfo("Canción.mp3".encode("utf-8").decode("cp437"))
+    info.flag_bits = 0
+    assert buzon.clasificar_entrada(info) == (None, "Canción.mp3")
+    info = zipfile.ZipInfo("Carpeta/Ñu.wav")
+    info.flag_bits = 0x800
+    assert buzon.clasificar_entrada(info) == (None, "Ñu.wav")
+
+
+def test_procesar_empaquetar_y_publicar_un_zip(repo, tmp_path):
+    ruta = _zip(repo, "Recuerdos.zip", [("CD1/Vals.wav", _tono(tmp_path, ".wav", 1200))])
+    _commit(repo, CON_LICENCIA)
+    trabajo = tmp_path / "procesar"
+    subprocess.run(["git", "clone", "-q", str(repo), str(trabajo)], check=True)
+
+    result = procesar_buzon(repo=trabajo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+    package = tmp_path / "paquete"
+    paquete.package_processing_changes(trabajo, package, action="buzon")
+    manifiesto = json.loads((package / "manifiesto.json").read_text(encoding="utf-8"))
+    song_id = result["publicas"][0]["song_id"]
+    assert {(item["ruta"], item["estado"]) for item in manifiesto["cambios"]} == {
+        (ruta, "D"), (CATALOG, "M"), (f"audio-library/audio/{song_id}.opus", "A"),
+    }
+
+    paquete.publish_package(package, repo, head=paquete.head_commit(repo))
+
+    staged = _git(repo, "diff", "--cached", "--name-status", "--no-renames").splitlines()
+    assert f"D\t{ruta}" in staged
     assert f"A\tfrontend/web/audio/{song_id}.opus" in staged

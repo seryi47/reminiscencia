@@ -41,7 +41,7 @@ Las canciones que se guardaron antes **solo en este navegador** (ADR-0012) sigue
 Quien tiene **permiso de escritura en el repositorio** puede seguir subiendo al buzón desde GitHub (ADR-0014), por ejemplo para declarar otra licencia:
 
 1. Abre la página de subida del buzón: https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon
-2. Arrastra los archivos: WAV, MP3, M4A, FLAC, OGG u OPUS. El título de cada canción será el nombre del archivo sin la extensión.
+2. Arrastra los archivos: WAV, MP3, M4A, FLAC, OGG u OPUS. El título de cada canción será el nombre del archivo sin la extensión. También vale un `.zip` con canciones, aunque estén en subcarpetas (ver abajo).
 3. En la descripción del commit, escribe una línea con la licencia:
 
    ```
@@ -53,6 +53,8 @@ Quien tiene **permiso de escritura en el repositorio** puede seguir subiendo al 
 El workflow `buzon` convierte cada archivo a Opus, lo añade al catálogo, regenera la parte pública y lo borra del buzón. Con la línea `Licencia:`, las canciones entran **públicas** con esa licencia y la fuente «Subida por <tu cuenta>». Sin ella, entran **privadas** y el resumen de la ejecución lo indica; para publicarlas, sube otra vez el mismo archivo con la línea `Licencia:`. **Quien sube responde de la licencia que declara.**
 
 Si una ejecución no llega a procesar lo subido, quien tenga permiso de escritura puede lanzar el workflow `buzon` a mano desde Actions; lo que procesa así entra **privado**, porque no hay mensaje de commit del que leer la licencia. Excepción: las subidas por trozos de la web completas entran públicas con la licencia de la web (ADR-0017).
+
+Un **ZIP** se descomprime fuera del repositorio, entrada a entrada, y cada canción que contiene (WAV, MP3, M4A, FLAC, OGG u OPUS, también en subcarpetas) se procesa como un archivo del buzón, con la licencia del commit; su título es el nombre de su archivo sin carpeta ni extensión (`Disco/Cara A/01 Vals.mp3` pasa a «01 Vals»). Después se borra el ZIP del buzón. Las carpetas, lo de `__MACOSX/`, los ocultos, los enlaces simbólicos, lo que no es audio y las rutas absolutas o con `..` se ignoran y se cuentan en el resumen. Un ZIP con contraseña o dañado se rechaza entero, sin catalogar nada, y se borra. El ZIP no tiene límite de tamaño, aunque el navegador de GitHub no admite más de 25 MiB por archivo.
 
 Se rechazan, y se borran del buzón, los archivos que no son de audio y los de más de 100 MiB. Los enlaces simbólicos, las subcarpetas y los nombres con caracteres raros se quedan en el buzón para revisarlos a mano. El resultado está en la pestaña Actions, en el resumen de la ejecución `buzon`.
 

@@ -8,7 +8,9 @@ Carpeta de paso para subir canciones a la biblioteca (ADR-0014). Solo pueden sub
 
 El workflow `buzon` convierte cada archivo a Opus, lo añade al catálogo con el nombre del archivo como título y lo borra de aquí. Lo que se sube queda en el historial de git aunque se borre del buzón.
 
-Desde el navegador, GitHub admite hasta 25 MiB por archivo: usa MP3 o FLAC antes que WAV. Quien sube responde de la licencia que declara.
+También se puede subir un `.zip` con canciones (WAV, MP3, M4A, FLAC, OGG u OPUS, también en subcarpetas). El workflow lo descomprime fuera del repositorio, procesa cada canción como un archivo del buzón, con la licencia del commit y como título el nombre de su archivo sin carpeta ni extensión (`Disco/Cara A/01 Vals.mp3` pasa a «01 Vals»), y borra el ZIP de aquí. Las carpetas, lo de `__MACOSX/`, los ocultos, los enlaces simbólicos y lo que no es audio se ignoran y se cuentan en el resumen de la ejecución. Un ZIP con contraseña o dañado se rechaza entero y se borra.
+
+Desde el navegador, GitHub admite hasta 25 MiB por archivo (también por ZIP): usa MP3 o FLAC antes que WAV. Quien sube responde de la licencia que declara.
 
 ## Portadas
 

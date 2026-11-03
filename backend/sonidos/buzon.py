@@ -20,6 +20,15 @@ Rechazos:
   caracteres fuera de la lista (rutas, controles, caracteres de formato, punto inicial...). El paquete no puede
   borrarlos (sonidos.paquete solo admite nombres válidos).
 
+ZIP (2026-11-03): un <nombre>.zip del buzón se descomprime entrada a entrada en un directorio temporal fuera del
+repositorio y cada canción que contiene (WAV, MP3, M4A, FLAC, OGG u Opus, también en subcarpetas) se procesa como un
+archivo del buzón, con la licencia del commit que trajo el ZIP y como título el nombre de su archivo sin ruta ni
+extensión. Las rutas del ZIP nunca se usan para escribir: cada entrada se copia a un nombre fijo del directorio
+temporal, que se borra antes de la siguiente. Se ignoran, y se cuentan en el resultado, las carpetas, lo de
+__MACOSX/, los ocultos, los enlaces simbólicos, lo que no es un archivo, lo que no es audio y las rutas absolutas o
+con «..». Un ZIP cifrado o dañado se rechaza entero, sin catalogar nada. El ZIP se borra del buzón. Sin límite de
+tamaño (orden del propietario).
+
 Portadas (ADR-0016): audio-library/buzon/portadas/<ID>.<jpg|jpeg|png|webp>, donde ID es el id de una canción
 (S + 16 hexadecimales) o de una carpeta (F + 16 hexadecimales) que ya está en el catálogo (o que entra en el mismo
 push). Máximo 10 MiB. Se convierte a JPEG de 640×640 (sonidos.portadas) en audio-library/covers/<ID>.jpg, el catálogo
@@ -44,7 +53,10 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import tempfile
 import unicodedata
+import zipfile
+import zlib
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -77,6 +89,23 @@ PARTES_DIRECTORY = f"{BUZON_DIRECTORY}/{PARTES_SUBDIRECTORY}"
 PARTES_MANIFEST = "manifiesto.json"
 MAX_PARTES = 1000
 MAX_MANIFEST_BYTES = 4096
+# ZIP con canciones (ver el docstring del módulo).
+ZIP_EXTENSION = ".zip"
+ZIP_IGNORED = {
+    "carpetas": "carpetas",
+    "macosx": "de __MACOSX",
+    "ocultos": "ocultos",
+    "enlaces": "enlaces simbólicos",
+    "no_son_archivos": "que no son archivos",
+    "rutas_peligrosas": "con ruta absoluta o «..»",
+    "no_audio": "que no son audio",
+}
+_ZIP_UTF8_FLAG = 0x800
+_ZIP_ENCRYPTED_FLAG = 0x1
+_FILE_TYPE_MASK = 0o170000
+_REGULAR_FILE = 0o100000
+_SYMLINK = 0o120000
+_DRIVE = re.compile(r"[A-Za-z]:")
 WEB_LICENSE = "Subida desde la web pública; quien la sube declara tener derecho a publicarla"
 _UPLOAD_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _PART_NAME = re.compile(r"(?:0|[1-9][0-9]{0,2})\.part")  # índices de 0 a 999: como mucho MAX_PARTES partes
@@ -112,6 +141,22 @@ def nombre_valido(name: object) -> bool:
 def extension_de_audio(name: str) -> bool:
     lower = name.lower()
     return any(lower.endswith(ext) and len(lower) > len(ext) for ext in EXTENSIONS)
+
+
+def es_zip(name: str) -> bool:
+    lower = name.lower()
+    return lower.endswith(ZIP_EXTENSION) and len(lower) > len(ZIP_EXTENSION)
+
+
+def nombre_visible(name: str) -> str:
+    """El nombre de un archivo de dentro de un ZIP con lo que nombre_valido no admite cambiado por espacios (como hace
+    la web con lo que sube): sin controles, caracteres de formato ni separadores raros en el catálogo ni en el
+    resumen."""
+    text = unicodedata.normalize("NFC", name)
+    kept = "".join(
+        char if unicodedata.category(char)[0] in "LMN" or char in _NAME_PUNCTUATION else " " for char in text
+    )
+    return " ".join(kept.split())
 
 
 def titulo_desde_nombre(name: str) -> str:
@@ -233,8 +278,8 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     data = catalog.load(catalog_path)
     result: dict = {
         "accion": "buzon", "actor": actor,
-        "publicas": [], "privadas": [], "duplicadas": [], "portadas": [], "rechazados": [], "revisar": [],
-        "ya_no_estan": [],
+        "publicas": [], "privadas": [], "duplicadas": [], "portadas": [], "zips": [], "rechazados": [],
+        "revisar": [], "ya_no_estan": [],
     }
     changed = False
     source = UPLOADED_BY + actor
@@ -268,32 +313,23 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
                 result["revisar"].append({"ruta": path, "motivo": "no es un archivo"})
                 continue
 
-            motivo = _motivo_de_rechazo(target, name)
-            info = None
-            if motivo is None:
-                try:
-                    info = probe(target)
-                except ProbeError:
-                    motivo = "no es audio (ffprobe no encuentra una pista de audio)"
-                else:
-                    if not info.duration_s > 0:
-                        motivo = "el audio no tiene duración"
-            if motivo is not None:
-                result["rechazados"].append({"archivo": name, "motivo": motivo})
+            license_text = licencia_desde_mensaje(message)
+            if es_zip(name):
+                zip_changed = _procesar_zip(
+                    data, result, target=target, name=name, repo=repo, license_text=license_text, source=source,
+                    audio_dir=audio_dir, staging=staging,
+                )
                 target.unlink()
+                changed = changed or zip_changed
                 continue
 
-            license_text = licencia_desde_mensaje(message)
-            entry, motivo, song_changed = _add(
-                data, target=target, name=name, info=info, license_text=license_text, source=source,
-                audio_dir=audio_dir, staging=staging,
+            motivo = _motivo_de_rechazo(target, name)
+            song_changed = _catalogar(
+                data, result, target=target, archivo=name, title=titulo_desde_nombre(name), motivo=motivo,
+                license_text=license_text, source=source, audio_dir=audio_dir, staging=staging,
             )
             target.unlink()
-            if motivo is not None:
-                result["rechazados"].append({"archivo": name, "motivo": motivo})
-                continue
             changed = changed or song_changed
-            result[entry.pop("lista")].append(entry)
 
         # Después de las canciones: una portada puede ser de una canción que entra en este mismo push.
         for path in sorted(portadas):
@@ -468,9 +504,143 @@ def _procesar_portada(data: dict, result: dict, *, path: str, name: str, directo
     return file_changed or catalog_changed
 
 
+def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: str, motivo: str | None,
+               license_text: str | None, source: str, audio_dir: Path, staging: Path) -> bool:
+    """Comprueba que target es audio y lo añade al catálogo (o lo anota como rechazado con motivo, si ya trae uno).
+    Anota el resultado con archivo como nombre y devuelve si cambió la biblioteca. No borra target."""
+    info = None
+    if motivo is None:
+        try:
+            info = probe(target)
+        except ProbeError:
+            motivo = "no es audio (ffprobe no encuentra una pista de audio)"
+        else:
+            if not info.duration_s > 0:
+                motivo = "el audio no tiene duración"
+    if motivo is None:
+        entry, motivo, song_changed = _add(
+            data, target=target, archivo=archivo, title=title, info=info, license_text=license_text, source=source,
+            audio_dir=audio_dir, staging=staging,
+        )
+    if motivo is not None:
+        result["rechazados"].append({"archivo": archivo, "motivo": motivo})
+        return False
+    result[entry.pop("lista")].append(entry)
+    return song_changed
+
+
+def _nombre_de_entrada(info: zipfile.ZipInfo) -> str:
+    """El nombre de una entrada del ZIP. Sin la marca UTF-8, zipfile lo lee como CP437, pero macOS y muchos compresores
+    escriben UTF-8 sin la marca: si los bytes son UTF-8 válido, se lee como UTF-8."""
+    name = info.filename
+    if not info.flag_bits & _ZIP_UTF8_FLAG:
+        try:
+            name = name.encode("cp437").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+    return name
+
+
+def clasificar_entrada(info: zipfile.ZipInfo) -> tuple[str | None, str]:
+    """(motivo para ignorarla, una clave de ZIP_IGNORED, o None; nombre base). Solo se devuelve el nombre base: la
+    ruta de la entrada nunca se usa para escribir."""
+    path = _nombre_de_entrada(info).replace("\\", "/")
+    if info.is_dir() or path.endswith("/"):
+        return "carpetas", ""
+    parts = path.split("/")
+    if path.startswith("/") or _DRIVE.match(path) or ".." in parts:
+        return "rutas_peligrosas", ""
+    parts = [part for part in parts if part not in ("", ".")]
+    if not parts:
+        return "carpetas", ""
+    if "__MACOSX" in parts:
+        return "macosx", ""
+    mode = (info.external_attr >> 16) & _FILE_TYPE_MASK
+    if mode == _SYMLINK:
+        return "enlaces", ""
+    if mode not in (0, _REGULAR_FILE):
+        return "no_son_archivos", ""
+    if any(part.startswith(".") for part in parts):
+        return "ocultos", ""
+    base = parts[-1]
+    if not extension_de_audio(base):
+        return "no_audio", ""
+    return None, base
+
+
+def _motivo_de_zip(archive: zipfile.ZipFile) -> str | None:
+    """Motivo para rechazar el ZIP entero: cifrado o dañado (se comprueba el CRC de todas las entradas antes de
+    catalogar nada, sin escribir en el disco)."""
+    if any(info.flag_bits & _ZIP_ENCRYPTED_FLAG for info in archive.infolist()):
+        return "el ZIP está cifrado (con contraseña): no se puede descomprimir"
+    try:
+        bad = archive.testzip()
+    except (zipfile.BadZipFile, zlib.error, EOFError, OSError, ValueError, NotImplementedError, RuntimeError):
+        bad = True
+    if bad is not None:
+        return "el ZIP está dañado o usa un formato que no se puede descomprimir"
+    return None
+
+
+def _procesar_zip(data: dict, result: dict, *, target: Path, name: str, repo: Path, license_text: str | None,
+                  source: str, audio_dir: Path, staging: Path) -> bool:
+    """Un ZIP del buzón (ver el docstring del módulo). Anota el resultado y devuelve si cambió la biblioteca. No borra
+    el ZIP: lo borra quien llama."""
+    try:
+        archive = zipfile.ZipFile(target)
+    except (zipfile.BadZipFile, OSError, ValueError, EOFError):
+        result["rechazados"].append({"archivo": name, "motivo": "no es un ZIP válido o está dañado"})
+        return False
+    changed = False
+    with archive:
+        motivo = _motivo_de_zip(archive)
+        if motivo is not None:
+            result["rechazados"].append({"archivo": name, "motivo": motivo})
+            return False
+        ignored = dict.fromkeys(ZIP_IGNORED, 0)
+        canciones = 0
+        with tempfile.TemporaryDirectory(prefix="reminiscencia-zip-") as temporary:
+            work = Path(temporary).resolve()
+            root = repo.resolve()
+            if work == root or root in work.parents:
+                raise BuzonError("el directorio temporal del ZIP está dentro del repositorio")
+            for info in archive.infolist():
+                reason, base = clasificar_entrada(info)
+                if reason is not None:
+                    ignored[reason] += 1
+                    continue
+                canciones += 1
+                shown = nombre_visible(base) or "Sin título"
+                archivo = f"{name}/{shown}"
+                extension = next(ext for ext in EXTENSIONS if base.lower().endswith(ext))
+                extracted = work / f"entrada{extension}"  # nombre fijo: nada del ZIP decide dónde se escribe
+                try:
+                    with archive.open(info) as source_file, extracted.open("xb") as destination:
+                        shutil.copyfileobj(source_file, destination, 1024 * 1024)
+                except (zipfile.BadZipFile, zlib.error, EOFError, OSError, ValueError, NotImplementedError,
+                        RuntimeError):
+                    extracted.unlink(missing_ok=True)
+                    result["rechazados"].append({"archivo": archivo, "motivo": "no se puede descomprimir"})
+                    continue
+                try:
+                    motivo = "está vacío" if extracted.stat().st_size == 0 else None
+                    song_changed = _catalogar(
+                        data, result, target=extracted, archivo=archivo, title=titulo_desde_nombre(shown),
+                        motivo=motivo, license_text=license_text, source=source, audio_dir=audio_dir, staging=staging,
+                    )
+                finally:
+                    extracted.unlink(missing_ok=True)
+                changed = changed or song_changed
+    result["zips"].append({
+        "archivo": name, "canciones": canciones,
+        "ignorados": {key: count for key, count in ignored.items() if count},
+    })
+    return changed
+
+
 def _motivo_de_rechazo(target: Path, name: str) -> str | None:
     if not extension_de_audio(name):
-        return "no es un archivo de audio admitido (WAV, MP3, M4A, FLAC u OGG)"
+        return "no es un archivo de audio admitido (WAV, MP3, M4A, FLAC, OGG u Opus) ni un ZIP"
     if target.stat().st_size > MAX_FILE_BYTES:
         return "pasa de 100 MiB"
     if target.stat().st_size == 0:
@@ -478,11 +648,11 @@ def _motivo_de_rechazo(target: Path, name: str) -> str | None:
     return None
 
 
-def _add(data: dict, *, target: Path, name: str, info, license_text: str | None, source: str,
+def _add(data: dict, *, target: Path, archivo: str, title: str, info, license_text: str | None, source: str,
          audio_dir: Path, staging: Path) -> tuple[dict, str | None, bool]:
     """Añade la canción (o reconoce la que ya está). Devuelve (entrada del resultado, motivo de rechazo, cambió)."""
     sha256 = sha256_file(target)
-    title = titulo_desde_nombre(name)
+    name = archivo
     existing = next((song for song in data["songs"] if song["sha256"] == sha256), None)
     if existing is not None:
         if license_text and existing.get("license") == catalog.LICENSE_UNDECLARED:
@@ -550,6 +720,12 @@ def resumen_markdown(result: Mapping) -> str:
         f"{_quoted(item['archivo'])} -> {item['id']} ({item['tipo']})"
         + ("" if item.get("nueva", True) else " · sin cambios")
         for item in result.get("portadas", [])
+    ])
+    block("ZIP descomprimidos y borrados del buzón", [
+        f"{_quoted(item['archivo'])}: {item['canciones']} canción(es)"
+        + ("" if not item.get("ignorados") else " · ignorados: " + ", ".join(
+            f"{count} {ZIP_IGNORED.get(key, key)}" for key, count in item["ignorados"].items()))
+        for item in result.get("zips", [])
     ])
     block("Ya estaban en el catálogo (sin cambios)", [
         f"{_quoted(item['archivo'])} -> {item['song_id']}" for item in result.get("duplicadas", [])
