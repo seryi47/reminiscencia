@@ -92,14 +92,14 @@ void main() {
 
       expect(find.text('Buenas noches'), findsOneWidget);
       expect(find.text('Canciones que te gustan'), findsWidgets);
-      expect(find.text('Carpetas'), findsOneWidget);
+      expect(find.text('Álbumes'), findsOneWidget);
       expect(find.text('Añadidas recientemente'), findsOneWidget);
       expect(find.text('Tus listas'), findsOneWidget);
       expect(find.text('Jazz'), findsWidgets);
     });
 
     testWidgets(
-      'una carpeta abre su página con cabecera, botón verde y filas de canción',
+      'un álbum abre su página con cabecera, botón verde y filas de canción',
       (tester) async {
         setWindow(tester, const Size(400, 800));
         final t = buildTestServices(songs: songs, folders: folders);
@@ -109,7 +109,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(SongRow), findsOneWidget);
-        expect(find.text('Carpeta · 1 canción · 3 min'), findsOneWidget);
+        expect(find.text('Álbum · 1 canción · 3 min'), findsOneWidget);
         await tester.tap(find.byKey(const Key('collection-play')));
         await settle(tester);
         expect(t.playback.log.last, 'play:0');
@@ -358,8 +358,8 @@ void main() {
 
         await tester.enterText(find.byKey(const Key('search-field')), 'jazz');
         await settle(tester);
-        // La carpeta y la etiqueta «jazz» de las dos canciones.
-        expect(find.text('Carpeta'), findsOneWidget);
+        // El álbum y la etiqueta «jazz» de las dos canciones.
+        expect(find.text('Álbum'), findsOneWidget);
         expect(find.byType(SongRow), findsNWidgets(2));
 
         await tester.enterText(find.byKey(const Key('search-field')), 'zzz');
@@ -498,7 +498,7 @@ void main() {
     });
 
     testWidgets(
-      'la página de una carpeta y el reproductor cumplen las pautas',
+      'la página de un álbum y el reproductor cumplen las pautas',
       (tester) async {
         final handle = tester.ensureSemantics();
         setWindow(tester, const Size(400, 800));

@@ -1,21 +1,33 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:reminiscencia/app.dart';
 import 'package:reminiscencia/app_settings.dart';
 import 'package:reminiscencia/collections.dart';
 import 'package:reminiscencia/collections_controller.dart';
 import 'package:reminiscencia/collections_store.dart';
+import 'package:reminiscencia/covers.dart';
+import 'package:reminiscencia/image_picker.dart';
 import 'package:reminiscencia/library_controller.dart';
 import 'package:reminiscencia/library_store.dart';
 import 'package:reminiscencia/playback.dart';
+import 'package:reminiscencia/playlist_covers.dart';
 import 'package:reminiscencia/services.dart';
 import 'package:reminiscencia/settings_store.dart';
 import 'package:reminiscencia/song.dart';
 
 /// Canción de prueba con id y título predecibles.
-Song fakeSong(String id, {String? folderId, String artist = 'Artista'}) {
+Song fakeSong(
+  String id, {
+  String? folderId,
+  String artist = 'Artista',
+  String? cover,
+}) {
   return Song(
+    cover: cover,
     id: id,
     title: 'Canción $id',
     artist: artist,
@@ -41,12 +53,19 @@ class FakeLibrarySource implements LibrarySource {
   Object? error;
   int loads = 0;
 
+  /// False simula que no hay red y se usó la copia guardada.
+  bool fromNetwork = true;
+
   @override
   Future<LibraryData> load() async {
     loads++;
     final failure = error;
     if (failure != null) throw failure;
-    return LibraryData(songs: songs, folders: folders, fromNetwork: true);
+    return LibraryData(
+      songs: songs,
+      folders: folders,
+      fromNetwork: fromNetwork,
+    );
   }
 
   final List<List<Song>> downloadCalls = [];
@@ -173,6 +192,84 @@ class FakePlaybackPort implements PlaybackPort {
   }
 }
 
+/// Imagen PNG de 2×2 px válida, para las portadas de las pruebas.
+final Uint8List kTinyPng = img.encodePng(img.Image(width: 2, height: 2));
+
+/// Portadas falsas: las rutas de [available] tienen imagen; registra lo que se pide.
+class FakeCoverImages extends ChangeNotifier implements CoverImages {
+  FakeCoverImages([Iterable<String> available = const []])
+    : available = available.toSet();
+
+  final Set<String> available;
+  final List<String> requested = [];
+
+  @override
+  ImageProvider? imageFor(String? coverPath) {
+    if (coverPath == null) return null;
+    requested.add(coverPath);
+    return available.contains(coverPath) ? MemoryImage(kTinyPng) : null;
+  }
+
+  /// Simula que acaba de bajar una portada.
+  void arrive(String coverPath) {
+    available.add(coverPath);
+    notifyListeners();
+  }
+}
+
+/// Almacén de portadas falso para el controlador de la biblioteca: registra las llamadas.
+class FakeCoverStore implements CoverStore {
+  final List<String> log = [];
+  Set<String>? lastKeep;
+  List<String> lastDownload = const [];
+  List<String> lastRevalidate = const [];
+
+  @override
+  Future<int> downloadAll(Iterable<String> coverPaths) async {
+    lastDownload = coverPaths.toList()..sort();
+    log.add('download');
+    return lastDownload.length;
+  }
+
+  @override
+  Future<void> prune(Set<String> keep) async {
+    lastKeep = keep;
+    log.add('prune');
+  }
+
+  @override
+  void resetFailures() => log.add('reset');
+
+  @override
+  Future<void> revalidate(Iterable<String> coverPaths) async {
+    lastRevalidate = coverPaths.toList()..sort();
+    log.add('revalidate');
+  }
+}
+
+/// Portadas propias de las listas en memoria: no reduce la imagen, solo la cuenta.
+class MemoryPlaylistCoverStore implements PlaylistCoverStore {
+  final Map<String, Uint8List> files = {};
+  final List<String> deleted = [];
+  int _next = 0;
+
+  @override
+  Future<String> save(String playlistId, Uint8List imageBytes) async {
+    final name = '$playlistId-${++_next}.jpg';
+    files[name] = imageBytes;
+    return name;
+  }
+
+  @override
+  File? fileFor(String fileName) => File('/memoria/$fileName');
+
+  @override
+  Future<void> delete(String fileName) async {
+    files.remove(fileName);
+    deleted.add(fileName);
+  }
+}
+
 /// Repositorio de listas en memoria. Puede simular fallos de lectura o de escritura.
 class MemoryCollectionsRepository implements CollectionsRepository {
   MemoryCollectionsRepository([Collections? initial])
@@ -206,6 +303,9 @@ class MemoryCollectionsRepository implements CollectionsRepository {
   FakePlaybackPort playback,
   MemoryCollectionsRepository repository,
   List<Uri> openedUrls,
+  FakeCoverImages covers,
+  FakeCoverStore coverStore,
+  MemoryPlaylistCoverStore playlistCovers,
 })
 buildTestServices({
   List<Song> songs = const [],
@@ -216,6 +316,8 @@ buildTestServices({
   Collections? collections,
   DateTime? now,
   bool canOpenUrls = true,
+  Iterable<String> availableCovers = const [],
+  ImagePicker? pickImage,
 }) {
   final source = FakeLibrarySource(
     songs: songs,
@@ -226,18 +328,28 @@ buildTestServices({
   final repository = MemoryCollectionsRepository(collections);
   var ids = 0;
   final opened = <Uri>[];
+  final covers = FakeCoverImages(availableCovers);
+  final coverStore = FakeCoverStore();
+  final playlistCovers = MemoryPlaylistCoverStore();
   final services = AppServices(
-    library: LibraryController(source: source, playback: playback),
+    library: LibraryController(
+      source: source,
+      playback: playback,
+      covers: coverStore,
+    ),
     playback: playback,
     collections: CollectionsController(
       repository: repository,
+      covers: playlistCovers,
       newId: () => 'lista${++ids}',
     ),
     settings: SettingsController(initial: settings),
+    covers: covers,
     openUrl: (uri) async {
       opened.add(uri);
       return canOpenUrls;
     },
+    pickImage: pickImage ?? () async => null,
     clock: () => now ?? DateTime(2026, 11, 3, 10),
   );
   return (
@@ -246,6 +358,9 @@ buildTestServices({
     playback: playback,
     repository: repository,
     openedUrls: opened,
+    covers: covers,
+    coverStore: coverStore,
+    playlistCovers: playlistCovers,
   );
 }
 

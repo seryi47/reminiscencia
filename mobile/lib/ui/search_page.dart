@@ -34,7 +34,11 @@ class _SearchPageState extends State<SearchPage> {
     final library = services.library;
     final theme = Theme.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([library, services.collections]),
+      listenable: Listenable.merge([
+        library,
+        services.collections,
+        services.covers,
+      ]),
       builder: (context, _) {
         return CustomScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -160,10 +164,13 @@ class _SearchPageState extends State<SearchPage> {
             leading: CoverArt(
               seed: FolderRef(folder.id).key,
               size: 40,
-              icon: Icons.folder_rounded,
+              icon: Icons.album_rounded,
+              image: services.covers.imageFor(folder.cover),
             ),
             title: Text(folder.name),
-            subtitle: const Text('Carpeta'),
+            subtitle: Text(
+              folder.artist.isEmpty ? 'Álbum' : 'Álbum · ${folder.artist}',
+            ),
             onTap: () =>
                 openCollection(context, services, FolderRef(folder.id)),
           ),

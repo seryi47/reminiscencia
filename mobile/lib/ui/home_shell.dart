@@ -12,7 +12,7 @@ import 'search_page.dart';
 enum AppTab { home, search, library }
 
 /// Estructura con la de Spotify: cada pestaña tiene su propia pila de páginas, el minirreproductor
-/// va encima de la barra inferior y las páginas de carpeta o lista se abren sin taparlos.
+/// va encima de la barra inferior y las páginas de álbum o lista se abren sin taparlos.
 /// A partir de 720 dp la barra inferior pasa a ser una navegación lateral.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, required this.services});

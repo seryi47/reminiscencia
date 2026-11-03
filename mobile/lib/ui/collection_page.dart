@@ -5,6 +5,7 @@ import '../services.dart';
 import '../theme.dart';
 import 'collection_ref.dart';
 import 'common.dart';
+import 'library_edit.dart';
 import 'playlist_flows.dart';
 import 'song_row.dart';
 
@@ -21,7 +22,7 @@ Future<void> openCollection(
   );
 }
 
-/// Página de carpeta o lista: cabecera en degradado, botón verde de reproducir y filas de canción.
+/// Página de álbum o lista: cabecera en degradado, botón verde de reproducir y filas de canción.
 class CollectionPage extends StatelessWidget {
   const CollectionPage({super.key, required this.services, required this.ref});
 
@@ -33,7 +34,7 @@ class CollectionPage extends StatelessWidget {
     final library = services.library;
     final collections = services.collections;
     return ListenableBuilder(
-      listenable: Listenable.merge([library, collections]),
+      listenable: Listenable.merge([library, collections, services.covers]),
       builder: (context, _) {
         final view = resolveCollection(services, ref);
         final palette = paletteOf(context);
@@ -149,6 +150,10 @@ class _Header extends StatelessWidget {
     final playlist = playlistId == null
         ? null
         : services.collections.data.playlistOrNull(playlistId!);
+    final folder = switch (view.ref) {
+      FolderRef(:final id) => services.library.folderOrNull(id),
+      _ => null,
+    };
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -168,6 +173,7 @@ class _Header extends StatelessWidget {
                 size: 192,
                 icon: view.icon,
                 color: color,
+                image: view.image,
               ),
             ),
             const SizedBox(height: 20),
@@ -175,6 +181,16 @@ class _Header extends StatelessWidget {
               header: true,
               child: Text(view.title, style: theme.textTheme.headlineMedium),
             ),
+            if (view.description.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                view.description,
+                key: const Key('collection-description'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: palette.inkMuted,
+                ),
+              ),
+            ],
             const SizedBox(height: 4),
             Text(
               songs.isEmpty
@@ -194,10 +210,16 @@ class _Header extends StatelessWidget {
                         showSongPicker(context, services, playlist.id),
                   ),
                   IconButton(
-                    tooltip: 'Renombrar lista',
+                    tooltip: 'Editar detalles',
                     icon: const Icon(Icons.edit_outlined),
                     onPressed: () =>
-                        renamePlaylistFlow(context, services, playlist),
+                        editPlaylistFlow(context, services, playlist),
+                  ),
+                  IconButton(
+                    tooltip: 'Cambiar portada',
+                    icon: const Icon(Icons.image_outlined),
+                    onPressed: () =>
+                        playlistCoverFlow(context, services, playlist),
                   ),
                   IconButton(
                     tooltip: 'Borrar lista',
@@ -213,6 +235,12 @@ class _Header extends StatelessWidget {
                     },
                   ),
                 ],
+                if (folder != null)
+                  IconButton(
+                    tooltip: 'Más opciones de «${folder.name}»',
+                    icon: const Icon(Icons.more_vert_rounded),
+                    onPressed: () => showAlbumMenu(context, services, folder),
+                  ),
                 const Spacer(),
                 ValueListenableBuilder<NowPlaying>(
                   valueListenable: services.playback.nowPlaying,

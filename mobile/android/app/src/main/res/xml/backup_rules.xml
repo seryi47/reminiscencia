@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copia automática de Android (API 30 y anteriores). Igual que la web (ADR-0012 y ADR-0013): la copia no incluye
-     ni el audio ni los metadatos de las canciones subidas desde este teléfono. Toda la carpeta biblioteca-local queda fuera. -->
+     ni el audio ni los metadatos de las canciones subidas desde este teléfono. Toda la carpeta biblioteca-local queda fuera,
+     y también listas-portadas: las portadas propias de las listas se guardan solo en este teléfono. -->
 <full-backup-content>
     <exclude domain="root" path="app_flutter/biblioteca-local/" />
+    <exclude domain="root" path="app_flutter/listas-portadas/" />
 </full-backup-content>

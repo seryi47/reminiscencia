@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'app_error.dart';
+import 'covers.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
 import 'network.dart';
@@ -13,7 +14,7 @@ import 'playback.dart';
 import 'playback_plan.dart';
 import 'song.dart';
 
-/// Estado de la biblioteca para la interfaz: canciones, carpetas, errores visibles y descargas.
+/// Estado de la biblioteca para la interfaz: canciones, álbumes (carpetas en los datos), errores visibles y descargas.
 ///
 /// Sincronización (sin temporizadores): al abrir la app, al volver a primer plano si pasaron 10 minutos
 /// (syncIfStale) y al refrescar a mano (load). Sin red se usa la copia guardada y no hay error bloqueante.
@@ -24,6 +25,7 @@ class LibraryController extends ChangeNotifier {
     this.local,
     this.offline,
     this.network,
+    this.covers,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now {
     _lastSongId = playback.nowPlaying.value.songId;
@@ -41,6 +43,9 @@ class LibraryController extends ChangeNotifier {
 
   /// Estado de la red. Sin él, la sincronización nunca descarga audio nuevo.
   final NetworkInfo? network;
+
+  /// Portadas de la web guardadas en el teléfono. Null si no se guardan (pruebas).
+  final CoverStore? covers;
 
   final DateTime Function() _clock;
 
@@ -105,11 +110,28 @@ class LibraryController extends ChangeNotifier {
   /// Canciones subidas desde este teléfono, en el orden en que se añadieron.
   List<Song> get localSongs => _localSongs;
 
-  /// Canciones de una carpeta del catálogo, en el orden del catálogo.
+  /// Canciones de un álbum del catálogo, en el orden del catálogo.
   List<Song> songsInFolder(String folderId) =>
       _songs.where((song) => song.folderId == folderId).toList();
 
-  /// Canciones sin carpeta.
+  /// Canción por id (también las locales), o null si ya no está.
+  Song? songOrNull(String? id) {
+    if (id == null) return null;
+    for (final song in _songs) {
+      if (song.id == id) return song;
+    }
+    return null;
+  }
+
+  /// Portadas que usa el catálogo actual (canciones y álbumes).
+  Set<String> get referencedCovers => {
+    for (final song in _catalog)
+      if (song.cover != null) song.cover!,
+    for (final folder in _folders)
+      if (folder.cover != null) folder.cover!,
+  };
+
+  /// Canciones sin álbum.
   List<Song> get songsWithoutFolder =>
       _songs.where((song) => song.folderId == null).toList();
 
@@ -135,16 +157,19 @@ class LibraryController extends ChangeNotifier {
     }).toList();
   }
 
-  /// Carpetas cuyo nombre contiene [query].
+  /// Álbumes cuyo nombre o artista contiene [query].
   List<Folder> searchFolders(String query) {
     final needle = foldForSearch(query);
     if (needle.isEmpty) return const [];
     return _folders
-        .where((folder) => foldForSearch(folder.name).contains(needle))
+        .where(
+          (folder) =>
+              foldForSearch('${folder.name} ${folder.artist}').contains(needle),
+        )
         .toList();
   }
 
-  /// Carpeta por id, o null si ya no existe.
+  /// Álbum por id, o null si ya no existe.
   Folder? folderOrNull(String id) {
     for (final folder in _folders) {
       if (folder.id == id) return folder;
@@ -168,6 +193,19 @@ class LibraryController extends ChangeNotifier {
     return run.whenComplete(() {
       _inFlight = null;
     });
+  }
+
+  /// Refresco a mano (deslizar hacia abajo): sincroniza y, con la web disponible, pregunta si cambiaron
+  /// las portadas ya guardadas. Es la única vía de comprobar portadas guardadas: nunca se sondea.
+  Future<void> refresh() async {
+    await load();
+    final store = covers;
+    if (store == null || !_online || _loadError != null) return;
+    try {
+      await store.revalidate(referencedCovers);
+    } catch (error) {
+      debugPrint('biblioteca: no se pudieron comprobar las portadas: $error');
+    }
   }
 
   /// Sincroniza al volver a primer plano, solo si ha pasado un tiempo desde la última vez.
@@ -210,6 +248,7 @@ class LibraryController extends ChangeNotifier {
     await _applyQueue();
     if (data.fromNetwork) {
       await _pruneAudio();
+      await _pruneCovers();
       if (_offlineWanted) await _downloadOnWifi();
     }
   }
@@ -274,6 +313,18 @@ class LibraryController extends ChangeNotifier {
       }
     } catch (error) {
       debugPrint('biblioteca: no se pudo limpiar el audio retirado: $error');
+    }
+  }
+
+  /// Con la web disponible: se puede reintentar lo que falló y se borran las portadas que el catálogo ya no usa.
+  Future<void> _pruneCovers() async {
+    final store = covers;
+    if (store == null) return;
+    store.resetFailures();
+    try {
+      await store.prune(referencedCovers);
+    } catch (error) {
+      debugPrint('biblioteca: no se pudieron limpiar las portadas: $error');
     }
   }
 
@@ -359,8 +410,8 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Guarda para escuchar sin conexión. Recuerda la elección: las siguientes sincronizaciones descargan en Wi-Fi.
-  /// Solo descarga el catálogo: las canciones locales no existen en la web.
+  /// Guarda para escuchar sin conexión (audio y portadas). Recuerda la elección: las siguientes sincronizaciones
+  /// descargan lo nuevo en Wi-Fi. Solo descarga el catálogo: las canciones locales no existen en la web.
   Future<int> downloadForOffline() async {
     if (!_offlineWanted) {
       _offlineWanted = true;
@@ -370,10 +421,20 @@ class LibraryController extends ChangeNotifier {
     _progress = 'Preparando…';
     notifyListeners();
     try {
-      return await source.downloadAll(_catalog, (done, total) {
+      final done = await source.downloadAll(_catalog, (done, total) {
         _progress = '$done de $total';
         notifyListeners();
       });
+      // Las portadas también, para verlas sin conexión. Un fallo aquí no anula la descarga del audio.
+      final store = covers;
+      if (store != null) {
+        try {
+          await store.downloadAll(referencedCovers);
+        } catch (error) {
+          debugPrint('biblioteca: portadas sin descargar: $error');
+        }
+      }
+      return done;
     } finally {
       _downloading = false;
       _progress = '';

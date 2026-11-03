@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../app_error.dart';
 import '../collections.dart';
 import '../collections_controller.dart';
 import '../services.dart';
 import '../song.dart';
+import 'collection_ref.dart';
 import 'common.dart';
 
 /// Pide un nombre y crea la lista. Muestra el resultado o el motivo del fallo.
@@ -35,23 +37,187 @@ Future<Playlist?> createPlaylistFlow(
   }
 }
 
-Future<void> renamePlaylistFlow(
+/// «Editar detalles» de una lista propia: nombre y descripción. Se guarda solo en este teléfono.
+Future<void> editPlaylistFlow(
   BuildContext context,
   AppServices services,
   Playlist playlist,
 ) async {
-  final name = await showNameDialog(
-    context,
-    title: 'Renombrar lista',
-    confirmLabel: 'Guardar',
-    initial: playlist.name,
+  final result = await showDialog<({String name, String description})>(
+    context: context,
+    builder: (_) => _PlaylistDetailsDialog(playlist: playlist),
   );
-  if (name == null || !context.mounted) return;
+  if (result == null || !context.mounted) return;
   await runWithNotice(
     context,
-    () => services.collections.renamePlaylist(playlist.id, name),
-    failurePrefix: 'No se pudo renombrar la lista',
+    () => services.collections.editPlaylist(
+      playlist.id,
+      name: result.name,
+      description: result.description,
+    ),
+    failurePrefix: 'No se pudo guardar la lista',
   );
+}
+
+/// «Cambiar portada» de una lista propia: elegir una imagen del teléfono (se reduce a 640 px y se guarda
+/// solo aquí) o quitarla.
+Future<void> playlistCoverFlow(
+  BuildContext context,
+  AppServices services,
+  Playlist playlist,
+) async {
+  final hasCover = playlist.coverFile != null;
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    useRootNavigator: true,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Semantics(
+              header: true,
+              child: Text(
+                'Portada de «${playlist.name}»',
+                style: Theme.of(sheetContext).textTheme.titleLarge,
+              ),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'La imagen se reduce a 640 px y se guarda solo en este teléfono: no se publica ni entra en la copia de seguridad.',
+            ),
+          ),
+          ListTile(
+            key: const Key('playlist-cover-pick'),
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Elegir una imagen del teléfono'),
+            onTap: () => Navigator.of(sheetContext).pop('pick'),
+          ),
+          if (hasCover)
+            ListTile(
+              key: const Key('playlist-cover-remove'),
+              leading: const Icon(Icons.hide_image_outlined),
+              title: const Text('Quitar la portada'),
+              onTap: () => Navigator.of(sheetContext).pop('remove'),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+  if (choice == null || !context.mounted) return;
+  if (choice == 'remove') {
+    await runWithNotice(
+      context,
+      () => services.collections.removePlaylistCover(playlist.id),
+      failurePrefix: 'No se pudo quitar la portada',
+    );
+    return;
+  }
+  await runWithNotice(context, () async {
+    final bytes = await services.pickImage();
+    if (bytes == null) return;
+    await services.collections.setPlaylistCover(playlist.id, bytes);
+  }, failurePrefix: 'No se pudo cambiar la portada');
+}
+
+class _PlaylistDetailsDialog extends StatefulWidget {
+  const _PlaylistDetailsDialog({required this.playlist});
+
+  final Playlist playlist;
+
+  @override
+  State<_PlaylistDetailsDialog> createState() => _PlaylistDetailsDialogState();
+}
+
+class _PlaylistDetailsDialogState extends State<_PlaylistDetailsDialog> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.playlist.name,
+  );
+  late final TextEditingController _description = TextEditingController(
+    text: widget.playlist.description,
+  );
+  String? _nameError;
+  String? _descriptionError;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    String? name;
+    String? description;
+    String? nameError;
+    String? descriptionError;
+    try {
+      name = cleanPlaylistName(_name.text);
+    } on AppException catch (error) {
+      nameError = error.message;
+    }
+    try {
+      description = cleanPlaylistDescription(_description.text);
+    } on AppException catch (error) {
+      descriptionError = error.message;
+    }
+    if (name == null || description == null) {
+      setState(() {
+        _nameError = nameError;
+        _descriptionError = descriptionError;
+      });
+      return;
+    }
+    Navigator.of(context).pop((name: name, description: description));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar detalles'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('playlist-name'),
+              controller: _name,
+              autofocus: true,
+              maxLength: kMaxPlaylistNameLength,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                labelText: 'Nombre',
+                errorText: _nameError,
+              ),
+            ),
+            TextField(
+              key: const Key('playlist-description'),
+              controller: _description,
+              maxLength: kMaxPlaylistDescriptionLength,
+              minLines: 2,
+              maxLines: 4,
+              decoration: InputDecoration(
+                labelText: 'Descripción (opcional)',
+                errorText: _descriptionError,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Guardar')),
+      ],
+    );
+  }
 }
 
 /// Borra la lista tras confirmar. Devuelve true si se borró.
@@ -118,9 +284,10 @@ class _AddToPlaylistDialog extends StatelessWidget {
                 for (final playlist in lists)
                   ListTile(
                     leading: CoverArt(
-                      seed: playlist.id,
+                      seed: PlaylistRef(playlist.id).key,
                       size: 40,
                       icon: Icons.queue_music_rounded,
+                      image: _playlistImage(collections, playlist),
                     ),
                     title: Text(
                       playlist.name,
@@ -264,7 +431,12 @@ class _SongPicker extends StatelessWidget {
                       value: playlist.songIds.contains(song.id),
                       activeColor: Theme.of(context).colorScheme.primary,
                       checkColor: Theme.of(context).colorScheme.onPrimary,
-                      secondary: CoverArt(seed: song.id, size: 40),
+                      secondary: CatalogCover(
+                        covers: services.covers,
+                        cover: song.cover,
+                        seed: song.id,
+                        size: 40,
+                      ),
                       title: Text(
                         song.title,
                         maxLines: 2,
@@ -294,4 +466,12 @@ class _SongPicker extends StatelessWidget {
       ),
     );
   }
+}
+
+ImageProvider? _playlistImage(
+  CollectionsController collections,
+  Playlist playlist,
+) {
+  final file = collections.coverFileOf(playlist);
+  return file == null ? null : FileImage(file);
 }

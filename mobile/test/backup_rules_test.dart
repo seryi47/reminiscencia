@@ -24,6 +24,17 @@ void main() {
     expect(excludes, 2);
   });
 
+  test('las portadas propias de las listas tampoco salen del teléfono', () {
+    const covers = 'app_flutter/listas-portadas/';
+    final old = File('$xmlDir/backup_rules.xml').readAsStringSync();
+    expect(old, contains('<exclude domain="root" path="$covers" />'));
+    final xml = File('$xmlDir/data_extraction_rules.xml').readAsStringSync();
+    expect(
+      RegExp('<exclude domain="root" path="$covers" />').allMatches(xml).length,
+      2,
+    );
+  });
+
   test('el manifiesto apunta a las dos reglas', () {
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(manifest, contains('android:fullBackupContent="@xml/backup_rules"'));
