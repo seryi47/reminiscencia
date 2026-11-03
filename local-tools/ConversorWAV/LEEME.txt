@@ -1,0 +1,30 @@
+CONVERSOR DE YOUTUBE A WAV
+==========================
+
+Para convertir TUS PROPIOS vídeos de YouTube (o contenido sobre el que
+tengas derechos) a archivos WAV.
+
+CÓMO USARLO (lo más fácil)
+--------------------------
+1) Prepara tu playlist en YouTube y hazla PÚBLICA o "no listada".
+2) Copia su URL (algo como: https://www.youtube.com/playlist?list=XXXXXXXX )
+3) Haz doble clic en  "Convertir a WAV.command"
+4) Pega la URL cuando te la pida y pulsa Enter.
+5) Los WAV irán cayendo en una carpeta del Escritorio según se descargan.
+
+Si al hacer doble clic macOS avisa de "desarrollador no identificado":
+   clic derecho en el archivo  ->  Abrir  ->  Abrir.
+
+CÓMO USARLO (desde Terminal, opcional)
+--------------------------------------
+   cd ~/Desktop/ConversorWAV
+   ./.venv/bin/python convertir.py "URL_DE_TU_PLAYLIST"
+   ./.venv/bin/python convertir.py "URL_DE_TU_PLAYLIST" "Mi carpeta"
+   ./.venv/bin/python convertir.py "URL_DE_TU_PLAYLIST" "Mi carpeta" 4   (solo 4, para probar)
+
+DETALLES
+--------
+- Procesa las canciones DE 4 EN 4 (es el límite del servicio yttowav.org).
+- Es REANUDABLE: si cierras y vuelves a lanzarlo, salta lo ya descargado.
+- Usa el servicio web yttowav.org para la conversión.
+- El entorno (.venv) ya está instalado; no tienes que instalar nada más.
