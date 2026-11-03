@@ -1,13 +1,13 @@
 # Seguridad, privacidad y marco legal
 
-Revisión del 3 de noviembre de 2026 sobre `main` (`b058a0c`), con la interfaz sin usuarios de ADR-0015 y el buzón de ADR-0014. La revisión anterior (2 de noviembre, `8a19a09`) describía la capa de datos del cuidador, retirada desde entonces.
+Revisión del 3 de noviembre de 2026 sobre `main` (`b058a0c`), con la interfaz sin usuarios de ADR-0015 y el buzón de ADR-0014, actualizada el mismo día con la subida directa a GitHub desde la web pública (ADR-0017: función `frontend/web/api/subir.js`, §3.12). La revisión anterior (2 de noviembre, `8a19a09`) describía la capa de datos del cuidador, retirada desde entonces.
 
 Este documento describe lo que el código de `main` hace hoy, separa lo implementado de lo previsto en el diseño y recoge lo pendiente. No es asesoramiento jurídico ni una evaluación de impacto (ver §5).
 
 ## 0. Alcance, estado y convenciones
 
-- **Alcance.** Web pública (`frontend/web/`), app Android (`mobile/`), workflows (`.github/workflows/`), incluido el buzón de subida (`buzon.yml`), y el repositorio.
-- **Estado de `main`.** La web y la APK no tienen usuarios (ADR-0015): no hay perfiles, modos paciente ni cuidador, PIN, recuerdos, fotografías, observaciones, registro del estudio ni copia cifrada `.rmc`. Todos ven la misma biblioteca pública. Las listas y «Me gusta» se guardan solo en el navegador o en el teléfono, y el audio subido «Solo en este navegador» o «Solo en este teléfono», también (ADR-0012 y ADR-0013). Lo que se sube «Para todos» entra por el buzón de GitHub (§3.11). Pruebas en verde el 2026-11-03: 274 unitarias de la web y 566 del backend.
+- **Alcance.** Web pública (`frontend/web/`, incluida su única función de Vercel, `api/subir.js`), app Android (`mobile/`), workflows (`.github/workflows/`), incluido el buzón de subida (`buzon.yml`), y el repositorio.
+- **Estado de `main`.** La web y la APK no tienen usuarios (ADR-0015): no hay perfiles, modos paciente ni cuidador, PIN, recuerdos, fotografías, observaciones, registro del estudio ni copia cifrada `.rmc`. Todos ven la misma biblioteca pública. Las listas y «Me gusta» se guardan solo en el navegador o en el teléfono, y el audio subido antes «Solo en este navegador» o «Solo en este teléfono», también (ADR-0012 y ADR-0013). Desde ADR-0017, «Subir canciones» sube siempre para todos: cualquiera que entre en la web sube al buzón del repositorio por la función `/api/subir`, sin cuenta (§3.12), y el buzón lo publica (§3.11). Pruebas en verde el 2026-11-03 en la rama de ADR-0017: 342 unitarias de la web, 133 de extremo a extremo y 671 del backend.
 - **Etiquetas.** **Implementado**: existe en el código de `main`. **Retirado**: existía y ADR-0015 lo quitó. **Previsto**: aparece en el diseño o en el changelog, sin código. **Pendiente**: requiere decisión, trabajo o dictamen.
 - **Citas.** Los identificadores entre corchetes son los de la verificación ([legal-01] a [legal-06] y [B1-2025]). Cuando una verificación tiene corrección, se cita la versión corregida. Lo que la verificación no confirma queda en §5.
 - **Límites de la evidencia.** La música es una hipótesis del proyecto. H1 a H5 están propuestas, no demostradas ([PROJECT_MASTER.md](PROJECT_MASTER.md)). La revisión Cochrane de 2025 [B1-2025] reporta certeza moderada de una mejora ligera de los síntomas depresivos, y de que probablemente no mejoran la agitación ni la agresión. Da certeza baja a una posible mejora de los problemas conductuales globales y no encuentra mejora demostrada del bienestar emocional ni de la ansiedad. Para la cognición, la certeza es baja o muy baja. Este documento no promete ningún efecto clínico.
@@ -105,11 +105,11 @@ Fuentes: `docs/datos/DATABASE.md` y el código de `frontend/web/js/` y `mobile/l
 | Dato | Dónde | Estado |
 |---|---|---|
 | Listas y «Me gusta» (identificadores de canción, nombres de lista y fechas) | Navegador: IndexedDB `reminiscencia-biblioteca` (`js/local-library.js`). Teléfono: `colecciones.json` | Implementado. Sin cuenta ni sincronización |
-| Audio subido «Solo en este navegador» o «Solo en este teléfono» | IndexedDB `reminiscencia-audio-local` (ADR-0012); `biblioteca-local/` de la app (ADR-0013) | Implementado. No sale del dispositivo |
+| Audio subido antes «Solo en este navegador» o «Solo en este teléfono» | IndexedDB `reminiscencia-audio-local` (ADR-0012); `biblioteca-local/` de la app (ADR-0013) | Implementado. No sale del dispositivo. La web ya no guarda canciones nuevas aquí (ADR-0017): las que existan suenan y se borran |
 | Volumen, aleatorio y repetir | localStorage `reminiscencia.reproductor` | Implementado. No son datos personales |
-| Audio y shell para escuchar sin conexión | Cache Storage (`reminiscencia-shell-v5`, `reminiscencia-audio-v1`) | Implementado |
+| Audio y shell para escuchar sin conexión | Cache Storage (`reminiscencia-shell-v8`, `reminiscencia-audio-v1`, `reminiscencia-portadas-v1`) | Implementado |
 | Perfiles, recuerdos, fotografías, observaciones, registro del estudio, PIN y preferencias de pantalla | Base `reminiscencia` de la versión anterior | **Retirado** (ADR-0015). La web nueva no la abre ni la borra: sigue en los navegadores que la usaron (R5) |
-| Canciones subidas «Para todos» | Repositorio: catálogo, `audio-library/audio/` y, en el historial de git, el archivo original subido al buzón | Implementado (ADR-0014, §3.11) |
+| Canciones subidas al buzón (desde la web y la APK por `/api/subir`, o desde GitHub) | Repositorio: catálogo, `audio-library/audio/` y, en el historial de git, el archivo subido al buzón (desde la web, sus trozos Opus en `audio-library/buzon/.partes/`) | Implementado (ADR-0014 y ADR-0017, §3.11 y §3.12) |
 
 La web y la APK ya no tratan datos de participantes. Los recuerdos autobiográficos (material de H2) y las fotografías (material de H4) no tienen hoy instrumento en la aplicación (ADR-0015, consecuencias).
 
@@ -119,7 +119,7 @@ La web y la APK ya no tratan datos de participantes. Los recuerdos autobiográfi
 - **Copias cifradas (.rmc).** Retiradas con ADR-0015. No hay ninguna en el árbol versionado.
 - **Grabaciones de pacientes o sin derechos, también por el buzón.** Lo que se sube al buzón queda en el historial de git aunque el workflow lo borre y aunque la canción entre como privada (§3.11).
 - **Claves de firma de Android.** No hay ficheros `.jks`, `.keystore`, `key.properties` ni `.p12` versionados. Las claves locales están en `~/.android-keys/` (CLAUDE.md).
-- **Secretos.** Una búsqueda de patrones habituales (tokens de GitHub, claves privadas, contraseñas asignadas, `ADMIN_PASSWORD`, `GITHUB_TOKEN`) sobre los ficheros de texto versionados no encontró valores. Solo aparecen nombres de variables y marcadores, como `<contraseña del almacén>` en `docs/android/RELEASE.md`. No se ha revisado el historial de git.
+- **Secretos.** Una búsqueda de patrones habituales (tokens de GitHub, claves privadas, contraseñas asignadas, `ADMIN_PASSWORD`, `GITHUB_TOKEN`) sobre los ficheros de texto versionados no encontró valores. Solo aparecen nombres de variables y marcadores, como `<contraseña del almacén>` en `docs/android/RELEASE.md`. No se ha revisado el historial de git. El único secreto de la web, `GITHUB_TOKEN` de la función `/api/subir`, vive en las variables de entorno de Vercel, no en el repositorio (ADR-0017, §3.12).
 
 ### 2.3 Identificación de participantes
 
@@ -133,9 +133,9 @@ La web y la APK ya no tratan datos de participantes. Los recuerdos autobiográfi
 
 ### 3.1 Datos solo en el dispositivo: Implementado
 
-- Las listas, los «Me gusta» y el audio subido «Solo en este navegador» se guardan en IndexedDB y no salen del navegador; en la APK, en el almacenamiento privado de la app.
+- Las listas, los «Me gusta» y el audio subido antes «Solo en este navegador» se guardan en IndexedDB y no salen del navegador; en la APK, en el almacenamiento privado de la app.
 - Sin cuentas ni sincronización en la nube (ADR-0015).
-- La página no envía datos a ningún servidor. Sus únicas peticiones son al mismo origen (`data/*.json`, audio y shell). Los enlaces a otro dominio solo abren GitHub en otra pestaña: la página de subida del buzón y el formulario de incidencia nueva (§3.8).
+- La página no envía datos personales a ningún servidor. Sus peticiones son al mismo origen: `data/*.json`, audio y shell y, al subir canciones, el audio convertido a Opus y su nombre de archivo a `POST /api/subir` (§3.12). Los enlaces a otro dominio solo abren GitHub en otra pestaña: el formulario de incidencia nueva y la subida de portadas (§3.8).
 
 ### 3.2 Copia cifrada: Retirado
 
@@ -145,10 +145,11 @@ ADR-0015 (decisión 4) retira la copia `.rmc` y borra `js/crypto.js` y `js/backu
 
 ADR-0015 retira el PIN con los modos paciente y cuidador. No hay ninguna contraseña ni PIN en la aplicación.
 
-### 3.4 Sin administración ni contraseñas en la web: Implementado
+### 3.4 Sin administración ni contraseñas en la web: Implementado, con una función de subida
 
 - El commit `0fa6ed3` retiró `frontend/web/admin`, `frontend/web/api` y `frontend/web/lib`. Según su mensaje, el propietario ha pedido que no exista ninguna administración en la web. Ya no hay funciones de Vercel ni `ADMIN_PASSWORD` (CHANGELOG.md, línea 23).
 - No hay campos de contraseña en la web pública ni en la APK.
+- Desde ADR-0017 hay una función de Vercel, `frontend/web/api/subir.js`, que sube al buzón con `GITHUB_TOKEN` (variable de entorno de Vercel). No es administración: solo escribe trozos de audio en `audio-library/buzon/.partes/` (§3.12). Siguen sin existir `frontend/web/admin` y `frontend/web/lib` (`backend/tests/test_biblioteca_workflow.py`).
 - La documentación todavía describe la administración retirada (§5, C).
 
 ### 3.5 Incidencias de GitHub con permiso de escritura: Implementado, con pendientes
@@ -182,7 +183,7 @@ ADR-0015 retira el PIN con los modos paciente y cuidador. No hay ninguna contras
 
 ### 3.8 Web pública: terceros y cabeceras: Parcial
 
-- Sin scripts, fuentes, analítica ni recursos de terceros. `index.html` carga solo `js/app.js` (módulo), el manifiesto, las fuentes y las hojas de estilo locales. Los únicos enlaces a otro dominio abren GitHub en otra pestaña (subida al buzón e incidencia de importación). No hay SDK de analítica en `mobile/pubspec.yaml` ni en los ficheros Gradle.
+- Sin scripts, fuentes, analítica ni recursos de terceros. `index.html` carga solo `js/app.js` (módulo), el manifiesto, las fuentes y las hojas de estilo locales. Los únicos enlaces a otro dominio abren GitHub en otra pestaña (incidencias y subida de portadas). La subida de canciones va al mismo origen (`/api/subir`), así que la CSP no cambia (`connect-src 'self'`). No hay SDK de analítica en `mobile/pubspec.yaml` ni en los ficheros Gradle.
 - Los textos (títulos, artistas, nombres de lista) se pintan con nodos del DOM (`js/ui/dom.js`); no hay `innerHTML` en `frontend/web/js/` (comprobado con grep el 2026-11-03). Los títulos que vienen de nombres de archivo del buzón se escriben así también.
 - `vercel.json` define el `Content-Type` del audio y una Content-Security-Policy para todas las rutas (`default-src 'self'`, `frame-ancestors 'none'`, entre otras). No define `X-Content-Type-Options` ni `Referrer-Policy` (R9). `media-src 'self'` no admite `blob:`: las canciones locales las sirve el service worker en `audio/L….opus` (ADR-0015, decisión 7).
 - Tipografía Figtree (SIL OFL 1.1) autoalojada en WOFF2 en `frontend/web/fonts/` (pesos 400, 600, 700 y 800), con su licencia.
@@ -197,17 +198,18 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 - Permisos del manifiesto: acceso a la red (INTERNET y ACCESS_NETWORK_STATE, este para la descarga solo con Wi-Fi), reproducción en segundo plano (FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK y WAKE_LOCK) y notificaciones (POST_NOTIFICATIONS). Sin permisos de almacenamiento: el selector del sistema da acceso a los archivos elegidos (ADR-0013).
 - En `mobile/lib` no hay código de PIN ni de cuentas.
 - Copia de Android: el manifiesto no declara `android:allowBackup` (vale el valor por defecto), pero sí `fullBackupContent` y `dataExtractionRules`, que excluyen `biblioteca-local/` (el audio subido en el teléfono) de la copia y del traspaso entre dispositivos. Las listas y «Me gusta» (`colecciones.json`) sí pueden entrar en la copia del sistema; no son datos sensibles.
-- «Para todos» abre en el navegador la página de subida de GitHub; la app no guarda tokens.
+- La subida para todos usa la misma función `/api/subir` de la web (ADR-0017); la app no guarda tokens.
 
 ### 3.11 Buzón de canciones (`buzon.yml`, ADR-0014): Implementado, verificado en parte
 
 **Quién puede subir.**
-- Subir a `audio-library/buzon/` desde la página de subida de GitHub exige permiso de escritura en el repositorio, porque es un commit a `main`. La web y la APK solo abren esa página.
+- Subir a `audio-library/buzon/` desde la página de subida de GitHub exige permiso de escritura en el repositorio, porque es un commit a `main`.
+- Desde ADR-0017, la web y la APK suben sin cuenta por `/api/subir` (§3.12): el commit lo hace la cuenta del token de Vercel, que tiene permiso de escritura. En la práctica, **cualquiera puede subir**.
 - El job `autorizar` comprueba además, con la API de GitHub, que `github.actor` (quien hizo el push o lanzó la ejecución) y `github.triggering_actor` (quien la relanza) tienen permiso `admin`, `maintain` o `write`. Si la consulta falla, cuenta como sin permiso. Sin checkout.
 - El push del bot no vuelve a lanzar el workflow (GitHub no lanza workflows con pushes hechos con `GITHUB_TOKEN`).
 
 **Qué se valida.**
-- En `procesar` (sin token, `contents: read`, `persist-credentials: false`, guarda de rama antes de instalar nada): extensión de audio (WAV, MP3, M4A, FLAC u OGG), archivo no vacío, como máximo 100 MiB, que ffprobe lo lea como audio y que ffmpeg lo convierta. Lo que no cumple se borra del buzón y se anota.
+- En `procesar` (sin token, `contents: read`, `persist-credentials: false`, guarda de rama antes de instalar nada): extensión de audio (WAV, MP3, M4A, FLAC, OGG u OPUS), archivo no vacío, como máximo 100 MiB, que ffprobe lo lea como audio y que ffmpeg lo convierta. Lo que no cumple se borra del buzón y se anota.
 - Se dejan en el buzón, para revisarlos a mano, los enlaces simbólicos, las carpetas, las subcarpetas y los nombres fuera de la lista de `nombre_valido` (hasta 200 caracteres y 255 bytes, sin punto ni guion iniciales). Un buzón que sea enlace simbólico o una cuenta con nombre que no es de GitHub detienen el procesado.
 - Licencia: la primera línea que empiece por `Licencia:` en el mensaje del commit, hasta 300 caracteres, sin caracteres de control ni de formato. Con ella, `public: true`; sin ella, `public: false` y licencia `Sin declarar`, que `update_song` no deja publicar. **El workflow no comprueba que la declaración sea cierta:** la registra con la cuenta (`source`: `Subida por <cuenta>`). Quien sube responde de ella.
 - Ningún nombre de archivo ni mensaje de commit se interpola en `run:`: `scripts/buzon.py` los lee del evento (`GITHUB_EVENT_PATH`). En el resumen del job van escapados y en bloques de código.
@@ -218,7 +220,17 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 - El Opus de cada canción, también de las privadas, queda en `audio-library/audio/`.
 - El nombre de la cuenta que subió queda en el catálogo y, para las canciones públicas, en `frontend/web/data/catalog.json` (campo `source`). Es el nombre público de una cuenta de GitHub.
 
+**Subidas por trozos (ADR-0017).** Una carpeta `audio-library/buzon/.partes/<UUID>/` sin `manifiesto.json` se ignora. Con manifiesto válido (`{"nombre": "<nombre>.opus", "partes": N}`, de 1 a 1000) y todas las partes, se unen en orden en el buzón (con sufijo si el nombre existe) y se procesan como cualquier archivo, con la licencia del commit del manifiesto o, si el push no lo trae, la de la web. Un manifiesto no válido se rechaza y borra su carpeta; un id que no es UUID, enlaces, elementos que no son partes y partes que faltan se dejan para revisar. El paquete solo puede borrar `.partes/<UUID>/<índice>.part` y `.partes/<UUID>/manifiesto.json`, y solo con la acción `buzon`.
+
 **Verificación en GitHub (2026-11-03).** La ejecución por push del archivo de prueba terminó en verde sin procesar nada: el evento no traía las listas de archivos. Desde `34a1f06`, si el evento no nombra archivos (o la ejecución es manual), se procesa lo que haya en el buzón con el mensaje del último commit del push. La ejecución manual dio de alta «tono-de-prueba-buzon» como privada (`4f6c73d`). Sin verificar: una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`.
+
+### 3.12 Subida desde la web pública (`frontend/web/api/subir.js`, ADR-0017): Implementado, sin probar en Vercel
+
+- **Decisión del propietario.** «Subir canciones» sube siempre al repositorio, para todos, sin cuenta. No hay límite de subidas por hora ni de tamaño por archivo; solo el de Vercel (4,5 MB por petición), por eso se sube en trozos de hasta 4 MiB.
+- **Token.** Solo en `process.env.GITHUB_TOKEN` (Vercel). Va solo a `api.github.com`, en la cabecera `Authorization`. No se escribe en los registros (solo el estado HTTP de GitHub) ni en las respuestas; si falta, la función responde 500 con un mensaje claro. El código del navegador no conoce ningún token (`tests/web-unit/upload.test.mjs`). Debe ser un token personal con «Contents: write» solo en este repositorio.
+- **Validación en la función**: primer trozo Ogg Opus (página de inicio `OggS` con `OpusHead` versión 1); cada trozo no vacío y hasta 4 MiB; un archivo por petición (se rechaza `multipart/*`); cabeceras `X-Nombre-Archivo`, `X-Subida-Id` (UUID), `X-Parte` y `X-Partes` (de 1 a 1000) validadas; nombre limpio (sin ruta ni extensión original, NFC, solo los caracteres de `nombre_valido`, hasta 150 caracteres y 180 bytes, con `.opus`); escribe solo en `audio-library/buzon/.partes/<UUID>/`; nunca sobrescribe (trozo repetido igual: sin commit; distinto: 409; fuera de orden: 409; tras el manifiesto: 409; nombre final con sufijo si existe). Commit en `main` con la API de git (blob, árbol, commit y referencia sin forzar, con reintento si `main` cambió).
+- **No hay**: límite por hora, captcha, cuentas, moderación previa ni comprobación de derechos. La web muestra un texto fijo: «Al subir, declaras que tienes derecho a publicar estos archivos».
+- Pruebas: `tests/web-unit/api-subir.test.mjs` (GitHub simulado), `tests/web-unit/subida-publica.test.mjs` y `tests/web-e2e/funcional.e2e.mjs` (función simulada en el servidor de pruebas). Sin probar con Vercel ni con el token real.
 
 ## 4. Amenazas y riesgos residuales
 
@@ -289,6 +301,13 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 - Mitigación: solo cuentas con permiso de escritura; sin línea de licencia la canción entra privada y no se puede publicar con `Sin declarar`; el resumen del job anota cada caso.
 - Propuesta: revisar el resumen de cada ejecución del buzón; antes de publicar una canción subida, comprobar su licencia; no relanzar a mano con archivos de varias personas en el buzón.
 
+**R13. Subida pública sin cuentas (ADR-0017).**
+
+- Evidencia: §3.12. Cualquiera que entre en la web puede subir audio, y entra público en la biblioteca con la licencia de la web.
+- Riesgos: (a) publicación de grabaciones sin derechos, ofensivas o con datos de pacientes, que quedan para siempre en el historial de git aunque se retiren; (b) crecimiento del repositorio sin límite (trozos en el historial y audio convertido), hasta los límites de GitHub (R3, `check_repo_limits.py`); (c) agotar la cuota de la API del token (5000 peticiones por hora) o los minutos de Actions con muchas subidas (cada trozo es un commit y una ejecución del buzón); (d) si el token se filtrara, da escritura en el repositorio; (e) atribución: todas las subidas de la web quedan como «Subida por <cuenta del token>».
+- Mitigación: solo Ogg Opus en el primer trozo, nombre y ruta cerrados al buzón, sin sobrescribir; el buzón vuelve a validar y convierte con ffmpeg sin token (§3.11, R1); el token no llega al navegador. Riesgos aceptados por el propietario.
+- Propuesta: token de grano fino limitado a este repositorio y a «Contents: write», con caducidad; revisar el resumen de cada ejecución del buzón; vigilar el tamaño del repositorio; si hay abuso, añadir un límite o un captcha (decisión del propietario).
+
 ## 5. Pendientes
 
 **A. Legales y éticos (decisión o dictamen)**
@@ -307,7 +326,7 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 
 10. Retirados por ADR-0015, antes en esta lista: conectar la capa de datos del cuidador, persistencia y aviso de cuota de la copia, fotografías (reducción y EXIF), PIN y almacén del registro del estudio.
 11. Decidir el instrumento del estudio que sustituya al registro retirado (ADR-0015, consecuencias) y rehacer §2.3 antes de recoger datos.
-12. Buzón: probar una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`; revisar la atribución cuando el evento no nombra archivos (R12).
+12. Buzón: probar una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`; revisar la atribución cuando el evento no nombra archivos (R12). Subida desde la web (§3.12): desplegar en Vercel y probar la función real con el token (ESM en `api/subir.js`, firma `POST(request)`, límite de cuerpo); comprobar que `buzon.yml` se lanza con archivos dentro de `.partes/` y que `autorizar` acepta la cuenta del token. Propuesta: excluir `audio-library/buzon/.partes/**/*.part` del filtro de `buzon.yml`, para que solo el manifiesto lance el workflow.
 13. Licencias declaradas en el buzón: incluirlas en el dictamen de §5 A.4.
 14. Base `reminiscencia` de la versión anterior en los navegadores: decidir si se explica cómo borrarla (R5).
 15. Gestión por incidencias de GitHub: implementada para cuentas con permiso de escritura (§3.5). Pendiente: revisar el filtro de autor antes de hacer público el repositorio (ADR-0008).
@@ -323,7 +342,7 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 
 23. Resuelto: CLAUDE.md ya no describe la administración ni la lista de bloqueo duplicada en `validate.js` (comprobado el 2-nov-2026).
 24. Resuelto: la fila de administración de PROJECT_MASTER.md figura como retirada (ADR-0008).
-25. Resuelto en lo referente a la administración. Queda la acción del propietario de borrar `ADMIN_PASSWORD` y `GITHUB_TOKEN` en Vercel (ROADMAP.md, «Pendiente»).
+25. Resuelto en lo referente a la administración. Queda la acción del propietario de borrar `ADMIN_PASSWORD` en Vercel. `GITHUB_TOKEN` ya no se borra: lo usa la función `/api/subir` (ADR-0017). ROADMAP.md, «Pendiente», sigue pidiendo borrar los dos.
 26. Resuelto: ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02, y los puntos 4 y 5 de ADR-0007 están superados por ADR-0008.
 27. Resuelto: `.github/workflows/library.yml` ya no existe en `main`; su comentario obsoleto salió con el fichero.
 28. Resuelto: DESIGN.md 2.0 (ADR-0015) ya no trata fotografías, PIN ni la app Android como PWA.

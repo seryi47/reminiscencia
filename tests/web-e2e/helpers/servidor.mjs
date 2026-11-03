@@ -1,7 +1,8 @@
 // Servidor estático para las pruebas de extremo a extremo.
 // Sirve frontend/web (la raíz de Vercel) con node:http, sin dependencias externas, y con la misma política de
 // contenido (CSP) que vercel.json, para que las pruebas fallen si la web carga algo que producción bloquearía.
-// Admite sustituciones por ruta (por ejemplo, un catálogo de prueba ficticio en data/songs.json).
+// Admite sustituciones por ruta (por ejemplo, un catálogo de prueba ficticio en data/songs.json) y funciones simuladas
+// (por ejemplo, POST /api/subir, la función de Vercel de ADR-0017, que aquí no llama a GitHub).
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
@@ -98,12 +99,20 @@ function sendBody(request, response, body, type, csp) {
   response.end(request.method === "HEAD" ? undefined : body);
 }
 
+async function readBody(request) {
+  const parts = [];
+  for await (const part of request) parts.push(part);
+  return Buffer.concat(parts);
+}
+
 /**
  * Arranca el servidor en un puerto libre de 127.0.0.1.
  * overrides: Map de ruta (por ejemplo "/data/songs.json") a { body, type } o a { file, type }.
+ * functions: Map de ruta (por ejemplo "/api/subir") a una función async ({ method, headers, body }) que devuelve
+ * { status, json }: simula una función de Vercel para cualquier método que no sea GET ni HEAD.
  * Devuelve { url, port, close() }.
  */
-export async function startStaticServer({ root = WEB_ROOT, overrides = new Map() } = {}) {
+export async function startStaticServer({ root = WEB_ROOT, overrides = new Map(), functions = new Map() } = {}) {
   const absoluteRoot = resolve(root);
   const rootInfo = await stat(absoluteRoot).catch(() => null);
   if (!rootInfo?.isDirectory()) {
@@ -115,6 +124,14 @@ export async function startStaticServer({ root = WEB_ROOT, overrides = new Map()
     try {
       const { pathname } = new URL(request.url ?? "/", "http://127.0.0.1");
       const decoded = decodeURIComponent(pathname);
+
+      const handler = functions.get(decoded);
+      if (handler && request.method !== "GET" && request.method !== "HEAD") {
+        const body = await readBody(request);
+        const { status = 200, json = {} } = await handler({ method: request.method, headers: request.headers, body });
+        response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...(csp ? { "Content-Security-Policy": csp } : {}) });
+        return response.end(JSON.stringify(json));
+      }
 
       const override = overrides.get(decoded);
       if (override) {

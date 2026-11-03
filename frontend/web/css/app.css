@@ -2560,55 +2560,6 @@ button:disabled {
 
 /* ---- Hoja «Subir canciones» ---- */
 
-.upload-options {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.upload-option {
-  display: flex;
-  width: 100%;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 16px;
-  border-radius: var(--radius);
-  background: #333333;
-  text-align: left;
-  transition: background-color 0.2s;
-}
-
-.upload-option:hover {
-  background: #3e3e3e;
-}
-
-.upload-option-icon {
-  display: flex;
-  flex: none;
-  width: 48px;
-  height: 48px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--bg);
-  color: var(--accent);
-}
-
-.upload-option-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.upload-option-title {
-  font-weight: 700;
-}
-
-.upload-option-desc {
-  color: var(--text-2);
-  font-size: var(--text-s);
-}
-
 .upload-back {
   margin: 0 0 8px -8px;
 }
@@ -2652,9 +2603,27 @@ button:disabled {
   font-size: var(--text-s);
 }
 
-.upload-failures li {
-  color: #ff8b98;
+.upload-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.upload-result {
   font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.upload-result.is-error {
+  color: #ff8b98;
+}
+
+.upload-result-name {
+  font-weight: 700;
+}
+
+.upload-local[hidden] {
+  display: none;
 }
 
 .upload-rules {
@@ -2664,6 +2633,10 @@ button:disabled {
   margin-bottom: 20px;
   padding-left: 20px;
   list-style: disc;
+}
+
+.upload-archive-link {
+  margin: 24px 0 0 -8px;
 }
 
 .dialog-upload .text-field {

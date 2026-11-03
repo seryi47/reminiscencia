@@ -4,6 +4,8 @@
 - Fecha: 2026-11-03
 - Relacionadas: ADR-0007 (catálogo como fuente de verdad), ADR-0008 (entrada por incidencias), ADR-0010 (procesado y publicación separados) y ADR-0011 (publicar regenera la parte pública).
 
+> **Nota de estado (2026-11-03).** Con [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) la web y la APK suben al buzón por trozos, sin cuenta de GitHub, mediante la función `api/subir` (`audio-library/buzon/.partes/<UUID>/`); el buzón une las partes cuando llega el manifiesto y las procesa como cualquier archivo, públicas con la licencia de la web. La subida desde la página de GitHub sigue igual para quien tiene permiso de escritura.
+
 ## Contexto
 
 Hasta ahora, una canción entra en la biblioteca por una incidencia con una URL de Internet Archive o de un fichero directo con licencia (ADR-0008). No hay forma de añadir una grabación que alguien tiene en su ordenador, como una grabación propia o una cedida, para que la vean todos. La subida desde el navegador y desde la APK guarda el audio solo en ese dispositivo (ADR-0012, ADR-0013).

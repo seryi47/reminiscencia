@@ -1,8 +1,9 @@
 // Pruebas funcionales de la interfaz sin usuarios (ADR-0015) con la distribución de Spotify: abre en Inicio sin pedir
 // nada, reproduce, busca desde la barra superior, abre álbumes (con portadas publicadas), panel «Reproduciendo», crea y
 // edita listas locales (nombre, descripción y foto), «Me gusta», cola, hojas de edición de canciones y álbumes
-// (incidencias de GitHub), subida local (conversión real a Opus) y borrado, «Para todos», «Desde Internet Archive» y
-// escucha sin conexión. Catálogo de prueba ficticio (helpers/catalogo-prueba.mjs).
+// (incidencias de GitHub), «Subir canciones» para todos (conversión real a Opus y envío por trozos a /api/subir, con la
+// función simulada en el servidor de pruebas; ADR-0017), canciones locales de antes (suenan y se borran), «Importar
+// desde Internet Archive» y escucha sin conexión. Catálogo de prueba ficticio (helpers/catalogo-prueba.mjs).
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { crc32, deflateSync } from "node:zlib";
@@ -35,8 +36,27 @@ import { startStaticServer } from "./helpers/servidor.mjs";
 let server;
 let browser;
 
+// Función /api/subir simulada: guarda cada trozo recibido y responde como la de Vercel (frontend/web/api/subir.js).
+// Un nombre de archivo que contiene «falla» recibe el error de un archivo que no es Ogg Opus.
+const subidas = [];
+async function fakeUploadFunction({ headers, body }) {
+  const name = decodeURIComponent(headers["x-nombre-archivo"] ?? "");
+  const index = Number(headers["x-parte"]);
+  const total = Number(headers["x-partes"]);
+  subidas.push({ name, id: headers["x-subida-id"], index, total, type: headers["content-type"], body });
+  if (name.includes("falla")) return { status: 415, json: { ok: false, error: "El archivo no es Ogg Opus." } };
+  const complete = index === total - 1;
+  return {
+    json: {
+      ok: true, parte: index, partes: total, completa: complete, repetido: false,
+      nombre: complete ? `${name.replace(/\.[^.]*$/, "")}.opus` : null,
+      mensaje: complete ? "Subida: llegará a todos en un par de minutos." : `Trozo ${index + 1} de ${total} recibido.`,
+    },
+  };
+}
+
 before(async () => {
-  server = await startStaticServer({ overrides: createTestCatalogOverrides() });
+  server = await startStaticServer({ overrides: createTestCatalogOverrides(), functions: new Map([["/api/subir", fakeUploadFunction]]) });
   browser = await launchBrowser();
 });
 
@@ -600,79 +620,109 @@ describe("Editar canciones y álbumes (incidencias de GitHub)", () => {
 });
 
 describe("Subir canciones", () => {
-  prueba("«Solo en este navegador»: convierte un WAV a Opus, suena por el service worker y se borra", () =>
+  // Elige los archivos en la hoja y espera al resumen final.
+  async function uploadWavs(page, names) {
+    const dir = await mkdtemp(join(tmpdir(), "reminiscencia-e2e-"));
+    const paths = [];
+    for (const name of names) {
+      const path = join(dir, name);
+      await writeFile(path, wavTone(1.5));
+      paths.push(path);
+    }
+    const soporte = await textOf(page, "upload-support").catch(() => "");
+    assert.equal(soporte, "", `Este Chrome no convierte a Opus: ${soporte}`);
+    const input = await page.$('[data-testid="upload-file-input"]');
+    await input.uploadFile(...paths);
+    await page.waitForFunction((count) => document.querySelectorAll('[data-testid="upload-results"] li').length === count, { timeout: 60000 }, names.length);
+  }
+
+  prueba("Una sola opción: convierte cada archivo a Opus y lo sube a /api/subir, de uno en uno y en orden", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
-      const dir = await mkdtemp(join(tmpdir(), "reminiscencia-e2e-"));
-      const archivo = join(dir, "Tono de prueba.wav");
-      await writeFile(archivo, wavTone(1.5));
+      subidas.length = 0;
+      await openApp(page, server.url);
+      await openUpload(page, VIEWPORTS.escritorio);
+      // Sin elección «Solo en este navegador / Para todos» y sin casilla: solo el texto fijo de derechos.
+      assert.equal(await page.$('[data-testid^="upload-option-"]'), null);
+      assert.equal(await page.$('[data-testid="upload-sheet"] input[type="checkbox"]'), null);
+      assert.equal(await textOf(page, "upload-rights"), "Al subir, declaras que tienes derecho a publicar estos archivos.");
+      assert.equal(await isVisible(page, "upload-local"), false, "sin canciones locales no se muestra su lista");
+
+      await uploadWavs(page, ["Tono de prueba.wav", "Mi canción.wav"]);
+
+      assert.deepEqual(subidas.map((item) => [item.name, item.index, item.total, item.type]), [
+        ["Tono de prueba.wav", 0, 1, "audio/ogg"],
+        ["Mi canción.wav", 0, 1, "audio/ogg"],
+      ]);
+      assert.notEqual(subidas[0].id, subidas[1].id, "un id de subida por archivo");
+      for (const item of subidas) {
+        assert.match(item.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        assert.equal(item.body.subarray(0, 4).toString("latin1"), "OggS", "el cuerpo ya es Ogg Opus");
+        assert.equal(item.body.subarray(28, 36).toString("latin1"), "OpusHead");
+        assert.ok(item.body.length < 64 * 1024, `1,5 s de Opus pesa poco (${item.body.length} bytes)`);
+      }
+      assert.equal(await textOf(page, "upload-status"), "2 canciones subidas: llegarán a todos en un par de minutos.");
+      const filas = await page.$$eval('[data-testid="upload-results"] li', (items) => items.map((li) => [li.dataset.state, li.textContent]));
+      assert.deepEqual(filas, [
+        ["ok", "Tono de prueba.wav: Subida: llegará a todos en un par de minutos."],
+        ["ok", "Mi canción.wav: Subida: llegará a todos en un par de minutos."],
+      ]);
+      assert.equal(await countLocalSongs(page), 0, "ya no se guarda nada en este navegador");
+    }),
+  );
+
+  prueba("Un error del servidor se muestra en su archivo y no para los demás", () =>
+    withPage(browser, VIEWPORTS.telefono, async (page) => {
+      subidas.length = 0;
+      await openApp(page, server.url);
+      await openUpload(page, VIEWPORTS.telefono);
+      await uploadWavs(page, ["Este falla.wav", "Este sube.wav"]);
+      assert.deepEqual(subidas.map((item) => item.name), ["Este falla.wav", "Este sube.wav"]);
+      const filas = await page.$$eval('[data-testid="upload-results"] li', (items) => items.map((li) => [li.dataset.state, li.textContent]));
+      assert.deepEqual(filas, [
+        ["error", "Este falla.wav: El archivo no es Ogg Opus."],
+        ["ok", "Este sube.wav: Subida: llegará a todos en un par de minutos."],
+      ]);
+      assert.match(await textOf(page, "upload-status"), /Subida: llegará a todos en un par de minutos\. Un archivo no se ha podido subir\./);
+    }),
+  );
+
+  prueba("Una canción local de antes suena por el service worker y se borra desde la hoja; una pública no se borra", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      // El Opus que convierte el navegador sirve de canción local guardada antes de ADR-0017.
+      subidas.length = 0;
       await openApp(page, server.url);
       await waitServiceWorker(page);
-      await openUpload(page, VIEWPORTS.escritorio, "local");
-      const soporte = await textOf(page, "upload-support").catch(() => "");
-      assert.equal(soporte, "", `Este Chrome no convierte a Opus: ${soporte}`);
-      const input = await page.$('[data-testid="upload-file-input"]');
-      await input.uploadFile(archivo);
-      await page.waitForFunction(() => /Se ha añadido 1 canción/.test(document.querySelector('[data-testid="upload-status"]')?.textContent ?? ""), { timeout: 60000 });
-      assert.match(await textOf(page, "upload-local-list"), /Tono de prueba/);
-      assert.equal(await countLocalSongs(page), 1);
+      await openUpload(page, VIEWPORTS.escritorio);
+      await uploadWavs(page, ["Tono local.wav"]);
+      await seedLocalSong(page, { id: "L0011223344556677", title: "Canción local de prueba", blob: [...subidas[0].body] });
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForSelector('html[data-ready="true"]');
+      await waitServiceWorker(page);
+
+      await openCollection(page, FOLDER_A);
+      const publicas = await openRowMenu(page, SONG_1);
       await page.keyboard.press("Escape");
+      assert.equal(publicas.includes("Borrar de este navegador"), false);
+
       await openCollection(page, "#/locales");
       await playRow(page, 0);
       const estado = await audioState(page);
-      assert.match(estado.src, /\/audio\/L[0-9a-f]{16}\.opus$/, "La canción local se sirve desde el propio origen (CSP media-src 'self').");
+      assert.match(estado.src, /\/audio\/L0011223344556677\.opus$/, "La canción local se sirve desde el propio origen (CSP media-src 'self').");
       await page.waitForFunction(() => document.getElementById("audio").currentTime > 0.2, { timeout: 10000 });
       assert.equal((await audioState(page)).error, null);
-      // Borrado desde el menú de la fila, con confirmación.
-      const id = await page.$eval('[data-testid="track-row"]', (row) => row.dataset.songId);
-      const opciones = await openRowMenu(page, id);
-      assert.ok(opciones.includes("Borrar de este navegador"), opciones.join(", "));
-      await pickMenu(page, "menu-delete-local");
-      assert.match(await textOf(page, "confirm"), /¿Borrar esta canción de este navegador\? No se puede deshacer\./);
-      await clickTestid(page, "confirm-ok", "Borrar");
-      await page.waitForFunction((songId) => !document.querySelector(`[data-song-id="${songId}"]`), {}, id);
-      assert.equal(await countLocalSongs(page), 0);
-    }),
-  );
 
-  prueba("Una canción pública no ofrece «Borrar de este navegador»; una local se borra desde la hoja", () =>
-    withPage(browser, VIEWPORTS.telefono, async (page) => {
-      await openApp(page, server.url);
-      await seedLocalSong(page, { id: "L0011223344556677", title: "Canción local de prueba" });
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await page.waitForSelector('html[data-ready="true"]');
-      await openCollection(page, FOLDER_A);
-      const opciones = await openRowMenu(page, SONG_1);
-      await page.keyboard.press("Escape");
-      assert.equal(opciones.includes("Borrar de este navegador"), false);
-      await openUpload(page, VIEWPORTS.telefono, "local");
+      await openUpload(page, VIEWPORTS.escritorio);
+      assert.equal(await isVisible(page, "upload-local"), true);
       assert.match(await textOf(page, "upload-local-list"), /Canción local de prueba/);
       await clickTestid(page, "upload-delete", "Borrar en la hoja");
+      assert.match(await textOf(page, "confirm"), /¿Borrar esta canción de este navegador\? No se puede deshacer\./);
       await clickTestid(page, "confirm-ok", "Borrar");
-      await page.waitForFunction(() => /Todavía no has subido ninguna/.test(document.querySelector('[data-testid="upload-local-list"]')?.textContent ?? ""));
+      await page.waitForFunction(() => document.querySelector('[data-testid="upload-local"]')?.hidden === true);
       assert.equal(await countLocalSongs(page), 0);
     }),
   );
 
-  prueba("«Para todos» abre la subida de GitHub en otra pestaña, con las instrucciones", () =>
-    withPage(browser, VIEWPORTS.escritorio, async (page) => {
-      await openApp(page, server.url);
-      await openUpload(page, VIEWPORTS.escritorio, "todos");
-      const enlace = await page.$eval('[data-testid="upload-github-link"]', (a) => ({ href: a.href, target: a.target, rel: a.rel }));
-      assert.deepEqual(enlace, {
-        href: "https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon",
-        target: "_blank",
-        rel: "noopener noreferrer",
-      });
-      const reglas = await textOf(page, "upload-rules");
-      assert.match(reglas, /permiso de escritura/);
-      assert.match(reglas, /25 MB/);
-      assert.match(reglas, /Licencia: …/);
-      assert.match(reglas, /quedan privadas/);
-      assert.match(reglas, /responde de esa declaración/);
-    }),
-  );
-
-  prueba("«Desde Internet Archive» rechaza plataformas bloqueadas y prepara la incidencia con un ítem válido", () =>
+  prueba("«Importar desde Internet Archive» rechaza plataformas bloqueadas y prepara la incidencia con un ítem válido", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       await openApp(page, server.url);
       await openUpload(page, VIEWPORTS.escritorio, "archive");
@@ -688,6 +738,9 @@ describe("Subir canciones", () => {
       assert.equal(url.origin + url.pathname, "https://github.com/seryi47/reminiscencia/issues/new");
       assert.equal(url.searchParams.get("labels"), "biblioteca");
       assert.equal(url.searchParams.get("body"), "action: import\nurl: https://archive.org/details/ejemplo-de-prueba");
+      // Vuelve a la subida.
+      await clickTestid(page, "upload-back", "Volver a Subir canciones");
+      await waitVisible(page, "upload-panel", { context: "panel de subida" });
     }),
   );
 });

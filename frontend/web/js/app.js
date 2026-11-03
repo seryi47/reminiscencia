@@ -560,12 +560,6 @@ async function deleteLocalSong(song) {
   return true;
 }
 
-async function onLocalAdded(songs) {
-  state.localSongs = [...state.localSongs, ...songs];
-  rebuildCatalog();
-  render();
-}
-
 async function toggleDownload(contextId, songs, done) {
   if (done) {
     await removeOfflineSongs(songs);
@@ -883,7 +877,6 @@ const ctx = {
   addToQueue,
   addManyToQueue,
   deleteLocalSong,
-  onLocalAdded,
   toggleDownload,
   editSong: (song) => openEditSongSheet(ctx, song),
   moveSongToAlbum: (song) => openMoveToAlbumSheet(ctx, song),

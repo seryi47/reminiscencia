@@ -6,7 +6,7 @@
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 7;
+export const SHELL_VERSION = 8;
 
 /** Prefijo de las cachés del shell; sirve para reconocer las antiguas al limpiar. */
 export const SHELL_CACHE_PREFIX = 'reminiscencia-shell-';
@@ -67,6 +67,7 @@ export const SHELL_ASSETS = Object.freeze([
   '/js/views/upload.js',
   '/js/cuidador/incidencias.js',
   '/js/cuidador/subida-local.js',
+  '/js/cuidador/subida-publica.js',
   '/data/songs.json',
   '/data/folders.json',
   '/data/catalog.json',

@@ -4,6 +4,8 @@
 - Fecha: 2026-10-31
 - Sustituye: la administración en Vercel de ADR-0007 (puntos 4 y 5) y la entrada por `/admin/` de la actualización de ADR-0005.
 
+> **Nota de estado (2026-11-03).** [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) sustituye en la decisión 1 «ni token de GitHub en la web, ni funciones de Vercel (`api/`)»: por orden del propietario hay una función, `frontend/web/api/subir.js`, que sube al buzón con un token guardado en las variables de entorno de Vercel (`GITHUB_TOKEN`), que nunca llega al navegador. Siguen vigentes: sin administración, sin contraseña y sin `frontend/web/admin` ni `frontend/web/lib`.
+
 ## Contexto
 
 La biblioteca se gestionaba desde una página de administración en Vercel, protegida con una contraseña, con funciones `api/*` que disparaban el workflow `library.yml` usando un token de GitHub. Esa parte añadía un secreto en la web, varias funciones que mantener y una superficie de ataque que no hacía falta.

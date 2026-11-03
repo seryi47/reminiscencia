@@ -1,7 +1,9 @@
 // Subida local de audio (ADR-0012): los archivos que la persona elige en SU navegador se decodifican con
 // decodeAudioData, se remuestrean a 48 kHz y se codifican a Opus con AudioEncoder (WebCodecs). El resultado se
 // empaqueta como Ogg Opus (el mismo contenedor que el catálogo) y se guarda en una base de IndexedDB de este navegador.
-// Nada sale del dispositivo: no hay fetch ni POST con el audio y no entra en el catálogo público.
+// Este módulo no envía nada: no hay fetch ni POST con el audio. Desde ADR-0017 la hoja «Subir canciones» ya no guarda
+// canciones nuevas aquí: usa convertToOpus (sin límites ni comprobación de espacio) y las sube para todos con
+// subida-publica.js. Las canciones locales que ya existan siguen sonando y se pueden borrar.
 //
 // Reproducción (ADR-0015): con el service worker activo, cada canción local se sirve en audio/<id>.opus desde esta
 // base (sw.js), una ruta del propio origen que admite la política de contenido (media-src 'self'). Sin service
@@ -555,11 +557,13 @@ async function encodePlanar(buffer, { channels, bitrate }, onFraction, env = glo
 
 /**
  * Convierte un archivo de audio a Ogg Opus en el navegador. onProgress recibe { stage, fraction } con fraction de 0 a 1.
- * Lanza LocalAudioError con un mensaje para el cuidador si el archivo no cabe, no se puede leer o no hay espacio.
+ * Lanza LocalAudioError con un mensaje para la persona si el archivo no cabe, no se puede leer o no hay espacio.
+ * Con limits: false no se aplican los límites de tamaño ni de duración (solo se rechaza un archivo vacío) y con
+ * checkStorage: false no se mira el espacio de IndexedDB: así lo usa la subida para todos (ADR-0017).
  */
-export async function convertToOpus(file, { onProgress = () => {}, env = globalThis } = {}) {
+export async function convertToOpus(file, { onProgress = () => {}, env = globalThis, limits = true, checkStorage = true } = {}) {
   const bytes = file?.size ?? 0;
-  const sizeProblem = checkFileLimits({ bytes });
+  const sizeProblem = limits ? checkFileLimits({ bytes }) : checkFileLimits({ bytes: bytes > 0 ? 1 : 0 });
   if (sizeProblem) throw new LocalAudioError(sizeProblem);
 
   onProgress({ stage: 'leer', fraction: 0 });
@@ -570,17 +574,21 @@ export async function convertToOpus(file, { onProgress = () => {}, env = globalT
   try {
     decoded = await ctx.decodeAudioData(data);
   } catch {
-    throw new LocalAudioError('No se puede leer este archivo. Comprueba que es audio válido (WAV, MP3, M4A, OGG o FLAC).');
+    throw new LocalAudioError('No se puede leer este archivo. Comprueba que es audio válido (WAV, MP3, M4A, FLAC, OGG u OPUS).');
   } finally {
     ctx.close?.()?.catch?.(() => {});
   }
 
-  const durationProblem = checkFileLimits({ bytes, durationS: decoded.duration });
-  if (durationProblem) throw new LocalAudioError(durationProblem);
+  if (limits) {
+    const durationProblem = checkFileLimits({ bytes, durationS: decoded.duration });
+    if (durationProblem) throw new LocalAudioError(durationProblem);
+  }
 
   const format = outputFormat(decoded.numberOfChannels);
-  const space = checkSpace({ neededBytes: estimateOpusBytes(decoded.duration, format.channels), ...(await storageStatus(env)) });
-  if (!space.ok) throw new LocalAudioError(space.message);
+  if (checkStorage) {
+    const space = checkSpace({ neededBytes: estimateOpusBytes(decoded.duration, format.channels), ...(await storageStatus(env)) });
+    if (!space.ok) throw new LocalAudioError(space.message);
+  }
 
   onProgress({ stage: 'convertir', fraction: 0.05 });
   const frames = Math.max(1, Math.ceil(decoded.duration * OPUS_RATE));

@@ -1,22 +1,34 @@
 // Pruebas de la lógica de la hoja «Subir canciones» (frontend/web/js/views/upload.js) que no necesita navegador:
-// la dirección de la subida a GitHub y la doble validación de «Desde Internet Archive» (incidencias.js e intake.js).
+// el resumen tras subir (ADR-0017), que la web no conoce tokens ni la API de GitHub, y la doble validación de
+// «Importar desde Internet Archive» (incidencias.js e intake.js).
 // Ejecución: node --test tests/web-unit/upload.test.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
-import { evaluateArchiveForm, GITHUB_UPLOAD_URL } from '../../frontend/web/js/views/upload.js';
+import { evaluateArchiveForm, summaryText } from '../../frontend/web/js/views/upload.js';
 
-describe('«Para todos»', () => {
-  test('abre la subida de GitHub al buzón de la biblioteca en main', () => {
-    assert.equal(GITHUB_UPLOAD_URL, 'https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon');
+describe('Subir canciones (para todos)', () => {
+  test('el resumen dice cuántas se han subido y cuántas no', () => {
+    assert.equal(summaryText({ sent: 0, failed: 0 }), '');
+    assert.equal(summaryText({ sent: 1, failed: 0 }), 'Subida: llegará a todos en un par de minutos.');
+    assert.equal(summaryText({ sent: 3, failed: 0 }), '3 canciones subidas: llegarán a todos en un par de minutos.');
+    assert.equal(summaryText({ sent: 2, failed: 1 }), '2 canciones subidas: llegarán a todos en un par de minutos. Un archivo no se ha podido subir.');
+    assert.equal(summaryText({ sent: 0, failed: 1 }), 'No se ha podido subir el archivo.');
+    assert.equal(summaryText({ sent: 0, failed: 4 }), 'No se ha podido subir ninguno de los 4 archivos.');
   });
 
-  test('la web no usa tokens ni la API de GitHub', () => {
-    for (const file of ['views/upload.js', 'app.js', 'cuidador/incidencias.js']) {
+  test('la hoja ya no ofrece «Solo en este navegador» ni «Para todos», y lleva el texto de derechos sin casilla', () => {
+    const source = readFileSync(new URL('../../frontend/web/js/views/upload.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /Solo en este navegador|Para todos|addLocalFiles|type: 'checkbox'/);
+    assert.match(source, /RIGHTS_TEXT/);
+  });
+
+  test('el código del navegador no usa tokens ni la API de GitHub: solo habla con /api/subir', () => {
+    for (const file of ['views/upload.js', 'app.js', 'cuidador/incidencias.js', 'cuidador/subida-publica.js', 'cuidador/subida-local.js']) {
       const source = readFileSync(new URL(`../../frontend/web/js/${file}`, import.meta.url), 'utf8');
       assert.doesNotMatch(source, /api\.github\.com/, file);
-      assert.doesNotMatch(source, /Authorization|access_token|ghp_/i, file);
+      assert.doesNotMatch(source, /Authorization|access_token|ghp_|github_pat_|GITHUB_TOKEN/i, file);
     }
   });
 });
