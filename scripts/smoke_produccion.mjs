@@ -16,9 +16,10 @@ import { readFileSync } from 'node:fs';
 const DEFAULT_URL = 'https://reminiscencia.vercel.app';
 const TIMEOUT_MS = 20_000;
 
-// Marcas fijas de frontend/web/index.html de feat/ui-publica (la interfaz nueva).
+// Marcas fijas de frontend/web/index.html (interfaz sin usuarios con el aspecto de Spotify, ADR-0015).
 const HTML_MARKS = [
-  '<div id="app" class="app"></div>',
+  'data-testid="sidebar"',
+  'data-testid="nav-buscar"',
   '<script type="module" src="js/app.js"></script>',
   '<title>Reminiscencia</title>',
 ];
