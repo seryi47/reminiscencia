@@ -3,10 +3,14 @@
 Estructura de audio-library/indexes/catalog.json:
 {
   "version": 1,
-  "folders": [{"id", "name", "parent_id"}],
+  "folders": [{"id", "name", "parent_id", "artist"?, "cover"?}],
   "songs":   [{"id", "title", "artist", "year", "tags", "folder_id", "license",
-               "source", "sha256", "duration_s", "codec", "size_bytes", "added_at", "public"}]
+               "source", "sha256", "duration_s", "codec", "size_bytes", "added_at", "public", "cover"?}]
 }
+Una carpeta es también un álbum (ADR-0016): "artist" (opcional, una línea de hasta 80 caracteres) y "cover"
+(opcional, "covers/<id>.jpg"). Una canción puede tener "cover" igual. Los campos opcionales solo están cuando tienen
+valor. Los ids de carpeta nuevos son F seguida de 16 hexadecimales; los anteriores, de 10 hexadecimales, siguen siendo
+válidos (no tienen portada).
 Las operaciones son puras sobre el fichero: cada cambio se guarda entero y de forma atómica.
 """
 
@@ -142,18 +146,34 @@ def declare_license(data: dict, song_id: str, license: str, source: str) -> dict
     return song
 
 
-def create_folder(data: dict, name: str, parent_id: str | None = None) -> dict:
-    """Crea una carpeta. Si ya hay una con ese nombre bajo el mismo padre, la devuelve: reejecutar una
-    petición no duplica la carpeta."""
+def new_folder_id() -> str:
+    return f"F{uuid.uuid4().hex[:16]}"
+
+
+def _set_artist(folder: dict, artist: str | None) -> None:
+    clean = (artist or "").strip()
+    if clean:
+        folder["artist"] = clean
+    else:
+        folder.pop("artist", None)
+
+
+def create_folder(data: dict, name: str, parent_id: str | None = None, artist: str | None = None) -> dict:
+    """Crea una carpeta (un álbum, con artista opcional). Si ya hay una con ese nombre y ese artista bajo el mismo
+    padre, la devuelve: reejecutar una petición no duplica la carpeta. Dos álbumes con el mismo nombre y distinto
+    artista son dos carpetas."""
     clean = name.strip()
     if not clean:
         raise CatalogError("el nombre de la carpeta no puede estar vacío")
     if parent_id:
         find_folder(data, parent_id)
+    clean_artist = (artist or "").strip()
     for existing in data["folders"]:
-        if existing["name"] == clean and existing["parent_id"] == (parent_id or None):
+        if (existing["name"] == clean and existing["parent_id"] == (parent_id or None)
+                and (existing.get("artist") or "") == clean_artist):
             return existing
-    folder = {"id": uuid.uuid4().hex[:10], "name": clean, "parent_id": parent_id or None}
+    folder = {"id": new_folder_id(), "name": clean, "parent_id": parent_id or None}
+    _set_artist(folder, clean_artist)
     data["folders"].append(folder)
     return folder
 
@@ -165,6 +185,38 @@ def rename_folder(data: dict, folder_id: str, name: str) -> dict:
     folder = find_folder(data, folder_id)
     folder["name"] = clean
     return folder
+
+
+_KEEP = object()
+
+
+def edit_folder(data: dict, folder_id: str, name: str, artist=_KEEP) -> dict:
+    """Cambia el nombre y, si se pasa, el artista de una carpeta. Un artista vacío lo quita; sin artista, se conserva
+    el que tenga."""
+    folder = rename_folder(data, folder_id, name)
+    if artist is not _KEEP:
+        _set_artist(folder, artist)
+    return folder
+
+
+def find_item(data: dict, item_id: str) -> dict | None:
+    """La canción o la carpeta con ese id, o None."""
+    for collection in ("songs", "folders"):
+        for item in data[collection]:
+            if item.get("id") == item_id:
+                return item
+    return None
+
+
+def set_cover(data: dict, item_id: str, cover: str) -> bool:
+    """Apunta la canción o la carpeta a su portada. Devuelve si el catálogo ha cambiado."""
+    item = find_item(data, item_id)
+    if item is None:
+        raise CatalogError(f"no existe ninguna canción ni carpeta {item_id}")
+    if item.get("cover") == cover:
+        return False
+    item["cover"] = cover
+    return True
 
 
 def delete_folder(data: dict, folder_id: str) -> None:

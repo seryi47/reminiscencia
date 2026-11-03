@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## Sin publicar: portadas y álbumes con artista (2026-11-03, rama `feat/portadas-albumes`)
+
+Decisión en [ADR-0016](docs/decisions/ADR-0016-portadas-y-albumes.md). Sin probar en GitHub.
+
+### Añadido
+- Portadas de canciones y de carpetas (álbumes) por el buzón: `audio-library/buzon/portadas/<ID>.<jpg|jpeg|png|webp>` (hasta 10 MiB, sin línea de licencia). El workflow `buzon` las convierte con ffmpeg a JPEG de 640×640 (recorte centrado, sin metadatos) en `audio-library/covers/<ID>.jpg` y el catálogo apunta a ellas con `"cover": "covers/<ID>.jpg"`. Un id que no existe o una imagen no válida se rechaza y se borra, con el motivo en el resumen. Código en `backend/sonidos/portadas.py` y `buzon.py`.
+- Parte pública: `songs.json` y `catalog.json` llevan `cover` en las canciones públicas que lo tienen; `folders.json` y `catalog.json`, `artist` y `cover` en las carpetas. `sync_public` copia las portadas a `frontend/web/covers/` y borra las que sobran.
+- Incidencias: operación `edit_folder` (`folder_id`, `name` y `artist` opcional) y `artist` opcional en `create_folder`. Borrar una carpeta borra su portada.
+- Paquete: rutas `audio-library/covers/<ID>.jpg` y `frontend/web/covers/<ID>.jpg` (regenerada en la publicación), y borrado de `audio-library/buzon/portadas/` con la acción `buzon`.
+- Pruebas: `backend/tests/test_portadas.py` (conversión real con ffmpeg de imágenes sintéticas, buzón, parte pública y paquete con git real) y casos nuevos en `test_issue_request.py` y `test_ci_library.py`.
+
+### Cambiado
+- Las carpetas nuevas tienen id `F` seguida de 16 hexadecimales; las de 10 hexadecimales siguen siendo válidas (ADR-0008, nota del 2026-11-03).
+
 ## Sin publicar: interfaz sin usuarios con el aspecto de Spotify (2026-11-03, rama `feat/web-spotify`)
 
 Decisión del propietario ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)); especificación en `docs/user-experience/DESIGN.md` 2.0.

@@ -9,3 +9,12 @@ Carpeta de paso para subir canciones a la biblioteca (ADR-0014). Solo pueden sub
 El workflow `buzon` convierte cada archivo a Opus, lo añade al catálogo con el nombre del archivo como título y lo borra de aquí. Lo que se sube queda en el historial de git aunque se borre del buzón.
 
 Desde el navegador, GitHub admite hasta 25 MiB por archivo: usa MP3 o FLAC antes que WAV. Quien sube responde de la licencia que declara.
+
+## Portadas
+
+Las portadas de canciones y de carpetas (álbumes) van en `portadas/`: https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas (ADR-0016).
+
+- Nombre: el id de la canción (`S` + 16 caracteres hexadecimales) o de la carpeta (`F` + 16) con extensión `.jpg`, `.jpeg`, `.png` o `.webp`, por ejemplo `S5aac103b6eb2ecf4.png`. Los ids están en `audio-library/indexes/catalog.json`.
+- Hasta 10 MB. Sin línea de licencia.
+- El workflow la convierte a JPEG de 640×640 (recorte centrado) en `audio-library/covers/<id>.jpg` y la borra de aquí. Si el id no existe o la imagen no es válida, se rechaza y se borra; el motivo sale en el resumen de la ejecución.
+- Nada de fotografías de pacientes ni de otras personas: lo que se sube queda en el historial de git.

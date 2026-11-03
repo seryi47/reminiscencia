@@ -99,3 +99,13 @@ Dos decisiones nuevas del propietario cambian la decisión 3 y la fila «Workflo
 
 - **Quién procesa: permiso de escritura, no solo el propietario.** El workflow actúa sobre una incidencia con la etiqueta `biblioteca` si su autor tiene permiso de escritura en el repositorio: `admin`, `maintain` o `write`. Sustituye a «solo el propietario» de la decisión 3. Quien tiene permiso `read` o `triage`, o ninguno, no procesa. El filtro de autor sigue siendo imprescindible si el repositorio se hace público (ver Riesgos).
 - **Internet Archive: también `/download/`.** Se aceptan `https://archive.org/download/<identificador>` y `https://archive.org/download/<identificador>/<fichero>`. Las dos se tratan como el ítem `<identificador>`, y la licencia se lee siempre de los metadatos del ítem. La forma `https://archive.org/details/<identificador>` de «Formato de la petición» sigue siendo válida.
+
+## Actualización (2026-11-03): álbumes y ids de carpeta
+
+Por ADR-0016 (portadas y álbumes con artista), el contrato de `organize` cambia así; lo demás sigue vigente.
+
+- **Operación nueva `edit_folder`:** `{"op":"edit_folder","folder_id":"F…","name":"…","artist":"…"}`. `folder_id` y `name` (1 a 80 caracteres) son obligatorios; `artist` (0 a 80) es opcional. Sin `artist`, la carpeta conserva el que tenga; vacío, lo quita. Los dos textos van en una línea: sin caracteres de control, separadores de línea ni caracteres de formato.
+- **`create_folder`** admite también `artist` opcional (0 a 80 caracteres, una línea).
+- **Ids de carpeta:** las carpetas nuevas tienen id `F` seguida de 16 caracteres hexadecimales en minúscula. Las anteriores, de 10 hexadecimales, siguen siendo válidas. Sustituye a «los ids de carpeta son de 10 caracteres hexadecimales en minúscula» de «Formato de la petición».
+- **`edit_song`** ya admitía cambiar `title` y `artist`; ahora hay una prueba que lo confirma de extremo a extremo (`test_ci_library.py`).
+- Las portadas no se piden por incidencia: entran por el buzón (ADR-0016).

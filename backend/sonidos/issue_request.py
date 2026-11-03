@@ -12,6 +12,8 @@ Este módulo la valida antes de tocar la red o el catálogo:
   no se usa), o un fichero de audio directo que exige license. title y license son opcionales en el resto
   de casos. No admite payload.
 - action organize: payload obligatorio, un objeto JSON en una sola línea. No admite url, license ni title.
+  Operaciones: create_folder (name, parent_id y artist opcionales), rename_folder, edit_folder (name obligatorio y
+  artist opcional, ADR-0016), delete_folder y edit_song.
 
 Las URL se validan con sonidos.sources (classify, resolve_direct_file, ia_identifier): la misma
 lógica que usa la importación.
@@ -37,20 +39,23 @@ MAX_LICENSE_CHARS = 300
 MAX_TITLE_CHARS = 200
 MAX_PAYLOAD_CHARS = 4000
 MAX_FOLDER_NAME_CHARS = 80
+MAX_FOLDER_ARTIST_CHARS = 80
 MAX_ARTIST_CHARS = 200
 MAX_TAGS = 20
 MAX_TAG_CHARS = 40
 YEAR_MIN = 1000
 YEAR_MAX = 2100
 
-FOLDER_ID_RE = re.compile(r"[0-9a-f]{10}")
+# Carpetas nuevas: F seguida de 16 hexadecimales (ADR-0016). Las anteriores, de 10 hexadecimales, siguen valiendo.
+FOLDER_ID_RE = re.compile(r"F[0-9a-f]{16}|[0-9a-f]{10}")
 SONG_ID_RE = re.compile(r"S[0-9a-f]{16}")
 ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 # Operaciones de organize: campos obligatorios y opcionales, además de "op".
 OPERATIONS = {
-    "create_folder": (frozenset({"name"}), frozenset({"parent_id"})),
+    "create_folder": (frozenset({"name"}), frozenset({"parent_id", "artist"})),
     "rename_folder": (frozenset({"folder_id", "name"}), frozenset()),
+    "edit_folder": (frozenset({"folder_id", "name"}), frozenset({"artist"})),
     "delete_folder": (frozenset({"folder_id"}), frozenset()),
     "edit_song": (
         frozenset({"song_id"}),
@@ -124,11 +129,23 @@ def validate_payload(data: object) -> dict:
         raise RequestError(f"falta el campo {', '.join(missing)} en {operation}")
 
     if operation == "create_folder":
-        return {
+        result = {
             "op": operation,
             "name": _text(data["name"], "name", 1, MAX_FOLDER_NAME_CHARS),
             "parent_id": _folder_id(data.get("parent_id"), field="parent_id", nullable=True),
         }
+        if "artist" in data:
+            result["artist"] = _text(data["artist"], "artist", 0, MAX_FOLDER_ARTIST_CHARS)
+        return result
+    if operation == "edit_folder":
+        result = {
+            "op": operation,
+            "folder_id": _folder_id(data["folder_id"], field="folder_id"),
+            "name": _text(data["name"], "name", 1, MAX_FOLDER_NAME_CHARS),
+        }
+        if "artist" in data:
+            result["artist"] = _text(data["artist"], "artist", 0, MAX_FOLDER_ARTIST_CHARS)
+        return result
     if operation == "rename_folder":
         return {
             "op": operation,
@@ -293,7 +310,10 @@ def _folder_id(value: object, *, field: str, nullable: bool = False) -> str | No
     if value is None and nullable:
         return None
     if not isinstance(value, str) or not FOLDER_ID_RE.fullmatch(value):
-        raise RequestError(f"{field} no es un id de carpeta válido (10 caracteres hexadecimales en minúscula)")
+        raise RequestError(
+            f"{field} no es un id de carpeta válido (F seguida de 16 caracteres hexadecimales en minúscula, o 10 "
+            "hexadecimales en minúscula en las carpetas anteriores)"
+        )
     return value
 
 

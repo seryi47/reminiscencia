@@ -5,6 +5,9 @@ name: buzon
 # catálogo con el nombre del archivo como título, regenera la parte pública y lo borra del buzón.
 # Licencia: una línea 'Licencia: <texto>' en el mensaje del commit. Con ella la canción entra pública; sin ella,
 # privada, y queda anotado en el resumen del job. Quien sube responde de lo que declara.
+# Portadas (ADR-0016): audio-library/buzon/portadas/<ID>.<jpg|jpeg|png|webp>, con el id de una canción o de una
+# carpeta, hasta 10 MiB. 'procesar' la convierte con ffmpeg a JPEG de 640x640 en audio-library/covers/<ID>.jpg y el
+# catálogo apunta a ella; 'publicar' copia a frontend/web/covers/ las de canciones públicas y carpetas. Sin licencia.
 # Los mismos tres jobs que biblioteca.yml (ADR-0008, ADR-0010, ADR-0011). 'autorizar' comprueba el permiso de quien
 # hizo el push. 'procesar' convierte sin token ni credenciales y deja un paquete con el catálogo, el audio y los
 # borrados del buzón. 'publicar' valida el paquete, lo aplica, regenera la parte pública desde el catálogo, confirma y
@@ -19,6 +22,7 @@ on:
       - "audio-library/buzon/**"
       - "!audio-library/buzon/README.md"
       - "!audio-library/buzon/.gitkeep"
+      - "!audio-library/buzon/portadas/.gitkeep"
   # A mano, para reprocesar lo que quede en el buzón (entra privado si no hay línea «Licencia:»).
   workflow_dispatch:
 
@@ -106,7 +110,7 @@ jobs:
         run: pip install -q -e backend
 
       # Lee los archivos del push en el evento (GITHUB_EVENT_PATH) y escribe el resumen del job: canciones públicas,
-      # privadas por falta de licencia, duplicadas, rechazadas y lo que hay que revisar a mano.
+      # privadas por falta de licencia, duplicadas, portadas, rechazadas y lo que hay que revisar a mano.
       - name: Procesar el buzón
         env:
           ACTOR: ${{ github.actor }}
@@ -153,8 +157,9 @@ jobs:
           name: buzon-paquete
           path: ${{ runner.temp }}/paquete
 
-      # El paquete se valida antes de tocar el repositorio (rutas de la biblioteca, borrados solo del buzón, sin
-      # enlaces simbólicos, base igual a main), y la parte pública se regenera desde el catálogo.
+      # El paquete se valida antes de tocar el repositorio (rutas de la biblioteca y de sus portadas, borrados solo
+      # del buzón, sin enlaces simbólicos, base igual a main), y la parte pública (datos, audio y portadas) se
+      # regenera desde el catálogo.
       - name: Validar, aplicar y regenerar la parte pública
         id: aplicar_paquete
         run: python scripts/aplicar_paquete.py --paquete "$RUNNER_TEMP/paquete"
@@ -170,7 +175,7 @@ jobs:
           python scripts/check_repo_limits.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -q -m "buzón: canciones subidas por $ACTOR"
+          git commit -q -m "buzón: canciones y portadas subidas por $ACTOR"
 
       # El token solo llega a este paso, y solo para subir. Solo main escribe en el catálogo.
       - name: Subir a main

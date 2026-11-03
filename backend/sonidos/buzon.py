@@ -19,6 +19,13 @@ Rechazos:
 - Se dejan donde están y se anotan para revisarlos a mano: enlaces simbólicos, carpetas, subcarpetas y nombres con
   caracteres fuera de la lista (rutas, controles, caracteres de formato, punto inicial...). El paquete no puede
   borrarlos (sonidos.paquete solo admite nombres válidos).
+
+Portadas (ADR-0016): audio-library/buzon/portadas/<ID>.<jpg|jpeg|png|webp>, donde ID es el id de una canción
+(S + 16 hexadecimales) o de una carpeta (F + 16 hexadecimales) que ya está en el catálogo (o que entra en el mismo
+push). Máximo 10 MiB. Se convierte a JPEG de 640×640 (sonidos.portadas) en audio-library/covers/<ID>.jpg, el catálogo
+apunta a ella y se borra del buzón. No necesita línea de licencia. Un id que no existe, un nombre que no es un id o
+una imagen que no es válida se rechazan y se borran, con el motivo en el resumen. Las canciones se procesan antes que
+las portadas.
 """
 
 from __future__ import annotations
@@ -35,10 +42,15 @@ from sonidos.compression import TranscodeError, transcode
 from sonidos.hashing import sha256_file
 from sonidos.limits import GIT_BLOCK_FILE_BYTES
 from sonidos.pipeline import PLAYBACK_PROFILE
+from sonidos.portadas import (
+    COVERS_DIRECTORY, MAX_UPLOAD_BYTES as MAX_COVER_BYTES, UPLOAD_NAME, PortadaError, convertir_portada, cover_ref,
+)
 from sonidos.probe import ProbeError, probe
 from sonidos.publish import sync_public
 
 BUZON_DIRECTORY = "audio-library/buzon"
+PORTADAS_SUBDIRECTORY = "portadas"
+PORTADAS_DIRECTORY = f"{BUZON_DIRECTORY}/{PORTADAS_SUBDIRECTORY}"
 # Ficheros fijos del buzón: no son subidas y nunca se procesan ni se borran.
 PLACEHOLDERS = frozenset({"README.md", ".gitkeep"})
 EXTENSIONS = (".wav", ".mp3", ".m4a", ".flac", ".ogg")
@@ -161,12 +173,14 @@ def _archivos_a_procesar(event: Mapping, buzon: Path) -> dict[str, str]:
     if files:
         return files
     message = _mensaje_de_cabeza(event)
-    prefix = BUZON_DIRECTORY + "/"
-    return {
-        prefix + item.name: message
-        for item in sorted(buzon.iterdir()) if buzon.is_dir()
-        if item.name not in PLACEHOLDERS and (item.is_file() or item.is_symlink())
-    }
+    files: dict[str, str] = {}
+    for directory, prefix in ((buzon, BUZON_DIRECTORY + "/"), (buzon / PORTADAS_SUBDIRECTORY, PORTADAS_DIRECTORY + "/")):
+        if directory.is_symlink() or not directory.is_dir():
+            continue
+        for item in sorted(directory.iterdir()):
+            if item.name not in PLACEHOLDERS and (item.is_file() or item.is_symlink()):
+                files[prefix + item.name] = message
+    return files
 
 
 def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path | None = None) -> dict:
@@ -176,8 +190,9 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     buzon = _check_no_links(repo)
     catalog_path = repo / "audio-library" / "indexes" / "catalog.json"
     audio_dir = repo / "audio-library" / "audio"
+    covers_dir = repo / COVERS_DIRECTORY
     staging = staging_dir or repo / "audio-library" / "staging"
-    for folder in (catalog_path.parent, audio_dir):
+    for folder in (catalog_path.parent, audio_dir, covers_dir, buzon / PORTADAS_SUBDIRECTORY):
         if folder.is_symlink():
             raise BuzonError(f"enlace simbólico en la biblioteca: {folder.relative_to(repo).as_posix()}")
     if not catalog_path.is_file():
@@ -186,13 +201,19 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     data = catalog.load(catalog_path)
     result: dict = {
         "accion": "buzon", "actor": actor,
-        "publicas": [], "privadas": [], "duplicadas": [], "rechazados": [], "revisar": [], "ya_no_estan": [],
+        "publicas": [], "privadas": [], "duplicadas": [], "portadas": [], "rechazados": [], "revisar": [],
+        "ya_no_estan": [],
     }
     changed = False
     source = UPLOADED_BY + actor
     prefix = BUZON_DIRECTORY + "/"
+    portadas_prefix = PORTADAS_DIRECTORY + "/"
+    archivos = _archivos_a_procesar(event, buzon)
+    portadas = {path: message for path, message in archivos.items() if path.startswith(portadas_prefix)}
     try:
-        for path, message in sorted(_archivos_a_procesar(event, buzon).items()):
+        for path, message in sorted(archivos.items()):
+            if path in portadas:
+                continue
             name = path[len(prefix):]
             if "/" in name:
                 result["revisar"].append({"ruta": path, "motivo": "subcarpeta dentro del buzón"})
@@ -239,13 +260,88 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
                 continue
             changed = changed or song_changed
             result[entry.pop("lista")].append(entry)
+
+        # Después de las canciones: una portada puede ser de una canción que entra en este mismo push.
+        for path in sorted(portadas):
+            cover_changed = _procesar_portada(
+                data, result, path=path, name=path[len(portadas_prefix):], directory=buzon / PORTADAS_SUBDIRECTORY,
+                covers_dir=covers_dir, staging=staging,
+            )
+            changed = changed or cover_changed
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
     if changed:
         catalog.save(catalog_path, data)
-    result["web"] = sync_public(catalog_path=catalog_path, audio_dir=audio_dir, web_dir=repo / "frontend" / "web")
+    result["web"] = sync_public(
+        catalog_path=catalog_path, audio_dir=audio_dir, web_dir=repo / "frontend" / "web", covers_dir=covers_dir,
+    )
     return result
+
+
+def _procesar_portada(data: dict, result: dict, *, path: str, name: str, directory: Path, covers_dir: Path,
+                      staging: Path) -> bool:
+    """Una portada del buzón (ver el docstring del módulo). Anota el resultado y devuelve si cambió la biblioteca."""
+    shown = f"{PORTADAS_SUBDIRECTORY}/{name}"
+    if "/" in name:
+        result["revisar"].append({"ruta": path, "motivo": "subcarpeta dentro de las portadas del buzón"})
+        return False
+    if name in PLACEHOLDERS:
+        return False
+    if not nombre_valido(name):
+        result["revisar"].append({"ruta": path, "motivo": "nombre con caracteres no admitidos"})
+        return False
+    target = directory / name
+    if target.is_symlink():
+        result["revisar"].append({"ruta": path, "motivo": "enlace simbólico"})
+        return False
+    if not target.exists():
+        result["ya_no_estan"].append(shown)
+        return False
+    if not target.is_file():
+        result["revisar"].append({"ruta": path, "motivo": "no es un archivo"})
+        return False
+
+    def rechazar(motivo: str) -> bool:
+        result["rechazados"].append({"archivo": shown, "motivo": motivo})
+        target.unlink()
+        return False
+
+    match = UPLOAD_NAME.fullmatch(name)
+    if match is None:
+        return rechazar("el nombre no es <id>.jpg, .jpeg, .png o .webp con el id de una canción (S…) o de una "
+                        "carpeta (F…)")
+    item_id = match.group(1)
+    item = catalog.find_item(data, item_id)
+    if item is None:
+        return rechazar(f"no hay ninguna canción ni carpeta con el id {item_id}")
+    size = target.stat().st_size
+    if size == 0:
+        return rechazar("está vacío")
+    if size > MAX_COVER_BYTES:
+        return rechazar("pasa de 10 MB")
+    produced = staging / "portadas" / f"{item_id}.jpg"
+    try:
+        convertir_portada(target, produced)
+    except PortadaError as error:
+        return rechazar(str(error))
+
+    covers_dir.mkdir(parents=True, exist_ok=True)
+    destination = covers_dir / f"{item_id}.jpg"
+    if destination.is_symlink():
+        raise BuzonError(f"enlace simbólico en la biblioteca: {COVERS_DIRECTORY}/{item_id}.jpg")
+    file_changed = not destination.is_file() or destination.read_bytes() != produced.read_bytes()
+    if file_changed:
+        shutil.move(str(produced), destination)
+    else:
+        produced.unlink()
+    catalog_changed = catalog.set_cover(data, item_id, cover_ref(item_id))
+    target.unlink()
+    result["portadas"].append({
+        "archivo": shown, "id": item_id, "tipo": "canción" if item_id.startswith("S") else "carpeta",
+        "nueva": file_changed or catalog_changed,
+    })
+    return file_changed or catalog_changed
 
 
 def _motivo_de_rechazo(target: Path, name: str) -> str | None:
@@ -326,6 +422,11 @@ def resumen_markdown(result: Mapping) -> str:
         ])
         lines.extend("    " + f"{_quoted(item['archivo'])} -> {item['song_id']}" for item in privadas)
         lines.append("")
+    block("Portadas (JPEG de 640×640 en audio-library/covers)", [
+        f"{_quoted(item['archivo'])} -> {item['id']} ({item['tipo']})"
+        + ("" if item.get("nueva", True) else " · sin cambios")
+        for item in result.get("portadas", [])
+    ])
     block("Ya estaban en el catálogo (sin cambios)", [
         f"{_quoted(item['archivo'])} -> {item['song_id']}" for item in result.get("duplicadas", [])
     ])
