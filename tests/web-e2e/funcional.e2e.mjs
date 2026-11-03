@@ -1030,6 +1030,7 @@ describe("Subir canciones", () => {
       restaurarCatalogo();
       const createTimes = [];
       let attempts = 0;
+      let statusAttempts = 0;
       await page.setRequestInterception(true);
       page.on("request", (request) => {
         const url = new URL(request.url());
@@ -1052,11 +1053,21 @@ describe("Subir canciones", () => {
             });
           } else {
             void request.respond({
-              status: 422,
+              status: 200,
               contentType: "application/json",
-              body: JSON.stringify({ ok: false, error: "El servicio rechazó la URL (HTTP 400)." }),
+              body: JSON.stringify({ jobId: "job_123" }),
             });
           }
+        } else if (url.pathname === "/api/youtube/status") {
+          statusAttempts += 1;
+          const status = statusAttempts === 1 ? "queued"
+            : statusAttempts === 2 ? "processing"
+              : "error";
+          void request.respond({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ status, error: "Error simulado de conversión." }),
+          });
         } else {
           void request.continue();
         }
@@ -1073,13 +1084,22 @@ describe("Subir canciones", () => {
       });
       await clickTestid(page, "homeostasia-playlist", "Importar de YouTube");
       await page.waitForFunction(
+        () => /en cola/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+        { timeout: 10000 },
+      );
+      await page.waitForFunction(
+        () => /procesándose/.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
+        { timeout: 10000 },
+      );
+      await page.waitForFunction(
         () => /Importación procesada: 1 canciones\./.test(document.querySelector('[data-testid="homeostasia-status"]')?.textContent ?? ""),
         { timeout: 30000 },
       );
 
       assert.equal(attempts, 2);
+      assert.equal(statusAttempts, 3);
       assert.ok(createTimes[1] - createTimes[0] >= 1900);
-      assert.match(await textOf(page, "homeostasia-status"), /HTTP 400/);
+      assert.match(await textOf(page, "homeostasia-status"), /Error simulado de conversión/);
     }),
   );
 

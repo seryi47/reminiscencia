@@ -221,6 +221,13 @@ function retryDelay(error, attempt) {
   return delay + Math.random() * Math.min(3000, Math.max(500, delay * 0.1));
 }
 
+function conversionStatusLabel(status) {
+  if (status === 'queued') return 'en cola';
+  if (status === 'processing') return 'procesándose';
+  if (status === 'completed' || status === 'done') return 'preparando la descarga WAV';
+  return status || 'estado desconocido';
+}
+
 async function listarPlaylist(playlistUrl, signal) {
   const data = await fetchJson(
     `${PLAYLIST_ENDPOINT}?url=${encodeURIComponent(playlistUrl)}`,
@@ -314,7 +321,7 @@ async function crearJob(url, title, signal, deadline, onRetry) {
 // CONSULTAR ESTADO Y DESCARGAR WAV
 // ==================================================
 
-async function esperarYDescargar(jobId, signal, deadline) {
+async function esperarYDescargar(jobId, signal, deadline, onStatus) {
   let consecutiveStatusErrors = 0;
 
   while (Date.now() < deadline) {
@@ -344,6 +351,7 @@ async function esperarYDescargar(jobId, signal, deadline) {
     const status = (
       data.status || ''
     ).toLowerCase();
+    onStatus?.(status);
 
     if (status === 'error') {
       throw new Error(
@@ -401,7 +409,7 @@ async function esperarYDescargar(jobId, signal, deadline) {
 // CONVERTIR UNA CANCIÓN A WAV
 // ==================================================
 
-async function convertirCancion(item, index, total, signal, onRetry) {
+async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
   const videoId = getVideoId(item.url);
 
   if (!videoId || completedVideos.has(videoId) || activeVideos.has(videoId) || cachedRecord(videoId)?.state === 'queued') {
@@ -418,7 +426,7 @@ async function convertirCancion(item, index, total, signal, onRetry) {
     const cached = await readCachedWav(videoId);
     const blob = cached?.blob || await (async () => {
       const jobId = await crearJob(item.url, item.title, signal, deadline, onRetry);
-      return esperarYDescargar(jobId, signal, deadline);
+      return esperarYDescargar(jobId, signal, deadline, onStatus);
     })();
 
     const filename =
@@ -515,6 +523,15 @@ async function convertirPlaylist(items, onProgress, signal) {
             retryAttempt: attempt,
             retryInSeconds,
             error: message
+          }),
+          (conversionStatus) => onProgress({
+            processed,
+            total,
+            completed: files.length,
+            failed: errors.length,
+            active: started - processed,
+            current: item.title,
+            conversionStatus
           })
         );
         processed++;
@@ -748,6 +765,7 @@ function homeostasiaPanel(ctx, close) {
           active,
           retryAttempt,
           retryInSeconds,
+          conversionStatus,
           error,
           current
         }) => {
@@ -757,6 +775,13 @@ function homeostasiaPanel(ctx, close) {
             status.textContent =
               `yttowav está temporalmente saturado. Reintento ${retryAttempt}/${CONFIG.convertCreateAttempts} en ${retryInSeconds} s. ` +
               (error || '');
+            return;
+          }
+
+          if (conversionStatus) {
+            status.textContent =
+              `«${current || 'Canción'}»: ${conversionStatusLabel(conversionStatus)}. ` +
+              `${processed} de ${total} terminadas; ${active} en curso.`;
             return;
           }
 
@@ -875,12 +900,18 @@ function homeostasiaPanel(ctx, close) {
     try {
       const result = await convertirPlaylist(
         retryItems,
-        ({ processed, total, completed, failed, active, retryAttempt, retryInSeconds, error, current }) => {
+        ({ processed, total, completed, failed, active, retryAttempt, retryInSeconds, conversionStatus, error, current }) => {
           if (destroyed) return;
           if (retryAttempt) {
             status.textContent =
               `yttowav está temporalmente saturado. Reintento ${retryAttempt}/${CONFIG.convertCreateAttempts} en ${retryInSeconds} s. ` +
               (error || '');
+            return;
+          }
+          if (conversionStatus) {
+            status.textContent =
+              `«${current || 'Canción'}»: ${conversionStatusLabel(conversionStatus)}. ` +
+              `${processed} de ${total} terminadas; ${active} en curso.`;
             return;
           }
           status.textContent =
