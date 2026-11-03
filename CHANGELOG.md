@@ -3,6 +3,7 @@
 ## Sin publicar (2026-11-02)
 
 ### Añadido
+- Buzón de canciones (ADR-0014): quien tiene permiso de escritura sube audio (WAV, MP3, M4A, FLAC u OGG) a `audio-library/buzon/` desde la página de subida de GitHub, y el workflow nuevo `buzon.yml` lo convierte a Opus, lo añade al catálogo con el nombre del archivo como título, regenera la parte pública y lo borra del buzón. Una línea `Licencia: <texto>` en el commit hace la canción pública con fuente «Subida por <cuenta>»; sin ella entra privada, con la licencia «Sin declarar», que no se puede publicar. Mismos tres jobs y misma cola que `biblioteca.yml`; el paquete admite la acción `buzon`, la única que puede borrar del buzón. Código en `backend/sonidos/buzon.py` y `scripts/buzon.py`; pruebas en `backend/tests/test_buzon.py` y `test_buzon_workflow.py`. Sin probar en GitHub.
 - APK: subida de audio desde el teléfono (WAV, MP3, M4A, FLAC, OGG) convertida a Opus con FFmpeg, solo en el dispositivo y sin publicar (ADR-0013). Sincronización al abrir, al volver a primer plano y al refrescar; descarga sin conexión solo en Wi-Fi; las canciones retiradas dejan su audio cuando ya no están en uso.
 - Datos locales del cuidador (almacén IndexedDB, copia cifrada y validación) y PWA con service worker, manifiesto e iconos para escuchar sin conexión (`8a19a09`).
 - Integración continua de la web en `.github/workflows/web.yml`: sintaxis y pruebas con `node:test` (`7f93756`).

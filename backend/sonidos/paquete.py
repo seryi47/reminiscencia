@@ -9,9 +9,13 @@ fichero regular (sin enlaces simbólicos) y el índice de git resultante solo co
 
 Estructura del paquete:
   peticion.json, resultado.json   salida de issue_request y ci_library (para responder a la incidencia)
-  manifiesto.json                 {"base": sha, "accion": "import"|"organize", "cambios": [{"ruta", "estado"}]}
+  manifiesto.json                 {"base": sha, "accion": "import"|"organize"|"buzon", "cambios": [{"ruta", "estado"}]}
                                   estado: A (nuevo), M (modificado) o D (borrado)
   cambios/<ruta>                  contenido de cada fichero A o M
+
+La acción 'buzon' (workflow buzon.yml, ADR-0014) es la única que puede borrar archivos de audio-library/buzon/, y
+solo borrarlos: nunca añadirlos ni cambiarlos. Solo se admiten nombres válidos del buzón (sonidos.buzon.nombre_valido)
+y nunca sus ficheros fijos (README.md, .gitkeep).
 """
 
 from __future__ import annotations
@@ -25,9 +29,12 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from sonidos.issue_request import ACTIONS
+from sonidos.buzon import BUZON_DIRECTORY, PLACEHOLDERS, nombre_valido
+from sonidos.issue_request import ACTIONS as ISSUE_ACTIONS
 from sonidos.publish import sync_public
 
+BUZON_ACTION = "buzon"
+ACTIONS = (*ISSUE_ACTIONS, BUZON_ACTION)
 MANIFEST = "manifiesto.json"
 CHANGES_DIR = "cambios"
 METADATA_FILES = ("peticion.json", "resultado.json")
@@ -71,6 +78,8 @@ def ruta_permitida(ruta: object) -> bool:
         return False
     if ruta in ALLOWED_FILES:
         return True
+    if ruta_buzon(ruta):
+        return True
     directory, _, name = ruta.rpartition("/")
     if directory in AUDIO_DIRECTORIES:
         return AUDIO_NAME.fullmatch(name) is not None
@@ -79,9 +88,20 @@ def ruta_permitida(ruta: object) -> bool:
     return False
 
 
+def ruta_buzon(ruta: object) -> bool:
+    """Un archivo directo del buzón con nombre válido, que no sea uno de sus ficheros fijos (ADR-0014)."""
+    if not isinstance(ruta, str):
+        return False
+    directory, _, name = ruta.rpartition("/")
+    return directory == BUZON_DIRECTORY and name not in PLACEHOLDERS and nombre_valido(name)
+
+
 def borrado_permitido(ruta: str) -> bool:
-    """Un paquete solo puede borrar audio de la biblioteca (una canción despublicada o retirada). Nunca borra el
-    catálogo ni los datos públicos: esos solo se reescriben."""
+    """Un paquete solo puede borrar audio de la biblioteca (una canción despublicada o retirada) y, con la acción
+    'buzon', los archivos ya procesados del buzón. Nunca borra el catálogo ni los datos públicos: esos solo se
+    reescriben."""
+    if ruta_buzon(ruta):
+        return True
     directory, _, name = ruta.rpartition("/")
     return directory in AUDIO_DIRECTORIES and AUDIO_NAME.fullmatch(name) is not None
 
@@ -114,6 +134,11 @@ def package_changes(repo: Path, package: Path, *, action: str, sin_derivados: bo
             raise PaqueteError(f"el procesado cambió una ruta no permitida: {path}")
         if sin_derivados and ruta_derivada(path):
             continue  # la parte pública la regenera la publicación desde el catálogo
+        if ruta_buzon(path):
+            if action != BUZON_ACTION:
+                raise PaqueteError(f"solo el buzón puede cambiar el buzón: {path}")
+            if "D" not in code:
+                raise PaqueteError(f"el procesado solo puede borrar archivos del buzón: {path}")
         if "D" in code:
             if not borrado_permitido(path):
                 raise PaqueteError(f"el procesado intentó borrar una ruta protegida: {path}")
@@ -180,6 +205,8 @@ def read_manifest(package: Path, *, head: str) -> tuple[str, list[Change]]:
             raise PaqueteError(f"cambio repetido o estado no válido: {ruta}")
         if state == "D" and not borrado_permitido(ruta):
             raise PaqueteError(f"borrado no permitido en el paquete: {ruta}")
+        if ruta_buzon(ruta) and (state != "D" or action != BUZON_ACTION):
+            raise PaqueteError(f"el paquete solo puede borrar archivos del buzón, y solo con la acción buzon: {ruta}")
         seen.add(ruta)
         changes.append(Change(ruta, state))
     return action, changes

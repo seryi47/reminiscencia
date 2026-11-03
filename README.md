@@ -9,6 +9,7 @@ Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la 
 | Escuchar (público) | https://reminiscencia.vercel.app |
 | App Android | `mobile/` (lee la biblioteca de la web) |
 | Cambios en la biblioteca | Incidencias con la etiqueta `biblioteca`, procesadas por el workflow `biblioteca` |
+| Subir canciones para todos | Página de subida de `audio-library/buzon/`, procesada por el workflow `buzon` |
 
 ## Qué es la web pública
 
@@ -49,6 +50,28 @@ payload: {"op":"edit_song","song_id":"S<16 caracteres hexadecimales>","public":t
 - `"public":true` publica la canción; `"public":false` la despublica. Son booleanos JSON, no texto.
 - Los identificadores tienen la forma `S` seguida de 16 caracteres hexadecimales, y están en `audio-library/indexes/catalog.json`.
 - `edit_song` también admite `title`, `artist`, `year`, `tags` y `folder_id`. Las carpetas se gestionan con `create_folder`, `rename_folder` y `delete_folder`. No hay borrado de canciones: hoy solo se despublican.
+
+### Subir canciones para todos (buzón)
+
+Quien tiene permiso de escritura en el repositorio puede subir sus propios archivos de audio para que entren en la biblioteca y los vean la web y la APK (ADR-0014):
+
+1. Abre la página de subida del buzón: https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon
+2. Arrastra los archivos: WAV, MP3, M4A, FLAC u OGG. El título de cada canción será el nombre del archivo sin la extensión (`Mi canción.mp3` pasa a «Mi canción»).
+3. En la descripción del commit, escribe una línea con la licencia:
+
+   ```
+   Licencia: CC BY 4.0
+   ```
+
+4. Elige «Commit directly to the main branch» y pulsa «Commit changes».
+
+El workflow `buzon` convierte cada archivo a Opus, lo añade al catálogo, regenera la parte pública y lo borra del buzón. Con la línea `Licencia:`, las canciones entran **públicas** con esa licencia y la fuente «Subida por <tu cuenta>». Sin ella, entran **privadas** y el resumen de la ejecución lo indica; para publicarlas, sube otra vez el mismo archivo con la línea `Licencia:`. **Quien sube responde de la licencia que declara.**
+
+Se rechazan, y se borran del buzón, los archivos que no son de audio y los de más de 100 MiB. Los enlaces simbólicos, las subcarpetas y los nombres con caracteres raros se quedan en el buzón para revisarlos a mano. El resultado está en la pestaña Actions, en el resumen de la ejecución `buzon`.
+
+Ten en cuenta:
+- Desde el navegador, GitHub admite hasta 25 MiB por archivo. Usa MP3 o FLAC antes que WAV: cuatro minutos de WAV ocupan unos 42 MB.
+- Lo que se sube queda en el historial de git aunque se borre del buzón. No subas nada sin derecho a usarlo ni datos de pacientes.
 
 ### Qué pasa después
 

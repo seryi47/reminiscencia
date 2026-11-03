@@ -21,6 +21,9 @@ from pathlib import Path
 
 VERSION = 1
 EDITABLE = ("title", "artist", "year", "tags", "folder_id", "public")
+# Licencia de una canción subida al buzón sin línea «Licencia:» en el commit (ADR-0014). La canción queda privada y
+# no se puede publicar hasta que alguien declare su licencia (declare_license).
+LICENSE_UNDECLARED = "Sin declarar"
 
 
 class CatalogError(ValueError):
@@ -117,9 +120,25 @@ def update_song(data: dict, song_id: str, fields: dict) -> dict:
         fields["year"] = None
     if "public" in fields and not isinstance(fields["public"], bool):
         raise CatalogError("public debe ser true o false (booleano, no texto ni número)")
+    if fields.get("public") is True and song.get("license") == LICENSE_UNDECLARED:
+        raise CatalogError("no se puede publicar una canción sin licencia declarada")
     if "folder_id" in fields and not fields["folder_id"]:
         fields["folder_id"] = None
     song.update(fields)
+    return song
+
+
+def declare_license(data: dict, song_id: str, license: str, source: str) -> dict:
+    """Declara la licencia de una canción que entró sin ella (LICENSE_UNDECLARED). Solo sustituye esa marca: la licencia
+    de una canción que ya la tiene no se cambia por esta vía."""
+    song = find_song(data, song_id)
+    if song.get("license") != LICENSE_UNDECLARED:
+        raise CatalogError(f"la canción {song_id} ya tiene licencia declarada")
+    clean = license.strip()
+    if not clean or clean == LICENSE_UNDECLARED:
+        raise CatalogError("la licencia declarada no puede estar vacía")
+    song["license"] = clean
+    song["source"] = source
     return song
 
 
