@@ -354,6 +354,22 @@
       "size_bytes": 59355,
       "added_at": "2026-11-03T12:10:14+00:00",
       "public": false
+    },
+    {
+      "id": "S1c81343857010b80",
+      "title": "YouTube 1wG96Jt0PXQ",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "1c81343857010b80e630fbc55c46f390861924b27742802eeb9be909cbcc2689",
+      "duration_s": 339.749,
+      "codec": "opus",
+      "size_bytes": 2050750,
+      "added_at": "2026-11-03T20:34:28+00:00",
+      "public": true
     }
   ]
 }
