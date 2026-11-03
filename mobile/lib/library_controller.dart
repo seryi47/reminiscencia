@@ -44,9 +44,6 @@ class LibraryController extends ChangeNotifier {
 
   final DateTime Function() _clock;
 
-  /// Clave del filtro «Sin carpeta» (canciones sin folder_id).
-  static const String noFolderKey = 'none';
-
   List<Song> _songs = const [];
   List<Song> _catalog = const [];
   List<Song> _localSongs = const [];
@@ -56,7 +53,6 @@ class LibraryController extends ChangeNotifier {
   bool _online = false;
   String? _loadError;
   String? _audioNotice;
-  String? _folderKey;
   bool _downloading = false;
   String _progress = '';
   bool _importing = false;
@@ -79,9 +75,6 @@ class LibraryController extends ChangeNotifier {
 
   /// Aviso cuando la biblioteca se ve pero el audio no está listo. La lista sigue visible.
   String? get audioNotice => _audioNotice;
-
-  /// Carpeta seleccionada: null = todas, [noFolderKey] = sin carpeta, o el id de una carpeta.
-  String? get folderKey => _folderKey;
 
   bool get downloading => _downloading;
   String get progress => _progress;
@@ -106,18 +99,57 @@ class LibraryController extends ChangeNotifier {
     return '${_songs.length} canciones · $connection';
   }
 
-  List<Song> get visibleSongs {
-    final key = _folderKey;
-    if (key == null) return _songs;
-    if (key == noFolderKey) {
-      return _songs.where((song) => song.folderId == null).toList();
-    }
-    return _songs.where((song) => song.folderId == key).toList();
+  /// Canciones del catálogo de la web (iguales para todos).
+  List<Song> get catalogSongs => _catalog;
+
+  /// Canciones subidas desde este teléfono, en el orden en que se añadieron.
+  List<Song> get localSongs => _localSongs;
+
+  /// Canciones de una carpeta del catálogo, en el orden del catálogo.
+  List<Song> songsInFolder(String folderId) =>
+      _songs.where((song) => song.folderId == folderId).toList();
+
+  /// Canciones sin carpeta.
+  List<Song> get songsWithoutFolder =>
+      _songs.where((song) => song.folderId == null).toList();
+
+  /// Añadidas recientemente: primero lo subido en este teléfono (lo último primero) y después el final del catálogo,
+  /// que crece por el final al importar.
+  List<Song> recentSongs({int limit = 12}) =>
+      [..._localSongs.reversed, ..._catalog.reversed].take(limit).toList();
+
+  /// Canciones cuyo título, artista, año o etiquetas contienen [query] (sin distinguir mayúsculas ni tildes).
+  List<Song> searchSongs(String query) {
+    final needle = foldForSearch(query);
+    if (needle.isEmpty) return const [];
+    return _songs.where((song) {
+      final haystack = foldForSearch(
+        [
+          song.title,
+          song.artist,
+          if (song.year != null) '${song.year}',
+          ...song.tags,
+        ].join(' '),
+      );
+      return haystack.contains(needle);
+    }).toList();
   }
 
-  void selectFolder(String? key) {
-    _folderKey = key;
-    notifyListeners();
+  /// Carpetas cuyo nombre contiene [query].
+  List<Folder> searchFolders(String query) {
+    final needle = foldForSearch(query);
+    if (needle.isEmpty) return const [];
+    return _folders
+        .where((folder) => foldForSearch(folder.name).contains(needle))
+        .toList();
+  }
+
+  /// Carpeta por id, o null si ya no existe.
+  Folder? folderOrNull(String id) {
+    for (final folder in _folders) {
+      if (folder.id == id) return folder;
+    }
+    return null;
   }
 
   /// Primera carga al abrir la app; las siguientes llamadas no hacen nada.
@@ -378,3 +410,16 @@ bool _isConnectionError(Object error) =>
     error is SocketException ||
     error is TimeoutException ||
     error is http.ClientException;
+
+/// Texto normalizado para buscar: minúsculas, sin tildes ni diéresis y sin espacios repetidos.
+String foldForSearch(String text) {
+  const from = 'áàäâãéèëêíìïîóòöôõúùüûñç';
+  const to = 'aaaaaeeeeiiiiooooouuuunc';
+  final lower = text.toLowerCase();
+  final buffer = StringBuffer();
+  for (final char in lower.split('')) {
+    final index = from.indexOf(char);
+    buffer.write(index < 0 ? char : to[index]);
+  }
+  return buffer.toString().trim().replaceAll(RegExp(r'\s+'), ' ');
+}

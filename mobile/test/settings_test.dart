@@ -24,7 +24,6 @@ void main() {
     test('los valores por defecto son texto 1.0 y todo lo demás apagado', () {
       const settings = AppSettings();
       expect(settings.textScale, 1.0);
-      expect(settings.patientMode, isFalse);
       expect(settings.highContrast, isFalse);
       expect(settings.reduceMotion, isFalse);
     });
@@ -39,10 +38,10 @@ void main() {
 
     test('copyWith cambia solo lo indicado y la igualdad compara valores', () {
       const base = AppSettings();
-      final changed = base.copyWith(patientMode: true);
-      expect(changed.patientMode, isTrue);
+      final changed = base.copyWith(highContrast: true);
+      expect(changed.highContrast, isTrue);
       expect(changed.textScale, base.textScale);
-      expect(changed, const AppSettings(patientMode: true));
+      expect(changed, const AppSettings(highContrast: true));
       expect(changed == base, isFalse);
     });
   });
@@ -56,7 +55,6 @@ void main() {
       final store = SettingsStore();
       const saved = AppSettings(
         textScale: 1.4,
-        patientMode: true,
         highContrast: true,
         reduceMotion: true,
       );
@@ -69,11 +67,25 @@ void main() {
       () async {
         SharedPreferences.setMockInitialValues({
           SettingsStore.keyTextScale: 'grande',
-          SettingsStore.keyPatientMode: true,
+          SettingsStore.keyHighContrast: true,
         });
         final read = await SettingsStore().read();
         expect(read.textScale, 1.0);
-        expect(read.patientMode, isTrue);
+        expect(read.highContrast, isTrue);
+      },
+    );
+
+    test(
+      'el antiguo modo paciente guardado se ignora al leer y se borra al guardar',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          SettingsStore.legacyKeyPatientMode: true,
+        });
+        final store = SettingsStore();
+        expect(await store.read(), AppSettings.defaults);
+        await store.write(AppSettings.defaults);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.containsKey(SettingsStore.legacyKeyPatientMode), isFalse);
       },
     );
 

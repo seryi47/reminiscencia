@@ -24,6 +24,10 @@ class SonidosAudioHandler extends BaseAudioHandler
       onError: (Object error, StackTrace stackTrace) => _onPlaybackError(error),
     );
     _player.playingStream.listen((_) => _publish());
+    // Aleatorio, repetir y saltos de posición (por ejemplo, al repetir una canción) cambian lo que se ve.
+    _player.shuffleModeEnabledStream.listen((_) => _broadcastState());
+    _player.loopModeStream.listen((_) => _broadcastState());
+    _player.positionDiscontinuityStream.listen((_) => _broadcastState());
     _player.currentIndexStream.listen((index) {
       final items = queue.value;
       if (index != null && index >= 0 && index < items.length) {
@@ -39,6 +43,8 @@ class SonidosAudioHandler extends BaseAudioHandler
   final ValueNotifier<NowPlaying> _now = ValueNotifier<NowPlaying>(
     NowPlaying.none,
   );
+  final ValueNotifier<PlaybackProgress> _progress =
+      ValueNotifier<PlaybackProgress>(PlaybackProgress.zero);
   final ValueNotifier<String?> _error = ValueNotifier<String?>(null);
   List<String> _queueIds = const [];
   // Canciones de la cola cargada y si cada una puede sonar sin red (local o ya guardada).
@@ -48,6 +54,9 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   @override
   ValueListenable<NowPlaying> get nowPlaying => _now;
+
+  @override
+  ValueListenable<PlaybackProgress> get progress => _progress;
 
   @override
   ValueListenable<String?> get playbackError => _error;
@@ -206,8 +215,14 @@ class SonidosAudioHandler extends BaseAudioHandler
   @override
   Future<void> playNext() => _guard(_player.seekToNext);
 
+  /// Como en cualquier reproductor: pasados unos segundos, «Anterior» vuelve al principio de la canción.
   @override
-  Future<void> playPrevious() => _guard(_player.seekToPrevious);
+  Future<void> playPrevious() => _guard(() {
+    if (_player.position > kRestartThreshold || !_player.hasPrevious) {
+      return _player.seek(Duration.zero);
+    }
+    return _player.seekToPrevious();
+  });
 
   @override
   Future<void> play() async {
@@ -238,6 +253,36 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> seek(Duration position) => _guard(() => _player.seek(position));
+
+  @override
+  Future<void> setShuffle(bool enabled) => _guard(() async {
+    // Al activarlo se baraja de nuevo, como en cualquier reproductor.
+    if (enabled) await _player.shuffle();
+    await _player.setShuffleModeEnabled(enabled);
+  });
+
+  @override
+  Future<void> setRepeat(LoopSetting mode) => _guard(
+    () => _player.setLoopMode(switch (mode) {
+      LoopSetting.off => LoopMode.off,
+      LoopSetting.all => LoopMode.all,
+      LoopSetting.one => LoopMode.one,
+    }),
+  );
+
+  // Controles del sistema (notificación, auriculares, Android Auto) para aleatorio y repetir.
+  @override
+  Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) =>
+      setShuffle(shuffleMode != AudioServiceShuffleMode.none);
+
+  @override
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) =>
+      setRepeat(switch (repeatMode) {
+        AudioServiceRepeatMode.none => LoopSetting.off,
+        AudioServiceRepeatMode.one => LoopSetting.one,
+        AudioServiceRepeatMode.all ||
+        AudioServiceRepeatMode.group => LoopSetting.all,
+      });
 
   bool _sameQueue(List<Song> songs) {
     if (songs.length != _queueIds.length) return false;
@@ -275,8 +320,29 @@ class SonidosAudioHandler extends BaseAudioHandler
       buffering:
           state == ProcessingState.loading ||
           state == ProcessingState.buffering,
+      shuffle: _player.shuffleModeEnabled,
+      repeat: _repeatOf(_player.loopMode),
     );
     if (now != _now.value) _now.value = now;
+  }
+
+  static LoopSetting _repeatOf(LoopMode mode) => switch (mode) {
+    LoopMode.off => LoopSetting.off,
+    LoopMode.all => LoopSetting.all,
+    LoopMode.one => LoopSetting.one,
+  };
+
+  /// Publica la posición solo cuando el reproductor informa de un cambio (sin sondeos):
+  /// la interfaz la extrapola mientras está a la vista.
+  void _publishProgress() {
+    final duration = _player.duration ?? mediaItem.value?.duration;
+    _progress.value = PlaybackProgress(
+      position: _player.position,
+      duration: duration ?? Duration.zero,
+      playing: _player.playing,
+      speed: _player.speed,
+      updatedAt: DateTime.now(),
+    );
   }
 
   void _broadcastState() {
@@ -293,6 +359,8 @@ class SonidosAudioHandler extends BaseAudioHandler
           MediaAction.skipToNext,
           MediaAction.skipToPrevious,
           MediaAction.skipToQueueItem,
+          MediaAction.setShuffleMode,
+          MediaAction.setRepeatMode,
         },
         androidCompactActionIndices: const [0, 1, 2],
         processingState: AudioProcessingState.values.byName(
@@ -303,11 +371,23 @@ class SonidosAudioHandler extends BaseAudioHandler
         bufferedPosition: _player.bufferedPosition,
         speed: _player.speed,
         queueIndex: _player.currentIndex,
+        shuffleMode: _player.shuffleModeEnabled
+            ? AudioServiceShuffleMode.all
+            : AudioServiceShuffleMode.none,
+        repeatMode: switch (_player.loopMode) {
+          LoopMode.off => AudioServiceRepeatMode.none,
+          LoopMode.all => AudioServiceRepeatMode.all,
+          LoopMode.one => AudioServiceRepeatMode.one,
+        },
       ),
     );
     _publish();
+    _publishProgress();
   }
 }
+
+/// A partir de esta posición, «Anterior» reinicia la canción en lugar de ir a la anterior.
+const Duration kRestartThreshold = Duration(seconds: 3);
 
 /// Texto para el usuario de un error del reproductor o de la preparación del audio.
 String describePlayerError(Object error) {

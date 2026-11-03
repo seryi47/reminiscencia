@@ -16,6 +16,7 @@ import 'sonidos_audio_handler.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerFontLicense();
   final libraryStore = LibraryStore();
   final SonidosAudioHandler handler;
   try {
