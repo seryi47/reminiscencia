@@ -4,6 +4,7 @@
 
 - Homeostasia: acepta una URL individual de YouTube o una playlist; las playlists se convierten de cuatro en cuatro y también se procesa el último lote incompleto.
 - Homeostasia: simplifica la hoja y elimina el texto informativo redundante.
+- PWA: actualiza la versión de caché para que los navegadores existentes reciban estos cambios.
 
 ## 1.2.1 (2026-11-03)
 
