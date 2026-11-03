@@ -26,6 +26,7 @@ const CONFIG = {
   quality: 'original',
   batchSize: 4,
   pollInterval: 3000,
+  statusErrorRetries: 5,
   jobTimeout: 600000
 };
 
@@ -182,7 +183,11 @@ async function fetchJson(url, init = {}, signal) {
   const response = await fetch(url, { ...init, signal });
   let data = null;
   try { data = await response.json(); } catch { /* se usa el código HTTP */ }
-  if (!response.ok) throw new Error(data?.error || `Error de red: ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(data?.error || `Error de red: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -257,6 +262,7 @@ async function crearJob(url, title, signal) {
 
 async function esperarYDescargar(jobId, signal) {
   const startTime = Date.now();
+  let consecutiveStatusErrors = 0;
 
   while (
     Date.now() - startTime < CONFIG.jobTimeout
@@ -270,9 +276,19 @@ async function esperarYDescargar(jobId, signal) {
       );
     } catch (error) {
       if (error?.name === 'AbortError') throw error;
+      if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
+        throw error;
+      }
+      consecutiveStatusErrors++;
+      if (consecutiveStatusErrors >= CONFIG.statusErrorRetries) {
+        throw new Error(
+          `No se pudo consultar el estado de la conversión tras ${consecutiveStatusErrors} intentos: ${error.message}`
+        );
+      }
       await sleep(CONFIG.pollInterval, signal);
       continue;
     }
+    consecutiveStatusErrors = 0;
 
     const status = (
       data.status || ''
@@ -405,6 +421,7 @@ async function convertirPlaylist(items, onProgress, signal) {
   const errors = [];
 
   let processed = 0;
+  let started = 0;
 
   const total = items.length;
 
@@ -419,35 +436,43 @@ async function convertirPlaylist(items, onProgress, signal) {
     );
 
     // Ejecutar un máximo de cuatro conversiones simultáneas.
-    const results = await Promise.all(
-      batch.map((item, position) =>
-        convertirCancion(
+    await Promise.all(
+      batch.map(async (item, position) => {
+        started++;
+        onProgress({
+          processed,
+          total,
+          completed: files.length,
+          failed: errors.length,
+          active: started - processed,
+          current: item.title
+        });
+
+        const result = await convertirCancion(
           item,
           i + position + 1,
           total,
           signal
-        )
-      )
+        );
+        processed++;
+
+        if (result.success) {
+          files.push(result.file);
+          completedIds.push(result.videoId);
+        } else if (!result.skipped) {
+          errors.push(result);
+        }
+
+        onProgress({
+          processed,
+          total,
+          completed: files.length,
+          failed: errors.length,
+          active: started - processed,
+          current: result.title || result.file?.name
+        });
+      })
     );
-
-    for (const result of results) {
-      processed++;
-
-      if (result.success) {
-        files.push(result.file);
-        completedIds.push(result.videoId);
-      } else if (!result.skipped) {
-        errors.push(result);
-      }
-
-      onProgress({
-        processed,
-        total,
-        completed: files.length,
-        failed: errors.length,
-        current: result.title || result.file?.name
-      });
-    }
   }
 
   return {
@@ -657,12 +682,13 @@ function homeostasiaPanel(ctx, close) {
           total,
           completed,
           failed,
+          active,
           current
         }) => {
           if (destroyed) return;
 
           status.textContent =
-            `Convirtiendo ${processed} de ${total}. ` +
+            `Conversión: ${processed} de ${total} terminadas; ${active} en curso. ` +
             `Correctas: ${completed}. ` +
             `Errores: ${failed}.` +
             (current ? ` Última: ${current}` : '');
@@ -774,10 +800,10 @@ function homeostasiaPanel(ctx, close) {
     try {
       const result = await convertirPlaylist(
         retryItems,
-        ({ processed, total, completed, failed, current }) => {
+        ({ processed, total, completed, failed, active, current }) => {
           if (destroyed) return;
           status.textContent =
-            `Reintentando ${processed} de ${total}. ` +
+            `Reintentando: ${processed} de ${total} terminadas; ${active} en curso. ` +
             `Correctas: ${completed}. Errores: ${failed}.` +
             (current ? ` Última: ${current}` : '');
         },

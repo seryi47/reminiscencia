@@ -136,6 +136,12 @@ describe('API del importador de YouTube', () => {
     });
     assert.deepEqual(await status.json(), { status: 'completed' });
 
+    const invalidStatus = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123'), {
+      fetchImpl: async () => new Response(JSON.stringify({}), { status: 200 }),
+    });
+    assert.equal(invalidStatus.status, 502);
+    assert.match((await invalidStatus.json()).error, /estado inválido/);
+
     const statusByUrl = await handleStatus(new Request('https://reminiscencia.test/api/youtube/status?jobId=job_123'), {
       fetchImpl: async () => new Response(JSON.stringify({ status: 'processing', downloadUrl: '/api/download/?jobId=job_123' }), { status: 200 }),
     });

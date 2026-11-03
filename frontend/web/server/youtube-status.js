@@ -23,6 +23,7 @@ export async function handleStatus(request, { fetchImpl = globalThis.fetch } = {
     // Algunas respuestas del conversor anuncian el trabajo terminado solo
     // mediante la URL de descarga, como hace el script Python de escritorio.
     const hasDownload = Boolean(data?.downloadUrl || data?.downloadPath || data?.url);
+    if (!status && !hasDownload) throw new YoutubeApiError(502, 'El conversor devolvió un estado inválido.');
     return json(200, {
       status: status === 'completed' || status === 'done' || hasDownload ? 'completed' : status || 'processing'
     });
