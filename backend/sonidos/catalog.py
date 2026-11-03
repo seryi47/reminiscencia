@@ -28,6 +28,11 @@ EDITABLE = ("title", "artist", "year", "tags", "folder_id", "public")
 # Licencia de una canción subida al buzón sin línea «Licencia:» en el commit (ADR-0014). La canción queda privada y
 # no se puede publicar hasta que alguien declare su licencia (declare_license).
 LICENSE_UNDECLARED = "Sin declarar"
+# Límites del artista y del año de una canción. Los aplica el contrato de las peticiones (issue_request) y la importación
+# desde Internet Archive (sources), que recorta o descarta lo que no cumpla.
+SONG_ARTIST_MAX_CHARS = 200
+YEAR_MIN = 1000
+YEAR_MAX = 2100
 
 
 class CatalogError(ValueError):
@@ -80,8 +85,10 @@ def find_folder(data: dict, folder_id: str) -> dict:
 
 
 def add_song(data: dict, *, sha256: str, title: str, license: str, source: str,
-             codec: str, duration_s: float, size_bytes: int) -> tuple[dict, bool]:
-    """Devuelve (canción, creada). Si el contenido ya existe, no duplica."""
+             codec: str, duration_s: float, size_bytes: int, artist: str = "",
+             year: int | None = None) -> tuple[dict, bool]:
+    """Devuelve (canción, creada). Si el contenido ya existe, no duplica (ni cambia su artista ni su año).
+    artist y year llegan ya validados (por ejemplo, de los metadatos de Internet Archive)."""
     if not license or not license.strip():
         raise CatalogError("no se puede importar una canción sin licencia declarada")
     for song in data["songs"]:
@@ -90,8 +97,8 @@ def add_song(data: dict, *, sha256: str, title: str, license: str, source: str,
     song = {
         "id": song_id_for(sha256),
         "title": title.strip() or "Sin título",
-        "artist": "",
-        "year": None,
+        "artist": (artist or "").strip(),
+        "year": year,
         "tags": [],
         "folder_id": None,
         "license": license.strip(),

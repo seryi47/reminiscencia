@@ -40,11 +40,11 @@ MAX_TITLE_CHARS = 200
 MAX_PAYLOAD_CHARS = 4000
 MAX_FOLDER_NAME_CHARS = 80
 MAX_FOLDER_ARTIST_CHARS = 80
-MAX_ARTIST_CHARS = 200
+MAX_ARTIST_CHARS = catalog.SONG_ARTIST_MAX_CHARS
 MAX_TAGS = 20
 MAX_TAG_CHARS = 40
-YEAR_MIN = 1000
-YEAR_MAX = 2100
+YEAR_MIN = catalog.YEAR_MIN
+YEAR_MAX = catalog.YEAR_MAX
 
 # Carpetas nuevas: F seguida de 16 hexadecimales (ADR-0016). Las anteriores, de 10 hexadecimales, siguen valiendo.
 FOLDER_ID_RE = re.compile(r"F[0-9a-f]{16}|[0-9a-f]{10}")
