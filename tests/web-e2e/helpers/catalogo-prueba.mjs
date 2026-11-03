@@ -1,7 +1,7 @@
 // Catálogo de prueba ficticio. Ningún título, artista ni carpeta es real.
 // Solo lo usan las pruebas: sustituye a data/songs.json y data/folders.json en el servidor de pruebas.
-// Motivo: el catálogo público tiene 9 canciones y ninguna carpeta, y las medidas de DESIGN 15
-// necesitan al menos 17 filas en la biblioteca y tres carpetas (una vacía) en la vista de carpetas.
+// Motivo: el catálogo público tiene 10 canciones y ninguna carpeta, y las pruebas necesitan 20 canciones, dos
+// carpetas con ocho canciones cada una y una carpeta vacía.
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { WEB_ROOT } from "./servidor.mjs";
@@ -11,7 +11,7 @@ const SONG_COUNT = 20;
 const FOLDERS = Object.freeze([
   { id: "F0000000000000001", name: "Carpeta de prueba A", parent_id: null },
   { id: "F0000000000000002", name: "Carpeta de prueba B", parent_id: null },
-  // Vacía a propósito: DESIGN 3.1 (P3) dice que una carpeta vacía no se abre.
+  // Vacía a propósito: la página de una carpeta vacía lo dice (DESIGN §7).
   { id: "F0000000000000003", name: "Carpeta vacía de prueba", parent_id: null },
 ]);
 

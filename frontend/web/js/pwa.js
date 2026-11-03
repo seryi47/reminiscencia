@@ -1,6 +1,6 @@
-// Registro del service worker y guardado de la biblioteca para escuchar sin conexión.
+// Registro del service worker y descarga de canciones para escuchar sin conexión.
 // Se ejecuta en el navegador; la lógica de nombres y rutas está en offline-core.js.
-import { audioCacheName, planOfflineDownload } from './offline-core.js';
+import { audioCacheName, listAudioUrls, planOfflineDownload } from './offline-core.js';
 
 const SW_URL = '/sw.js';
 const SW_SCOPE = '/';
@@ -45,37 +45,21 @@ export async function saveLibraryOffline(songs, onProgress = () => {}) {
   return { added: total - failed.length, skipped: alreadyCached.length, failed };
 }
 
-/** Borra la biblioteca guardada para escuchar sin conexión. Resuelve true si existía. */
-export function clearOfflineLibrary() {
-  return caches.delete(audioCacheName());
+/** Quita de la caché de audio las canciones indicadas (la descarga de una carpeta o una lista). */
+export async function removeOfflineSongs(songs) {
+  if (typeof caches === 'undefined') return;
+  const cache = await caches.open(audioCacheName());
+  await Promise.all(listAudioUrls(songs).map((url) => cache.delete(`/${url}`)));
 }
 
-/** Estado de la biblioteca sin conexión. count son los temas guardados y audioBytes la suma
- *  de sus tamaños (Content-Length, o el tamaño real si falta). bytesEstimate es el uso del
- *  origen según navigator.storage.estimate() si existe (incluye el shell); si no, audioBytes. */
-export async function offlineStatus() {
-  const name = audioCacheName();
-  let count = 0;
-  let audioBytes = 0;
-  if (await caches.has(name)) {
-    const cache = await caches.open(name);
+/** Rutas relativas ('audio/<id>.opus') de las canciones guardadas para escuchar sin conexión. */
+export async function cachedAudioPaths() {
+  if (typeof caches === 'undefined') return new Set();
+  try {
+    const cache = await caches.open(audioCacheName());
     const requests = await cache.keys();
-    count = requests.length;
-    for (const request of requests) {
-      const response = await cache.match(request);
-      if (!response) continue;
-      const declared = Number(response.headers.get('content-length'));
-      audioBytes += declared > 0 ? declared : (await response.blob()).size;
-    }
+    return new Set(requests.map((request) => new URL(request.url).pathname.replace(/^\//, '')));
+  } catch {
+    return new Set();
   }
-  let bytesEstimate = audioBytes;
-  if (typeof navigator.storage?.estimate === 'function') {
-    try {
-      const { usage } = await navigator.storage.estimate();
-      if (Number.isFinite(usage)) bytesEstimate = usage;
-    } catch {
-      // Sin estimación disponible: se usan los bytes de audio.
-    }
-  }
-  return { count, audioBytes, bytesEstimate };
 }

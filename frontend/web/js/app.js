@@ -1,1098 +1,714 @@
-// Arranque de Reminiscencia (contrato 2.1 a 2.4; DESIGN 3.3, 7.1, 8.1 a 8.4).
-// Crea el almacén, el reproductor, las preferencias y el catálogo; elige el modo al abrir; enruta por hash y
-// monta el marco de cada modo con sus servicios. Todo el registro del estudio pasa por recordStudyEvent: lo
-// llaman Escuchar y el reproductor (onStudyEvent).
+// Arranque de Reminiscencia (ADR-0014): una sola biblioteca pública para todos, sin perfiles ni modos.
+// La web abre en Inicio con la música. Las listas propias y «Me gusta» viven solo en este navegador
+// (js/local-library.js) y las canciones subidas aquí, en su propia base (js/cuidador/subida-local.js).
 //
-// Decisiones que el contrato deja abiertas:
-// - Al abrir la página no se mueve el foco: el primer Tab debe llegar al enlace de salto. El foco solo se mueve
-//   después de una acción del usuario (userNavigated). Por eso el título del modo paciente se fija sin foco hasta
-//   entonces.
-// - leavePatientMode no vuelve a pedir el PIN: el marco del paciente ya lo pide con P5 y solo después lo llama.
-// - Con perfil activo al abrir en modo paciente se abre una sesión con la última condición usada (DESIGN 8.2: la
-//   interfaz del paciente no caduca). Su apagado por defecto sale de los ajustes del dispositivo.
-// - Si una sesión se cierra por tres horas sin reproducción, la siguiente reproducción abre otra con la misma
-//   condición.
-// - ?e2e=1 mide el apagado en segundos (60 minutos son 60 segundos) para probar el aviso P6.
+// Este módulo guarda el estado, enruta por hash (#/, #/buscar, #/biblioteca, #/carpeta/<id>, #/lista/<id>,
+// #/me-gusta, #/canciones, #/locales y #/seccion/<estante>), pinta la pantalla activa y la barra lateral, y conecta
+// el reproductor con la interfaz. Al abrir la página no se mueve el foco (el primer Tab llega al enlace de salto);
+// al cambiar de pantalla por una acción, el foco va al H1.
 
-import { openStore } from './store.js';
-import { createPlayer, SESSION_IDLE_MS } from './player.js';
-import { prefs, PREFS_STORAGE_KEY } from './prefs.js';
-import { registerPwa } from './pwa.js';
-import { randomId } from './crypto.js';
 import {
-  isSongId,
-  STUDY_CONDITIONS,
-  STUDY_EVENT_TYPES,
-  STUDY_ORIGINS,
-  STUDY_PRESENTATIONS,
-} from './schema.js';
-import { mountShell as mountPatientShell, element, nextId, openModal } from './paciente/shell.js';
-import { openSleepWarning, resolvePresentation, routes as escucharRoutes } from './paciente/escuchar.js';
-import {
-  cachedSongPaths,
-  songsOfList,
-  trackOfSong,
-  routes as listasRoutes,
-} from './paciente/listas.js';
-import { songsInFolder, routes as carpetasRoutes } from './paciente/carpetas.js';
-import { routes as buscarRoutes } from './paciente/buscar.js';
-import {
-  mountShell as mountCaregiverShell,
-  openDialog,
-  applyDisplayAttributes,
-  sectionOfRoute,
-} from './cuidador/shell.js';
-import { routes as inicioRoutes } from './cuidador/inicio.js';
-import { routes as bibliotecaRoutes } from './cuidador/biblioteca.js';
-import { routes as perfilesRoutes } from './cuidador/perfiles.js';
-import { routes as perfilRoutes } from './cuidador/perfil.js';
-import { routes as asistenteRoutes } from './cuidador/asistente.js';
-import { routes as ajustesRoutes } from './cuidador/ajustes.js';
-import { routes as recuerdoRoutes } from './cuidador/recuerdo-editor.js';
-import { routes as listaRoutes } from './cuidador/lista-editor.js';
-import { routes as observacionesRoutes } from './cuidador/observaciones.js';
-import { isLocalAudioUrl, loadLocalSongs } from './cuidador/subida-local.js';
+  ALL_SONGS_COLOR,
+  buildCatalog,
+  childFolders,
+  coverColor,
+  LIKED_COLOR,
+  LOCAL_COLOR,
+  localSongsOf,
+  songCountText,
+  songsInFolder,
+} from './catalog.js';
+import { openLocalLibrary, validatePlaylistName } from './local-library.js';
+import { createPlayer, nextRepeatMode } from './player.js';
+import { cachedAudioPaths, registerPwa, removeOfflineSongs, saveLibraryOffline } from './pwa.js';
+import { deleteLocalSong as removeLocalRecord, loadLocalSongs } from './cuidador/subida-local.js';
+import { closeMenu, confirmDialog, promptDialog, toast } from './ui/dom.js';
+import { likeButton, setPlayButtonState } from './views/components.js';
+import { renderHome } from './views/home.js';
+import { renderSearch } from './views/search.js';
+import { renderCollection } from './views/collection.js';
+import { libraryActions, libraryChips, renderLibraryList, renderLibraryPage, renderSection } from './views/library.js';
+import { mountPlayerUi } from './views/player-ui.js';
+import { openUploadSheet } from './views/upload.js';
+
+const DATA_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
+const PLAYER_PREFS_KEY = 'reminiscencia.reproductor';
+const APP_NAME = 'Reminiscencia';
 
 // ---------------------------------------------------------------------------
-// Constantes
+// Estado
 // ---------------------------------------------------------------------------
 
-const MODE_KEY = 'reminiscencia.modo';
-const CONDITION_KEY = 'reminiscencia.condicion';
-const CATALOG_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
-const REMEMBER_MS = 10 * 1000;
-const ANNOUNCE_DELAY_MS = 50;
-const MAX_SECONDS = 86400;
-const E2E_HOOK = typeof location !== 'undefined' && new URLSearchParams(location.search).get('e2e') === '1';
+const state = {
+  publicSongs: [],
+  publicFolders: [],
+  localSongs: [],
+  catalog: buildCatalog(),
+  loadError: null,
+  playlists: [],
+  likes: new Map(),
+  cached: new Set(),
+  downloading: new Set(),
+  online: typeof navigator === 'undefined' ? true : navigator.onLine !== false,
+  libraryFilter: null,
+  searchQuery: '',
+  addQuery: '',
+  route: { name: 'inicio', id: null },
+  ready: false,
+};
 
-// Eventos que ocurren dentro de una pista (exigen canción, presentación, condición y origen; schema.js).
-const TRACK_TYPES = new Set(['start', 'pause', 'resume', 'track-end', 'error', 'memory-seen', 'memory-other', 'photo-zoom']);
-// Reproducir de nuevo tras una pausa larga o un cierre por inactividad abre una sesión nueva (DESIGN 8.2).
-const REOPEN_TYPES = new Set(['start', 'resume']);
-// Eventos del reproductor que dejan la última pista del perfil en el almacén.
-const REMEMBER_TYPES = new Set(['start', 'resume', 'pause', 'track-end', 'error']);
-// Eventos tras los que empieza a contar el tiempo sin reproducción.
-const IDLE_TYPES = new Set(['pause', 'track-end', 'error']);
-
-const PREVIEW_BAR_STYLE = 'flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;'
-  + 'gap:8px 16px;padding:8px 16px;background:var(--acento-suave);color:var(--texto);';
-
-// Sección de la navegación del paciente a la que pertenece cada ruta.
-const PATIENT_SECTIONS = Object.freeze({
-  escuchar: 'escuchar',
-  listas: 'listas',
-  lista: 'listas',
-  carpetas: 'carpetas',
-  carpeta: 'carpetas',
-  buscar: 'buscar',
-});
-
-// Patrones de cada ruta por modo (contrato 2.4). Los segmentos «:nombre» son parámetros de la ruta.
-// Lo que no encaja en el patrón viaja en la consulta («#/biblioteca?folderId=…»).
-const ROUTE_PATTERNS = Object.freeze({
-  paciente: Object.freeze({
-    escuchar: 'escuchar',
-    listas: 'listas',
-    lista: 'lista/:listId',
-    carpetas: 'carpetas',
-    carpeta: 'carpeta/:folderId',
-    buscar: 'buscar',
-  }),
-  cuidador: Object.freeze({
-    inicio: 'inicio',
-    biblioteca: 'biblioteca',
-    perfiles: 'perfiles',
-    perfil: 'perfil/:profileId/:tab',
-    asistente: 'asistente',
-    ajustes: 'ajustes',
-    lista: 'lista/:profileId/:listId',
-    recuerdo: 'recuerdo/:profileId/:memoryId',
-    observaciones: 'observaciones/:profileId/nueva',
-  }),
-});
-
-// Pantallas de cada modo: cada módulo exporta su objeto routes (name → mount).
-const ROUTES = Object.freeze({
-  paciente: Object.freeze({
-    ...escucharRoutes,
-    ...listasRoutes,
-    ...carpetasRoutes,
-    ...buscarRoutes,
-  }),
-  cuidador: Object.freeze({
-    ...inicioRoutes,
-    ...bibliotecaRoutes,
-    ...perfilesRoutes,
-    ...perfilRoutes,
-    ...asistenteRoutes,
-    ...ajustesRoutes,
-    ...recuerdoRoutes,
-    ...listaRoutes,
-    ...observacionesRoutes,
-  }),
-});
-
-// ---------------------------------------------------------------------------
-// Estado del módulo
-// ---------------------------------------------------------------------------
-
-let store = null;
-let playerApi = null;
-let catalog = { songs: [], folders: [] };
-let cachedPaths = new Set();
-let profiles = [];
-let activeId = null;
-let activeProfile = null;
-let currentMode = 'cuidador';
-let services = null;
-let shell = null; // { content, setActive, showPreviewButton, unmount } del marco activo.
-let current = null; // Pantalla montada (su unmount()).
-let renderSeq = 0;
+let library = null;
+let player = null;
+let playerUi = null;
 let userNavigated = false;
-let renderedHash = null;
-let currentRouteName = null;
-let previewing = false;
-let previewReturn = null;
-let session = null; // { id, profileId, condition, startPoint, links }
-let resumeAllowed = false;
-let lastCondition = 'segun-cancion';
-let lastOrigin = null;
-let recordingOn = true;
-let idleTimer = null;
-let studyChain = Promise.resolve();
-let sleepDialogOpen = false;
-let audioEl = null;
-let mountEl = null;
-let announcerEl = null;
-let previewBar = null;
+let persistenceRequested = false;
+let lastSync = '';
 
-// ---------------------------------------------------------------------------
-// Funciones puras (exportadas para las pruebas)
-// ---------------------------------------------------------------------------
+const dom = {};
 
-/** Fecha y hora ISO 8601 con el desplazamiento local, para que el día del registro sea el día local. */
-export function zonedIso(ms) {
-  const date = new Date(ms);
-  const pad = (value, size = 2) => String(value).padStart(size, '0');
-  const offset = -date.getTimezoneOffset();
-  const abs = Math.abs(offset);
-  const sign = offset < 0 ? '-' : '+';
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-    + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-    + `.${pad(date.getMilliseconds(), 3)}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+function rebuildCatalog() {
+  state.catalog = buildCatalog(state.publicSongs, state.publicFolders, state.localSongs);
 }
 
-function hasRoute(mode, route) {
-  return Object.hasOwn(ROUTE_PATTERNS[mode] ?? {}, route) && typeof ROUTES[mode]?.[route] === 'function';
-}
+// ---------------------------------------------------------------------------
+// Preferencias del reproductor (solo comodidad: si el navegador no deja guardar, valen durante la visita)
+// ---------------------------------------------------------------------------
 
-function decodeSegment(text) {
+function readPlayerPrefs() {
   try {
-    return decodeURIComponent(text);
+    const value = JSON.parse(localStorage.getItem(PLAYER_PREFS_KEY) ?? '{}');
+    return value && typeof value === 'object' ? value : {};
   } catch {
-    return text;
+    return {};
   }
 }
 
-/** Ruta y parámetros de un hash en un modo, o null si el hash no corresponde a ninguna ruta de ese modo. */
-export function parseRoute(hash, mode) {
-  const text = String(hash ?? '').replace(/^#\/?/, '');
-  const cut = text.indexOf('?');
-  const path = cut === -1 ? text : text.slice(0, cut);
-  const query = cut === -1 ? '' : text.slice(cut + 1);
-  const segments = path.split('/').filter((part) => part !== '').map(decodeSegment);
-  for (const [route, pattern] of Object.entries(ROUTE_PATTERNS[mode] ?? {})) {
-    if (!hasRoute(mode, route)) continue;
-    const parts = pattern.split('/');
-    if (parts.length !== segments.length) continue;
-    const params = {};
-    const matches = parts.every((part, index) => {
-      if (part.startsWith(':')) {
-        params[part.slice(1)] = segments[index];
-        return true;
-      }
-      return part === segments[index];
-    });
-    if (!matches) continue;
-    for (const [key, value] of new URLSearchParams(query)) {
-      if (!Object.hasOwn(params, key)) params[key] = value;
-    }
-    return { route, params };
+function savePlayerPrefs(playerState) {
+  try {
+    localStorage.setItem(PLAYER_PREFS_KEY, JSON.stringify({
+      volume: playerState.volume,
+      shuffle: playerState.shuffle,
+      repeat: playerState.repeat,
+    }));
+  } catch {
+    // Almacenamiento bloqueado: no pasa nada.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Colecciones (contextos de reproducción)
+// ---------------------------------------------------------------------------
+
+function songColor(song) {
+  if (song.local) return LOCAL_COLOR;
+  return coverColor(song.folderId ?? song.id);
+}
+
+function folderContext(folder) {
+  const count = songsInFolder(state.catalog, folder.id).length;
+  return {
+    contextId: `carpeta:${folder.id}`,
+    kind: 'folder',
+    title: folder.name,
+    subtitle: `Carpeta · ${songCountText(count)}`,
+    href: `#/carpeta/${encodeURIComponent(folder.id)}`,
+    color: coverColor(folder.id),
+    iconName: 'folder',
+  };
+}
+
+function playlistContext(list) {
+  return {
+    contextId: `lista:${list.id}`,
+    kind: 'playlist',
+    title: list.name,
+    subtitle: `Lista · ${songCountText(list.songIds.filter((id) => state.catalog.songById.has(id)).length)}`,
+    href: `#/lista/${encodeURIComponent(list.id)}`,
+    color: coverColor(list.id),
+    iconName: 'list',
+  };
+}
+
+function likedSongs() {
+  return [...state.likes.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => state.catalog.songById.get(id))
+    .filter(Boolean);
+}
+
+function likedContext() {
+  return {
+    contextId: 'me-gusta',
+    kind: 'liked',
+    title: 'Me gusta',
+    subtitle: `Lista · ${songCountText(likedSongs().length)}`,
+    href: '#/me-gusta',
+    color: LIKED_COLOR,
+    iconName: 'heart-filled',
+  };
+}
+
+function allSongsContext() {
+  return {
+    contextId: 'canciones',
+    kind: 'all',
+    title: 'Todas las canciones',
+    subtitle: `Biblioteca · ${songCountText(state.catalog.songs.length)}`,
+    href: '#/canciones',
+    color: ALL_SONGS_COLOR,
+    iconName: 'note',
+  };
+}
+
+function localContext() {
+  return {
+    contextId: 'locales',
+    kind: 'local',
+    title: 'Subidas a este navegador',
+    subtitle: `Solo aquí · ${songCountText(localSongsOf(state.catalog).length)}`,
+    href: '#/locales',
+    color: LOCAL_COLOR,
+    iconName: 'device',
+  };
+}
+
+function folderContexts(parentId) {
+  const folders = parentId === undefined ? state.catalog.folders : childFolders(state.catalog, parentId);
+  return folders.map(folderContext);
+}
+
+function playlistContexts() {
+  return state.playlists.map(playlistContext);
+}
+
+/** Elementos de la biblioteca: «Me gusta», (todas), las subidas aquí, las listas y las carpetas. */
+function libraryContexts({ includeAll = false, allFolders = false } = {}) {
+  const items = [likedContext()];
+  if (includeAll && state.catalog.songs.length > 0) items.push(allSongsContext());
+  if (localSongsOf(state.catalog).length > 0) items.push(localContext());
+  items.push(...playlistContexts());
+  items.push(...folderContexts(allFolders ? undefined : null));
+  return items;
+}
+
+/** Colección completa por su id de contexto, con sus canciones, o null si no existe. */
+function getContext(contextId) {
+  if (typeof contextId !== 'string') return null;
+  if (contextId === 'me-gusta') return { ...likedContext(), typeLabel: 'Lista', songs: likedSongs() };
+  if (contextId === 'canciones') return { ...allSongsContext(), typeLabel: 'Biblioteca', songs: state.catalog.songs };
+  if (contextId === 'locales') return { ...localContext(), typeLabel: 'Canciones locales', songs: localSongsOf(state.catalog) };
+  if (contextId.startsWith('carpeta:')) {
+    const folder = state.catalog.folderById.get(contextId.slice('carpeta:'.length));
+    if (!folder) return null;
+    return {
+      ...folderContext(folder),
+      typeLabel: 'Carpeta',
+      folder,
+      songs: songsInFolder(state.catalog, folder.id),
+      subfolders: childFolders(state.catalog, folder.id).map(folderContext),
+    };
+  }
+  if (contextId.startsWith('lista:')) {
+    const list = state.playlists.find((item) => item.id === contextId.slice('lista:'.length));
+    if (!list) return null;
+    return {
+      ...playlistContext(list),
+      typeLabel: 'Lista',
+      playlist: list,
+      songs: list.songIds.map((id) => state.catalog.songById.get(id)).filter(Boolean),
+    };
   }
   return null;
 }
 
-/** Hash canónico de una ruta con sus parámetros, o null si la ruta no existe en el modo o falta un parámetro. */
-export function buildHash(mode, route, params = {}) {
-  if (!hasRoute(mode, route)) return null;
-  const used = new Set();
-  const segments = [];
-  for (const part of ROUTE_PATTERNS[mode][route].split('/')) {
-    if (!part.startsWith(':')) {
-      segments.push(part);
-      continue;
-    }
-    const name = part.slice(1);
-    const value = params[name];
-    if (value === undefined || value === null || value === '') return null;
-    used.add(name);
-    segments.push(encodeURIComponent(String(value)));
-  }
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (!used.has(key) && value !== undefined && value !== null && value !== '') query.set(key, String(value));
-  }
-  const search = query.toString();
-  return `#/${segments.join('/')}${search ? `?${search}` : ''}`;
+const EXTRA_CONTEXT_NAMES = Object.freeze({ busqueda: 'Búsqueda', recientes: 'Añadidas recientemente' });
+
+// ---------------------------------------------------------------------------
+// Reproducción
+// ---------------------------------------------------------------------------
+
+function isPlayable(song) {
+  if (state.online || song.local) return true;
+  return state.cached.has(song.audio ?? song.audioUrl);
 }
 
-/** Modo con el que se abre la app: sin perfiles, cuidador; si no, paciente con «Abrir siempre», o el último modo. */
-export function initialModeFor({ hasProfiles = false, alwaysPatientMode = false, lastMode = null } = {}) {
-  if (!hasProfiles) return 'cuidador';
-  if (alwaysPatientMode) return 'paciente';
-  return lastMode === 'paciente' ? 'paciente' : 'cuidador';
-}
-
-/** Perfil con la forma que espera el reproductor (límite de volumen y repetición de la lista). */
-export function playerProfileOf(profile) {
-  const options = profile?.options ?? {};
+function trackOf(song) {
   return {
-    id: profile.id,
-    volumeLimit: Number.isFinite(options.volumeLimit) ? options.volumeLimit : 100,
-    repeatList: options.repeatList !== false,
+    id: song.id,
+    title: song.title,
+    artist: song.artist,
+    audioUrl: song.audio,
+    folderId: song.folderId,
+    durationS: song.durationS,
+    local: song.local,
   };
 }
 
-function clampSeconds(value) {
-  const number = Math.round(Number(value));
-  return Number.isFinite(number) ? Math.min(MAX_SECONDS, Math.max(0, number)) : 0;
+function playSongs(songs, index, { contextId = null } = {}) {
+  const name = getContext(contextId)?.title ?? EXTRA_CONTEXT_NAMES[contextId] ?? '';
+  player.load(songs.map(trackOf), index, { contextId, contextName: name, autoplay: true });
 }
 
-function validOrigin(value) {
-  return STUDY_ORIGINS.includes(value) ? value : 'continua';
+function playContext(contextId) {
+  const context = getContext(contextId);
+  if (!context || context.songs.length === 0) return;
+  playSongs(context.songs, player.getState().shuffle ? null : 0, { contextId });
 }
 
-// En la prueba ?e2e=1 cada «minuto» del apagado dura un segundo.
-function scaleMinutes(minutes) {
-  if (!E2E_HOOK || minutes === null || minutes === undefined) return minutes;
-  return Number(minutes) / 60;
+function toggleContext(contextId) {
+  const current = player.getState();
+  if (current.track && current.contextId === contextId) player.toggle();
+  else playContext(contextId);
 }
 
-// Presentación del evento. Si la pantalla la pide de forma válida, se usa; si no, la regla de Escuchar
-// (solo audio fuerza C0; si no, la asociación de la canción, por defecto C0).
-function presentationFor(open, songId, requested) {
-  if (STUDY_PRESENTATIONS.includes(requested)) return requested;
-  return resolvePresentation(open.condition, open.links.get(songId) ?? null);
+function isContextPlaying(contextId) {
+  const current = player?.getState();
+  return Boolean(current && current.playing && current.contextId === contextId);
 }
 
-// ---------------------------------------------------------------------------
-// Preferencias, almacenamiento local y avisos
-// ---------------------------------------------------------------------------
-
-const prefsService = Object.freeze({
-  get: (key) => prefs.get(key),
-  set(key, value) {
-    const saved = prefs.set(key, value);
-    applyDisplay();
-    return saved;
-  },
-  all: () => prefs.all(),
-});
-
-function applyDisplay() {
-  try {
-    applyDisplayAttributes(prefs.all(), document.documentElement);
-  } catch (error) {
-    console.error('Reminiscencia: no se pudieron aplicar las preferencias de pantalla.', error);
+/** Marca lo que suena: botones verdes, filas y tarjetas. Solo trabaja cuando cambia algo relevante. */
+function syncPlaying(force = false) {
+  const current = player.getState();
+  const signature = `${current.key}|${current.playing}|${current.contextId}|${current.shuffle}|${current.track?.id}`;
+  if (!force && signature === lastSync) return;
+  lastSync = signature;
+  for (const button of document.querySelectorAll('[data-play-context]')) {
+    setPlayButtonState(button, current.playing && current.contextId === button.dataset.playContext);
+  }
+  const songId = current.track?.id ?? null;
+  for (const row of document.querySelectorAll('.track-row, .card-song')) {
+    const isCurrent = songId !== null && row.dataset.songId === songId;
+    row.classList.toggle('is-current', isCurrent);
+    row.classList.toggle('is-playing', isCurrent && current.playing);
+  }
+  for (const toggle of document.querySelectorAll('[data-shuffle-toggle]')) {
+    toggle.classList.toggle('is-active', current.shuffle);
+    toggle.setAttribute('aria-pressed', String(current.shuffle));
   }
 }
 
-function readLocal(key) {
+function onPlayerChange(playerState) {
+  playerUi?.update(playerState);
+  syncPlaying();
+  savePlayerPrefs(playerState);
+}
+
+// ---------------------------------------------------------------------------
+// Acciones sobre la biblioteca local
+// ---------------------------------------------------------------------------
+
+function requestPersistence() {
+  if (persistenceRequested) return;
+  persistenceRequested = true;
+  navigator.storage?.persist?.().catch?.(() => {});
+}
+
+async function refreshLibrary() {
+  state.playlists = await library.listPlaylists();
+  state.likes = await library.listLikes();
+  render();
+}
+
+async function toggleLike(songId) {
+  const liked = !state.likes.has(songId);
+  requestPersistence();
   try {
-    return globalThis.localStorage?.getItem(key) ?? null;
-  } catch {
+    await library.setLiked(songId, liked);
+    toast(liked ? 'Se ha guardado en Me gusta.' : 'Se ha quitado de Me gusta.');
+  } catch (error) {
+    toast('No se ha podido guardar el cambio en este navegador.');
+    console.error(error);
+  }
+  await refreshLibrary();
+  playerUi.update(player.getState());
+}
+
+async function createPlaylist({ songIds = [], navigate = true } = {}) {
+  requestPersistence();
+  try {
+    const list = await library.createPlaylist(null, songIds);
+    await refreshLibrary();
+    toast(songIds.length > 0 ? `Se ha añadido a «${list.name}».` : `Se ha creado «${list.name}».`);
+    if (navigate) goTo(`#/lista/${encodeURIComponent(list.id)}`);
+    return list;
+  } catch (error) {
+    toast(error instanceof Error ? error.message : 'No se ha podido crear la lista.');
     return null;
   }
 }
 
-function saveLocal(key, value) {
-  try {
-    globalThis.localStorage?.setItem(key, value);
-  } catch {
-    // Sin almacenamiento, el valor vale solo hasta recargar.
-  }
+async function renamePlaylist(id) {
+  const list = state.playlists.find((item) => item.id === id);
+  if (!list) return;
+  const name = await promptDialog({ title: 'Cambiar el nombre', label: 'Nombre de la lista', value: list.name, validate: validatePlaylistName });
+  if (name === null || name === list.name) return;
+  await library.renamePlaylist(id, name);
+  await refreshLibrary();
+  toast(`La lista se llama ahora «${name}».`);
 }
 
-// Región aria-live del body. Se vacía antes de escribir para que un mismo texto vuelva a leerse.
-function announce(text) {
-  if (!announcerEl) return;
-  const value = String(text ?? '');
-  announcerEl.textContent = '';
-  setTimeout(() => {
-    if (announcerEl) announcerEl.textContent = value;
-  }, ANNOUNCE_DELAY_MS);
-}
-
-// Título del modo paciente sin mover el foco (arranque): el marco de paciente lo enfoca siempre.
-function setTitleQuietly(text) {
-  const value = String(text ?? '');
-  const heading = document.querySelector('#app .p-title');
-  if (heading) heading.textContent = value;
-  document.title = value ? `${value} · Reminiscencia` : 'Reminiscencia';
-}
-
-function focusHeading() {
-  const heading = document.querySelector('#app .c-title, #app .p-title');
-  if (heading && typeof heading.focus === 'function') heading.focus();
-}
-
-// ---------------------------------------------------------------------------
-// Confirmaciones (services.confirm)
-// ---------------------------------------------------------------------------
-
-function confirmInCaregiverMode({ title, body, confirmLabel, cancelLabel, danger }) {
-  return openDialog({
-    title,
-    className: danger ? 'c-dialog--danger' : '',
-    cancelValue: false,
-    initialFocus: (dialog) => dialog.querySelector('[data-testid="app-confirm-cancel"]'),
-    render(content, close) {
-      if (body) content.append(element('p', { text: body }));
-      const cancel = element('button', {
-        type: 'button',
-        class: 'c-btn c-btn--secondary',
-        'data-testid': 'app-confirm-cancel',
-        text: cancelLabel,
-        on: { click: () => close(false) },
-      });
-      const accept = element('button', {
-        type: 'button',
-        class: danger ? 'c-btn c-btn--danger' : 'c-btn c-btn--primary',
-        'data-testid': 'app-confirm-ok',
-        text: confirmLabel,
-        on: { click: () => close(true) },
-      });
-      content.append(element('div', { class: 'c-dialog-actions' }, [cancel, accept]));
-    },
-  }).then(Boolean);
-}
-
-function confirmInPatientMode({ title, body, confirmLabel, cancelLabel }) {
-  const titleId = nextId('app-confirmar');
-  let modal = null;
-  const cancel = element('button', {
-    type: 'button',
-    class: 'p-boton p-boton--secundario',
-    'data-testid': 'app-confirm-cancel',
-    text: cancelLabel,
-    on: { click: () => modal?.close(false) },
+async function deletePlaylist(id) {
+  const list = state.playlists.find((item) => item.id === id);
+  if (!list) return;
+  const ok = await confirmDialog({
+    title: 'Borrar la lista',
+    message: `¿Borrar «${list.name}» de este navegador? Las canciones no se borran.`,
+    confirmLabel: 'Borrar',
+    danger: true,
   });
-  const accept = element('button', {
-    type: 'button',
-    class: 'p-boton p-boton--primario',
-    'data-testid': 'app-confirm-ok',
-    text: confirmLabel,
-    on: { click: () => modal?.close(true) },
+  if (!ok) return;
+  await library.deletePlaylist(id);
+  if (state.route.name === 'lista' && state.route.id === id) goTo('#/', { replace: true });
+  await refreshLibrary();
+  toast(`Se ha borrado «${list.name}».`);
+}
+
+async function addToPlaylist(id, songIds) {
+  const list = state.playlists.find((item) => item.id === id);
+  if (!list) return;
+  const added = await library.addToPlaylist(id, songIds);
+  await refreshLibrary();
+  toast(added > 0 ? `Se ha añadido a «${list.name}».` : `Ya estaba en «${list.name}».`);
+}
+
+async function removeFromPlaylist(id, songId) {
+  const list = state.playlists.find((item) => item.id === id);
+  if (!list) return;
+  await library.removeFromPlaylist(id, songId);
+  await refreshLibrary();
+  toast(`Se ha quitado de «${list.name}».`);
+}
+
+function addToQueue(song) {
+  player.addToQueue(trackOf(song));
+  toast('Se ha añadido a la cola.');
+}
+
+/** Borra una canción subida a este navegador, tras confirmarlo. Resuelve true si se borra. */
+async function deleteLocalSong(song) {
+  const ok = await confirmDialog({
+    title: 'Borrar canción',
+    message: '¿Borrar esta canción de este navegador? No se puede deshacer.',
+    confirmLabel: 'Borrar',
+    danger: true,
   });
-  const panel = element('section', {
-    class: 'p-dialogo',
-    role: 'alertdialog',
-    'aria-modal': 'true',
-    'aria-labelledby': titleId,
-    'data-testid': 'app-confirm',
-  }, [
-    element('h2', { id: titleId, tabindex: '-1', text: title }),
-    body ? element('p', { text: body }) : null,
-    element('div', { class: 'p-dialogo-acciones' }, [cancel, accept]),
-  ]);
-  modal = openModal({ panel, initialFocus: cancel, onEscape: () => modal?.close(false) });
-  return modal.promise.then(Boolean);
-}
-
-function askConfirmation({ title = '', body = '', confirmLabel = 'Aceptar', cancelLabel = 'Cancelar', danger = false } = {}) {
-  return currentMode === 'paciente'
-    ? confirmInPatientMode({ title, body, confirmLabel, cancelLabel })
-    : confirmInCaregiverMode({ title, body, confirmLabel, cancelLabel, danger });
-}
-
-// ---------------------------------------------------------------------------
-// Estructura de la página
-// ---------------------------------------------------------------------------
-
-function ensureAppRoot() {
-  let root = document.getElementById('app');
-  if (!root) {
-    root = document.createElement('div');
-    root.id = 'app';
-    document.body.append(root);
-  }
-  return root;
-}
-
-// El audio oculto y el contenedor de los marcos van dentro de #app. Los marcos solo reemplazan su contenedor.
-function buildFrame(root) {
-  audioEl = element('audio', { preload: 'metadata', hidden: true, 'data-testid': 'app-audio' });
-  mountEl = element('div', { class: 'app-mount' });
-  root.append(audioEl, mountEl);
-  announcerEl = element('div', {
-    class: 'visually-hidden',
-    'aria-live': 'polite',
-    'aria-atomic': 'true',
-    'data-testid': 'app-announce',
-  });
-  document.body.append(announcerEl);
-}
-
-function showBootError() {
-  document.title = 'Reminiscencia';
-  const target = document.getElementById('app') ?? document.body;
-  const reload = element('button', {
-    type: 'button',
-    class: 'p-boton p-boton--primario',
-    text: 'Recargar la página',
-    on: { click: () => location.reload() },
-  });
-  const message = element('section', { class: 'app-error', role: 'alert', 'data-testid': 'app-error' }, [
-    element('h1', { text: 'Reminiscencia no se ha podido abrir' }),
-    element('p', { text: 'Recarga la página. Si sigue sin abrirse, prueba con otro navegador o revisa que el sitio pueda guardar datos.' }),
-    reload,
-  ]);
-  target.replaceChildren(message);
-}
-
-// Barra de «Vista previa» del paciente: va dentro del contenedor, encima del marco del paciente.
-function previewBarNode() {
-  if (!previewBar) {
-    previewBar = element('div', {
-      class: 'app-preview',
-      role: 'region',
-      'aria-label': 'Vista previa',
-      'data-testid': 'app-preview',
-      style: PREVIEW_BAR_STYLE,
-    }, [
-      element('p', { text: 'Vista previa como paciente', style: 'margin:0' }),
-      element('button', {
-        type: 'button',
-        class: 'p-boton p-boton--compacto',
-        'data-testid': 'app-preview-exit',
-        text: 'Volver al modo cuidador',
-        on: { click: () => endPreview().catch(logError('Reminiscencia: no se pudo volver al modo cuidador.')) },
-      }),
-    ]);
-  }
-  return previewBar;
-}
-
-function syncPreviewChrome() {
-  if (previewing && currentMode === 'paciente') {
-    mountEl.prepend(previewBarNode());
-    mountEl.style.cssText = 'display:flex;flex-direction:column;height:100dvh;';
-    const frame = mountEl.querySelector('.p-shell');
-    if (frame) frame.style.cssText = 'flex:1 1 auto;min-height:0;height:auto;';
-  } else {
-    previewBar?.remove();
-    mountEl.style.cssText = '';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Registro del estudio y sesión de escucha (DESIGN 8.2 y 8.4)
-// ---------------------------------------------------------------------------
-
-// Las escrituras del estudio van en cola, en orden: inicio de sesión, eventos y fin de sesión no se cruzan.
-function enqueue(task) {
-  studyChain = studyChain
-    .then(task)
-    .catch((error) => console.error('Reminiscencia: no se pudo completar una operación del registro.', error));
-  return studyChain;
-}
-
-async function writeEvent(record) {
-  if (!recordingOn) return;
+  if (!ok) return false;
   try {
-    await store.recordStudyEvent(record);
+    await removeLocalRecord(song.id);
   } catch (error) {
-    console.error('Reminiscencia: no se pudo registrar un evento del estudio.', error);
+    toast(error instanceof Error ? error.message : 'No se ha podido borrar la canción.');
+    return false;
   }
+  await library.forgetSong(song.id);
+  if (player.getState().track?.id === song.id) player.load([]);
+  state.localSongs = state.localSongs.filter((item) => item.id !== song.id);
+  rebuildCatalog();
+  await refreshLibrary();
+  toast(`Se ha borrado «${song.title}» de este navegador.`);
+  return true;
 }
 
-function buildRecord(open, type, atMs, fields) {
-  const track = TRACK_TYPES.has(type);
-  const songId = track && isSongId(fields.songId) ? fields.songId : null;
-  return {
-    type,
-    at: zonedIso(atMs),
-    sessionId: open.id,
-    profileId: open.profileId,
-    songId,
-    presentation: track ? presentationFor(open, songId, fields.presentation) : null,
-    condition: open.condition,
-    origin: track ? validOrigin(fields.origin) : null,
-    seconds: fields.seconds ?? null,
-    completed: fields.completed ?? null,
-    trackSeconds: fields.trackSeconds ?? null,
-  };
+async function onLocalAdded(songs) {
+  state.localSongs = [...state.localSongs, ...songs];
+  rebuildCatalog();
+  render();
 }
 
-async function loadLinks(profileId) {
-  try {
-    const links = await store.listSongLinks(profileId);
-    return new Map(links.map((link) => [link.songId, link]));
-  } catch (error) {
-    console.error('Reminiscencia: no se pudieron leer las asociaciones de canciones.', error);
-    return new Map();
-  }
-}
-
-function cancelIdle() {
-  clearTimeout(idleTimer);
-  idleTimer = null;
-}
-
-// Tras tres horas sin reproducción la sesión se cierra en el registro (DESIGN 8.2).
-function armIdle(fromMs) {
-  cancelIdle();
-  if (!session) return;
-  const delay = Math.max(0, fromMs + SESSION_IDLE_MS - Date.now());
-  idleTimer = setTimeout(() => {
-    idleTimer = null;
-    enqueue(() => endSession(fromMs + SESSION_IDLE_MS));
-  }, delay);
-}
-
-async function beginSession(profile, request = {}) {
-  await endSession(Date.now());
-  const condition = STUDY_CONDITIONS.includes(request.condition) ? request.condition : 'segun-cancion';
-  const links = await loadLinks(profile.id);
-  const now = Date.now();
-  session = {
-    id: randomId(),
-    profileId: profile.id,
-    condition,
-    startPoint: request.startPoint ?? null,
-    links,
-  };
-  resumeAllowed = true;
-  lastCondition = condition;
-  saveLocal(CONDITION_KEY, condition);
-  await writeEvent(buildRecord(session, 'session-start', now, {}));
-  armIdle(now);
-}
-
-async function endSession(atMs) {
-  cancelIdle();
-  const ended = session;
-  if (!ended) return;
-  session = null;
-  await writeEvent(buildRecord(ended, 'session-end', atMs, {}));
-}
-
-// DESIGN 8.2: si la sesión se cerró por inactividad y vuelve a sonar, se abre otra con la misma condición. Solo vale
-// si la entrada de este modo paciente fue explícita (C4): resumeAllowed lo pone beginSession y lo quita al salir o al
-// entrar sin sesión; el arranque de la app nunca lo activa.
-async function reopenSession() {
-  if (session || !resumeAllowed || previewing || currentMode !== 'paciente' || !activeProfile) return;
-  await beginSession(activeProfile, { condition: lastCondition, startPoint: null });
-}
-
-function sessionView() {
-  if (!session || previewing) return null;
-  return {
-    id: session.id,
-    condition: session.condition,
-    profileId: session.profileId,
-    startPoint: session.startPoint,
-  };
-}
-
-async function readRecordingSetting() {
-  try {
-    return (await store.getSettings()).studyRecording !== false;
-  } catch {
-    return true;
-  }
-}
-
-/**
- * Registra un evento del estudio (services.recordStudyEvent). Solo hay registro con sesión abierta, fuera de la
- * vista previa y con el registro activado en ajustes. El instante puede venir en fields.at (ms).
- */
-function recordStudyEvent(type, fields = {}) {
-  if (previewing || !recordingOn || !STUDY_EVENT_TYPES.includes(type)) return Promise.resolve();
-  const at = Number.isFinite(fields.at) ? fields.at : Date.now();
-  const captured = {
-    songId: fields.songId ?? null,
-    presentation: fields.presentation,
-    origin: validOrigin(fields.origin ?? lastOrigin),
-    seconds: fields.seconds ?? null,
-    completed: fields.completed ?? null,
-    trackSeconds: fields.trackSeconds ?? null,
-  };
-  return enqueue(async () => {
-    if (REOPEN_TYPES.has(type)) {
-      await reopenSession();
-      // Está sonando: no debe contar el tiempo de inactividad.
-      cancelIdle();
-    }
-    const open = session;
-    if (!open) return;
-    const record = buildRecord(open, type, at, captured);
-    if (TRACK_TYPES.has(type) && record.songId === null) return;
-    await writeEvent(record);
-  });
-}
-
-// Eventos del reproductor: se reenvían a recordStudyEvent y llevan la cuenta de la inactividad y de la última pista.
-function onPlayerStudyEvent(event) {
-  const type = String(event.type ?? '');
-  const parsed = Date.parse(event.at);
-  const at = Number.isFinite(parsed) ? parsed : Date.now();
-  if (event.origin) lastOrigin = event.origin;
-  const duration = playerApi ? clampSeconds(playerApi.getState().duration) : 0;
-  const seconds = clampSeconds(event.position);
-  const songId = event.songId ?? null;
-  const origin = event.origin ?? lastOrigin;
-  if (REOPEN_TYPES.has(type)) cancelIdle();
-  if (REMEMBER_TYPES.has(type)) rememberPlayback(songId, seconds, origin);
-  recordStudyEvent(type, {
-    at,
-    songId,
-    origin,
-    seconds,
-    completed: typeof event.completed === 'boolean' ? event.completed : null,
-    trackSeconds: duration >= 1 ? duration : null,
-  });
-  if (IDLE_TYPES.has(type)) enqueue(() => armIdle(at));
-}
-
-// ---------------------------------------------------------------------------
-// Reproductor
-// ---------------------------------------------------------------------------
-
-// Sin conexión solo suenan las canciones guardadas (DESIGN 8.1).
-function isPlayable(item) {
-  // Las canciones locales (blob de este navegador) suenan sin conexión: no dependen de la caché del servidor.
-  return typeof navigator === 'undefined' || navigator.onLine !== false
-    || isLocalAudioUrl(item?.audioUrl) || cachedPaths.has(item?.audioUrl);
-}
-
-// Última pista del perfil (solo en modo paciente y fuera de la vista previa).
-function rememberPlayback(songId, position, origin) {
-  if (!songId || previewing || currentMode !== 'paciente' || !activeProfile) return;
-  store.saveLastTrack(activeProfile.id, {
-    songId,
-    position: clampSeconds(position),
-    origin: validOrigin(origin),
-    at: zonedIso(Date.now()),
-  }).catch((error) => console.error('Reminiscencia: no se pudo guardar la última pista.', error));
-}
-
-function rememberPlaying() {
-  if (!playerApi) return;
-  const state = playerApi.getState();
-  if (state.track) rememberPlayback(state.track.id, state.position, lastOrigin);
-}
-
-function createPlayerApi(settings) {
-  const base = createPlayer({
-    audio: audioEl,
-    profile: null,
-    mode: 'cuidador',
-    wakeLockEnabled: settings.wakeLock !== false,
-    isAvailable: isPlayable,
-    onStudyEvent: onPlayerStudyEvent,
-    onNotice: onPlayerNotice,
-    onSleepWarning: onPlayerSleepWarning,
-    onSleep: onPlayerSleep,
-  });
-  return {
-    ...base,
-    load(items, startAt = 0, origin = null, presentation = null) {
-      lastOrigin = origin ?? null;
-      return base.load(items, startAt, origin, presentation);
-    },
-    restoreLast(item, startAt = 0) {
-      lastOrigin = 'continua';
-      return base.restoreLast(item, startAt);
-    },
-    setSleepTimer: (minutes) => base.setSleepTimer(scaleMinutes(minutes)),
-    extendSleepTimer: (minutes) => base.extendSleepTimer(scaleMinutes(minutes)),
-  };
-}
-
-function onPlayerNotice(text) {
-  // Escuchar y el marco del cuidador ya muestran sus avisos; aquí solo se leen en las demás pantallas del paciente.
-  if (text && currentMode === 'paciente' && currentRouteName !== 'escuchar') announce(text);
-}
-
-function onPlayerSleepWarning() {
-  if (currentMode !== 'paciente' || sleepDialogOpen) return;
-  sleepDialogOpen = true;
-  openSleepWarning(services)
-    .catch((error) => console.error('Reminiscencia: no se pudo mostrar el aviso de apagado.', error))
-    .finally(() => {
-      sleepDialogOpen = false;
-    });
-}
-
-function onPlayerSleep() {
-  announce('La música se ha parado por el temporizador.');
-}
-
-// Punto de inicio de una sesión: carga su lista o carpeta sin reproducir nada (DESIGN C4).
-async function loadStartPoint(profile, point) {
-  let queue = [];
-  let origin = null;
-  if (point.type === 'lista') {
-    const lists = await store.listPlaylists(profile.id);
-    const list = lists.find((item) => item.id === point.id);
-    if (list) {
-      queue = songsOfList(list, catalog.songs);
-      origin = 'lista';
-    }
-  } else {
-    const folder = catalog.folders.find((item) => item.id === point.id);
-    if (folder) {
-      queue = songsInFolder(folder, catalog.songs);
-      origin = 'carpeta';
-    }
-  }
-  if (queue.length > 0) playerApi.load(queue.map(trackOfSong), 0, origin, null);
-}
-
-// ---------------------------------------------------------------------------
-// Perfiles y catálogo
-// ---------------------------------------------------------------------------
-
-async function refreshProfileState() {
-  try {
-    profiles = await store.listProfiles();
-    activeId = await store.getActiveProfileId();
-  } catch (error) {
-    console.error('Reminiscencia: no se pudieron leer los perfiles.', error);
-  }
-  activeProfile = profiles.find((profile) => profile.id === activeId) ?? null;
-  if (activeProfile) playerApi.setProfile(playerProfileOf(activeProfile));
-}
-
-async function findProfile(profileId) {
-  if (typeof profileId !== 'string' || profileId === '') return null;
-  profiles = await store.listProfiles();
-  return profiles.find((profile) => profile.id === profileId) ?? null;
-}
-
-async function fetchList(url) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error(`Reminiscencia: no se pudo cargar ${url}.`, error);
-    return [];
-  }
-}
-
-// Catálogo publicado más las canciones subidas desde este navegador (ADR-0012). Estas últimas no salen del dispositivo.
-async function loadCatalog() {
-  const [songs, folders, local] = await Promise.all([
-    fetchList(CATALOG_URLS.songs),
-    fetchList(CATALOG_URLS.folders),
-    loadLocalSongs(),
-  ]);
-  return { songs: [...songs, ...local], folders };
-}
-
-async function refreshCachedPaths() {
-  cachedPaths = await cachedSongPaths(catalog.songs);
-}
-
-// ---------------------------------------------------------------------------
-// Modos, marcos y servicios
-// ---------------------------------------------------------------------------
-
-function defaultRouteFor(mode) {
-  if (mode === 'paciente') return { route: 'escuchar', params: {} };
-  return { route: profiles.length > 0 ? 'inicio' : 'asistente', params: {} };
-}
-
-function sectionFor(mode, route) {
-  if (mode === 'paciente') return Object.hasOwn(PATIENT_SECTIONS, route) ? PATIENT_SECTIONS[route] : null;
-  return sectionOfRoute(route);
-}
-
-// Servicios que reciben las pantallas. Cada marco recibe el suyo; un servicio de un modo ya cerrado no navega.
-function createServices(mode) {
-  const isCurrent = () => mode === currentMode;
-  return {
-    mode,
-    store,
-    player: playerApi,
-    prefs: prefsService,
-    catalog,
-    navigate: (route, params) => (isCurrent() ? navigateTo(route, params ?? {}) : undefined),
-    announce,
-    confirm: (options) => (isCurrent() ? askConfirmation(options) : Promise.resolve(false)),
-    enterPatientMode,
-    leavePatientMode,
-    startPreview: (profileId) => startPreview(profileId).catch(logError('Reminiscencia: no se pudo abrir la vista previa.')),
-    endPreview: () => endPreview().catch(logError('Reminiscencia: no se pudo volver al modo cuidador.')),
-    session: sessionView,
-    recordStudyEvent,
-  };
-}
-
-// Registra un fallo de una operación iniciada desde la interfaz sin dejar una promesa rechazada sin tratar.
-function logError(message) {
-  return (error) => console.error(message, error);
-}
-
-function disposeScreen(screen) {
-  if (typeof screen?.unmount !== 'function') return;
-  try {
-    screen.unmount();
-  } catch (error) {
-    console.error('Reminiscencia: no se pudo cerrar la pantalla.', error);
-  }
-}
-
-function disposeCurrent() {
-  const screen = current;
-  current = null;
-  disposeScreen(screen);
-}
-
-/** Monta el marco del modo indicado y la pantalla de ese modo lo reemplaza todo. No pone el foco. */
-function mountMode(mode) {
-  renderSeq += 1;
-  disposeCurrent();
-  try {
-    shell?.unmount();
-  } catch (error) {
-    console.error('Reminiscencia: no se pudo cerrar el marco.', error);
-  }
-  shell = null;
-  mountEl.replaceChildren();
-  currentMode = mode;
-  document.documentElement.dataset.modo = mode;
-  services = createServices(mode);
-  if (mode === 'paciente') {
-    const patient = mountPatientShell(mountEl, services);
-    services.setTitle = (text) => (userNavigated ? patient.setTitle(text) : setTitleQuietly(text));
-    services.setActive = (key) => patient.setActive(key);
-    shell = {
-      content: patient.content,
-      setActive: (key) => patient.setActive(key),
-      showPreviewButton() {},
-      unmount: () => patient.unmount(),
-    };
-  } else {
-    const caregiver = mountCaregiverShell(mountEl, services);
-    services.headerSlot = caregiver.headerSlot;
-    shell = {
-      content: caregiver.content,
-      setActive: (key) => caregiver.setActive(key),
-      showPreviewButton: (show) => caregiver.showPreviewButton(show),
-      unmount: () => caregiver.unmount(),
-    };
-  }
-  playerApi.setMode(mode);
-  syncPreviewChrome();
-  applyDisplay();
-}
-
-// Monta la pantalla de una ruta dentro del contenido del marco activo.
-async function render(route, params, { moveFocus = true } = {}) {
-  renderSeq += 1;
-  const seq = renderSeq;
-  const frame = shell;
-  const mode = currentMode;
-  currentRouteName = route;
-  disposeCurrent();
-  frame.content.replaceChildren();
-  frame.content.scrollTop = 0;
-  frame.setActive(sectionFor(mode, route));
-  frame.showPreviewButton(mode === 'cuidador' && (route === 'perfiles' || route === 'perfil'));
-  await refreshProfileState();
-  if (seq !== renderSeq) return;
-  let screen = null;
-  try {
-    screen = await ROUTES[mode][route](frame.content, services, params);
-  } catch (error) {
-    console.error('Reminiscencia: no se pudo abrir la pantalla.', error);
-    frame.content.replaceChildren(element('p', {
-      role: 'alert',
-      text: 'No se pudo abrir esta pantalla. Vuelve a intentarlo.',
-    }));
+async function toggleDownload(contextId, songs, done) {
+  if (done) {
+    await removeOfflineSongs(songs);
+    state.cached = await cachedAudioPaths();
+    render();
+    toast('Se ha quitado la descarga.');
     return;
   }
-  if (seq !== renderSeq) {
-    disposeScreen(screen);
-    return;
+  state.downloading.add(contextId);
+  render();
+  toast('Descargando para escuchar sin conexión…');
+  try {
+    const result = await saveLibraryOffline(songs);
+    toast(result.failed.length === 0
+      ? 'Descargada. Ya se puede escuchar sin conexión.'
+      : `No se han podido descargar ${result.failed.length} de ${songs.length} canciones.`);
+  } catch (error) {
+    toast('No se ha podido descargar. Comprueba la conexión y el espacio libre.');
+    console.error(error);
+  } finally {
+    state.downloading.delete(contextId);
+    state.cached = await cachedAudioPaths();
+    render();
   }
-  current = screen;
-  if (moveFocus) focusHeading();
 }
 
-function targetFor(mode, route, params) {
-  const hash = buildHash(mode, route, params);
-  if (hash !== null) return { route, params, hash };
-  const fallback = defaultRouteFor(mode);
-  return { route: fallback.route, params: fallback.params, hash: buildHash(mode, fallback.route, fallback.params) };
+// ---------------------------------------------------------------------------
+// Rutas
+// ---------------------------------------------------------------------------
+
+function parseRoute(hash) {
+  const [path] = String(hash ?? '').replace(/^#\/?/, '').split('?');
+  const [name = '', rawId = null] = path.split('/');
+  let id = null;
+  try {
+    id = rawId === null ? null : decodeURIComponent(rawId);
+  } catch {
+    id = null;
+  }
+  const simple = { '': 'inicio', buscar: 'buscar', biblioteca: 'biblioteca', 'me-gusta': 'me-gusta', canciones: 'canciones', locales: 'locales' };
+  if (name in simple) return { name: simple[name], id: null };
+  if ((name === 'carpeta' || name === 'lista' || name === 'seccion') && id) return { name, id };
+  return { name: 'inicio', id: null };
 }
 
-/** Cambia de pantalla: actualiza el hash (apila o reemplaza) y monta la pantalla. */
-function navigateTo(route, params = {}, { replace = false, moveFocus = true, userAction = true } = {}) {
-  if (userAction) userNavigated = true;
-  const target = targetFor(currentMode, route, params);
-  if (location.hash !== target.hash) history[replace ? 'replaceState' : 'pushState'](null, '', target.hash);
-  renderedHash = target.hash;
-  return render(target.route, target.params, { moveFocus });
+function activeContextId() {
+  const { name, id } = state.route;
+  if (name === 'carpeta') return `carpeta:${id}`;
+  if (name === 'lista') return `lista:${id}`;
+  if (name === 'me-gusta' || name === 'canciones' || name === 'locales') return name;
+  return null;
 }
 
-// Atrás y adelante, o una edición manual del hash.
-function onLocationChange() {
-  if (!shell || location.hash === renderedHash) return;
+function goTo(hash, { replace = false } = {}) {
   userNavigated = true;
-  const parsed = parseRoute(location.hash, currentMode);
-  if (!parsed) {
-    const fallback = defaultRouteFor(currentMode);
-    navigateTo(fallback.route, fallback.params, { replace: true });
+  if (replace) {
+    history.replaceState(null, '', hash);
+    onRoute();
+  } else if (location.hash === hash) {
+    onRoute();
+  } else {
+    location.hash = hash;
+  }
+}
+
+// Sección de la navegación que se marca como activa (teléfono: tres destinos; barra lateral: dos).
+function navSection(route) {
+  if (route.name === 'buscar') return 'buscar';
+  if (['biblioteca', 'lista', 'me-gusta', 'locales'].includes(route.name)) return 'biblioteca';
+  return 'inicio';
+}
+
+function updateNav() {
+  const section = navSection(state.route);
+  for (const link of document.querySelectorAll('[data-nav]')) {
+    const target = link.dataset.nav;
+    const active = target === section;
+    link.classList.toggle('is-active', active);
+    const exact = (target === 'inicio' && state.route.name === 'inicio')
+      || (target === 'buscar' && state.route.name === 'buscar')
+      || (target === 'biblioteca' && state.route.name === 'biblioteca');
+    if (exact) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+    const iconSlot = link.querySelector('[data-icon-active]');
+    if (iconSlot) {
+      // Los SVG no tienen la propiedad hidden: se cambia el atributo.
+      iconSlot.querySelector('.nav-icon-off').toggleAttribute('hidden', active);
+      iconSlot.querySelector('.nav-icon-on').toggleAttribute('hidden', !active);
+    }
+  }
+}
+
+function renderSidebar() {
+  dom.sidebarActions.replaceChildren(libraryActions(ctx, 'sidebar'));
+  dom.sidebarChips.replaceChildren(libraryChips(ctx, 'sidebar'));
+  renderLibraryList(dom.sidebarList, ctx, 'sidebar');
+}
+
+function pageTitle() {
+  const { name } = state.route;
+  if (name === 'buscar') return 'Buscar';
+  if (name === 'biblioteca') return 'Tu biblioteca';
+  if (name === 'seccion') return document.querySelector('#view h1')?.textContent ?? 'Inicio';
+  const context = getContext(activeContextId());
+  return context ? context.title : 'Inicio';
+}
+
+/** Pinta la pantalla activa y la barra lateral, conservando el foco y el desplazamiento si la ruta no cambia. */
+function render({ routeChanged = false } = {}) {
+  closeMenu({ restoreFocus: false });
+  const active = document.activeElement;
+  const focusKey = active?.closest?.('[data-key]')?.dataset.key ?? null;
+  const selection = active && 'selectionStart' in active && typeof active.selectionStart === 'number'
+    ? [active.selectionStart, active.selectionEnd]
+    : null;
+  const scroll = dom.main.scrollTop;
+
+  const { name, id } = state.route;
+  if (!state.ready) {
+    // Mientras se leen el catálogo y la biblioteca local (unas décimas de segundo), sin contenido a medias.
+    const loading = document.createElement('p');
+    loading.className = 'page empty-text';
+    loading.setAttribute('role', 'status');
+    loading.textContent = 'Cargando la biblioteca…';
+    dom.view.replaceChildren(loading);
+  } else if (name === 'buscar') renderSearch(dom.view, ctx);
+  else if (name === 'biblioteca') renderLibraryPage(dom.view, ctx);
+  else if (name === 'seccion') {
+    if (!renderSection(dom.view, ctx, id)) renderHome(dom.view, ctx);
+  } else if (name === 'inicio') renderHome(dom.view, ctx);
+  else renderCollection(dom.view, ctx, activeContextId());
+  renderSidebar();
+  updateNav();
+  dom.offline.hidden = state.online;
+  document.title = name === 'inicio' ? APP_NAME : `${pageTitle()} · ${APP_NAME}`;
+  syncPlaying(true);
+
+  if (routeChanged) {
+    dom.main.scrollTop = 0;
+    if (userNavigated) document.querySelector('#view h1')?.focus({ preventScroll: true });
     return;
   }
-  renderedHash = location.hash;
-  render(parsed.route, parsed.params, { moveFocus: true });
-}
-
-/** Pasa al modo paciente. Sin PIN. Con options.session abre la sesión y, si hay punto de inicio, carga su cola. */
-async function enterPatientMode(profileId, options = {}) {
-  const profile = await findProfile(profileId);
-  if (!profile) throw new Error('Elige un perfil para empezar la sesión.');
-  previewing = false;
-  previewReturn = null;
-  if (activeId !== profile.id) await store.setActiveProfileId(profile.id);
-  activeId = profile.id;
-  activeProfile = profile;
-  playerApi.setProfile(playerProfileOf(profile));
-  recordingOn = await readRecordingSetting();
-  await enqueue(() => endSession(Date.now()));
-  const request = options.session ?? null;
-  resumeAllowed = false;
-  if (request?.startPoint) await loadStartPoint(profile, request.startPoint);
-  mountMode('paciente');
-  if (request) await enqueue(() => beginSession(profile, request));
-  saveLocal(MODE_KEY, 'paciente');
-  await navigateTo('escuchar', {}, { replace: true, moveFocus: false });
-  // La hoja de sesión sigue abierta mientras esto ocurre: el foco va al título cuando se cierre.
-  setTimeout(focusHeading, 0);
-}
-
-/** Sale al modo cuidador. P5 ya ha pedido el PIN antes de llamar aquí; la reproducción no se detiene. */
-async function leavePatientMode() {
-  if (previewing) return endPreview();
-  if (currentMode !== 'paciente') return undefined;
-  await enqueue(() => endSession(Date.now()));
-  resumeAllowed = false;
-  mountMode('cuidador');
-  saveLocal(MODE_KEY, 'cuidador');
-  const fallback = defaultRouteFor('cuidador');
-  await navigateTo(fallback.route, fallback.params, { replace: true });
-  return undefined;
-}
-
-/** Vista previa del paciente desde el cuidador: sin PIN, sin sesión y sin eventos. */
-async function startPreview(profileId) {
-  if (currentMode !== 'cuidador') return;
-  const profile = await findProfile(profileId);
-  if (!profile) {
-    announce('Crea o elige un perfil para ver la vista previa.');
-    return;
+  dom.main.scrollTop = scroll;
+  if (focusKey) {
+    const target = [...document.querySelectorAll('[data-key]')].find((node) => node.dataset.key === focusKey);
+    if (target && target !== document.activeElement) {
+      target.focus({ preventScroll: true });
+      if (selection && 'setSelectionRange' in target) {
+        try {
+          target.setSelectionRange(selection[0], selection[1]);
+        } catch {
+          // Algunos tipos de campo no admiten selección.
+        }
+      }
+    }
   }
-  if (activeId !== profile.id) await store.setActiveProfileId(profile.id);
-  previewReturn = parseRoute(location.hash, 'cuidador') ?? defaultRouteFor('cuidador');
-  previewing = true;
-  activeId = profile.id;
-  activeProfile = profile;
-  playerApi.setProfile(playerProfileOf(profile));
-  mountMode('paciente');
-  await navigateTo('escuchar', {}, { replace: true });
 }
 
-/** Vuelve de la vista previa a la pantalla del cuidador desde la que se abrió. */
-async function endPreview() {
-  if (!previewing) return;
-  previewing = false;
-  const back = previewReturn ?? defaultRouteFor('cuidador');
-  previewReturn = null;
-  mountMode('cuidador');
-  await navigateTo(back.route, back.params, { replace: true });
+function onRoute() {
+  const next = parseRoute(location.hash);
+  const changed = next.name !== state.route.name || next.id !== state.route.id;
+  state.route = next;
+  if (changed) state.addQuery = '';
+  render({ routeChanged: changed || userNavigated });
 }
+
+// ---------------------------------------------------------------------------
+// Contexto que reciben las pantallas
+// ---------------------------------------------------------------------------
+
+const ctx = {
+  state,
+  get player() {
+    return player;
+  },
+  songColor,
+  folderName: (id) => state.catalog.folderById.get(id)?.name ?? null,
+  folderContext,
+  playlistContext,
+  folderContexts,
+  playlistContexts,
+  libraryContexts,
+  getContext,
+  activeContextId,
+  localSongs: () => localSongsOf(state.catalog),
+  isPlayable,
+  isLiked: (songId) => state.likes.has(songId),
+  likeButtonFor: (track, testid, size) => likeButton(ctx, track, { testid, size }),
+  isContextPlaying,
+  toggleContext,
+  playSongs,
+  toggleShuffle: () => player.setShuffle(!player.getState().shuffle),
+  cycleRepeat: () => player.setRepeat(nextRepeatMode(player.getState().repeat)),
+  setVolume: (value) => player.setVolume(value),
+  toggleLike,
+  createPlaylist,
+  renamePlaylist,
+  deletePlaylist,
+  addToPlaylist,
+  removeFromPlaylist,
+  addToQueue,
+  deleteLocalSong,
+  onLocalAdded,
+  toggleDownload,
+  openUpload: () => openUploadSheet(ctx),
+  setLibraryFilter: (filter) => {
+    state.libraryFilter = filter;
+    render();
+  },
+  navigate: (hash) => goTo(hash),
+};
 
 // ---------------------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------------------
 
-async function readSettings() {
-  try {
-    return await store.getSettings();
-  } catch (error) {
-    console.error('Reminiscencia: no se pudieron leer los ajustes.', error);
-    return {};
-  }
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: ${response.status}`);
+  return response.json();
 }
 
-function listen() {
-  window.addEventListener('popstate', onLocationChange);
-  window.addEventListener('hashchange', onLocationChange);
-  window.addEventListener('storage', (event) => {
-    if (event.key === PREFS_STORAGE_KEY) applyDisplay();
-  });
-  window.addEventListener('offline', () => {
-    refreshCachedPaths();
-  });
-  window.addEventListener('pagehide', rememberPlaying);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') rememberPlaying();
-  });
-}
-
-function startTimers() {
-  setInterval(() => {
-    if (playerApi?.getState().playing) rememberPlaying();
-  }, REMEMBER_MS);
+async function loadPublicCatalog() {
+  const [songs, folders] = await Promise.allSettled([fetchJson(DATA_URLS.songs), fetchJson(DATA_URLS.folders)]);
+  state.publicSongs = songs.status === 'fulfilled' && Array.isArray(songs.value) ? songs.value : [];
+  state.publicFolders = folders.status === 'fulfilled' && Array.isArray(folders.value) ? folders.value : [];
+  state.loadError = songs.status === 'fulfilled' ? null : 'No se ha podido cargar la biblioteca. Comprueba la conexión y vuelve a intentarlo.';
 }
 
 async function start() {
+  dom.main = document.getElementById('main');
+  dom.view = document.getElementById('view');
+  dom.sidebarActions = document.getElementById('sidebar-actions');
+  dom.sidebarChips = document.getElementById('sidebar-chips');
+  dom.sidebarList = document.getElementById('sidebar-list');
+  dom.offline = document.getElementById('offline-banner');
+
+  const prefs = readPlayerPrefs();
+  player = createPlayer({
+    audio: document.getElementById('audio'),
+    isAvailable: (track) => isPlayable({ ...track, audio: track.audioUrl }),
+    onChange: onPlayerChange,
+    onNotice: (text) => toast(text),
+    volume: prefs.volume ?? 1,
+    shuffle: prefs.shuffle === true,
+    repeat: prefs.repeat ?? 'off',
+  });
+  playerUi = mountPlayerUi(ctx, {
+    bar: document.getElementById('player-bar'),
+    mini: document.getElementById('mini-player'),
+    queuePanel: document.getElementById('queue-panel'),
+  });
+  playerUi.update(player.getState());
+
+  // El enlace de salto no cambia el hash (que es la ruta): solo lleva el foco al contenido.
+  document.querySelector('.skip-link')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    dom.main.focus();
+  });
+  window.addEventListener('hashchange', () => {
+    userNavigated = true;
+    onRoute();
+  });
+  // Un clic en un enlace interno cuenta como navegación (aunque lleve al mismo hash).
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest?.('a[href^="#/"], a[href="#/"]');
+    if (link) userNavigated = true;
+  }, true);
+  const setOnline = () => {
+    state.online = navigator.onLine !== false;
+    render();
+    playerUi.update(player.getState());
+  };
+  window.addEventListener('online', setOnline);
+  window.addEventListener('offline', setOnline);
+
+  state.route = parseRoute(location.hash);
+  render();
+
   registerPwa().catch(() => {});
-  try {
-    buildFrame(ensureAppRoot());
-    listen();
-    applyDisplay();
-    store = await openStore();
-    const settings = await readSettings();
-    recordingOn = settings.studyRecording !== false;
-    catalog = await loadCatalog();
-    playerApi = createPlayerApi(settings);
-    await refreshProfileState();
-    await refreshCachedPaths();
-    const savedCondition = readLocal(CONDITION_KEY);
-    lastCondition = STUDY_CONDITIONS.includes(savedCondition) ? savedCondition : 'segun-cancion';
-    const mode = initialModeFor({
-      hasProfiles: profiles.length > 0,
-      alwaysPatientMode: settings.alwaysPatientMode === true,
-      lastMode: readLocal(MODE_KEY),
-    });
-    mountMode(mode);
-    // Arrancar o reabrir la app no abre sesión de estudio ni aplica el temporizador: ambos se fijan en C4 (DESIGN 8.2).
-    startTimers();
-    const wanted = profiles.length === 0
-      ? { route: 'asistente', params: {} }
-      : parseRoute(location.hash, mode) ?? defaultRouteFor(mode);
-    await navigateTo(wanted.route, wanted.params, { replace: true, moveFocus: false, userAction: false });
-  } catch (error) {
-    console.error('Reminiscencia: no se pudo iniciar la aplicación.', error);
-    showBootError();
-  }
+  library = await openLocalLibrary();
+  const [, localSongs, cached] = await Promise.all([loadPublicCatalog(), loadLocalSongs(), cachedAudioPaths()]);
+  state.localSongs = localSongs;
+  state.cached = cached;
+  rebuildCatalog();
+  state.playlists = await library.listPlaylists();
+  state.likes = await library.listLikes();
+  if (!library.persistent) toast('Este navegador no deja guardar las listas: se perderán al cerrar la página.', { ms: 8000 });
+  state.ready = true;
+  render();
+  document.documentElement.dataset.ready = 'true';
 }
 
-if (typeof document !== 'undefined') start();
+start().catch((error) => {
+  console.error('Reminiscencia: fallo al arrancar.', error);
+  const view = document.getElementById('view');
+  if (view) view.textContent = 'No se ha podido abrir Reminiscencia. Recarga la página.';
+});

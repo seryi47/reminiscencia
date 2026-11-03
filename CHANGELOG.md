@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## Sin publicar: interfaz sin usuarios con el aspecto de Spotify (2026-11-03, rama `feat/web-spotify`)
+
+Decisión del propietario ([ADR-0014](docs/decisions/ADR-0014-interfaz-sin-usuarios-aspecto-spotify.md)); especificación en `docs/user-experience/DESIGN.md` 2.0.
+
+### Cambiado
+- La web abre directamente en Inicio con la música: una sola biblioteca pública (`data/songs.json` y `data/folders.json`) para todos, sin perfiles ni modos.
+- Estructura y aspecto del reproductor web de Spotify con iconos SVG y portadas propios: barra lateral de 280 px con «Inicio», «Buscar» y «Tu biblioteca»; Inicio con saludo según la hora, accesos rápidos y estantes; páginas de carpeta, lista y «Me gusta» con cabecera en degradado y tabla de canciones; Buscar con «Resultado principal» y «Explorar todo»; reproductor de 72 px; en el teléfono, barra inferior, minirreproductor y pantalla completa.
+- Tipografía Figtree (SIL OFL 1.1, Fontsource 5.3.0) en 400, 600, 700 y 800, en lugar de Atkinson Hyperlegible Next.
+- Reproductor (`js/player.js`) reescrito: cola con «Añadir a la cola», aleatorio, repetir (no, toda la cola, una canción) y volumen; sin reglas clínicas (arranque al 60 %, fundido, límite de volumen, temporizador, bloqueo de pantalla ni eventos del estudio).
+- Las canciones subidas a este navegador suenan en `audio/L….opus`, servidas por `sw.js` desde IndexedDB, porque la CSP (`media-src 'self'`) no admite `blob:`. `SHELL_VERSION` pasa a 5.
+- `js/cuidador/incidencias.js` pierde la hoja «Gestionar la biblioteca» y sus formularios de publicar, editar y carpetas; conserva la validación del contrato.
+- El servidor de las pruebas de extremo a extremo aplica la CSP de `vercel.json` y atiende rangos.
+
+### Añadido
+- Listas propias y «Me gusta» guardados solo en este navegador (`js/local-library.js`, IndexedDB `reminiscencia-biblioteca` v1).
+- Hoja «Subir canciones»: «Solo en este navegador» (conversión a Opus de ADR-0012, con borrado, que ahora quita también la canción de las listas y de «Me gusta»), «Para todos» (subida de GitHub al buzón `audio-library/buzon`, con las condiciones de licencia) y «Desde Internet Archive» (incidencia validada por `incidencias.js` e `intake.js`).
+- Descarga por carpeta o lista para escuchar sin conexión, con aviso y canciones no descargadas marcadas.
+- Pruebas: unitarias de catálogo, biblioteca local, reproductor y subida; de extremo a extremo `funcional`, `a11y` (axe a 390, 820, 1024 y 1440 px) y `medidas`.
+
+### Retirado
+- Perfiles, asistente de primer perfil, modos paciente y cuidador, PIN, sesiones y registro del estudio, recuerdos, fotografías, observaciones, ajustes de pantalla y copia cifrada `.rmc`: `js/paciente/`, los módulos de `js/cuidador/` salvo `incidencias.js` y `subida-local.js`, `js/store.js`, `js/schema.js`, `js/crypto.js`, `js/backup.js`, `js/prefs.js`, las hojas de estilo anteriores, las fuentes Atkinson y sus pruebas. La base `reminiscencia` de la versión anterior no se abre ni se borra (ADR-0014, decisión 3).
+
 ## Sin publicar (2026-11-02)
 
 ### Añadido

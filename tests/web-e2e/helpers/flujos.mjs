@@ -1,197 +1,149 @@
-// Recorridos reutilizables por las pruebas: primer perfil, modo paciente y navegación entre pantallas.
-// Cada paso usa data-testid del contrato. Solo donde el contrato no asigna identificador se busca
-// un control por el texto que DESIGN fija, y el comentario lo indica.
-import { clickTestid, clickText, isVisible, waitShownSelector, waitVisible } from "./elementos.mjs";
+// Recorridos reutilizables: abrir la app (sin perfiles ni modos: abre en Inicio), ir a cada pantalla, reproducir,
+// crear una lista y sembrar canciones locales. Cada paso usa data-testid del contrato (DESIGN §13).
+import { clickTestid, waitShownSelector, waitVisible } from "./elementos.mjs";
 
-/** Perfil ficticio de las pruebas. Nunca datos reales. */
-export const TEST_PROFILE = Object.freeze({ alias: "Participante de prueba", pin: "1234" });
-
-const PATIENT_ROOTS = Object.freeze({ escuchar: "p1-root", listas: "p2-root", carpetas: "p3-root", buscar: "p4-root" });
-const CAREGIVER_ROOTS = Object.freeze({ inicio: "c-inicio", biblioteca: "c-biblioteca", perfiles: "c-perfiles", ajustes: "c-settings" });
-
-// Campos de texto del asistente y de búsqueda (no son casillas ni botones de opción).
-const TEXT_FIELD_SELECTOR = "input:not([type='checkbox']):not([type='radio']):not([type='hidden'])";
-
-export async function openApp(page, url) {
-  await page.goto(url, { waitUntil: "domcontentloaded" });
+/** Abre la app y espera a que haya cargado la biblioteca (html[data-ready]). */
+export async function openApp(page, url, hash = "") {
+  await page.goto(`${url}${hash}`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('html[data-ready="true"]', { timeout: 15000 });
 }
 
-/** Escribe en los campos visibles dentro de un contenedor con data-testid. */
-export async function typeInto(page, containerTestid, text, { selector = TEXT_FIELD_SELECTOR, all = false, context = "" } = {}) {
-  await waitVisible(page, containerTestid, { context });
-  const fields = await page.$$(`[data-testid="${containerTestid}"] ${selector}`);
-  const visibleFields = [];
-  for (const field of fields) {
-    if (await field.evaluate((el) => window.__e2eIsShown(el))) visibleFields.push(field);
+/** ¿Es un ancho de teléfono? (< 768 px: barra inferior en lugar de barra lateral). */
+export function isPhone(viewport) {
+  return viewport.width < 768;
+}
+
+/** Va a Inicio, Buscar o Tu biblioteca con la navegación que se ve en ese ancho. */
+export async function goSection(page, section, viewport) {
+  if (section === "biblioteca") {
+    await clickTestid(page, isPhone(viewport) ? "tab-biblioteca" : "sidebar-library-link", "Tu biblioteca");
+    await waitVisible(page, "view-library", { context: "página Tu biblioteca" });
+    return;
   }
-  if (visibleFields.length === 0) {
-    throw new Error(`No hay campos visibles dentro de data-testid="${containerTestid}"${context ? ` (${context})` : ""}.`);
-  }
-  for (const field of all ? visibleFields : visibleFields.slice(0, 1)) {
-    await field.click();
-    await field.type(text);
-  }
+  await clickTestid(page, `${isPhone(viewport) ? "tab" : "nav"}-${section}`, `destino ${section}`);
+  await waitVisible(page, section === "inicio" ? "view-home" : "view-search", { context: `pantalla ${section}` });
 }
 
-/** Primer uso: lleva al asistente de primer perfil (C3e). */
-export async function startFirstRun(page) {
-  if (!(await isVisible(page, "c-wizard", 2500))) {
-    // La elección de arranque no tiene data-testid en el contrato; DESIGN 3.3 fija el texto «Modo cuidador».
-    await clickText(page, "Modo cuidador", { context: "elección de arranque (DESIGN 3.3)" });
-  }
-  await waitVisible(page, "c-wizard", { context: "asistente de primer perfil (C3e)", ms: 10000 });
+/** Abre una colección por su hash (carpeta, lista, «Me gusta»…) y espera su cabecera. */
+export async function openCollection(page, hash) {
+  await page.evaluate((target) => { location.hash = target; }, hash);
+  await waitVisible(page, "collection-title", { context: `colección ${hash}` });
 }
 
-/**
- * Crea el primer perfil con el asistente y deja el Inicio del cuidador (C1). Con `pin`, define el PIN de prueba;
- * sin él, pulsa «Ahora no» (DESIGN C3e). «Ahora no» solo muestra el aviso: el perfil se crea con el último paso,
- * que el asistente llama «Crear perfil».
- */
-export async function createFirstProfile(page, { pin = false } = {}) {
-  await startFirstRun(page);
-  await typeInto(page, "c-wizard", TEST_PROFILE.alias, { context: "paso 1 del asistente: alias" });
-  await clickTestid(page, "c-wizard-next", "paso 1 del asistente");
-  await clickTestid(page, "c-wizard-next", "paso 2 del asistente: canciones iniciales (opcional)");
-  if (pin) {
-    await typeInto(page, "c-wizard", TEST_PROFILE.pin, {
-      selector: "input[type='password'], input[inputmode='numeric'], input[type='tel'], input[type='number']",
-      all: true,
-      context: "paso 3 del asistente: PIN",
-    });
-  } else {
-    await clickTestid(page, "c-wizard-skip-pin", "paso 3 del asistente («Ahora no»)");
-  }
-  await clickTestid(page, "c-wizard-next", "paso 3 del asistente: crear perfil");
-  // Tras crear el perfil, la app abre su ficha (C3a, pestaña Canciones), no el Inicio: se vuelve desde la navegación.
-  await waitVisible(page, "c-profile-alias", { context: "ficha del perfil tras crear el perfil (C3a)", ms: 10000 });
-  await goCaregiverSection(page, "inicio");
+/** Pulsa el título de la canción número `index` de la tabla visible. */
+export async function playRow(page, index = 0) {
+  await waitVisible(page, "track-title", { context: "tabla de canciones" });
+  const titles = await page.$$('[data-testid="track-title"]');
+  await titles[index].click();
+  await page.waitForFunction(() => !document.getElementById("audio").paused, { timeout: 10000 });
 }
 
-/** Abre la app, crea el perfil de prueba y deja el Inicio del cuidador (C1). */
-export async function openCaregiverHome(page, url, { pin = false } = {}) {
-  await openApp(page, url);
-  await createFirstProfile(page, { pin });
-}
-
-/**
- * Pulsa «Abrir modo paciente» en el Inicio (C1). Se usa el botón del propio Inicio, que existe en todos los anchos:
- * el de la barra lateral (c-open-patient) está oculto en teléfono. Ambos abren la misma hoja «Empezar sesión» (C4).
- */
-async function clickOpenPatientFromHome(page) {
-  await clickTestid(page, "c-inicio-open-patient", "botón Abrir modo paciente (C1)");
-}
-
-/**
- * Abre la app, crea el perfil y entra en el modo paciente (C1 → C4 → P1) sin reproducir nada.
- * `sleepLabels` fija el apagado automático en C4 (P6). `pin` define el PIN de prueba.
- */
-export async function openPatientMode(page, url, { pin = false, sleepLabels = null } = {}) {
-  await openCaregiverHome(page, url, { pin });
-  await clickOpenPatientFromHome(page);
-  await waitVisible(page, "c-session-sheet", { context: "hoja Empezar sesión (C4)" });
-  if (sleepLabels) {
-    await clickText(page, sleepLabels, { within: "c-session-sheet", context: "apagado automático (C4)" });
-  }
-  await clickTestid(page, "c-session-start", "botón Empezar de la hoja C4");
-  await waitVisible(page, "p1-root", { context: "pantalla Escuchar del paciente (P1)", ms: 10000 });
-}
-
-/** Pulsa un destino de la navegación del paciente y espera su pantalla. */
-export async function goPatientSection(page, section) {
-  await clickTestid(page, `p-nav-${section}`, `destino ${section} de la navegación del paciente`);
-  await waitVisible(page, PATIENT_ROOTS[section], { context: `pantalla ${section} del paciente` });
-}
-
-/** Pulsa un destino de la navegación del cuidador y espera su pantalla. */
-export async function goCaregiverSection(page, section) {
-  await clickTestid(page, `c-nav-${section}`, `destino ${section} de la navegación del cuidador`);
-  await waitVisible(page, CAREGIVER_ROOTS[section], { context: `pantalla ${section} del cuidador` });
-}
-
-/** Desde el paciente, vuelve al cuidador sin PIN (P5, «Volver al modo cuidador»). */
-export async function leavePatientWithoutPin(page) {
-  await clickTestid(page, "p-caregiver", "botón Cuidador de la cabecera del paciente");
-  await waitVisible(page, "p5-dialog", { context: "diálogo de salida (P5)" });
-  await clickTestid(page, "p5-caregiver", "«Volver al modo cuidador» (P5)");
-  await waitVisible(page, "c-inicio", { context: "Inicio del cuidador tras salir del paciente" });
-}
-
-/**
- * Abre la ficha de perfil (C3a) del primer perfil. La tarjeta no es un botón entero (DESIGN C-15): la ficha se abre
- * con «Abrir perfil» (c-profile-open), que es el primero visible con ese identificador.
- */
-export async function openFirstProfile(page) {
-  await goCaregiverSection(page, "perfiles");
-  await clickTestid(page, "c-profile-open", "botón Abrir perfil de la primera tarjeta (C3)");
-  await waitVisible(page, "c-profile-alias", { context: "ficha del perfil (C3a)" });
-}
-
-/** Abre el editor de recuerdo nuevo (C3c) desde la pestaña Recuerdos del perfil. */
-export async function openNewMemoryEditor(page) {
-  await openFirstProfile(page);
-  await clickTestid(page, "c-tab-recuerdos", "pestaña Recuerdos del perfil");
-  // «Nuevo recuerdo» está fijado por DESIGN 3.2 (C3a) y no tiene data-testid en el contrato.
-  await clickText(page, "Nuevo recuerdo", { context: "botón Nuevo recuerdo (C3a)" });
-  await waitVisible(page, "c-memory-title", { context: "editor de recuerdo (C3c)" });
-}
-
-/** Abre la hoja de nueva observación (C3d) desde la pestaña Observaciones del perfil. */
-export async function openNewObservationSheet(page) {
-  await openFirstProfile(page);
-  await clickTestid(page, "c-tab-observaciones", "pestaña Observaciones del perfil");
-  // «Nueva observación» está fijado por DESIGN 3.2 (C3a) y no tiene data-testid en el contrato.
-  await clickText(page, "Nueva observación", { context: "botón Nueva observación (C3a)" });
-  await waitVisible(page, "c-observation-sheet", { context: "hoja Nueva observación (C3d)" });
-}
-
-/** Abre la hoja de opciones del paciente (C3f). La hoja no tiene data-testid en el contrato: se busca por rol dialog. */
-export async function openProfileOptionsSheet(page) {
-  await openFirstProfile(page);
-  await clickTestid(page, "c-profile-options", "botón Opciones del paciente (C3a)");
-  await waitShownSelector(page, `[role="dialog"], dialog[open]`, { context: "hoja Opciones del paciente (C3f)" });
-}
-
-/** Desde el Inicio del cuidador, abre la hoja Empezar sesión (C4) sin empezar. */
-export async function openSessionSheet(page) {
-  await clickOpenPatientFromHome(page);
-  await waitVisible(page, "c-session-sheet", { context: "hoja Empezar sesión (C4)" });
-}
-
-/** Pulsa la carpeta número `index` (0 es la primera visible) de la cuadrícula de carpetas (P3). No espera a nada. */
-export async function clickPatientFolderTile(page, index) {
-  await waitVisible(page, "p3-folders", { context: "cuadrícula de carpetas (P3)" });
-  const tiles = await page.$$(
-    `[data-testid="p3-folders"] a, [data-testid="p3-folders"] button, [data-testid="p3-folders"] [role="button"]`,
-  );
-  const shown = [];
-  for (const tile of tiles) {
-    if (await tile.evaluate((el) => window.__e2eIsShown(el))) shown.push(tile);
-  }
-  if (shown.length <= index) {
-    throw new Error(`En data-testid="p3-folders" hay ${shown.length} carpetas visibles y se pedía la número ${index + 1}.`);
-  }
-  await shown[index].click();
-}
-
-/** Abre la primera carpeta con canciones (P3b). */
-export async function openPatientFolder(page) {
-  await goPatientSection(page, "carpetas");
-  await clickPatientFolderTile(page, 0);
-  await waitVisible(page, "p3b-root", { context: "pantalla Carpeta (P3b)" });
-}
-
-/** Fija la escala de texto en Ajustes (C5). `labels` son los textos de DESIGN 5.3 para esa escala. */
-export async function setTextScale(page, labels) {
-  await goCaregiverSection(page, "ajustes");
-  await clickText(page, labels, { within: "c-settings-text-scale", context: "opción de escala de texto (C5)" });
-}
-
-/** Enfoca el campo de búsqueda del paciente (P4), esté el data-testid en el propio campo o en su contenedor. */
-export async function focusSearchField(page, testid) {
-  const element = await waitVisible(page, testid, { context: "campo de búsqueda (P4)" });
-  await element.evaluate((el) => {
-    const field = el.matches("input, textarea") ? el : el.querySelector("input, textarea");
-    if (!field) throw new Error("El contenedor del campo de búsqueda no tiene ningún input ni textarea.");
-    field.focus();
+/** Vacía un campo (como si se borrara a mano) y escribe el texto tecla a tecla. */
+export async function fillField(field, text) {
+  await field.evaluate((el) => {
+    el.focus();
+    el.value = "";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
   });
+  await field.type(text);
+}
+
+/** Escribe en el campo de búsqueda grande. */
+export async function search(page, text) {
+  const input = await waitVisible(page, "search-input", { context: "campo de búsqueda" });
+  await fillField(input, text);
+}
+
+/** Crea una lista desde la biblioteca de ese ancho y espera su página. Devuelve su id. */
+export async function createPlaylist(page, viewport) {
+  if (isPhone(viewport)) {
+    await goSection(page, "biblioteca", viewport);
+    await clickTestid(page, "library-page-create-playlist", "Crear lista");
+  } else {
+    await clickTestid(page, "sidebar-create-playlist", "Crear lista de la barra lateral");
+  }
+  await waitVisible(page, "collection-title", { context: "página de la lista nueva" });
+  return page.evaluate(() => decodeURIComponent(location.hash.split("/")[2] ?? ""));
+}
+
+/** Abre la hoja «Subir canciones» y, si se indica, una de sus opciones (local, todos o archive). */
+export async function openUpload(page, viewport, option = null) {
+  if (isPhone(viewport)) {
+    await goSection(page, "biblioteca", viewport);
+    await clickTestid(page, "library-page-upload", "Subir canciones");
+  } else {
+    await clickTestid(page, "sidebar-upload", "Subir canciones de la barra lateral");
+  }
+  await waitVisible(page, "upload-sheet", { context: "hoja Subir canciones" });
+  if (option) {
+    await clickTestid(page, `upload-option-${option}`, `opción ${option}`);
+    await waitVisible(page, `upload-panel-${option}`, { context: `panel ${option}` });
+  }
+}
+
+/** Abre el menú «Más opciones» de la fila de una canción y devuelve los textos de sus opciones. */
+export async function openRowMenu(page, songId) {
+  const selector = `[data-testid="track-row"][data-song-id="${songId}"] [data-testid="row-more"]`;
+  await page.waitForSelector(selector, { timeout: 8000 });
+  await page.$eval(selector, (button) => button.click());
+  await waitShownSelector(page, '[role="menu"]', { context: "menú de la canción" });
+  return page.$$eval('[role="menu"] [role="menuitem"]', (items) => items.map((item) => item.textContent.trim()));
+}
+
+/** Siembra una canción en la base de audio local (la misma que usa subida-local.js). */
+export async function seedLocalSong(page, { id, title, blob = null }) {
+  await page.evaluate(
+    async ({ songId, songTitle, bytes }) => {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open("reminiscencia-audio-local", 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("pistas", { keyPath: "id" });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction("pistas", "readwrite");
+        tx.objectStore("pistas").put({
+          id: songId,
+          title: songTitle,
+          durationS: 60,
+          channels: 1,
+          bitrate: 32000,
+          bytes: 8,
+          createdAt: Date.now(),
+          blob: new Blob([new Uint8Array(bytes ?? [0, 0, 0, 0, 0, 0, 0, 0])], { type: "audio/ogg" }),
+        });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    },
+    { songId: id, songTitle: title, bytes: blob },
+  );
+}
+
+/** Número de canciones guardadas en la base de audio local. */
+export async function countLocalSongs(page) {
+  return page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("reminiscencia-audio-local");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    if (!db.objectStoreNames.contains("pistas")) {
+      db.close();
+      return 0;
+    }
+    const total = await new Promise((resolve, reject) => {
+      const request = db.transaction("pistas", "readonly").objectStore("pistas").count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return total;
+  });
+}
+
+/** Espera a que el service worker controle la página (para el audio local y el modo sin conexión). */
+export async function waitServiceWorker(page) {
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker?.controller), { timeout: 15000 });
 }

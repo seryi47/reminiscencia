@@ -1,25 +1,11 @@
-// Accesibilidad de cada pantalla principal de ambos modos y de sus diálogos (WCAG 2.2 AA con axe-core).
-// Criterio de error: ningún fallo de gravedad «serious» ni «critical». Además: html lang="es", un único H1
-// visible, enlace de salto como primer foco y foco en el H1 al cambiar de pantalla.
-// Las pantallas se localizan por data-testid del contrato. Si falta un elemento, la prueba falla con un mensaje claro.
+// Accesibilidad WCAG 2.2 AA (axe-core) de cada pantalla y hoja a 390, 820, 1024 y 1440 px. Criterio de error:
+// ningún fallo de gravedad «serious» ni «critical». Además: html lang="es", un único H1 visible por pantalla,
+// enlace de salto como primer foco, foco visible, foco en el H1 al cambiar de pantalla y movimiento reducido.
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createTestCatalogOverrides } from "./helpers/catalogo-prueba.mjs";
-import { clickTestid, findVisibleTestid, isVisible, TEST_TIMEOUT_MS, waitVisible, wcagViolations } from "./helpers/elementos.mjs";
-import {
-  goCaregiverSection,
-  goPatientSection,
-  openCaregiverHome,
-  openFirstProfile,
-  openNewMemoryEditor,
-  openNewObservationSheet,
-  openPatientFolder,
-  openPatientMode,
-  openProfileOptionsSheet,
-  openApp,
-  openSessionSheet,
-  startFirstRun,
-} from "./helpers/flujos.mjs";
+import { clickTestid, focusRingWidth, focusWithKeyboardMode, TEST_TIMEOUT_MS, waitVisible, wcagViolations } from "./helpers/elementos.mjs";
+import { createPlaylist, fillField, goSection, isPhone, openApp, openCollection, openRowMenu, openUpload, playRow, search } from "./helpers/flujos.mjs";
 import { launchBrowser, VIEWPORTS, withPage } from "./helpers/navegador.mjs";
 import { startStaticServer } from "./helpers/servidor.mjs";
 
@@ -37,191 +23,195 @@ after(async () => {
 });
 
 const prueba = (nombre, fn) => it(nombre, { timeout: TEST_TIMEOUT_MS }, fn);
+const FOLDER_A = "#/carpeta/F0000000000000001";
 
-// Pantallas del modo paciente. Cada `preparar` deja la pantalla lista para auditarla.
-// P6 (aviso de apagado) no está aquí: necesita el temporizador real y se prueba aparte, más abajo.
-const PANTALLAS_PACIENTE = [
-  { nombre: "P1 Escuchar", preparar: (page, url) => openPatientMode(page, url) },
-  { nombre: "P2 Listas", preparar: async (page, url) => { await openPatientMode(page, url); await goPatientSection(page, "listas"); } },
-  { nombre: "P3 Carpetas", preparar: async (page, url) => { await openPatientMode(page, url); await goPatientSection(page, "carpetas"); } },
-  { nombre: "P3b Carpeta", preparar: async (page, url) => { await openPatientMode(page, url); await openPatientFolder(page); } },
-  { nombre: "P4 Buscar", preparar: async (page, url) => { await openPatientMode(page, url); await goPatientSection(page, "buscar"); } },
+// Cada pantalla: cómo prepararla (page, viewport) y, si solo aplica a algunos anchos, en cuáles.
+const PANTALLAS = [
+  { nombre: "Inicio", preparar: async () => {} },
+  { nombre: "Buscar sin texto", preparar: (page, vp) => goSection(page, "buscar", vp) },
   {
-    nombre: "P5 Salida sin PIN (diálogo)",
-    preparar: async (page, url) => {
-      await openPatientMode(page, url);
-      await clickTestid(page, "p-caregiver", "botón Cuidador de la cabecera del paciente");
-      await waitVisible(page, "p5-dialog", { context: "diálogo de salida (P5)" });
+    nombre: "Buscar con resultados",
+    preparar: async (page, vp) => {
+      await goSection(page, "buscar", vp);
+      await search(page, "prueba 1");
+      await waitVisible(page, "top-result");
     },
   },
   {
-    nombre: "P5 Salida con PIN (teclado)",
-    preparar: async (page, url) => {
-      await openPatientMode(page, url, { pin: true });
-      await clickTestid(page, "p-caregiver", "botón Cuidador de la cabecera del paciente");
-      await waitVisible(page, "p5-keypad", { context: "teclado de PIN (P5)" });
+    nombre: "Carpeta sonando",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await playRow(page, 1);
+    },
+  },
+  {
+    nombre: "Lista propia con canciones",
+    preparar: async (page, vp) => {
+      await createPlaylist(page, vp);
+      await clickTestid(page, "playlist-add-button", "Añadir");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="track-row"]').length === 1);
+    },
+  },
+  { nombre: "Me gusta vacía", preparar: (page) => openCollection(page, "#/me-gusta") },
+  { nombre: "Tu biblioteca", preparar: (page, vp) => goSection(page, "biblioteca", vp) },
+  {
+    nombre: "Mostrar todo: Carpetas",
+    preparar: async (page) => {
+      await page.evaluate(() => { location.hash = "#/seccion/carpetas"; });
+      await waitVisible(page, "section-grid");
+    },
+  },
+  { nombre: "Hoja Subir canciones", preparar: (page, vp) => openUpload(page, vp) },
+  { nombre: "Subir: solo en este navegador", preparar: (page, vp) => openUpload(page, vp, "local") },
+  { nombre: "Subir: para todos", preparar: (page, vp) => openUpload(page, vp, "todos") },
+  {
+    nombre: "Subir: desde Internet Archive, con error",
+    preparar: async (page, vp) => {
+      await openUpload(page, vp, "archive");
+      await fillField(await page.$('[data-testid="archive-url"]'), "https://youtu.be/abc");
+      await page.waitForSelector('[data-testid="upload-panel-archive"] .field-error:not([hidden])');
+    },
+  },
+  {
+    nombre: "Menú de una canción",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openRowMenu(page, "S0000000000000002");
+    },
+  },
+  {
+    nombre: "Cola",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await playRow(page, 0);
+      if (await page.$eval('[data-testid="player-bar"]', (el) => el.getClientRects().length > 0)) {
+        await clickTestid(page, "player-queue", "Cola");
+      } else {
+        await clickTestid(page, "mini-open", "minirreproductor");
+        await clickTestid(page, "full-queue", "Cola");
+      }
+      await page.waitForFunction(() => document.querySelector('[data-testid="queue-next"], [data-testid="queue-dialog"]'));
+    },
+  },
+  {
+    nombre: "Reproducción a pantalla completa",
+    soloTelefono: true,
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await playRow(page, 0);
+      await clickTestid(page, "mini-open", "minirreproductor");
+      await waitVisible(page, "full-player");
     },
   },
 ];
 
-// Pantallas del modo cuidador.
-const PANTALLAS_CUIDADOR = [
-  { nombre: "C1 Inicio", preparar: (page, url) => openCaregiverHome(page, url) },
-  { nombre: "C2 Biblioteca", preparar: async (page, url) => { await openCaregiverHome(page, url); await goCaregiverSection(page, "biblioteca"); } },
-  { nombre: "C3 Perfiles", preparar: async (page, url) => { await openCaregiverHome(page, url); await goCaregiverSection(page, "perfiles"); } },
-  { nombre: "C3a Ficha del perfil", preparar: async (page, url) => { await openCaregiverHome(page, url); await openFirstProfile(page); } },
-  { nombre: "C3c Editor de recuerdo", preparar: async (page, url) => { await openCaregiverHome(page, url); await openNewMemoryEditor(page); } },
-  { nombre: "C3d Nueva observación (hoja)", preparar: async (page, url) => { await openCaregiverHome(page, url); await openNewObservationSheet(page); } },
-  { nombre: "C3e Asistente de primer perfil", preparar: async (page, url) => { await openApp(page, url); await startFirstRun(page); } },
-  { nombre: "C3f Opciones del paciente (hoja)", preparar: async (page, url) => { await openCaregiverHome(page, url); await openProfileOptionsSheet(page); } },
-  { nombre: "C4 Empezar sesión (hoja)", preparar: async (page, url) => { await openCaregiverHome(page, url); await openSessionSheet(page); } },
-  { nombre: "C5 Ajustes", preparar: async (page, url) => { await openCaregiverHome(page, url); await goCaregiverSection(page, "ajustes"); } },
+const ANCHOS = [
+  ["390", VIEWPORTS.telefono],
+  ["820", VIEWPORTS.tabletaVertical],
+  ["1024", VIEWPORTS.tabletaHorizontal],
+  ["1440", VIEWPORTS.escritorio],
 ];
 
-function describeScreens(titulo, pantallas, viewport) {
-  describe(titulo, () => {
-    for (const pantalla of pantallas) {
-      prueba(`${pantalla.nombre}: sin fallos WCAG 2.2 AA de gravedad serious ni critical`, () =>
+for (const [ancho, viewport] of ANCHOS) {
+  describe(`axe a ${ancho} px`, () => {
+    for (const pantalla of PANTALLAS) {
+      if (pantalla.soloTelefono && !isPhone(viewport)) continue;
+      prueba(`${pantalla.nombre}: sin fallos serios ni críticos y un único H1`, () =>
         withPage(browser, viewport, async (page) => {
-          await pantalla.preparar(page, server.url);
-          const violaciones = await wcagViolations(page);
-          const graves = violaciones.filter((violacion) => violacion.impacto === "serious" || violacion.impacto === "critical");
-          assert.deepEqual(graves, [], `${pantalla.nombre}: fallos de axe-core de gravedad serious o critical:`);
-        }),
-      );
-
-      prueba(`${pantalla.nombre}: html con lang="es" y un único H1 visible`, () =>
-        withPage(browser, viewport, async (page) => {
-          await pantalla.preparar(page, server.url);
-          const { lang, h1 } = await page.evaluate(() => ({
-            lang: document.documentElement.getAttribute("lang"),
-            h1: [...document.querySelectorAll("h1")].filter((el) => window.__e2eIsShown(el)).length,
-          }));
-          assert.equal(lang, "es", 'El elemento html debe tener lang="es".');
-          assert.equal(h1, 1, `La pantalla debe tener un único H1 visible y tiene ${h1}.`);
+          await openApp(page, server.url);
+          await pantalla.preparar(page, viewport);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          const fallos = (await wcagViolations(page)).filter((v) => v.impacto === "serious" || v.impacto === "critical");
+          assert.deepEqual(fallos, [], `${pantalla.nombre} a ${ancho} px: ${JSON.stringify(fallos)}`);
+          const h1 = await page.$$eval("h1", (list) => list.filter((el) => el.getClientRects().length > 0).length);
+          assert.equal(h1, 1, `${pantalla.nombre} a ${ancho} px tiene ${h1} H1 visibles.`);
+          assert.equal(await page.$eval("html", (el) => el.lang), "es");
         }),
       );
     }
   });
 }
 
-describeScreens("Accesibilidad del modo paciente a 390 × 844 px", PANTALLAS_PACIENTE, VIEWPORTS.telefono);
-describeScreens("Accesibilidad del modo cuidador a 1440 × 900 px", PANTALLAS_CUIDADOR, VIEWPORTS.escritorio);
-
-// P6 (aviso de apagado) con el temporizador real, sin ganchos de prueba (DESIGN 8.1). El temporizador cuenta solo el
-// tiempo de reproducción: la prueba reproduce la carpeta y espera el aviso, 30 s antes de los 15 minutos. Es la única
-// espera lenta de este fichero (unos 14 minutos y medio); una sola espera sirve para todas las comprobaciones.
-const ESPERA_P6_MS = 15 * 60 * 1000 + 60_000;
-
-// Espera el aviso en tramos de 60 s: una sola llamada de 15 minutos superaría el protocolTimeout de Puppeteer (180 s
-// por defecto) y la prueba fallaría antes de tiempo. Si la pantalla Escuchar deja de verse mientras tanto, falla con ese motivo.
-async function esperarAvisoP6(page, ms) {
-  const limite = Date.now() + ms;
-  while (Date.now() < limite) {
-    const inicio = Date.now();
-    const aviso = await findVisibleTestid(page, "p6-dialog", Math.min(60_000, limite - inicio));
-    if (aviso) return aviso;
-    if (!(await isVisible(page, "p1-root", 1000))) {
-      throw new Error("La pantalla Escuchar (P1) dejó de verse mientras se esperaba el aviso de apagado (P6).");
-    }
-    // Si la espera ha fallado antes de tiempo, no se repite sin pausa.
-    if (Date.now() - inicio < 1000) await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  throw new Error(
-    `Falta data-testid="p6-dialog" (aviso de apagado, 30 s antes de los 15 minutos de reproducción): no aparece en ${ms} ms.`,
-  );
-}
-
-describe("Accesibilidad del aviso de apagado (P6) con el temporizador real", () => {
-  it(
-    'P6 Aviso de apagado (diálogo): sin fallos WCAG 2.2 AA graves, con lang="es" y un único H1 visible',
-    { timeout: ESPERA_P6_MS + TEST_TIMEOUT_MS },
-    () =>
-      withPage(browser, VIEWPORTS.telefono, async (page) => {
-        await openPatientMode(page, server.url, { sleepLabels: ["15 minutos", "15 min", "15"] });
-        await openPatientFolder(page);
-        await clickTestid(page, "p3b-play", "Reproducir carpeta (P3b): arranca la reproducción que cuenta el temporizador");
-        await goPatientSection(page, "escuchar");
-        await esperarAvisoP6(page, ESPERA_P6_MS);
-        const violaciones = await wcagViolations(page);
-        const graves = violaciones.filter((violacion) => violacion.impacto === "serious" || violacion.impacto === "critical");
-        const { lang, h1 } = await page.evaluate(() => ({
-          lang: document.documentElement.getAttribute("lang"),
-          h1: [...document.querySelectorAll("h1")].filter((el) => window.__e2eIsShown(el)).length,
-        }));
-        assert.deepEqual(graves, [], "P6: fallos de axe-core de gravedad serious o critical:");
-        assert.equal(lang, "es", 'El elemento html debe tener lang="es".');
-        assert.equal(h1, 1, `La pantalla debe tener un único H1 visible y tiene ${h1}.`);
+describe("Teclado y foco", () => {
+  for (const [ancho, viewport] of [["390", VIEWPORTS.telefono], ["1440", VIEWPORTS.escritorio]]) {
+    prueba(`El primer Tab llega al enlace de salto, que lleva al contenido (${ancho} px)`, () =>
+      withPage(browser, viewport, async (page) => {
+        await openApp(page, server.url);
+        await page.keyboard.press("Tab");
+        assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "skip-link");
+        await page.keyboard.press("Enter");
+        assert.equal(await page.evaluate(() => document.activeElement?.id), "main");
       }),
+    );
+
+    prueba(`Al cambiar de pantalla, el foco va al H1 (${ancho} px)`, () =>
+      withPage(browser, viewport, async (page) => {
+        await openApp(page, server.url);
+        await goSection(page, "buscar", viewport);
+        assert.equal(await page.evaluate(() => document.activeElement?.tagName), "H1");
+        await goSection(page, "biblioteca", viewport);
+        assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Tu biblioteca");
+      }),
+    );
+  }
+
+  prueba("El foco se ve: contorno de 2 px en botones, enlaces y campos", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      for (const testid of ["nav-buscar", "sidebar-create-playlist", "sidebar-chip-listas", "player-shuffle", "player-queue", "skip-link"]) {
+        const info = await focusWithKeyboardMode(page, testid, "foco visible");
+        assert.ok(focusRingWidth(info) >= 2, `${testid}: el anillo de foco mide ${focusRingWidth(info)} px.`);
+      }
+      await openCollection(page, FOLDER_A);
+      const info = await focusWithKeyboardMode(page, "collection-play", "botón verde");
+      assert.ok(focusRingWidth(info) >= 2);
+    }),
+  );
+
+  prueba("El menú de una canción se recorre con flechas y Escape devuelve el foco", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_A);
+      await openRowMenu(page, "S0000000000000003");
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("role")), "menuitem");
+      const primero = await page.evaluate(() => document.activeElement.textContent);
+      await page.keyboard.press("ArrowDown");
+      assert.notEqual(await page.evaluate(() => document.activeElement.textContent), primero);
+      await page.keyboard.press("Escape");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "row-more");
+    }),
+  );
+
+  prueba("Los diálogos atrapan el foco y Escape lo devuelve al botón que los abrió", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await openUpload(page, VIEWPORTS.escritorio);
+      assert.ok(await page.evaluate(() => document.activeElement?.closest("dialog") !== null));
+      await page.keyboard.press("Escape");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "sidebar-upload");
+    }),
   );
 });
 
-// El H1 de cada pantalla es el título de la cabecera (DESIGN 3.1, P-1 y C-1), no un elemento dentro de la zona de la
-// pantalla. Al cambiar de pantalla, el foco pasa a ese H1 (tabindex=-1, DESIGN 7.1) y su texto es el de la nueva pantalla.
-function esperarFocoEnTitulo(page, cabeceraTestid, titulo) {
-  return page
-    .waitForFunction(
-      (cabecera, texto) => {
-        const el = document.activeElement;
-        const zona = document.querySelector(`[data-testid="${cabecera}"]`);
-        return Boolean(
-          el &&
-            el.tagName === "H1" &&
-            el.getAttribute("tabindex") === "-1" &&
-            zona &&
-            zona.contains(el) &&
-            el.textContent.trim() === texto,
-        );
-      },
-      { timeout: 3000 },
-      cabeceraTestid,
-      titulo,
-    )
-    .then(
-      () => true,
-      () => false,
-    );
-}
-
-describe("Enlace de salto y foco", () => {
-  prueba("Paciente: el primer Tab enfoca el enlace de salto (skip-link)", () =>
-    withPage(browser, VIEWPORTS.telefono, async (page) => {
-      await openPatientMode(page, server.url);
-      // Recargar devuelve el foco al inicio del documento. La app abre en el último modo.
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await waitVisible(page, "p1-root", { context: "Escuchar tras recargar (último modo: paciente)", ms: 10000 });
-      await page.keyboard.press("Tab");
-      const testid = await page.evaluate(() => document.activeElement?.dataset.testid ?? null);
-      assert.equal(testid, "skip-link", `El primer foco es «${testid}» y debe ser el enlace de salto (skip-link).`);
-    }),
-  );
-
-  prueba("Cuidador: el primer Tab enfoca el enlace de salto (skip-link)", () =>
+describe("Movimiento reducido", () => {
+  prueba("Con prefers-reduced-motion no hay transiciones ni animaciones", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await waitVisible(page, "c-inicio", { context: "Inicio del cuidador tras recargar", ms: 10000 });
-      await page.keyboard.press("Tab");
-      const testid = await page.evaluate(() => document.activeElement?.dataset.testid ?? null);
-      assert.equal(testid, "skip-link", `El primer foco es «${testid}» y debe ser el enlace de salto (skip-link).`);
-    }),
-  );
-
-  prueba("Paciente: al cambiar a Listas, el foco pasa al H1 de la pantalla", () =>
-    withPage(browser, VIEWPORTS.telefono, async (page) => {
-      await openPatientMode(page, server.url);
-      await goPatientSection(page, "listas");
-      const enH1 = await esperarFocoEnTitulo(page, "p-header", "Listas");
-      assert.ok(enH1, "Al cambiar de pantalla, el foco debe pasar al H1 de cabecera con el título «Listas» (tabindex=-1, DESIGN 3.1, P-1 y 7.1).");
-    }),
-  );
-
-  prueba("Cuidador: al cambiar a Biblioteca, el foco pasa al H1 de la pantalla", () =>
-    withPage(browser, VIEWPORTS.escritorio, async (page) => {
-      await openCaregiverHome(page, server.url);
-      await goCaregiverSection(page, "biblioteca");
-      const enH1 = await esperarFocoEnTitulo(page, "c-header", "Biblioteca");
-      assert.ok(enH1, "Al cambiar de pantalla, el foco debe pasar al H1 de cabecera con el título «Biblioteca» (tabindex=-1, DESIGN C-1 y 7.1).");
+      await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_A);
+      await playRow(page, 0);
+      const estilos = await page.evaluate(() => {
+        const bar = document.querySelector('.track-row.is-playing .num-playing i');
+        const card = document.querySelector('.play-button');
+        return {
+          animacion: parseFloat(getComputedStyle(bar).animationDuration) * 1000,
+          iteraciones: getComputedStyle(bar).animationIterationCount,
+          transicion: parseFloat(getComputedStyle(card).transitionDuration) * 1000,
+        };
+      });
+      assert.ok(estilos.animacion <= 0.01, JSON.stringify(estilos));
+      assert.equal(estilos.iteraciones, "1");
+      assert.ok(estilos.transicion <= 0.01, JSON.stringify(estilos));
     }),
   );
 });
