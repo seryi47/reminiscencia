@@ -111,17 +111,6 @@
     "audio": "audio/Sc561a4ba1ae57521.opus"
   },
   {
-    "id": "S2ac26f002a1bd1cc",
-    "title": "Prueba GitHub cuatro",
-    "artist": "",
-    "year": null,
-    "tags": [],
-    "folder_id": null,
-    "duration_s": 4.0,
-    "license": "CC0 1.0 (tonos sintéticos generados con ffmpeg para probar el buzón)",
-    "audio": "audio/S2ac26f002a1bd1cc.opus"
-  },
-  {
     "id": "Sf749859f9e2e7ec1",
     "title": "Whispering",
     "artist": "",
