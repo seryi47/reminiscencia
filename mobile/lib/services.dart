@@ -17,6 +17,7 @@ class AppServices {
     this.covers = const NoCoverImages(),
     this.openUrl = openInBrowser,
     this.pickImage = pickImageFromDevice,
+    this.pickAudio = pickAudioFromDevice,
     this.clock = DateTime.now,
   });
 
@@ -28,11 +29,14 @@ class AppServices {
   /// Portadas de la web guardadas en el teléfono.
   final CoverImages covers;
 
-  /// Abre direcciones en el navegador (subida «Para todos» y peticiones a la biblioteca común).
+  /// Abre direcciones en el navegador (peticiones a la biblioteca común).
   final UrlOpener openUrl;
 
   /// Elige una imagen del teléfono (portada propia de una lista).
   final ImagePicker pickImage;
+
+  /// Elige archivos de audio del teléfono («Subir canciones»).
+  final AudioFilesPicker pickAudio;
 
   /// Hora actual (saludo de Inicio). Se sustituye en pruebas.
   final DateTime Function() clock;

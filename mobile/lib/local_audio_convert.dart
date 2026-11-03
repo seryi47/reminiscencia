@@ -10,8 +10,12 @@ import 'local_audio.dart';
 /// Conversión real a Ogg Opus con FFmpeg (paquete ffmpeg_kit_flutter_new_min, con libopus).
 /// Mismas tasas que la web (ADR-0012): mono 32 kbps y estéreo 48 kbps, a 48 kHz.
 /// Las pruebas unitarias no lo ejecutan (necesita el binario nativo); los argumentos se comprobaron con ffmpeg de escritorio.
+/// [enforceLimits] aplica los límites de la subida local (60 MB y 20 minutos); la subida para todos no tiene
+/// tamaño máximo, porque se envía en trozos.
 class FfmpegOpusConverter implements AudioConverter {
-  const FfmpegOpusConverter();
+  const FfmpegOpusConverter({this.enforceLimits = true});
+
+  final bool enforceLimits;
 
   static const String _readError =
       'No se puede leer este archivo. Comprueba que es audio válido (WAV, MP3, M4A, FLAC u OGG).';
@@ -25,15 +29,20 @@ class FfmpegOpusConverter implements AudioConverter {
     final input = File(inputPath);
     if (!await input.exists()) throw const AppException(_readError);
     final bytes = await input.length();
-    final sizeProblem = checkFileLimits(bytes: bytes);
-    if (sizeProblem != null) throw AppException(sizeProblem);
+    if (bytes <= 0) throw const AppException('El archivo está vacío.');
+    if (enforceLimits) {
+      final sizeProblem = checkFileLimits(bytes: bytes);
+      if (sizeProblem != null) throw AppException(sizeProblem);
+    }
 
     final probe = await _probe(inputPath);
-    final durationProblem = checkFileLimits(
-      bytes: bytes,
-      durationS: probe.durationS,
-    );
-    if (durationProblem != null) throw AppException(durationProblem);
+    if (enforceLimits) {
+      final durationProblem = checkFileLimits(
+        bytes: bytes,
+        durationS: probe.durationS,
+      );
+      if (durationProblem != null) throw AppException(durationProblem);
+    }
 
     final format = localFormatFor(probe.channels);
     final session = await FFmpegKit.executeWithArguments([

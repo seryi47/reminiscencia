@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## Sin publicar: APK, «Subir canciones» directo a la biblioteca común (2026-11-03; en `main`)
+
+Orden del propietario. Necesita la función `frontend/web/api/subir.js` desplegada en Vercel; sin probar en dispositivo.
+
+### Cambiado
+- «Subir canciones» sube siempre a la biblioteca común, para todos, sin hojas ni confirmación: se eligen uno o varios archivos, cada uno se convierte a Opus en el teléfono (`ffmpeg_kit_flutter_new_min`) y se envía de uno en uno a `POST https://reminiscencia.vercel.app/api/subir`, en trozos de hasta 4 MB (`X-Nombre-Archivo` con el nombre original codificado como `encodeURIComponent`, `X-Subida-Id`, `X-Parte`, `X-Partes`, `Content-Type: audio/ogg`). La función guarda el audio en el buzón con el token del servidor; la APK no guarda tokens. El título es el nombre del archivo sin extensión. Sin tamaño máximo por archivo.
+- Progreso por archivo y por trozo, y resultado de cada archivo al terminar («Subida: llegará a todos en un par de minutos» o el error de la web). Texto fijo debajo del botón: «Al subir, declaras que tienes derecho a publicar estos archivos».
+- Sin red avisa y no intenta nada. Batería: un reintento como máximo por trozo (fallo de red o 5xx; un 4xx no se reintenta); si se pierde la conexión, lo que falta queda pendiente; al salir de la app se para la conversión.
+- Se quitan «Solo en este teléfono» y «Para todos» (la página de subida de GitHub). Las canciones ya subidas solo en el teléfono se siguen oyendo y se pueden borrar.
+
+### Añadido
+- `lib/shared_upload.dart` y `test/shared_upload_test.dart` (cliente HTTP simulado: éxito, trozos, errores 4xx y 5xx, sin red, varios archivos y nombres con acentos), más pruebas de interfaz en `test/app_structure_test.dart`.
+
 ## Sin publicar: artista y año al importar desde Internet Archive (2026-11-03; en `main`)
 
 ### Corregido
