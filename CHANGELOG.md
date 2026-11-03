@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.2.1 (2026-11-03)
+
+- APK: espera a guardar el estado final de una subida antes de considerarla terminada, para que las subidas pendientes se recuperen correctamente al volver a abrir la app.
+
 ## Sin publicar: web y APK, botón «Homeostasia» (2026-11-03)
 
 Pedido del propietario: un botón nuevo en «Crear», conectado con GitHub, con toda su lógica en un solo archivo.
