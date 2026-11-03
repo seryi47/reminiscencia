@@ -102,12 +102,14 @@ async function staleWhileRevalidate(event, cacheName = SHELL_CACHE) {
   return network;
 }
 
-/** Datos (data/*.json): red primero; si no hay red, la última copia guardada. */
+/** Datos (data/songs.json, folders.json y catalog.json): siempre a la red primero y sin la caché HTTP del navegador
+ *  (cache: 'no-store'), para que una canción recién publicada se vea al recargar; la copia guardada solo responde
+ *  si no hay red. */
 async function networkFirst(event) {
   const key = shellKey(event.request.url);
   const cache = await caches.open(SHELL_CACHE);
   try {
-    const response = await fetch(event.request);
+    const response = await fetch(event.request.url, { cache: 'no-store', credentials: 'same-origin' });
     if (isCacheable(response)) event.waitUntil(cache.put(key, response.clone()).catch(() => {}));
     return response;
   } catch (error) {
