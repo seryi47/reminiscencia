@@ -1,6 +1,6 @@
-# ADR-0014: Interfaz sin usuarios con el aspecto de Spotify
+# ADR-0015: Interfaz sin usuarios con el aspecto de Spotify
 
-- Estado: aceptada (decisión del propietario, no negociable). Implementada en la rama `feat/web-spotify`, pendiente de fusionar en `main`.
+- Estado: aceptada (decisión del propietario, no negociable). Implementada y fusionada en `main` el 2026-11-03.
 - Fecha: 2026-11-03
 - Sustituye: en ADR-0009, todo lo que trata de perfiles, modos paciente y cuidador, PIN, sesiones y registro del estudio, copia cifrada `.rmc` y preferencias de pantalla (decisiones 2, 3 y 4, y las partes de la 5, la 6 y la 7 que se citan abajo). Sigue vigente de ADR-0009: interfaz única en módulos ES sin framework ni dependencias de runtime (decisión 1), sin conexión con service worker (decisión 5) y sin scripts de terceros (decisión 7).
 - Relacionada con: ADR-0008 (entrada por incidencias), ADR-0012 (audio subido desde este navegador), ADR-0013 (audio local en la APK). Especificación: `docs/user-experience/DESIGN.md` (versión 2.0).

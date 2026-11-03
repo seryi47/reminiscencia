@@ -1,4 +1,4 @@
-// Pruebas funcionales de la interfaz sin usuarios (ADR-0014): abre en Inicio sin pedir nada, reproduce, busca, abre
+// Pruebas funcionales de la interfaz sin usuarios (ADR-0015): abre en Inicio sin pedir nada, reproduce, busca, abre
 // carpetas, crea listas locales, «Me gusta», cola, subida local (conversión real a Opus) y borrado, «Para todos»,
 // «Desde Internet Archive» y escucha sin conexión. Catálogo de prueba ficticio (helpers/catalogo-prueba.mjs).
 import assert from "node:assert/strict";

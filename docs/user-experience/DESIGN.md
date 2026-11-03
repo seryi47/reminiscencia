@@ -1,6 +1,6 @@
 # Reminiscencia: especificación de diseño
 
-**Versión:** 2.0 (2026-11-03). Interfaz sin usuarios con la estructura y el aspecto del reproductor web de Spotify, decisión del propietario ([ADR-0014](../decisions/ADR-0014-interfaz-sin-usuarios-aspecto-spotify.md)).
+**Versión:** 2.0 (2026-11-03). Interfaz sin usuarios con la estructura y el aspecto del reproductor web de Spotify, decisión del propietario ([ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)).
 **Sustituye** a la versión 1.0 (dos modos, perfiles, PIN y registro del estudio), que queda en el historial de git.
 **Código:** `frontend/web/` (`index.html`, `css/tokens.css`, `css/app.css`, `js/`). **Pruebas:** `tests/web-unit/` y `tests/web-e2e/` (`funcional`, `a11y` y `medidas`).
 
@@ -129,7 +129,7 @@ Carpeta (`#/carpeta/<id>`), lista propia (`#/lista/<id>`), «Me gusta» (`#/me-g
 
 El botón «Subir canciones» abre una hoja con tres opciones:
 
-1. **Solo en este navegador.** Elegir archivos (WAV, MP3, M4A, OGG o FLAC; hasta 60 MB y 20 minutos), que se convierten a Opus y se guardan solo aquí (ADR-0012). Progreso y resultado en una región de estado, y la lista de lo subido con «Borrar» (con confirmación). Si el navegador no convierte a Opus, se dice desde el principio. Las canciones subidas aparecen en «Subidas a este navegador», en la búsqueda y en «Añadidas recientemente», con la marca «En este navegador». Con el service worker activo suenan en `audio/L….opus`, servidas desde IndexedDB por `sw.js` (ADR-0014, decisión 7).
+1. **Solo en este navegador.** Elegir archivos (WAV, MP3, M4A, OGG o FLAC; hasta 60 MB y 20 minutos), que se convierten a Opus y se guardan solo aquí (ADR-0012). Progreso y resultado en una región de estado, y la lista de lo subido con «Borrar» (con confirmación). Si el navegador no convierte a Opus, se dice desde el principio. Las canciones subidas aparecen en «Subidas a este navegador», en la búsqueda y en «Añadidas recientemente», con la marca «En este navegador». Con el service worker activo suenan en `audio/L….opus`, servidas desde IndexedDB por `sw.js` (ADR-0015, decisión 7).
 2. **Para todos.** Abre en otra pestaña `https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon`. Instrucciones: hace falta permiso de escritura en el repositorio; la web de GitHub admite hasta 25 MB por archivo; el mensaje del commit debe llevar una línea «Licencia: …», y sin ella las canciones quedan privadas; quien sube responde de esa declaración.
 3. **Desde Internet Archive.** Dirección (`https://archive.org/details/<identificador>` o un fichero de audio directo con licencia), licencia (solo para un fichero directo) y título opcional. La petición pasa la validación de `js/cuidador/incidencias.js` y la de `js/intake.js`, con la lista de bloqueo de 42 plataformas. «Abrir incidencia en GitHub» queda desactivado hasta que la petición vale y abre la incidencia nueva con la etiqueta `biblioteca` (ADR-0008).
 
@@ -196,9 +196,9 @@ Las pruebas localizan la interfaz por estos identificadores.
 
 ## 15. Estado y pendiente
 
-- Implementado en `feat/web-spotify` (ADR-0014): todas las pantallas de esta especificación, con pruebas unitarias y de extremo a extremo.
+- Implementado en `main` (ADR-0015): todas las pantallas de esta especificación, con pruebas unitarias y de extremo a extremo.
 - Pendiente:
   - probar en dispositivos y con lectores de pantalla reales (§12);
-  - decidir cómo se estudian las hipótesis del proyecto sin el registro del estudio que tenía la versión 1.0 (ADR-0014, consecuencias);
+  - decidir cómo se estudian las hipótesis del proyecto sin el registro del estudio que tenía la versión 1.0 (ADR-0015, consecuencias);
   - fechas de alta en el catálogo (`added_at`) para que «Añadidas recientemente» sea fiel;
   - llevar listas y «Me gusta» a otro navegador (no hay copia ni exportación).

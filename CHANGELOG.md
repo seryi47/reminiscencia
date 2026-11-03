@@ -2,7 +2,7 @@
 
 ## Sin publicar: interfaz sin usuarios con el aspecto de Spotify (2026-11-03, rama `feat/web-spotify`)
 
-Decisión del propietario ([ADR-0014](docs/decisions/ADR-0014-interfaz-sin-usuarios-aspecto-spotify.md)); especificación en `docs/user-experience/DESIGN.md` 2.0.
+Decisión del propietario ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)); especificación en `docs/user-experience/DESIGN.md` 2.0.
 
 ### Cambiado
 - La web abre directamente en Inicio con la música: una sola biblioteca pública (`data/songs.json` y `data/folders.json`) para todos, sin perfiles ni modos.
