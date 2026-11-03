@@ -19,6 +19,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import parse_qs, urljoin, urlparse
 import requests
 
+def segundos_config(nombre, defecto):
+    try:
+        return max(1, int(os.environ.get(nombre, defecto)))
+    except (TypeError, ValueError):
+        return defecto
+
 # ---------------- Config ----------------
 API      = "https://api.yttowav.org"
 ORIGIN   = "https://www.yttowav.org"
@@ -26,13 +32,15 @@ FORMAT   = "wav"
 QUALITY  = "original"
 LOTE     = 4                      # 4 en 4 (límite de la web)
 POLL_S   = 3                      # cada cuánto preguntar el estado
-JOB_TIMEOUT = 600                 # máx. segundos por canción
+JOB_TIMEOUT = segundos_config('YTTOWAV_JOB_TIMEOUT', 1800)  # máx. segundos por canción
+QUEUE_STALL_TIMEOUT = segundos_config('YTTOWAV_QUEUE_STALL_TIMEOUT', 600)
 CREATE_ATTEMPTS = 6               # intentos ante saturación o errores transitorios
 DOWNLOAD_ATTEMPTS = 4             # reintentos de una descarga cortada
 CREATE_GAP_S = 2                  # separa el arranque de trabajos para no hacer ráfaga
 HTTP_RETRYABLE = {408, 425, 429, 500, 502, 503, 504}
 VIDEO_ID_RE = re.compile(r'^[A-Za-z0-9_-]{11}$')
 YOUTUBE_HOSTS = {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'}
+R2_HOST_SUFFIXES = ('.r2.dev', '.r2.cloudflarestorage.com')
 # ----------------------------------------
 
 AQUI = pathlib.Path(__file__).resolve().parent
@@ -176,11 +184,14 @@ def crear_job(s, url, title):
             time.sleep(espera)
     raise RuntimeError('no se pudo crear el job de conversión')
 
-def resolver_descarga(valor, job_id):
+def resolver_descarga(valor, job_id, es_r2=False):
     destino = urljoin(f'{API}/', str(valor)) if valor else f'{API}/api/download/?jobId={job_id}'
     parsed = urlparse(destino)
     api = urlparse(API)
-    if parsed.scheme != api.scheme or parsed.netloc != api.netloc:
+    host = (parsed.hostname or '').lower()
+    api_ok = parsed.scheme == api.scheme and parsed.netloc == api.netloc
+    r2_ok = es_r2 and parsed.scheme == 'https' and any(host.endswith(sufijo) for sufijo in R2_HOST_SUFFIXES)
+    if not (api_ok or r2_ok):
         raise RuntimeError('el servidor devolvió una URL de descarga no autorizada')
     return destino
 
@@ -225,6 +236,8 @@ def descargar_wav(s, url, destino, deadline):
 def esperar_y_bajar(s, job_id, destino):
     deadline = time.monotonic() + JOB_TIMEOUT
     fallos_status = 0
+    ultima_cola = None
+    ultimo_cambio_cola = time.monotonic()
     while time.monotonic() < deadline:
         restante = max(1.0, min(30.0, deadline - time.monotonic()))
         try:
@@ -250,11 +263,19 @@ def esperar_y_bajar(s, job_id, destino):
 
         fallos_status = 0
         estado = str(data.get('status') or '').lower()
-        descarga = data.get('downloadUrl') or data.get('downloadPath') or data.get('url')
+        posicion = data.get('queuePosition')
+        if estado == 'queued' and posicion is not None and posicion != ultima_cola:
+            log(f"    en cola: puesto {posicion}/{data.get('queueLength', '?')}")
+            ultima_cola = posicion
+            ultimo_cambio_cola = time.monotonic()
+        elif estado == 'queued' and posicion is not None and time.monotonic() - ultimo_cambio_cola >= QUEUE_STALL_TIMEOUT:
+            raise TimeoutError(f'la cola de yttowav no avanza desde hace {QUEUE_STALL_TIMEOUT}s (puesto {posicion})')
+        r2_descarga = data.get('r2DownloadUrl')
+        descarga = data.get('downloadUrl') or r2_descarga or data.get('downloadPath') or data.get('url')
         if estado in {'error', 'failed', 'failure', 'cancelled', 'expired'}:
             raise RuntimeError(data.get('errorText') or data.get('error') or f'job terminado con estado {estado}')
         if estado in {'completed', 'done'} or descarga:
-            descargar_wav(s, resolver_descarga(descarga, job_id), destino, deadline)
+            descargar_wav(s, resolver_descarga(descarga, job_id, es_r2=descarga == r2_descarga), destino, deadline)
             return
         time.sleep(min(POLL_S + random.uniform(0, 0.5), max(0.0, deadline - time.monotonic())))
     raise TimeoutError('tiempo agotado esperando el job')

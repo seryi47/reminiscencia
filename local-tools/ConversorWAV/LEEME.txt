@@ -29,6 +29,7 @@ DETALLES
 - Acepta una URL de vídeo individual o una playlist; los enlaces cortos se normalizan.
 - Si yttowav está saturado (503), reintenta con espera creciente, `Retry-After` y una pequeña variación para no crear ráfagas.
 - Reintenta consultas de estado y descargas interrumpidas, limpia los temporales y valida que el fichero recibido sea un WAV.
+- Detecta una cola que deja de avanzar; se puede ajustar con `YTTOWAV_JOB_TIMEOUT` y `YTTOWAV_QUEUE_STALL_TIMEOUT` (segundos).
 - Los WAV nuevos incluyen el ID del vídeo en el nombre para evitar colisiones entre canciones con el mismo título.
 - Usa el servicio web yttowav.org para la conversión.
 - El entorno (.venv) ya está instalado; no tienes que instalar nada más.
