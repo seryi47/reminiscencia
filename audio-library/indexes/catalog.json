@@ -274,6 +274,22 @@
       "size_bytes": 16311,
       "added_at": "2026-11-03T11:19:23+00:00",
       "public": false
+    },
+    {
+      "id": "Sf7dda7fd6306cf21",
+      "title": "ANUNCIO FANTA RUBIUS ELRUBIUS 2017 the boss TODOS LOS ANUNCIO DEL ELRUBIUS FANTA 2017",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "f7dda7fd6306cf219e11f52b62d8687dfe1bb720021d6f92b289c174c6ef81f5",
+      "duration_s": 64.372,
+      "codec": "opus",
+      "size_bytes": 393210,
+      "added_at": "2026-11-03T11:25:26+00:00",
+      "public": true
     }
   ]
 }
