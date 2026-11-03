@@ -14,6 +14,7 @@ class Song {
     required this.audio,
     this.cover,
     this.local = false,
+    this.uploadStatus,
   });
 
   final String id;
@@ -33,6 +34,13 @@ class Song {
 
   /// True si la canción se subió desde este teléfono. Nunca viene del catálogo público.
   final bool local;
+
+  /// Estado de una canción recién subida desde este teléfono que todavía no está en el catálogo público
+  /// («Publicándose…» o «Error»). Suena desde su copia Opus local. Null en el resto de canciones.
+  final String? uploadStatus;
+
+  /// True si es una subida que todavía no se ha publicado.
+  bool get provisional => uploadStatus != null;
 
   factory Song.fromJson(Map<String, dynamic> json) {
     return Song(

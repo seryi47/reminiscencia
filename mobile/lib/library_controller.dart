@@ -14,6 +14,7 @@ import 'playback.dart';
 import 'playback_plan.dart';
 import 'shared_upload.dart';
 import 'song.dart';
+import 'upload_tracker.dart';
 
 /// Estado de la biblioteca para la interfaz: canciones, álbumes (carpetas en los datos), errores visibles y descargas.
 ///
@@ -28,10 +29,24 @@ class LibraryController extends ChangeNotifier {
     this.network,
     this.covers,
     this.uploader,
+    PublishedSongsSource? published,
+    UploadsStore? uploadsStore,
+    PeriodicTimerFactory? pollTimer,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now {
     _lastSongId = playback.nowPlaying.value.songId;
     playback.nowPlaying.addListener(_onNowPlayingChanged);
+    uploads = UploadTracker(
+      uploader: uploader,
+      published: published,
+      store: uploadsStore,
+      clock: _clock,
+      timer: pollTimer,
+      knownIds: () => _catalog.map((song) => song.id).toSet(),
+      // Al publicarse, la biblioteca se sincroniza sola.
+      onPublished: (_) => unawaited(load()),
+    );
+    uploads.addListener(_onUploadsChanged);
   }
 
   final LibrarySource source;
@@ -52,6 +67,9 @@ class LibraryController extends ChangeNotifier {
   /// Subida a la biblioteca común por la función de la web. Null si no está disponible.
   final SharedUploader? uploader;
 
+  /// Estado de cada subida hasta que se publica. Sus canciones provisionales están en [songs] y [recentSongs].
+  late final UploadTracker uploads;
+
   final DateTime Function() _clock;
 
   List<Song> _songs = const [];
@@ -65,8 +83,6 @@ class LibraryController extends ChangeNotifier {
   String? _audioNotice;
   bool _downloading = false;
   String _progress = '';
-  bool _importing = false;
-  String _importProgress = '';
   bool _offlineWanted = false;
   bool _catalogKnown = false;
   DateTime? _lastSync;
@@ -93,8 +109,7 @@ class LibraryController extends ChangeNotifier {
   bool get offlineWanted => _offlineWanted;
 
   /// True mientras se convierten y suben archivos a la biblioteca común.
-  bool get importing => _importing;
-  String get importProgress => _importProgress;
+  bool get importing => uploads.busy;
 
   String get status {
     if (_loading && _songs.isEmpty) return 'Cargando la biblioteca…';
@@ -119,12 +134,14 @@ class LibraryController extends ChangeNotifier {
   List<Song> songsInFolder(String folderId) =>
       _songs.where((song) => song.folderId == folderId).toList();
 
-  /// Canción por id (también las locales), o null si ya no está.
+  /// Canción por id (también las locales), o null si ya no está. Una subida ya publicada da la canción pública.
   Song? songOrNull(String? id) {
     if (id == null) return null;
     for (final song in _songs) {
       if (song.id == id) return song;
     }
+    final published = uploads.entryOrNull(id)?.publishedId;
+    if (published != null && published != id) return songOrNull(published);
     return null;
   }
 
@@ -142,8 +159,25 @@ class LibraryController extends ChangeNotifier {
 
   /// Añadidas recientemente: primero lo subido en este teléfono (lo último primero) y después el final del catálogo,
   /// que crece por el final al importar.
-  List<Song> recentSongs({int limit = 12}) =>
-      [..._localSongs.reversed, ..._catalog.reversed].take(limit).toList();
+  List<Song> recentSongs({int limit = 12}) => [
+    ..._provisional().reversed,
+    ..._localSongs.reversed,
+    ..._catalog.reversed,
+  ].take(limit).toList();
+
+  /// Subidas que todavía no están en el catálogo cargado: suenan desde su copia Opus local.
+  List<Song> _provisional() => uploads.provisionalSongs(
+    catalogIds: _catalog.map((song) => song.id).toSet(),
+  );
+
+  void _rebuildSongs() {
+    _songs = [..._catalog, ..._localSongs, ..._provisional()];
+  }
+
+  void _onUploadsChanged() {
+    _rebuildSongs();
+    notifyListeners();
+  }
 
   /// Canciones cuyo título, artista, año o etiquetas contienen [query] (sin distinguir mayúsculas ni tildes).
   List<Song> searchSongs(String query) {
@@ -186,6 +220,8 @@ class LibraryController extends ChangeNotifier {
   Future<void> ensureLoaded() {
     if (_started) return Future<void>.value();
     _started = true;
+    // Lo que quedó por publicar vuelve a la biblioteca y se sigue comprobando. No retrasa la carga.
+    unawaited(uploads.restore());
     return load();
   }
 
@@ -237,7 +273,7 @@ class LibraryController extends ChangeNotifier {
       _loading = false;
       _loadError = describeLoadError(error);
       // Sin biblioteca web se siguen viendo las canciones de este teléfono.
-      _songs = [..._catalog, ..._localSongs];
+      _rebuildSongs();
       notifyListeners();
       await _applyQueue();
       return;
@@ -247,11 +283,14 @@ class LibraryController extends ChangeNotifier {
     _folders = data.folders;
     _online = data.fromNetwork;
     if (data.fromNetwork) _lastSync = _clock();
-    _songs = [..._catalog, ..._localSongs];
+    _rebuildSongs();
     _loading = false;
     notifyListeners();
     await _applyQueue();
     if (data.fromNetwork) {
+      // Lo subido que ya está en el catálogo sustituye a su canción provisional.
+      uploads.reconcile(data.songs);
+      await _releasePublishedUploads();
       await _pruneAudio();
       await _pruneCovers();
       if (_offlineWanted) await _downloadOnWifi();
@@ -338,6 +377,27 @@ class LibraryController extends ChangeNotifier {
     if (songId == _lastSongId) return;
     _lastSongId = songId;
     unawaited(_pruneAudio());
+    unawaited(_releasePublishedUploads());
+  }
+
+  /// Borra la copia local de las subidas que ya están en el catálogo, salvo si suenan o están en la cola:
+  /// así la canción pública sustituye a la provisional sin cortar la reproducción.
+  Future<void> _releasePublishedUploads() async {
+    final catalog = _catalog.map((song) => song.id).toSet();
+    final inUse = {
+      ...playback.queueSongIds,
+      if (playback.nowPlaying.value.songId != null)
+        playback.nowPlaying.value.songId!,
+    };
+    for (final entry in uploads.entries) {
+      if (entry.stage != UploadStage.published ||
+          entry.opusPath == null ||
+          !catalog.contains(entry.publishedId) ||
+          inUse.contains(entry.key)) {
+        continue;
+      }
+      await uploads.discardAudio(entry.key);
+    }
   }
 
   /// Descarga lo que falta, solo si hay Wi-Fi o cable. Un fallo no interrumpe nada: se registra y se espera a la próxima sincronización.
@@ -354,7 +414,7 @@ class LibraryController extends ChangeNotifier {
 
   /// Reproduce una canción de la biblioteca completa. Lanza AppException si no se puede.
   Future<void> playSong(Song song) async {
-    final index = _songs.indexOf(song);
+    final index = _songs.indexWhere((item) => item.id == song.id);
     if (index < 0) {
       throw const AppException('Esa canción ya no está en la biblioteca.');
     }
@@ -370,38 +430,37 @@ class LibraryController extends ChangeNotifier {
     return shared.hasConnection();
   }
 
-  /// Convierte y sube a la biblioteca común los archivos elegidos, de uno en uno y en trozos.
-  /// Sin red lanza AppException sin intentar nada. Lo subido llega a todos cuando el buzón lo publica.
-  Future<SharedUploadResult> uploadShared(List<PickedAudioFile> files) async {
-    final shared = uploader;
-    if (shared == null) {
-      throw const AppException(
-        'Subir canciones no está disponible en este teléfono.',
-      );
+  /// Convierte y sube a la biblioteca común los archivos elegidos, de uno en uno y en trozos, y sigue cada uno
+  /// hasta que se publica ([uploads]). Sin red lanza AppException sin intentar nada.
+  Future<SharedUploadResult> uploadShared(List<PickedAudioFile> files) =>
+      uploads.start(files);
+
+  /// Vuelve a subir un archivo con error.
+  Future<void> retryUpload(String key) => uploads.retry(key);
+
+  /// Reproduce una subida: la canción pública si ya se publicó; si no, su copia Opus local.
+  Future<void> playUpload(String key) async {
+    final entry = uploads.entryOrNull(key);
+    if (entry == null) {
+      throw const AppException('Esa subida ya no está.');
     }
-    if (files.isEmpty || _importing) return const SharedUploadResult([]);
-    _importing = true;
-    _importProgress = 'Preparando…';
-    notifyListeners();
-    try {
-      return await shared.upload(
-        files,
-        onProgress: (progress) {
-          _importProgress = progress.describe();
-          notifyListeners();
-        },
-      );
-    } finally {
-      _importing = false;
-      _importProgress = '';
-      notifyListeners();
+    final publishedId = entry.publishedId;
+    var song = songOrNull(publishedId ?? key);
+    if (song == null && publishedId != null) {
+      await load();
+      song = songOrNull(publishedId);
     }
+    if (song == null) {
+      throw const AppException('Esa canción todavía no se puede reproducir.');
+    }
+    await playSong(song);
   }
 
-  /// Para la conversión al salir de la app (no sigue en segundo plano).
-  Future<void> pauseImport() async {
-    if (_importing) await uploader?.cancel();
-  }
+  /// Al salir de la app: para la conversión (no sigue en segundo plano) y deja de comprobar la publicación.
+  Future<void> pauseImport() => uploads.pause();
+
+  /// Al volver a primer plano: comprueba enseguida lo que se está publicando y sigue cada 20 s.
+  void resumeUploads() => uploads.setForeground(true);
 
   /// Borra una canción subida desde este teléfono. Las canciones del catálogo público no se pueden borrar desde aquí.
   Future<void> deleteLocal(Song song) async {
@@ -413,7 +472,7 @@ class LibraryController extends ChangeNotifier {
     }
     await library.delete(song);
     _localSongs = _localSongs.where((item) => item.id != song.id).toList();
-    _songs = [..._catalog, ..._localSongs];
+    _rebuildSongs();
     notifyListeners();
   }
 
@@ -452,6 +511,8 @@ class LibraryController extends ChangeNotifier {
   @override
   void dispose() {
     playback.nowPlaying.removeListener(_onNowPlayingChanged);
+    uploads.removeListener(_onUploadsChanged);
+    uploads.dispose();
     super.dispose();
   }
 }

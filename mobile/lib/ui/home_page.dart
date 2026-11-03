@@ -239,9 +239,11 @@ class HomePage extends StatelessWidget {
 
   Widget _songCard(BuildContext context, List<Song> songs, int index) {
     final song = songs[index];
-    final details = song.artist.isNotEmpty
-        ? song.artist
-        : (song.local ? 'En este teléfono' : 'Canción');
+    final details =
+        song.uploadStatus ??
+        (song.artist.isNotEmpty
+            ? song.artist
+            : (song.local ? 'En este teléfono' : 'Canción'));
     return ShelfCard(
       seed: song.id,
       title: song.title,

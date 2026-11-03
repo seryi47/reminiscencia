@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -19,6 +20,7 @@ import 'package:reminiscencia/services.dart';
 import 'package:reminiscencia/settings_store.dart';
 import 'package:reminiscencia/shared_upload.dart';
 import 'package:reminiscencia/song.dart';
+import 'package:reminiscencia/upload_tracker.dart';
 
 /// Canción de prueba con id y título predecibles.
 Song fakeSong(
@@ -321,6 +323,10 @@ buildTestServices({
   ImagePicker? pickImage,
   SharedUploader? uploader,
   AudioFilesPicker? pickAudio,
+  PublishedSongsSource? published,
+  UploadsStore? uploadsStore,
+  PeriodicTimerFactory? pollTimer,
+  DateTime Function()? clock,
 }) {
   final source = FakeLibrarySource(
     songs: songs,
@@ -340,6 +346,10 @@ buildTestServices({
       playback: playback,
       covers: coverStore,
       uploader: uploader,
+      published: published,
+      uploadsStore: uploadsStore,
+      pollTimer: pollTimer ?? FakePollTimer().call,
+      clock: clock,
     ),
     playback: playback,
     collections: CollectionsController(
@@ -390,4 +400,66 @@ Future<void> pumpApp(WidgetTester tester, AppServices services) async {
   await services.collections.load();
   await tester.pumpWidget(ReminiscenciaApp(services: services));
   await settle(tester);
+}
+
+/// Temporizador periódico falso: no corre solo; la prueba lo dispara con [fire].
+class FakePollTimer {
+  final List<FakeTimer> timers = [];
+
+  Timer call(Duration period, void Function() onTick) {
+    final timer = FakeTimer(period, onTick);
+    timers.add(timer);
+    return timer;
+  }
+
+  /// Temporizadores sin cancelar.
+  List<FakeTimer> get active => timers.where((t) => t.isActive).toList();
+
+  /// Dispara una vez cada temporizador activo.
+  void fire() {
+    for (final timer in active) {
+      timer.fireOnce();
+    }
+  }
+}
+
+class FakeTimer implements Timer {
+  FakeTimer(this.period, this.onTick);
+
+  final Duration period;
+  final void Function() onTick;
+  bool _active = true;
+  int _ticks = 0;
+
+  void fireOnce() {
+    if (!_active) return;
+    _ticks++;
+    onTick();
+  }
+
+  @override
+  void cancel() => _active = false;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => _ticks;
+}
+
+/// Canciones publicadas falsas: devuelve [songs] (que la prueba cambia) o lanza [error]. Cuenta las lecturas.
+class FakePublishedSongs implements PublishedSongsSource {
+  FakePublishedSongs([List<PublishedSong>? songs]) : songs = songs ?? [];
+
+  List<PublishedSong> songs;
+  Object? error;
+  int fetches = 0;
+
+  @override
+  Future<List<PublishedSong>> fetch() async {
+    fetches++;
+    final failure = error;
+    if (failure != null) throw failure;
+    return List.of(songs);
+  }
 }

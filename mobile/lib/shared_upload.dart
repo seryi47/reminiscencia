@@ -36,6 +36,9 @@ const String kUploadedMessage = 'Subida: llegará a todos en un par de minutos.'
 const String kOfflineMessage =
     'No hay conexión a internet. Conéctate y vuelve a intentarlo; no se ha subido nada.';
 
+/// Motivo corto de «sin red» para el estado de un archivo.
+const String kNoConnectionReason = 'no hay conexión a internet.';
+
 const String _pausedMessage =
     'pendiente: la subida se paró al salir de la app. Vuelve a subirlo.';
 const String _lostConnectionMessage =
@@ -125,6 +128,13 @@ class UploadProgress {
 
   bool get sending => part != null;
 
+  /// Porcentaje enviado, por trozos: los trozos ya aceptados entre el total. 0 mientras se convierte.
+  int get percent {
+    final count = parts ?? 0;
+    if (part == null || count <= 0) return 0;
+    return (part! * 100 / count).round();
+  }
+
   /// Texto para la interfaz.
   String describe() {
     final position = '${index + 1} de $total';
@@ -206,9 +216,17 @@ class SharedUploader {
   }
 
   /// Sube [files]. Sin red, lanza AppException y no intenta nada.
+  ///
+  /// [outputFor] da el fichero donde se guarda el Opus de cada archivo; si se da, el Opus se conserva al terminar
+  /// (para escucharlo mientras se publica y para reintentar sin volver a convertir) y [onConverted] avisa de que
+  /// ya está escrito. Sin [outputFor], el Opus es temporal y se borra. [onItemDone] recibe el resultado de cada
+  /// archivo en cuanto se conoce, en orden.
   Future<SharedUploadResult> upload(
     List<PickedAudioFile> files, {
     void Function(UploadProgress progress)? onProgress,
+    Future<File> Function(int index)? outputFor,
+    void Function(int index, File opus, ConvertedAudio audio)? onConverted,
+    void Function(int index, UploadItemResult item)? onItemDone,
   }) async {
     if (files.isEmpty) return const SharedUploadResult([]);
     if (!await hasConnection()) throw const AppException(kOfflineMessage);
@@ -220,18 +238,28 @@ class SharedUploader {
     for (var index = 0; index < files.length; index += 1) {
       final file = files[index];
       final title = titleFromFileName(file.name);
+      void add(UploadOutcome outcome, String message) {
+        final item = _item(file.name, title, outcome, message);
+        items.add(item);
+        onItemDone?.call(index, item);
+      }
+
       if (_cancelled) stopReason ??= _pausedMessage;
       if (stopReason != null) {
-        items.add(_item(file, title, UploadOutcome.pending, stopReason));
+        add(UploadOutcome.pending, stopReason);
         continue;
       }
-      final output = File('${dir.path}/${uuidV4(_random)}.opus');
+      final output = outputFor != null
+          ? await outputFor(index)
+          : File('${dir.path}/${uuidV4(_random)}.opus');
+      var keep = false;
       try {
         onProgress?.call(
           UploadProgress(index: index, total: files.length, title: title),
         );
+        final ConvertedAudio converted;
         try {
-          await converter.convert(
+          converted = await converter.convert(
             inputPath: file.path,
             outputPath: output.path,
             title: title,
@@ -239,10 +267,14 @@ class SharedUploader {
         } catch (error) {
           if (!_cancelled) rethrow;
           stopReason = _pausedMessage;
-          items.add(_item(file, title, UploadOutcome.pending, stopReason));
+          add(UploadOutcome.pending, stopReason);
           continue;
         }
-        await _sendFile(
+        if (outputFor != null) {
+          keep = true;
+          onConverted?.call(index, output, converted);
+        }
+        final sent = await _sendItem(
           output,
           file.name,
           (part, parts) => onProgress?.call(
@@ -255,35 +287,73 @@ class SharedUploader {
             ),
           ),
         );
-        items.add(_item(file, title, UploadOutcome.uploaded, kUploadedMessage));
-      } on _RetryableUploadError catch (error) {
-        items.add(_item(file, title, UploadOutcome.failed, error.message));
-        if (error.connection) stopReason = _lostConnectionMessage;
+        add(sent.item.outcome, sent.item.message);
+        if (sent.connectionLost) stopReason = _lostConnectionMessage;
       } catch (error) {
-        items.add(
-          _item(
-            file,
-            title,
-            UploadOutcome.failed,
-            error is AppException
-                ? error.message
-                : 'error inesperado al preparar el archivo.',
-          ),
+        add(
+          UploadOutcome.failed,
+          error is AppException
+              ? error.message
+              : 'error inesperado al preparar el archivo.',
         );
       } finally {
-        await _deleteQuietly(output);
+        if (!keep) await _deleteQuietly(output);
       }
     }
     return SharedUploadResult(items);
   }
 
+  /// Vuelve a enviar un Opus ya convertido (Reintentar), sin convertir de nuevo. Nunca lanza: el fallo va en el resultado.
+  Future<UploadItemResult> resend(
+    File opus,
+    String name, {
+    void Function(int part, int parts)? onPart,
+  }) async {
+    final title = titleFromFileName(name);
+    if (!await hasConnection()) {
+      return _item(name, title, UploadOutcome.failed, kNoConnectionReason);
+    }
+    try {
+      final sent = await _sendItem(opus, name, onPart ?? (_, _) {});
+      return sent.item;
+    } catch (error) {
+      return _item(
+        name,
+        title,
+        UploadOutcome.failed,
+        error is AppException ? error.message : 'error inesperado al enviar.',
+      );
+    }
+  }
+
+  /// Envía un Opus y traduce los fallos de red o de la web a un resultado. Los demás errores se lanzan.
+  Future<({UploadItemResult item, bool connectionLost})> _sendItem(
+    File opus,
+    String name,
+    void Function(int part, int parts) onPart,
+  ) async {
+    final title = titleFromFileName(name);
+    try {
+      await _sendFile(opus, name, onPart);
+      return (
+        item: _item(name, title, UploadOutcome.uploaded, kUploadedMessage),
+        connectionLost: false,
+      );
+    } on _RetryableUploadError catch (error) {
+      return (
+        item: _item(name, title, UploadOutcome.failed, error.message),
+        connectionLost: error.connection,
+      );
+    }
+  }
+
   UploadItemResult _item(
-    PickedAudioFile file,
+    String name,
     String title,
     UploadOutcome outcome,
     String message,
   ) => UploadItemResult(
-    name: file.name,
+    name: name,
     title: title,
     outcome: outcome,
     message: message,

@@ -9,6 +9,7 @@ import 'collection_page.dart';
 import 'collection_ref.dart';
 import 'common.dart';
 import 'playlist_flows.dart';
+import 'uploads_panel.dart';
 
 /// Filtro de Tu biblioteca.
 enum LibraryFilter { all, playlists, albums }
@@ -94,15 +95,6 @@ class _LibraryPageState extends State<LibraryPage> {
                       icon: const Icon(Icons.upload_rounded),
                       label: const Text('Subir canciones'),
                     ),
-                    if (library.importing)
-                      Semantics(
-                        liveRegion: true,
-                        child: Text(
-                          library.importProgress,
-                          key: const Key('upload-progress'),
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -116,6 +108,7 @@ class _LibraryPageState extends State<LibraryPage> {
                 ),
               ),
             ),
+            SliverToBoxAdapter(child: UploadsPanel(services: services)),
             SliverToBoxAdapter(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -262,7 +255,8 @@ class _LibraryRow extends StatelessWidget {
 }
 
 /// «Subir canciones»: sin hojas ni confirmaciones. Comprueba la red, elige uno o varios archivos y los sube
-/// a la biblioteca común (convertidos a Opus, de uno en uno). Al terminar, el resultado de cada archivo.
+/// a la biblioteca común (convertidos a Opus, de uno en uno). Cada archivo tiene su fila en «Tu biblioteca»
+/// hasta que se publica (ver UploadsPanel).
 Future<void> uploadSongs(BuildContext context, AppServices services) async {
   final messenger = ScaffoldMessenger.of(context);
   final library = services.library;
@@ -284,9 +278,8 @@ Future<void> uploadSongs(BuildContext context, AppServices services) async {
     return;
   }
   if (files.isEmpty) return;
-  final SharedUploadResult result;
   try {
-    result = await library.uploadShared(files);
+    await library.uploadShared(files);
   } catch (error) {
     messenger.showSnackBar(
       SnackBar(
@@ -297,56 +290,5 @@ Future<void> uploadSongs(BuildContext context, AppServices services) async {
         ),
       ),
     );
-    return;
   }
-  if (result.items.isEmpty) return;
-  messenger.showSnackBar(SnackBar(content: Text(describeUploadResult(result))));
-  if (!context.mounted) return;
-  await showUploadResults(context, result);
-}
-
-/// Resultado de cada archivo subido.
-Future<void> showUploadResults(
-  BuildContext context,
-  SharedUploadResult result,
-) {
-  return showDialog<void>(
-    context: context,
-    builder: (dialogContext) {
-      final theme = Theme.of(dialogContext);
-      return AlertDialog(
-        title: const Text('Subir canciones'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              for (final item in result.items)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(switch (item.outcome) {
-                    UploadOutcome.uploaded => Icons.check_circle_rounded,
-                    UploadOutcome.failed => Icons.error_outline_rounded,
-                    UploadOutcome.pending => Icons.schedule_rounded,
-                  }),
-                  title: Text(item.title),
-                  subtitle: Text(
-                    item.outcome == UploadOutcome.uploaded
-                        ? item.message
-                        : 'No se pudo subir: ${item.message}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Aceptar'),
-          ),
-        ],
-      );
-    },
-  );
 }

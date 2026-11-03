@@ -17,6 +17,7 @@ import 'services.dart';
 import 'settings_store.dart';
 import 'shared_upload.dart';
 import 'sonidos_audio_handler.dart';
+import 'upload_tracker.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,6 +48,7 @@ Future<void> main() async {
     return;
   }
   final settings = SettingsController(store: SettingsStore());
+  final client = http.Client();
   final collections = CollectionsController(
     repository: FileCollectionsRepository(),
     covers: playlistCovers,
@@ -67,10 +69,13 @@ Future<void> main() async {
           covers: covers,
           // Subida para todos: la función de la web guarda en el buzón; la app no tiene ningún token.
           uploader: SharedUploader(
-            client: http.Client(),
+            client: client,
             converter: const FfmpegOpusConverter(enforceLimits: false),
             hasConnection: hasAnyConnection,
           ),
+          // Tras subir: se mira songs.json cada 20 s, solo en primer plano, hasta que aparece (máx. 10 min).
+          published: HttpPublishedSongs(client: client),
+          uploadsStore: UploadsStore(),
         ),
         playback: handler,
         covers: covers,
