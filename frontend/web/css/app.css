@@ -2591,6 +2591,65 @@ button:disabled {
   margin: 16px 0 8px;
 }
 
+/* Hoja Homeostasia: dos acciones claras, sin el aspecto de formulario técnico. */
+.homeostasia-options {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.homeostasia-option {
+  padding: 16px;
+  border: 1px solid var(--separator);
+  border-radius: 18px;
+  background: var(--card);
+}
+
+.homeostasia-option-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.homeostasia-option-icon {
+  display: grid;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--highlight);
+  color: var(--accent);
+}
+
+.homeostasia-option-title {
+  font-size: var(--text-m);
+  font-weight: 700;
+}
+
+.homeostasia-option .upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+
+.homeostasia-option .upload-row .input {
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 600px) {
+  .homeostasia-option .upload-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .homeostasia-option .upload-row .button {
+    width: 100%;
+  }
+}
+
 /* Subidas: una fila por archivo con icono, nombre, paso y barra (DESIGN §8.4). El paso va siempre en texto. */
 .upload-summary {
   margin: 16px 0 8px;

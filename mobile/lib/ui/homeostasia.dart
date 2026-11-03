@@ -91,8 +91,8 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
     setState(() => _working = true);
     setState(() {
       _status = files.length == 1
-          ? 'Enviando «${files.first.name}» a GitHub…'
-          : 'Enviando ${files.length} archivos a GitHub…';
+          ? 'Añadiendo «${files.first.name}»…'
+          : 'Añadiendo ${files.length} archivos…';
     });
     try {
       await library.uploadShared(files);
@@ -137,7 +137,7 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
       );
       if (!mounted) return;
       final audios = imported;
-      setState(() => _status = 'Enviando ${audios.length} canciones a GitHub…');
+      setState(() => _status = 'Añadiendo ${audios.length} canciones…');
       final result = await widget.services.library.uploadShared([
         for (final audio in audios)
           PickedAudioFile(name: audio.name, path: audio.path),
@@ -179,7 +179,7 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
                 key: const Key('homeostasia-pick'),
                 onPressed: _working ? null : _send,
                 icon: const Icon(Icons.upload_rounded),
-                label: const Text('Enviar archivos a GitHub'),
+                label: const Text('Añadir archivos'),
               ),
               const SizedBox(height: 20),
               TextField(

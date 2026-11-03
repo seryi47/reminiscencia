@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { describe, test } from 'node:test';
 
-import { handlePlaylist } from '../../frontend/web/server/youtube-playlist.js';
+import { extractPlaylistHtml, handlePlaylist } from '../../frontend/web/server/youtube-playlist.js';
 import { handleConvert } from '../../frontend/web/server/youtube-convert.js';
 import { handleStatus } from '../../frontend/web/server/youtube-status.js';
 import { handleDownload } from '../../frontend/web/server/youtube-download.js';
@@ -62,6 +62,24 @@ describe('API del importador de YouTube', () => {
     ] });
   });
 
+  test('recupera una playlist desde ytInitialData si yt-dlp falla', async () => {
+    const html = 'ytInitialData = ' + JSON.stringify({ contents: [
+      { videoId: 'abcdefghijk', title: { runs: [{ text: 'Primera' }] } },
+      { videoId: 'lmnopqrstuv', title: { simpleText: 'Segunda' } },
+    ] }) + ';';
+    assert.deepEqual(extractPlaylistHtml(html), [
+      { url: videoUrl, title: 'Primera' },
+      { url: 'https://www.youtube.com/watch?v=lmnopqrstuv', title: 'Segunda' },
+    ]);
+
+    const response = await handlePlaylist(playlistRequest('https://www.youtube.com/playlist?list=PL123'), {
+      spawnImpl: () => fakeProcess('', 1),
+      fetchImpl: async () => new Response(html, { status: 200 }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).items.length, 2);
+  });
+
   test('fija WAV/original y solo devuelve el identificador del job', async () => {
     let body;
     const response = await handleConvert(new Request('https://reminiscencia.test/api/youtube/convert', {
@@ -77,6 +95,22 @@ describe('API del importador de YouTube', () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { jobId: 'job_123' });
     assert.deepEqual(body, { url: videoUrl, title: 'Tema', format: 'wav', quality: 'original' });
+  });
+
+  test('normaliza un enlace corto antes de enviarlo al conversor', async () => {
+    let body;
+    const response = await handleConvert(new Request('https://reminiscencia.test/api/youtube/convert', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://youtu.be/abcdefghijk?si=demo', title: '' }),
+    }), {
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(init.body);
+        return new Response(JSON.stringify({ jobId: 'job_123' }), { status: 200 });
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(body.url, videoUrl);
   });
 
   test('filtra el estado y transmite un WAV sin aceptar una URL de descarga externa', async () => {

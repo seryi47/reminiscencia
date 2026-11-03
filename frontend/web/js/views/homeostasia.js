@@ -520,7 +520,7 @@ function homeostasiaPanel(ctx, close) {
     }
   },
     icon('upload', { size: 20 }),
-    'Enviar archivos a GitHub'
+    'Añadir archivos'
   );
 
   // ------------------------------------------------
@@ -593,8 +593,8 @@ function homeostasiaPanel(ctx, close) {
     try {
       await ctx.addUploads(files);
       status.textContent = files.length === 1
-        ? `Enviando «${files[0].name}» a GitHub…`
-        : `Enviando ${files.length} archivos a GitHub…`;
+        ? `Añadiendo «${files[0].name}»…`
+        : `Añadiendo ${files.length} archivos…`;
       progress.hidden = false;
     } catch (error) {
       console.error('Error añadiendo archivos a la cola de Homeostasia:', error);
@@ -853,20 +853,22 @@ function homeostasiaPanel(ctx, close) {
 
     el(
       'div',
-      { class: 'upload-row' },
-      input,
-      pick
-    ),
-
-    el(
-      'div',
-      { class: 'homeostasia-playlist' },
-
+      { class: 'homeostasia-options' },
       el(
-        'div',
-        { class: 'upload-row' },
-        playlistInput,
-        playlistButton
+        'section',
+        { class: 'homeostasia-option' },
+        el('div', { class: 'homeostasia-option-head' },
+          el('span', { class: 'homeostasia-option-icon' }, icon('upload', { size: 22 })),
+          el('h3', { class: 'homeostasia-option-title' }, 'Añadir archivos')),
+        el('div', { class: 'upload-row' }, input, pick)
+      ),
+      el(
+        'section',
+        { class: 'homeostasia-option homeostasia-playlist' },
+        el('div', { class: 'homeostasia-option-head' },
+          el('span', { class: 'homeostasia-option-icon' }, icon('note', { size: 22 })),
+          el('h3', { class: 'homeostasia-option-title' }, 'Desde YouTube')),
+        el('div', { class: 'upload-row' }, playlistInput, playlistButton)
       )
     ),
 

@@ -1,6 +1,7 @@
 import {
   CONVERTER_API,
   YoutubeApiError,
+  canonicalVideoUrl,
   fetchWithTimeout,
   jobIdFrom,
   json,
@@ -8,6 +9,7 @@ import {
   readJson,
   safeUpstreamMessage,
   upstreamHeaders,
+  videoId,
   youtubeUrl,
 } from './youtube-common.js';
 
@@ -15,11 +17,13 @@ export async function handleConvert(request, { fetchImpl = globalThis.fetch } = 
   try {
     if (request.method !== 'POST') throw new YoutubeApiError(405, 'Solo se admite POST.');
     const body = await readJson(request);
-    if (!youtubeUrl(body?.url)) throw new YoutubeApiError(400, 'La URL del vídeo de YouTube no es válida.');
+    const sourceUrl = youtubeUrl(body?.url);
+    if (!sourceUrl) throw new YoutubeApiError(400, 'La URL del vídeo de YouTube no es válida.');
+    const canonicalUrl = canonicalVideoUrl(videoId(sourceUrl.href));
     const upstream = await fetchWithTimeout(fetchImpl, `${CONVERTER_API}/api/convert`, {
       method: 'POST',
       headers: { ...upstreamHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: body.url, title: typeof body.title === 'string' ? body.title.slice(0, 200) : '', format: 'wav', quality: 'original' }),
+      body: JSON.stringify({ url: canonicalUrl, title: typeof body.title === 'string' ? body.title.slice(0, 200) : '', format: 'wav', quality: 'original' }),
     });
     if (!upstream.ok) throw new YoutubeApiError(502, 'El servicio de conversión rechazó la canción.');
     let data;
