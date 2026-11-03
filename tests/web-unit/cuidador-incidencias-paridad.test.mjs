@@ -10,8 +10,6 @@ import {
   BLOCKED_HOSTS,
   PROCESSING_NOTE,
   buildIssueBody,
-  checkTagsInput,
-  checkTextInput,
   classifyUrl,
   validateImportRequest,
   validateOperation,
@@ -99,8 +97,8 @@ describe('caracteres de formato (_has_control del backend también rechaza Cf)',
   test('un texto con carácter de formato no pasa en título, licencia, etiquetas, carpeta ni en la incidencia', () => {
     assert.equal(validateImportRequest({ url: IA_ITEM, title: 'Tema‮' }).field, 'title');
     assert.equal(validateImportRequest({ url: DIRECT, license: 'CC BY​ 4.0' }).field, 'license');
-    assert.match(checkTextInput('Carpeta‮', { name: 'El nombre', max: 80 }).message, /caracteres de control/);
-    assert.match(checkTagsInput('jazz​, vals').message, /caracteres de control/);
+    assert.match(validateOperation({ op: 'rename_folder', folder_id: '0123456789', name: 'Carpeta‮' }), /caracteres de control/);
+    assert.match(validateOperation({ op: 'edit_song', song_id: 'S0123456789abcdef', tags: ['jazz​', 'vals'] }), /caracteres de control/);
     assert.match(validateOperation({ op: 'create_folder', name: '﻿Años' }), /caracteres de control/);
     assert.throws(() => buildIssueBody({ action: 'import', url: IA_ITEM, title: 'Tema​' }), /caracteres de control/);
   });

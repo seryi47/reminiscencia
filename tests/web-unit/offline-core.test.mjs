@@ -17,13 +17,14 @@ import {
   isDataRequest,
   isShellRequest,
   listAudioUrls,
+  localAudioId,
   parseRange,
   planOfflineDownload,
   SHELL_ASSETS,
   SHELL_VERSION,
   shellCacheName,
 } from '../../frontend/web/js/offline-core.js';
-import { clearOfflineLibrary, offlineStatus, registerPwa, saveLibraryOffline } from '../../frontend/web/js/pwa.js';
+import { cachedAudioPaths, registerPwa, removeOfflineSongs, saveLibraryOffline } from '../../frontend/web/js/pwa.js';
 
 const WEB_DIR = fileURLToPath(new URL('../../frontend/web/', import.meta.url));
 const SW_MODULE_URL = new URL('../../frontend/web/sw.js', import.meta.url).href;
@@ -67,6 +68,10 @@ class FakeCache {
     const response = await fetch(input);
     if (!response.ok) throw new TypeError(`No se pudo guardar ${urlOf(input)} (${response.status})`);
     this.entries.set(urlOf(input), response);
+  }
+
+  async delete(input) {
+    return this.entries.delete(urlOf(input));
   }
 
   async keys() {
@@ -171,7 +176,7 @@ function restoreGlobals() {
   restoreNavigator();
 }
 
-/** Rutas desde la raíz del sitio (p. ej. '/js/paciente/shell.js') de los ficheros de una carpeta
+/** Rutas desde la raíz del sitio (p. ej. '/js/views/home.js') de los ficheros de una carpeta
  *  de frontend/web con una extensión, a cualquier profundidad. */
 function sitePaths(folder, extension) {
   return readdirSync(join(WEB_DIR, folder), { recursive: true })
@@ -211,11 +216,11 @@ describe('clasificación de peticiones', () => {
       '/manifest.webmanifest',
       `${ORIGIN}js/app.js?v=3`,
       '/js/pwa.js',
-      '/js/paciente/shell.js',
-      '/js/cuidador/sesion.js',
-      '/css/base.css',
-      '/css/cuidador-shell.css',
-      '/fonts/atkinson-next-400.woff2',
+      '/js/views/home.js',
+      '/js/cuidador/subida-local.js',
+      '/css/app.css',
+      '/css/tokens.css',
+      '/fonts/figtree-400.woff2',
       '/data/songs.json',
       '/icons/icon-512.png',
     ];
@@ -353,8 +358,8 @@ describe('manifiesto e iconos', () => {
     assert.equal(manifest.lang, 'es');
     assert.equal(manifest.start_url, '/');
     assert.equal(manifest.display, 'standalone');
-    assert.equal(manifest.background_color, '#0c0d10');
-    assert.equal(manifest.theme_color, '#0c0d10');
+    assert.equal(manifest.background_color, '#000000');
+    assert.equal(manifest.theme_color, '#000000');
   });
 
   test('cada icono del manifiesto existe, es PNG y tiene el tamaño declarado', () => {
@@ -395,7 +400,7 @@ describe('cobertura de SHELL_ASSETS', () => {
     }
   });
 
-  test('incluye todas las hojas, fuentes, módulos (también los de js/paciente y js/cuidador), datos e iconos', () => {
+  test('incluye todas las hojas, fuentes, módulos (también los de js/ui, js/views y js/cuidador), datos e iconos', () => {
     const files = [
       ...sitePaths('css', '.css'),
       ...sitePaths('fonts', '.woff2'),
@@ -403,7 +408,7 @@ describe('cobertura de SHELL_ASSETS', () => {
       ...sitePaths('data', '.json'),
       ...sitePaths('icons', '.png'),
     ];
-    assert.ok(files.includes('/js/cuidador/shell.js'), 'el recorrido debe entrar en las subcarpetas');
+    assert.ok(files.includes('/js/views/home.js'), 'el recorrido debe entrar en las subcarpetas');
     assert.deepEqual(files.filter((path) => !SHELL_ASSETS.includes(path)), []);
   });
 
@@ -423,7 +428,8 @@ describe('cobertura de SHELL_ASSETS', () => {
         referenced.push(new URL(ref, `https://reminiscencia.test${sheet}`).pathname);
       }
     }
-    assert.ok(referenced.includes('/fonts/atkinson-next-400.woff2'), 'las hojas deben enlazar las fuentes');
+    assert.ok(referenced.includes('/fonts/figtree-400.woff2'), 'las hojas deben enlazar las fuentes');
+    for (const weight of [400, 600, 700, 800]) assert.ok(referenced.includes(`/fonts/figtree-${weight}.woff2`), `peso ${weight}`);
     assert.deepEqual(referenced.filter((path) => !SHELL_ASSETS.includes(path)), []);
   });
 
@@ -595,6 +601,24 @@ describe('service worker (sw.js)', () => {
     assert.equal(api.response, undefined);
   });
 
+  test('una canción subida a este navegador (audio/L….opus) se sirve desde IndexedDB, con rangos', async () => {
+    const blob = new Blob(['0123456789'], { type: 'audio/ogg' });
+    self.indexedDB = fakeLocalAudioDb(new Map([['L0011223344556677', { id: 'L0011223344556677', blob }]]));
+    try {
+      const whole = await dispatchFetch(new Request(`${ORIGIN}audio/L0011223344556677.opus`)).response;
+      assert.equal(whole.status, 200);
+      assert.equal(whole.headers.get('content-type'), 'audio/ogg; codecs=opus');
+      assert.equal(await whole.text(), '0123456789');
+      const part = await dispatchFetch(new Request(`${ORIGIN}audio/L0011223344556677.opus`, { headers: { Range: 'bytes=3-5' } })).response;
+      assert.equal(part.status, 206);
+      assert.equal(await part.text(), '345');
+      const missing = await dispatchFetch(new Request(`${ORIGIN}audio/L8899aabbccddeeff.opus`)).response;
+      assert.equal(missing.status, 404);
+    } finally {
+      delete self.indexedDB;
+    }
+  });
+
   test('activate elimina las cachés de shell antiguas y conserva el audio', async () => {
     await putIn('reminiscencia-shell-v0', '/app.js', new Response('antiguo'));
     await putIn(AUDIO, '/audio/demo-1.opus', new Response('audio'));
@@ -657,27 +681,17 @@ describe('guardado sin conexión (pwa.js)', () => {
     assert.deepEqual(await urlsIn(AUDIO), [`${ORIGIN}audio/demo-1.opus`, `${ORIGIN}audio/demo-3.opus`]);
   });
 
-  test('clearOfflineLibrary borra la biblioteca guardada', async () => {
+  test('removeOfflineSongs quita de la caché solo las canciones indicadas', async () => {
     await putIn(AUDIO, '/audio/demo-1.opus', new Response('aaaa'));
-    assert.equal(await clearOfflineLibrary(), true);
-    assert.equal(await caches.has(AUDIO), false);
-    assert.equal(await clearOfflineLibrary(), false);
+    await putIn(AUDIO, '/audio/demo-2.opus', new Response('bbbb'));
+    await removeOfflineSongs([{ id: 'demo-1' }, { id: 'L0011223344556677', local: true }]);
+    assert.deepEqual(await urlsIn(AUDIO), [`${ORIGIN}audio/demo-2.opus`]);
   });
 
-  test('offlineStatus cuenta los temas y suma sus bytes de audio', async () => {
-    await putIn(AUDIO, '/audio/demo-1.opus', new Response('xx', { headers: { 'Content-Length': '100' } }));
-    await putIn(AUDIO, '/audio/demo-2.opus', new Response('abcd'));
-    assert.deepEqual(await offlineStatus(), { count: 2, audioBytes: 104, bytesEstimate: 104 });
-  });
-
-  test('offlineStatus usa navigator.storage.estimate cuando existe', async () => {
-    await putIn(AUDIO, '/audio/demo-1.opus', new Response('abcd'));
-    setNavigator({ storage: { estimate: async () => ({ usage: 5000, quota: 1e9 }) } });
-    try {
-      assert.deepEqual(await offlineStatus(), { count: 1, audioBytes: 4, bytesEstimate: 5000 });
-    } finally {
-      restoreNavigator();
-    }
+  test('cachedAudioPaths da las rutas relativas de lo descargado', async () => {
+    await putIn(AUDIO, '/audio/demo-1.opus', new Response('aaaa'));
+    await putIn(AUDIO, '/audio/demo-3.opus', new Response('cccc'));
+    assert.deepEqual([...(await cachedAudioPaths())].sort(), ['audio/demo-1.opus', 'audio/demo-3.opus']);
   });
 
   test('registerPwa devuelve null sin API de service worker', async () => {
@@ -719,5 +733,45 @@ describe('guardado sin conexión (pwa.js)', () => {
       console.warn = warn;
       restoreNavigator();
     }
+  });
+});
+
+/** IndexedDB mínimo con la base de audio local: solo open y get, lo que usa readLocalRecord. */
+function fakeLocalAudioDb(records) {
+  const db = {
+    objectStoreNames: { contains: () => true },
+    transaction() {
+      const tx = { oncomplete: null, onerror: null, onabort: null };
+      tx.objectStore = () => ({
+        get(key) {
+          const req = { onsuccess: null, result: undefined };
+          setTimeout(() => {
+            req.result = records.get(key);
+            req.onsuccess?.();
+            tx.oncomplete?.();
+          }, 0);
+          return req;
+        },
+      });
+      return tx;
+    },
+    close() {},
+  };
+  return {
+    open() {
+      const request = { result: db, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+      setTimeout(() => request.onsuccess?.(), 0);
+      return request;
+    },
+  };
+}
+
+describe('localAudioId', () => {
+  test('reconoce /audio/L<16 hex>.opus y nada más', () => {
+    assert.equal(localAudioId(`${ORIGIN}audio/L0011223344556677.opus`), 'L0011223344556677');
+    assert.equal(localAudioId('/audio/L0011223344556677.opus?x=1'), 'L0011223344556677');
+    assert.equal(localAudioId('/audio/S0011223344556677.opus'), null);
+    assert.equal(localAudioId('/audio/L00112233.opus'), null);
+    assert.equal(localAudioId('/otra/L0011223344556677.opus'), null);
   });
 });

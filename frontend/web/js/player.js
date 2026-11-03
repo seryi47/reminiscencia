@@ -1,247 +1,137 @@
-// Reproductor de Reminiscencia (contrato 2.2) con las reglas de reproducción de DESIGN 8.1, 8.2 y 7.4.
-// Sin dependencias ni framework. No toca el DOM: recibe el elemento de audio y, de forma opcional,
-// los servicios del navegador en `env` (reloj, temporizadores, AudioContext, navigator, document),
-// de modo que la lógica se puede probar en Node con dobles de prueba.
+// Reproductor de Reminiscencia: cola, aleatorio, repetir (no, todo, una), volumen y Media Session.
+// Sin dependencias. No toca el DOM: recibe el elemento de audio y, de forma opcional, los servicios del navegador en
+// `env` (navigator, MediaMetadata, temporizadores y azar), así que la lógica se prueba en Node con dobles
+// (tests/web-unit/player.test.mjs). Al crearse no suena nada.
 //
-// Decisiones que el contrato deja abiertas:
-// - Sesión: `sessionStarted` se reinicia al cambiar de modo, al cambiar de perfil y tras 3 horas sin
-//   reproducción (DESIGN 8.2). La primera reproducción de la sesión (play() en modo paciente) aplica el
-//   arranque al 60 % y el fundido de entrada de 1,5 s. load() no reinicia la sesión: cambiar de lista
-//   dentro de la sesión no baja el volumen.
-// - Web Audio: el grafo (AudioContext, MediaElementAudioSourceNode, GainNode) se crea en el primer gesto
-//   del usuario (pointerdown, keydown o touchend en el documento). Antes, o sin Web Audio, el volumen va
-//   en la propiedad volume del elemento (volumeMode "element").
-// - Temporizador de apagado: cuenta solo el tiempo de reproducción, con precisión de 1 s.
-// - Eventos de estudio: "start" (pista nueva), "resume" (reanudar la misma pista), "pause", "track-end"
-//   (completed true al terminar; false si se salta con next, previous, jumpTo o load) y "error". Un error
-//   cierra la pista: después no se emite track-end.
-// - El reproductor emite eventos en cualquier modo; quien llama decide si los registra (vista previa).
-// - Un límite de volumen que no es múltiplo de 10 se redondea hacia abajo (55 % es 50 %) para no superarlo.
+// La cola es una secuencia de entradas { key, track, baseIndex, fromQueue }: las canciones del contexto (carpeta, lista,
+// «Me gusta», búsqueda…) en su orden o barajadas, y entre ellas las que se añaden con «Añadir a la cola», que suenan
+// justo después de la actual, en el orden en que se añadieron, y salen de la cola al dejarlas atrás.
 
-export const MODES = Object.freeze(['paciente', 'cuidador']);
-export const VOLUME_STEP_MAX = 10;
-export const ARRIVAL_STEP = 6;
-export const FADE_IN_MS = 1500;
-export const SEEK_STEP_SECONDS = 5;
-export const skipDelayAfterError = 6;
+export const REPEAT_MODES = Object.freeze(['off', 'all', 'one']);
 export const PREVIOUS_RESTART_SECONDS = 3;
-export const sleepWarningAt = 30;
-export const extendSleepMinutes = 15;
-export const SESSION_IDLE_MS = 3 * 60 * 60 * 1000;
+export const ERROR_SKIP_MS = 3000;
 export const NOTICES = Object.freeze({
-  unavailable: 'No disponible sin internet',
-  noneAvailable: 'No hay canciones disponibles sin internet.',
+  unavailable: 'Algunas canciones no están disponibles sin conexión y se han saltado.',
+  noneAvailable: 'No hay canciones disponibles sin conexión.',
   error: 'No se puede reproducir esta canción. Pasamos a la siguiente.',
-  endOfList: 'Fin de la lista',
 });
 
-const FADE_TICK_MS = 50;
-const SLEEP_TICK_MS = 1000;
-const MINUTE_MS = 60 * 1000;
-// Un elemento de audio solo admite un MediaElementAudioSourceNode: el grafo se guarda por elemento.
-const audioGraphs = new WeakMap();
-
-/** Paso de volumen entero de 0 a 10 (cada paso es un 10 %). */
-export function clampVolumeStep(step) {
-  const value = Math.round(Number(step));
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(VOLUME_STEP_MAX, Math.max(0, value));
+/** Volumen entre 0 y 1. Un valor no numérico vale 1. */
+export function clampVolume(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 1;
+  return Math.min(1, Math.max(0, number));
 }
 
-/** Ganancia de 0 a 1 correspondiente a un paso de volumen. */
-export function volumeFromStep(step) {
-  return clampVolumeStep(step) / VOLUME_STEP_MAX;
-}
-
-/** Paso de volumen que nunca supera el límite del perfil (límite también en pasos). */
-export function applyVolumeLimit(step, limitStep) {
-  const limit = Math.round(Number(limitStep));
-  const cap = Number.isFinite(limit) ? Math.min(VOLUME_STEP_MAX, Math.max(0, limit)) : VOLUME_STEP_MAX;
-  return Math.min(clampVolumeStep(step), cap);
+/** Modo de repetición siguiente: no → todo → una → no. */
+export function nextRepeatMode(mode) {
+  const at = REPEAT_MODES.indexOf(mode);
+  return REPEAT_MODES[(at + 1) % REPEAT_MODES.length];
 }
 
 /**
- * Límite del perfil en pasos (de 5 a 10) a partir de un porcentaje de 50 a 100.
- * El porcentaje se redondea hacia abajo: 55 % equivale a 50 %. Devuelve null si no es un número válido.
+ * Orden aleatorio de 0..length-1 (Fisher-Yates). Con first, esa posición va delante y el resto se baraja.
+ * random() devuelve un número en [0, 1).
  */
-export function limitStepFromPercent(percent) {
-  if (percent === null || percent === undefined || percent === '' || typeof percent === 'boolean') {
-    return null;
+export function shuffledIndexes(length, first = null, random = Math.random) {
+  const rest = [];
+  for (let i = 0; i < length; i += 1) if (i !== first) rest.push(i);
+  for (let i = rest.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
   }
-  const value = Number(percent);
-  if (!Number.isFinite(value)) return null;
-  return Math.floor(Math.min(100, Math.max(50, value)) / 10);
+  return Number.isInteger(first) && first >= 0 && first < length ? [first, ...rest] : rest;
 }
 
-/** Ganancia durante el fundido de entrada, `elapsedMs` después de empezar (lineal, 1,5 s). */
-export function fadeInGain(elapsedMs, targetGain = 1) {
-  const elapsed = Number(elapsedMs);
-  if (!Number.isFinite(elapsed) || elapsed <= 0) return 0;
-  return targetGain * Math.min(1, elapsed / FADE_IN_MS);
-}
-
-/** Índice de la siguiente pista, o null si la cola termina y no se repite. */
-export function nextIndex(index, length, repeatList) {
-  if (!Number.isInteger(length) || length < 1) return null;
-  const current = Number.isInteger(index) ? Math.max(-1, index) : -1;
-  if (current + 1 < length) return current + 1;
-  return repeatList ? 0 : null;
-}
-
-/** Índice de la pista anterior, o null si no hay anterior (primera pista sin repetir). */
-export function previousIndex(index, length, repeatList) {
-  if (!Number.isInteger(length) || length < 1) return null;
-  if (!Number.isInteger(index) || index < 0 || index >= length) return null;
-  if (index > 0) return index - 1;
-  return repeatList && length > 1 ? length - 1 : null;
-}
-
-/** En cuidador, «Anterior» vuelve al inicio si la pista lleva más de 3 s. En paciente, siempre salta. */
-export function shouldRestartOnPrevious(positionSeconds, mode) {
-  return mode === 'cuidador' && Number(positionSeconds) > PREVIOUS_RESTART_SECONDS;
-}
-
-/** El aviso del temporizador se emite cuando quedan 30 s o menos. */
-export function shouldWarnSleep(remainingMs) {
-  return remainingMs > 0 && remainingMs <= sleepWarningAt * 1000;
-}
-
-/** Minutos que muestra el temporizador (redondeados hacia arriba). */
-export function sleepMinutesLeft(remainingMs) {
-  return remainingMs > 0 ? Math.ceil(remainingMs / MINUTE_MS) : 0;
-}
-
-/** Una sesión sin reproducción durante 3 horas o más termina (DESIGN 8.2). */
-export function isSessionIdle(lastPlaybackAt, nowMs) {
-  return Number.isFinite(lastPlaybackAt) && nowMs - lastPlaybackAt >= SESSION_IDLE_MS;
-}
-
-function roundSeconds(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.round(n * 10) / 10 : 0;
-}
-
-function clampPosition(value, max = Infinity) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  const upper = Number.isFinite(max) && max > 0 ? max : Infinity;
-  return Math.min(Math.max(0, n), upper);
-}
-
-function clampIndex(value, length) {
-  const n = Math.trunc(Number(value));
-  if (!Number.isFinite(n)) return 0;
-  return Math.min(Math.max(0, n), Math.max(0, length - 1));
-}
-
-function finiteDuration(value) {
-  return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function isTrackLike(item) {
-  return Boolean(item) && typeof item === 'object' && item.id !== undefined && item.id !== null;
-}
+const isTrackLike = (item) => Boolean(item) && typeof item === 'object' && typeof item.id === 'string' && item.id !== '';
 
 function copyTrack(item) {
   return {
     id: item.id,
     title: item.title ?? '',
     artist: item.artist ?? '',
-    year: item.year ?? null,
-    coverUrl: item.coverUrl ?? null,
     audioUrl: item.audioUrl ?? null,
     folderId: item.folderId ?? null,
+    durationS: Number.isFinite(item.durationS) ? item.durationS : null,
+    local: item.local === true,
   };
-}
-
-function profileKey(profile) {
-  if (!profile) return null;
-  return profile.id ?? '';
 }
 
 function resolveRuntime(env) {
   const has = (key) => Object.prototype.hasOwnProperty.call(env, key);
   const g = globalThis;
   return {
-    now: has('now') ? env.now : () => Date.now(),
+    navigator: has('navigator') ? env.navigator : (g.navigator ?? null),
+    MediaMetadata: has('MediaMetadata') ? env.MediaMetadata : (g.MediaMetadata ?? null),
     setTimeout: has('setTimeout') ? env.setTimeout : (fn, ms) => g.setTimeout(fn, ms),
     clearTimeout: has('clearTimeout') ? env.clearTimeout : (id) => g.clearTimeout(id),
-    setInterval: has('setInterval') ? env.setInterval : (fn, ms) => g.setInterval(fn, ms),
-    clearInterval: has('clearInterval') ? env.clearInterval : (id) => g.clearInterval(id),
-    AudioContext: has('AudioContext') ? env.AudioContext : (g.AudioContext ?? g.webkitAudioContext ?? null),
-    navigator: has('navigator') ? env.navigator : (g.navigator ?? null),
-    document: has('document') ? env.document : (g.document ?? null),
-    MediaMetadata: has('MediaMetadata') ? env.MediaMetadata : (g.MediaMetadata ?? null),
+    random: has('random') ? env.random : Math.random,
   };
 }
 
+// ¿Se puede cambiar el volumen del elemento? En iOS la propiedad volume es de solo lectura (siempre 1).
+function detectVolumeControl(audio) {
+  try {
+    const before = audio.volume;
+    audio.volume = 0.5;
+    const ok = Math.abs(Number(audio.volume) - 0.5) < 0.01;
+    audio.volume = before;
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Crea el reproductor sobre un elemento de audio. Al crearse no suena nada.
- * Devuelve la API de la sección 2.2 del contrato (load, restoreLast, play, pause, toggle, next, previous,
- * jumpTo, seekBy, seekTo, setVolumeStep, setProfileLimit, setSleepTimer, extendSleepTimer, getState,
- * setProfile, setMode y destroy).
+ * Crea el reproductor. Opciones: audio (elemento), isAvailable(track) (sin conexión, solo lo guardado),
+ * onChange(state), onNotice(text), volume, shuffle, repeat (estado inicial) y env.
  */
 export function createPlayer(options = {}) {
   const {
     audio,
-    profile: initialProfile = null,
-    mode: initialMode = 'cuidador',
-    wakeLockEnabled = true,
     isAvailable = () => true,
     onChange = () => {},
-    onStudyEvent = () => {},
     onNotice = () => {},
-    onSleepWarning = () => {},
-    onSleep = () => {},
+    volume: initialVolume = 1,
+    shuffle: initialShuffle = false,
+    repeat: initialRepeat = 'off',
     env = {},
   } = options;
-
-  if (!audio || typeof audio.play !== 'function') {
-    throw new TypeError('El reproductor necesita el elemento de audio.');
-  }
+  if (!audio || typeof audio.play !== 'function') throw new TypeError('El reproductor necesita el elemento de audio.');
 
   const runtime = resolveRuntime(env);
-  const checkAvailable = typeof isAvailable === 'function' ? isAvailable : () => true;
-  const wakeLockAllowed = wakeLockEnabled !== false;
-
+  const volumeAdjustable = detectVolumeControl(audio);
   let destroyed = false;
-  let currentProfile = initialProfile ?? null;
-  let currentMode = MODES.includes(initialMode) ? initialMode : 'cuidador';
-  let queueItems = [];
-  let currentIndex = -1;
-  let track = null;
-  let origin = null;
-  let presentation = null;
+  let base = [];
+  let seq = [];
+  let pos = -1;
+  let keySeq = 0;
+  let contextId = null;
+  let contextName = '';
   let playing = false;
   let position = 0;
   let duration = 0;
-  let volumeLimitStep = VOLUME_STEP_MAX;
-  let volumeStep = ARRIVAL_STEP;
+  let volume = clampVolume(initialVolume);
+  let muted = false;
+  let shuffle = initialShuffle === true;
+  let repeat = REPEAT_MODES.includes(initialRepeat) ? initialRepeat : 'off';
   let notice = null;
-  let sleep = null;
-  let sessionStarted = false;
-  let lastPlaybackAt = null;
-  let trackOpen = false;
-  let trackPaused = false;
   let errored = false;
   let sourceLoaded = false;
-  let pendingSeek = null;
-  let trackSeq = 0;
-  let graph = null;
-  let graphFailed = false;
-  let wakeSentinel = null;
-  let fadeTimer = null;
   let errorTimer = null;
-  let sleepTimer = null;
   const cleanups = [];
 
+  const current = () => (pos >= 0 ? seq[pos] ?? null : null);
+  const entry = (track, baseIndex, fromQueue = false) => {
+    keySeq += 1;
+    return { key: `e${keySeq}`, track, baseIndex, fromQueue };
+  };
+
   function safeCall(callback, ...args) {
-    if (typeof callback !== 'function') return;
     try {
       callback(...args);
     } catch (error) {
-      // Un fallo en un aviso del llamador no debe detener la reproducción.
-      console.error('El reproductor: error en un aviso.', error);
+      console.error('Reproductor: error en un aviso.', error);
     }
   }
 
@@ -250,182 +140,35 @@ export function createPlayer(options = {}) {
   }
 
   function setNotice(text) {
-    if (notice === text) return;
     notice = text;
-    safeCall(onNotice, text);
+    if (text) safeCall(onNotice, text);
   }
 
-  function resolvePresentation() {
-    if (typeof presentation === 'function') {
-      try {
-        return presentation(track) ?? null;
-      } catch {
-        return null;
-      }
-    }
-    return presentation ?? null;
-  }
-
-  function emitStudy(type, extra = {}) {
-    safeCall(onStudyEvent, {
-      type,
-      at: new Date(runtime.now()).toISOString(),
-      songId: track ? track.id : null,
-      position: roundSeconds(position),
-      origin,
-      presentation: resolvePresentation(),
-      ...extra,
-    });
-  }
-
-  function repeatEnabled() {
-    return currentProfile ? currentProfile.repeatList !== false : true;
-  }
-
-  // Una pista sin fuente de audio no se puede reproducir: se trata como no disponible.
-  function isAvailableNow(item) {
-    if (!item || !item.audioUrl) return false;
+  function available(item) {
+    if (!item || !item.track.audioUrl) return false;
     try {
-      return Boolean(checkAvailable(item));
+      return Boolean(isAvailable(item.track));
     } catch {
       return false;
     }
   }
 
-  // Recorre la cola desde `from` en una sola dirección y devuelve la primera pista disponible.
-  function scanAvailable(from, direction) {
+  // Primera entrada disponible desde `from` en una dirección. Con wrap, da la vuelta a la cola.
+  function scan(from, direction, wrap) {
+    const length = seq.length;
     let at = from;
     let skipped = false;
-    for (let steps = 0; steps < queueItems.length && at !== null; steps += 1) {
-      if (isAvailableNow(queueItems[at])) return { index: at, skipped };
+    for (let steps = 0; steps < length; steps += 1) {
+      if (at < 0 || at >= length) {
+        if (!wrap) return null;
+        at = (at + length) % length;
+      }
+      if (available(seq[at])) return { index: at, skipped };
       skipped = true;
-      at = direction > 0
-        ? nextIndex(at, queueItems.length, repeatEnabled())
-        : previousIndex(at, queueItems.length, repeatEnabled());
+      at += direction;
     }
     return null;
   }
-
-  function listen(type, handler) {
-    audio.addEventListener(type, handler);
-    cleanups.push(() => audio.removeEventListener(type, handler));
-  }
-
-  // ---- Volumen ----
-
-  function setElementVolume(value) {
-    try {
-      audio.volume = value;
-    } catch {
-      // Algunos navegadores (iOS) no permiten fijar el volumen del elemento: ahí manda Web Audio.
-    }
-  }
-
-  function setGraphGain(value) {
-    try {
-      const now = graph.context.currentTime;
-      graph.gain.gain.cancelScheduledValues(now);
-      graph.gain.gain.setValueAtTime(value, now);
-    } catch {
-      // El contexto no admite el cambio en este momento: se mantiene el valor anterior.
-    }
-  }
-
-  function cancelFade() {
-    if (fadeTimer !== null) {
-      runtime.clearInterval(fadeTimer);
-      fadeTimer = null;
-    }
-  }
-
-  function applyVolumeNow() {
-    const target = volumeFromStep(volumeStep);
-    cancelFade();
-    if (graph) {
-      setGraphGain(target);
-    } else {
-      setElementVolume(target);
-    }
-  }
-
-  function startFadeIn(target) {
-    cancelFade();
-    if (graph) {
-      try {
-        const now = graph.context.currentTime;
-        const param = graph.gain.gain;
-        param.cancelScheduledValues(now);
-        param.setValueAtTime(0, now);
-        param.linearRampToValueAtTime(target, now + FADE_IN_MS / 1000);
-      } catch {
-        setGraphGain(target);
-      }
-      return;
-    }
-    setElementVolume(0);
-    const startedAt = runtime.now();
-    fadeTimer = runtime.setInterval(() => {
-      const elapsed = runtime.now() - startedAt;
-      if (elapsed >= FADE_IN_MS) {
-        cancelFade();
-        setElementVolume(target);
-      } else {
-        setElementVolume(fadeInGain(elapsed, target));
-      }
-    }, FADE_TICK_MS);
-  }
-
-  // Se llama en el primer gesto del usuario: un contexto creado antes queda suspendido y silencia el audio.
-  function unlockAudioGraph() {
-    if (graph || graphFailed || destroyed || !runtime.AudioContext) return;
-    try {
-      let entry = audioGraphs.get(audio);
-      if (!entry) {
-        const context = new runtime.AudioContext();
-        entry = { context, source: context.createMediaElementSource(audio) };
-        audioGraphs.set(audio, entry);
-      }
-      const gainNode = entry.context.createGain();
-      gainNode.gain.value = volumeFromStep(volumeStep);
-      entry.source.disconnect();
-      entry.source.connect(gainNode);
-      gainNode.connect(entry.context.destination);
-      graph = { context: entry.context, source: entry.source, gain: gainNode };
-      setElementVolume(1);
-      if (entry.context.state === 'suspended' && typeof entry.context.resume === 'function') {
-        const pending = entry.context.resume();
-        if (pending && typeof pending.catch === 'function') pending.catch(() => {});
-      }
-    } catch {
-      graphFailed = true;
-    }
-  }
-
-  function applyProfileLimit(item) {
-    const step = limitStepFromPercent(item.volumeLimit);
-    if (step === null) return;
-    volumeLimitStep = step;
-    if (volumeStep > volumeLimitStep) {
-      volumeStep = volumeLimitStep;
-      applyVolumeNow();
-    }
-  }
-
-  // ---- Sesión ----
-
-  // Solo en modo paciente. Se llama desde play() (no desde el paso automático de pista).
-  function startSessionIfNeeded() {
-    if (currentMode !== 'paciente') return;
-    if (lastPlaybackAt !== null && isSessionIdle(lastPlaybackAt, runtime.now())) {
-      sessionStarted = false;
-    }
-    if (sessionStarted) return;
-    sessionStarted = true;
-    volumeStep = Math.min(ARRIVAL_STEP, volumeLimitStep);
-    startFadeIn(volumeFromStep(volumeStep));
-  }
-
-  // ---- Fuente, pistas y registro ----
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -434,194 +177,70 @@ export function createPlayer(options = {}) {
     }
   }
 
-  function seekElement(value) {
+  function applyVolume() {
     try {
-      audio.currentTime = value;
+      audio.volume = muted ? 0 : volume;
     } catch {
-      // Sin metadatos el navegador puede rechazar el salto: se aplica al cargar.
-      pendingSeek = value;
+      // Navegadores que no dejan fijar el volumen (iOS): manda el del sistema.
     }
   }
 
-  function setSource(item) {
+  function setSource(track) {
     errored = false;
-    pendingSeek = null;
-    if (!item || !item.audioUrl) {
-      clearSource();
-      return;
-    }
-    sourceLoaded = true;
+    sourceLoaded = Boolean(track && track.audioUrl);
     try {
-      audio.src = item.audioUrl;
+      if (sourceLoaded) audio.src = track.audioUrl;
+      else {
+        audio.removeAttribute('src');
+        audio.load();
+      }
     } catch {
       sourceLoaded = false;
     }
   }
 
-  function clearSource() {
-    sourceLoaded = false;
-    pendingSeek = null;
-    try {
-      audio.removeAttribute('src');
-      audio.load();
-    } catch {
-      // Sin fuente que liberar.
-    }
-  }
-
-  function closeCurrentTrack() {
-    if (!trackOpen) return;
-    trackOpen = false;
-    trackPaused = false;
-    emitStudy('track-end', { completed: false });
-  }
-
   function updateMediaSession() {
     const session = runtime.navigator ? runtime.navigator.mediaSession : null;
     if (!session) return;
+    const item = current();
     try {
-      session.playbackState = track ? (playing ? 'playing' : 'paused') : 'none';
-      if (!track) {
-        session.metadata = null;
-      } else if (typeof runtime.MediaMetadata === 'function') {
-        session.metadata = new runtime.MediaMetadata({
-          title: track.title || '',
-          artist: track.artist || '',
-          artwork: track.coverUrl ? [{ src: track.coverUrl, sizes: '512x512' }] : [],
-        });
+      session.playbackState = item ? (playing ? 'playing' : 'paused') : 'none';
+      if (!item) session.metadata = null;
+      else if (typeof runtime.MediaMetadata === 'function') {
+        session.metadata = new runtime.MediaMetadata({ title: item.track.title, artist: item.track.artist, album: contextName });
       }
     } catch {
-      // Navegadores sin Media Session completa: la reproducción no depende de esto.
+      // Media Session incompleta: la reproducción no depende de ella.
     }
   }
 
-  function installMediaActions() {
-    const session = runtime.navigator ? runtime.navigator.mediaSession : null;
-    if (!session || typeof session.setActionHandler !== 'function') return;
-    const actions = {
-      play: () => play(),
-      pause: () => pause(),
-      previoustrack: () => previous(),
-      nexttrack: () => next(),
-    };
-    for (const [action, handler] of Object.entries(actions)) {
-      try {
-        session.setActionHandler(action, handler);
-      } catch {
-        // Acción no soportada por este navegador.
-      }
-    }
-    cleanups.push(() => {
-      for (const action of Object.keys(actions)) {
-        try {
-          session.setActionHandler(action, null);
-        } catch {
-          // Ya no se puede modificar.
-        }
-      }
-      try {
-        session.metadata = null;
-        session.playbackState = 'none';
-      } catch {
-        // Ya no se puede modificar.
-      }
-    });
-  }
-
-  // ---- Pantalla ----
-
-  function shouldHoldWakeLock() {
-    return currentMode === 'paciente' && wakeLockAllowed && playing;
-  }
-
-  function releaseSentinel(sentinel) {
-    if (!sentinel || typeof sentinel.release !== 'function') return;
-    try {
-      Promise.resolve(sentinel.release()).catch(() => {});
-    } catch {
-      // Ya liberado.
-    }
-  }
-
-  function releaseWakeLock() {
-    const sentinel = wakeSentinel;
-    wakeSentinel = null;
-    releaseSentinel(sentinel);
-  }
-
-  function requestWakeLock() {
-    if (destroyed || wakeSentinel || !shouldHoldWakeLock()) return;
-    const locks = runtime.navigator ? runtime.navigator.wakeLock : null;
-    if (!locks || typeof locks.request !== 'function') return;
-    let request;
-    try {
-      request = locks.request('screen');
-    } catch {
-      return;
-    }
-    Promise.resolve(request)
-      .then((sentinel) => {
-        if (destroyed || wakeSentinel || !shouldHoldWakeLock()) {
-          releaseSentinel(sentinel);
-          return;
-        }
-        wakeSentinel = sentinel;
-        if (sentinel && typeof sentinel.addEventListener === 'function') {
-          sentinel.addEventListener('release', () => {
-            if (wakeSentinel === sentinel) wakeSentinel = null;
-          });
-        }
-      })
-      .catch(() => {
-        // Sin permiso o sin soporte: la reproducción sigue sin bloquear la pantalla.
-      });
-  }
-
-  // ---- Estado de reproducción ----
-
-  // Detiene el audio sin emitir eventos de estudio. Lo usan pause(), load() y los cambios de pista.
   function stopPlayback() {
-    const wasPlaying = playing;
     playing = false;
-    if (wasPlaying) lastPlaybackAt = runtime.now();
-    applyVolumeNow();
     try {
       audio.pause();
     } catch {
-      // El elemento ya no admite cambios.
+      // Sin elemento que pausar.
     }
-    releaseWakeLock();
     updateMediaSession();
   }
 
   function handlePlayFailure(error) {
     if (destroyed) return;
     const name = error && error.name;
-    // AbortError: lo interrumpió otra acción. NotSupportedError: lo recoge el evento de error del elemento.
+    // AbortError: otra acción interrumpió la carga. NotSupportedError: lo recoge el evento error.
     if (name === 'AbortError' || name === 'NotSupportedError') return;
-    // NotAllowedError (el navegador pide un gesto) u otro: se refleja en el estado.
     if (playing) {
       stopPlayback();
       notify();
     }
   }
 
-  // Empieza a sonar la pista actual. No aplica arranque: eso lo hace startSessionIfNeeded en play().
   function startPlayback() {
-    if (destroyed || !track || playing) return;
+    const item = current();
+    if (destroyed || !item || playing) return;
     clearErrorTimer();
-    if (errored) setSource(track);
-    const resumed = trackOpen && trackPaused;
+    if (errored) setSource(item.track);
     playing = true;
-    trackPaused = false;
-    setNotice(null);
-    if (!trackOpen) {
-      trackOpen = true;
-      emitStudy('start');
-    } else if (resumed) {
-      emitStudy('resume');
-    }
-    requestWakeLock();
     updateMediaSession();
     notify();
     let attempt;
@@ -633,276 +252,192 @@ export function createPlayer(options = {}) {
     if (attempt && typeof attempt.catch === 'function') attempt.catch(handlePlayFailure);
   }
 
-  // Cambia a la pista `targetIndex` (ya disponible). Cierra la anterior con track-end y la deja en pausa
-  // salvo que `autoplay` sea true.
-  function select(targetIndex, { autoplay = false, skipped = false } = {}) {
-    closeCurrentTrack();
+  // Pasa a la entrada `index`. Una entrada añadida a la cola sale de ella al dejarla atrás.
+  function select(index, { autoplay = false, skipped = false } = {}) {
+    let target = index;
+    const leaving = current();
+    if (leaving && leaving.fromQueue && target !== pos) {
+      seq.splice(pos, 1);
+      if (target > pos) target -= 1;
+    }
     stopPlayback();
     clearErrorTimer();
-    trackSeq += 1;
-    currentIndex = targetIndex;
-    track = queueItems[targetIndex] ?? null;
+    pos = target;
+    const item = current();
     position = 0;
-    duration = 0;
-    trackOpen = false;
-    trackPaused = false;
-    setSource(track);
-    if (autoplay && track) startPlayback();
-    if (skipped) setNotice(NOTICES.unavailable);
+    duration = item?.track.durationS ?? 0;
+    setSource(item ? item.track : null);
+    setNotice(skipped ? NOTICES.unavailable : null);
+    if (autoplay && item) startPlayback();
     updateMediaSession();
     notify();
   }
 
-  // Fin de la pista por sí misma: track-end completed true y paso a la siguiente, o fin de la lista.
-  function handleEnded() {
-    if (destroyed || !track || !sourceLoaded || errored) return;
-    const wasPlaying = playing;
-    position = duration > 0 ? duration : position;
-    if (trackOpen) {
-      trackOpen = false;
-      trackPaused = false;
-      emitStudy('track-end', { completed: true });
+  function seekElement(value) {
+    try {
+      audio.currentTime = value;
+    } catch {
+      // Sin metadatos todavía: el navegador rechaza el salto.
     }
+  }
+
+  function seekTo(seconds) {
+    if (destroyed || !current()) return;
+    const value = Number(seconds);
+    if (!Number.isFinite(value)) return;
+    const max = duration > 0 ? duration : Infinity;
+    position = Math.min(Math.max(0, value), max);
+    seekElement(position);
+    notify();
+  }
+
+  // Al final de la cola sin repetir: se para y vuelve al principio de la canción actual.
+  function stopAtEnd() {
     stopPlayback();
-    const from = wasPlaying ? nextIndex(currentIndex, queueItems.length, repeatEnabled()) : null;
-    const found = from === null ? null : scanAvailable(from, 1);
-    if (found) {
-      select(found.index, { autoplay: true, skipped: found.skipped });
+    position = 0;
+    seekElement(0);
+    notify();
+  }
+
+  function advance(autoplay) {
+    const found = scan(pos + 1, 1, repeat !== 'off');
+    if (!found) {
+      stopAtEnd();
       return;
     }
-    if (wasPlaying) setNotice(NOTICES.endOfList);
-    notify();
+    select(found.index, { autoplay, skipped: found.skipped });
+  }
+
+  function handleEnded() {
+    if (destroyed || !current() || !sourceLoaded || errored) return;
+    if (repeat === 'one') {
+      position = 0;
+      seekElement(0);
+      playing = false;
+      startPlayback();
+      return;
+    }
+    playing = false;
+    advance(true);
   }
 
   function handleError() {
-    if (destroyed || !track || !sourceLoaded || errored) return;
+    if (destroyed || !current() || !sourceLoaded || errored) return;
     const wasPlaying = playing;
     errored = true;
-    trackOpen = false;
-    trackPaused = false;
-    emitStudy('error');
     stopPlayback();
     setNotice(NOTICES.error);
-    if (wasPlaying) scheduleErrorSkip(trackSeq);
+    if (wasPlaying) {
+      errorTimer = runtime.setTimeout(() => {
+        errorTimer = null;
+        if (!destroyed) advance(true);
+      }, ERROR_SKIP_MS);
+    }
     notify();
   }
 
-  // Con reproducción continua, la siguiente pista suena a los 6 s. El aviso se queda hasta que empiece.
-  function scheduleErrorSkip(seq) {
-    clearErrorTimer();
-    errorTimer = runtime.setTimeout(() => {
-      errorTimer = null;
-      if (destroyed || seq !== trackSeq) return;
-      const from = nextIndex(currentIndex, queueItems.length, repeatEnabled());
-      const found = from === null ? null : scanAvailable(from, 1);
-      if (found) {
-        select(found.index, { autoplay: true, skipped: found.skipped });
-      } else {
-        notify();
-      }
-    }, skipDelayAfterError * 1000);
+  // Pausa o reproducción que no ha pedido el reproductor (teclas multimedia, interrupciones del sistema).
+  function handleElementPause() {
+    if (destroyed || !playing || !sourceLoaded || audio.ended || !audio.paused) return;
+    stopPlayback();
+    notify();
   }
 
-  // Pausa que no ha pedido el reproductor (por ejemplo, una interrupción del sistema).
-  function handleElementPause() {
-    if (destroyed || !playing || !sourceLoaded) return;
-    if (audio.ended || !audio.paused) return;
-    trackPaused = true;
-    emitStudy('pause');
-    stopPlayback();
+  function handleElementPlay() {
+    if (destroyed || playing || !sourceLoaded || audio.paused) return;
+    playing = true;
+    updateMediaSession();
     notify();
   }
 
   function onMetadata() {
     if (destroyed || !sourceLoaded) return;
-    duration = finiteDuration(Number(audio.duration));
-    if (pendingSeek !== null) {
-      const target = clampPosition(pendingSeek, duration);
-      pendingSeek = null;
-      seekElement(target);
-      position = target;
-    }
+    const value = Number(audio.duration);
+    if (Number.isFinite(value) && value > 0) duration = value;
     notify();
-  }
-
-  // ---- Temporizador de apagado ----
-
-  function startSleepTick() {
-    if (sleepTimer === null) sleepTimer = runtime.setInterval(tickSleep, SLEEP_TICK_MS);
-  }
-
-  function stopSleepTick() {
-    if (sleepTimer !== null) {
-      runtime.clearInterval(sleepTimer);
-      sleepTimer = null;
-    }
-  }
-
-  function tickSleep() {
-    if (destroyed || !sleep) {
-      stopSleepTick();
-      return;
-    }
-    const now = runtime.now();
-    if (playing) sleep.remainingMs -= Math.max(0, now - sleep.lastTickAt);
-    sleep.lastTickAt = now;
-    if (sleep.remainingMs <= 0) {
-      sleep = null;
-      stopSleepTick();
-      if (playing) pause();
-      safeCall(onSleep);
-      notify();
-      return;
-    }
-    if (!sleep.warned && shouldWarnSleep(sleep.remainingMs)) {
-      sleep.warned = true;
-      safeCall(onSleepWarning, Math.ceil(sleep.remainingMs / 1000));
-    }
-    const minutes = sleepMinutesLeft(sleep.remainingMs);
-    if (minutes !== sleep.lastMinutes) {
-      sleep.lastMinutes = minutes;
-      notify();
-    }
-  }
-
-  // ---- Atajos y entorno ----
-
-  function attachEnvironmentListeners() {
-    const doc = runtime.document;
-    if (!doc || typeof doc.addEventListener !== 'function') return;
-    const gestureTypes = ['pointerdown', 'keydown', 'touchend'];
-    const gestureOptions = { capture: true, passive: true };
-    const detachGesture = () => {
-      for (const type of gestureTypes) doc.removeEventListener(type, onFirstGesture, gestureOptions);
-    };
-    const onFirstGesture = () => {
-      detachGesture();
-      unlockAudioGraph();
-    };
-    for (const type of gestureTypes) doc.addEventListener(type, onFirstGesture, gestureOptions);
-    cleanups.push(detachGesture);
-
-    const onVisibility = () => {
-      if (doc.visibilityState === 'visible') requestWakeLock();
-    };
-    doc.addEventListener('visibilitychange', onVisibility);
-    cleanups.push(() => doc.removeEventListener('visibilitychange', onVisibility));
   }
 
   // ---- API pública ----
 
   function getState() {
+    const item = current();
     return {
-      track: track ? { ...track } : null,
-      index: currentIndex,
-      queueLength: queueItems.length,
+      track: item ? { ...item.track } : null,
+      key: item ? item.key : null,
+      contextId,
+      contextName,
       playing,
-      position: roundSeconds(position),
-      duration: roundSeconds(duration),
-      volumeStep,
-      volumeLimitStep,
+      position: Math.round(position * 10) / 10,
+      duration: Math.round(duration * 10) / 10,
+      volume,
+      muted,
+      volumeAdjustable,
+      shuffle,
+      repeat,
       notice,
-      sleepMinutesLeft: sleep ? sleepMinutesLeft(sleep.remainingMs) : null,
-      volumeMode: graph ? 'gain' : 'element',
+      upcoming: pos >= 0 ? seq.slice(pos + 1).map((next) => ({ key: next.key, track: { ...next.track }, fromQueue: next.fromQueue })) : [],
     };
   }
 
-  function load(items, startAt = 0, nextOrigin = null, nextPresentation = null) {
+  /** Carga un contexto. startAt: índice de la canción en `tracks`; null con aleatorio empieza por una al azar. */
+  function load(tracks, startAt = 0, { autoplay = true, contextId: nextContextId = null, contextName: nextContextName = '' } = {}) {
     if (destroyed) return;
-    closeCurrentTrack();
+    const queued = pos >= 0 ? seq.slice(pos + 1).filter((item) => item.fromQueue) : [];
     stopPlayback();
     clearErrorTimer();
-    queueItems = Array.isArray(items) ? items.filter(isTrackLike).map(copyTrack) : [];
-    origin = nextOrigin ?? null;
-    presentation = nextPresentation ?? null;
-    trackSeq += 1;
-    setNotice(null);
-    if (queueItems.length === 0) {
-      currentIndex = -1;
-      track = null;
-      position = 0;
-      duration = 0;
-      trackOpen = false;
-      trackPaused = false;
-      clearSource();
-      updateMediaSession();
+    base = Array.isArray(tracks) ? tracks.filter(isTrackLike).map(copyTrack) : [];
+    contextId = nextContextId;
+    contextName = String(nextContextName ?? '');
+    if (base.length === 0) {
+      seq = [];
+      pos = -1;
+      setSource(null);
+      setNotice(null);
       notify();
       return;
     }
-    const first = clampIndex(startAt, queueItems.length);
-    const found = scanAvailable(first, 1) || scanAvailable(first, -1);
+    let start = Number.isInteger(startAt) ? Math.min(Math.max(0, startAt), base.length - 1) : null;
+    if (start === null) start = shuffle ? Math.floor(runtime.random() * base.length) : 0;
+    const order = shuffle ? shuffledIndexes(base.length, start, runtime.random) : base.map((_, i) => i);
+    seq = order.map((i) => entry(base[i], i));
+    const first = shuffle ? 0 : start;
+    seq.splice(first + 1, 0, ...queued);
+    pos = -1;
+    const found = scan(first, 1, true);
     if (!found) {
-      currentIndex = first;
-      track = queueItems[first];
+      pos = first;
       position = 0;
-      duration = 0;
-      trackOpen = false;
-      trackPaused = false;
-      clearSource();
+      duration = seq[first].track.durationS ?? 0;
+      setSource(null);
       setNotice(NOTICES.noneAvailable);
       updateMediaSession();
       notify();
       return;
     }
-    select(found.index, { autoplay: false, skipped: found.skipped });
-  }
-
-  function restoreLast(item, startAt = 0) {
-    if (destroyed || !isTrackLike(item)) return;
-    closeCurrentTrack();
-    stopPlayback();
-    clearErrorTimer();
-    const existing = queueItems.findIndex((entry) => entry.id === item.id);
-    if (existing >= 0) {
-      currentIndex = existing;
-    } else {
-      queueItems = [copyTrack(item)];
-      currentIndex = 0;
-      origin = 'continua';
-    }
-    track = queueItems[currentIndex];
-    trackSeq += 1;
-    trackOpen = false;
-    trackPaused = false;
-    duration = 0;
-    position = clampPosition(startAt);
-    if (isAvailableNow(track)) {
-      setSource(track);
-      seekElement(position);
-      setNotice(null);
-    } else {
-      clearSource();
-      setNotice(NOTICES.unavailable);
-    }
-    updateMediaSession();
-    notify();
+    select(found.index, { autoplay, skipped: found.skipped });
   }
 
   function play() {
-    if (destroyed || !track || playing) return;
-    clearErrorTimer();
-    let skipped = false;
-    if (!isAvailableNow(track)) {
-      const found = scanAvailable(currentIndex, 1) || scanAvailable(currentIndex, -1);
+    if (destroyed || playing) return;
+    const item = current();
+    if (!item) return;
+    if (!available(item)) {
+      const found = scan(pos, 1, true);
       if (!found) {
         setNotice(NOTICES.noneAvailable);
         notify();
         return;
       }
-      select(found.index, { autoplay: false, skipped: true });
-      skipped = true;
+      select(found.index, { autoplay: true, skipped: true });
+      return;
     }
-    startSessionIfNeeded();
     startPlayback();
-    if (skipped) setNotice(NOTICES.unavailable);
   }
 
   function pause() {
     if (destroyed) return;
     clearErrorTimer();
     if (!playing) return;
-    trackPaused = true;
-    emitStudy('pause');
     stopPlayback();
     notify();
   }
@@ -913,29 +448,17 @@ export function createPlayer(options = {}) {
   }
 
   function next() {
-    if (destroyed || !track) return;
-    const wasPlaying = playing;
-    const from = nextIndex(currentIndex, queueItems.length, repeatEnabled());
-    const found = from === null ? null : scanAvailable(from, 1);
-    if (!found) {
-      closeCurrentTrack();
-      stopPlayback();
-      clearErrorTimer();
-      setNotice(NOTICES.endOfList);
-      notify();
-      return;
-    }
-    select(found.index, { autoplay: wasPlaying, skipped: found.skipped });
+    if (destroyed || !current()) return;
+    advance(playing || errorTimer !== null);
   }
 
   function previous() {
-    if (destroyed || !track) return;
-    if (shouldRestartOnPrevious(position, currentMode)) {
+    if (destroyed || !current()) return;
+    if (position > PREVIOUS_RESTART_SECONDS) {
       seekTo(0);
       return;
     }
-    const from = previousIndex(currentIndex, queueItems.length, repeatEnabled());
-    const found = from === null ? null : scanAvailable(from, -1);
+    const found = scan(pos - 1, -1, repeat !== 'off');
     if (!found) {
       seekTo(0);
       return;
@@ -943,159 +466,133 @@ export function createPlayer(options = {}) {
     select(found.index, { autoplay: playing, skipped: found.skipped });
   }
 
-  function jumpTo(itemIndex) {
-    if (destroyed || !Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= queueItems.length) return;
-    const wasPlaying = playing;
-    const found = scanAvailable(itemIndex, 1) || scanAvailable(itemIndex, -1);
-    if (!found) {
+  /** Salta a una entrada de la cola (por su key) y la reproduce. */
+  function playEntry(key) {
+    if (destroyed) return;
+    const index = seq.findIndex((item) => item.key === key);
+    if (index < 0) return;
+    if (!available(seq[index])) {
       setNotice(NOTICES.noneAvailable);
       notify();
       return;
     }
-    select(found.index, { autoplay: wasPlaying, skipped: found.skipped });
+    select(index, { autoplay: true });
   }
 
-  function seekTo(seconds) {
-    if (destroyed || !track) return;
-    const value = Number(seconds);
-    if (!Number.isFinite(value)) return;
-    position = clampPosition(value, duration);
-    seekElement(position);
-    notify();
-  }
-
-  function seekBy(seconds) {
-    if (destroyed || !track) return;
-    seekTo(position + Number(seconds));
-  }
-
-  function setVolumeStep(step) {
-    if (destroyed) return;
-    const value = Number(step);
-    if (!Number.isFinite(value)) return;
-    volumeStep = applyVolumeLimit(value, volumeLimitStep);
-    applyVolumeNow();
-    notify();
-  }
-
-  function setProfileLimit(percent) {
-    if (destroyed) return;
-    const step = limitStepFromPercent(percent);
-    if (step === null) return;
-    volumeLimitStep = step;
-    if (volumeStep > volumeLimitStep) {
-      volumeStep = volumeLimitStep;
-      applyVolumeNow();
-    }
-    notify();
-  }
-
-  function setSleepTimer(minutes) {
-    if (destroyed) return;
-    const value = minutes === null ? 0 : Number(minutes);
-    if (!(value > 0)) {
-      sleep = null;
-      stopSleepTick();
-      notify();
+  /** Añade una canción a la cola, después de la actual y de las ya añadidas. Sin nada cargado, la carga en pausa. */
+  function addToQueue(track) {
+    if (destroyed || !isTrackLike(track)) return;
+    if (pos < 0) {
+      load([track], 0, { autoplay: false, contextId: null, contextName: '' });
       return;
     }
-    sleep = {
-      remainingMs: value * MINUTE_MS,
-      warned: false,
-      lastTickAt: runtime.now(),
-      lastMinutes: null,
+    let at = pos + 1;
+    while (at < seq.length && seq[at].fromQueue) at += 1;
+    seq.splice(at, 0, entry(copyTrack(track), null, true));
+    notify();
+  }
+
+  function setShuffle(on) {
+    const value = on === true;
+    if (destroyed || value === shuffle) return;
+    shuffle = value;
+    const item = current();
+    if (item) {
+      const queued = seq.slice(pos + 1).filter((next) => next.fromQueue);
+      if (shuffle) {
+        const rest = shuffledIndexes(base.length, item.baseIndex, runtime.random).filter((i) => i !== item.baseIndex);
+        seq = [item, ...queued, ...rest.map((i) => entry(base[i], i))];
+        pos = 0;
+      } else if (item.baseIndex !== null) {
+        seq = base.map((track, i) => (i === item.baseIndex ? item : entry(track, i)));
+        pos = item.baseIndex;
+        seq.splice(pos + 1, 0, ...queued);
+      } else {
+        seq = [item, ...queued, ...base.map((track, i) => entry(track, i))];
+        pos = 0;
+      }
+    }
+    notify();
+  }
+
+  function setRepeat(mode) {
+    if (destroyed || !REPEAT_MODES.includes(mode)) return;
+    repeat = mode;
+    notify();
+  }
+
+  function setVolume(value) {
+    if (destroyed) return;
+    volume = clampVolume(value);
+    muted = volume === 0 ? muted : false;
+    applyVolume();
+    notify();
+  }
+
+  function toggleMute() {
+    if (destroyed) return;
+    muted = !muted;
+    applyVolume();
+    notify();
+  }
+
+  function installMediaActions() {
+    const session = runtime.navigator ? runtime.navigator.mediaSession : null;
+    if (!session || typeof session.setActionHandler !== 'function') return;
+    const actions = {
+      play: () => play(),
+      pause: () => pause(),
+      previoustrack: () => previous(),
+      nexttrack: () => next(),
+      seekto: (details) => seekTo(details?.seekTime),
     };
-    startSleepTick();
-    notify();
-  }
-
-  // Suma minutos al temporizador. Si no hay temporizador activo, lo inicia con esos minutos.
-  function extendSleepTimer(minutes) {
-    if (destroyed) return;
-    const value = Number(minutes);
-    if (!(value > 0)) return;
-    const extraMs = value * MINUTE_MS;
-    if (sleep) {
-      sleep.remainingMs += extraMs;
-      sleep.warned = false;
-    } else {
-      sleep = { remainingMs: extraMs, warned: false, lastTickAt: runtime.now(), lastMinutes: null };
+    for (const [action, handler] of Object.entries(actions)) {
+      try {
+        session.setActionHandler(action, handler);
+      } catch {
+        // Acción no admitida por este navegador.
+      }
     }
-    startSleepTick();
-    notify();
+    cleanups.push(() => {
+      for (const action of Object.keys(actions)) {
+        try {
+          session.setActionHandler(action, null);
+        } catch {
+          // Ya no se puede modificar.
+        }
+      }
+    });
   }
 
-  // El límite guardado del perfil se aplica al cambiar de perfil o cuando cambia ese valor guardado.
-  // Si no, un límite fijado con setProfileLimit se pisaría al repetir la misma llamada.
-  function setProfile(nextProfile) {
-    if (destroyed) return;
-    const previousLimit = currentProfile ? currentProfile.volumeLimit : undefined;
-    const changed = profileKey(currentProfile) !== profileKey(nextProfile ?? null);
-    currentProfile = nextProfile ?? null;
-    if (changed) sessionStarted = false;
-    if (currentProfile && (changed || currentProfile.volumeLimit !== previousLimit)) {
-      applyProfileLimit(currentProfile);
-    }
-    notify();
-  }
-
-  function setMode(nextMode) {
-    if (destroyed || !MODES.includes(nextMode) || nextMode === currentMode) return;
-    currentMode = nextMode;
-    // Cambiar de modo cierra la sesión de escucha (DESIGN 8.2), pero no detiene la reproducción (DESIGN 8.1).
-    sessionStarted = false;
-    if (currentMode === 'paciente') requestWakeLock();
-    else releaseWakeLock();
-    notify();
+  function listen(type, handler) {
+    audio.addEventListener(type, handler);
+    cleanups.push(() => audio.removeEventListener(type, handler));
   }
 
   function destroy() {
     if (destroyed) return;
     destroyed = true;
     clearErrorTimer();
-    stopSleepTick();
-    cancelFade();
-    sleep = null;
-    releaseWakeLock();
-    for (const cleanup of cleanups.splice(0)) {
-      try {
-        cleanup();
-      } catch {
-        // El listener ya no existe.
-      }
-    }
+    for (const cleanup of cleanups.splice(0)) cleanup();
     try {
       audio.pause();
     } catch {
       // El elemento ya no admite cambios.
     }
     playing = false;
-    if (graph) {
-      try {
-        graph.source.disconnect();
-        graph.gain.disconnect();
-      } catch {
-        // Nodos ya desconectados.
-      }
-      graph = null;
-    }
   }
 
   // ---- Arranque ----
-
-  if (currentProfile) applyProfileLimit(currentProfile);
-  volumeStep = Math.min(ARRIVAL_STEP, volumeLimitStep);
-  setElementVolume(volumeFromStep(volumeStep));
+  applyVolume();
   try {
     audio.pause();
   } catch {
     // Sin elemento que pausar.
   }
-
   listen('timeupdate', () => {
     if (destroyed || !sourceLoaded) return;
-    const current = Number(audio.currentTime);
-    if (Number.isFinite(current)) position = current;
+    const value = Number(audio.currentTime);
+    if (Number.isFinite(value)) position = value;
     notify();
   });
   listen('loadedmetadata', onMetadata);
@@ -1103,28 +600,24 @@ export function createPlayer(options = {}) {
   listen('ended', handleEnded);
   listen('error', handleError);
   listen('pause', handleElementPause);
-
+  listen('play', handleElementPlay);
   installMediaActions();
-  attachEnvironmentListeners();
 
   return {
     load,
-    restoreLast,
     play,
     pause,
     toggle,
     next,
     previous,
-    jumpTo,
-    seekBy,
+    playEntry,
+    addToQueue,
     seekTo,
-    setVolumeStep,
-    setProfileLimit,
-    setSleepTimer,
-    extendSleepTimer,
+    setShuffle,
+    setRepeat,
+    setVolume,
+    toggleMute,
     getState,
-    setProfile,
-    setMode,
     destroy,
   };
 }

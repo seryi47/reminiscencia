@@ -1,17 +1,19 @@
-// Service worker de Reminiscencia (módulo, alcance '/'): shell sin conexión, biblioteca de
-// audio que guarda el usuario y datos con respaldo de caché. Se registra desde js/pwa.js.
-// Al cambiar el shell, sube SHELL_VERSION en js/offline-core.js.
+// Service worker de Reminiscencia (módulo, alcance '/'): shell sin conexión, canciones descargadas para escuchar
+// sin conexión, canciones subidas a este navegador (audio/L….opus, desde IndexedDB; ADR-0012 y ADR-0014) y datos
+// con respaldo de caché. Se registra desde js/pwa.js. Al cambiar el shell, sube SHELL_VERSION en js/offline-core.js.
 import {
   audioCacheName,
   isAudioRequest,
   isDataRequest,
   isShellRequest,
+  localAudioId,
   parseRange,
   SHELL_ASSETS,
   SHELL_CACHE_PREFIX,
   shellCacheName,
   SHELL_VERSION,
 } from './js/offline-core.js';
+import { readLocalRecord } from './js/cuidador/subida-local.js';
 
 const SHELL_CACHE = shellCacheName(SHELL_VERSION);
 const AUDIO_CACHE = audioCacheName();
@@ -110,21 +112,26 @@ async function networkFirst(event) {
   }
 }
 
-/** Audio: si está guardado se sirve desde la caché (con rangos, para poder buscar dentro del
- *  tema). Si no está guardado va a la red sin guardarlo. */
+/** Audio: una canción subida a este navegador se lee de IndexedDB. Si está descargada se sirve desde la
+ *  caché (con rangos, para poder buscar dentro del tema). Si no, va a la red sin guardarla. */
 async function audioResponse(request) {
+  const range = request.headers.get('range');
+  const localId = localAudioId(request.url);
+  if (localId) {
+    const record = await readLocalRecord(localId, self);
+    if (!record) return new Response(null, { status: 404 });
+    return sliceResponse(record.blob, 'audio/ogg; codecs=opus', range);
+  }
   const cache = await caches.open(AUDIO_CACHE);
   const cached = await cache.match(request);
   if (!cached) return fetch(request);
-  const range = request.headers.get('range');
-  return range ? sliceResponse(cached, range) : cached;
+  if (!range) return cached;
+  return sliceResponse(await cached.blob(), cached.headers.get('content-type') || 'audio/ogg', range);
 }
 
-/** Responde a una cabecera Range con 206 (o 416 si queda fuera del fichero). */
-async function sliceResponse(cached, rangeHeader) {
-  const blob = await cached.blob();
-  const type = cached.headers.get('content-type') || 'audio/ogg';
-  const range = parseRange(rangeHeader, blob.size);
+/** Responde con el fichero entero (200) o con el tramo de la cabecera Range (206, o 416 si queda fuera). */
+function sliceResponse(blob, type, rangeHeader) {
+  const range = rangeHeader ? parseRange(rangeHeader, blob.size) : null;
   if (range === 'unsatisfiable') {
     return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${blob.size}` } });
   }

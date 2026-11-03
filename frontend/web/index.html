@@ -3,26 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0b0d">
+  <meta name="theme-color" content="#000000">
   <title>Reminiscencia</title>
-  <meta name="description" content="Música para recordar, organizada por carpetas.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23e0b26a'/%3E%3C/svg%3E">
+  <meta name="description" content="Música para recordar, organizada por carpetas. Sin cuentas: tus listas se guardan en este navegador.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231fdf64'/%3E%3Cpath d='M12 22V10l10-2v12' fill='none' stroke='%23000' stroke-width='2.5'/%3E%3C/svg%3E">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preload" href="fonts/figtree-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/figtree-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/tokens.css">
-  <link rel="stylesheet" href="css/base.css">
-  <link rel="stylesheet" href="css/paciente-shell.css">
-  <link rel="stylesheet" href="css/paciente-escuchar.css">
-  <link rel="stylesheet" href="css/paciente-listas.css">
-  <link rel="stylesheet" href="css/cuidador-shell.css">
-  <link rel="stylesheet" href="css/cuidador-biblioteca.css">
-  <link rel="stylesheet" href="css/cuidador-perfiles.css">
-  <link rel="stylesheet" href="css/cuidador-contenido.css">
+  <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <a class="skip-link" href="#app-main" data-testid="skip-link">Saltar al contenido</a>
-  <div id="app" class="app"></div>
-  <noscript><p>Reminiscencia necesita JavaScript para funcionar.</p></noscript>
+  <a class="skip-link" href="#main" data-testid="skip-link">Saltar al contenido</a>
+  <div class="app" id="app">
+    <nav class="sidebar" aria-label="Barra lateral" data-testid="sidebar">
+      <div class="panel sidebar-nav" data-testid="sidebar-nav">
+        <ul class="nav-list">
+          <li>
+            <a class="nav-link" href="#/" data-nav="inicio" data-testid="nav-inicio">
+              <span class="nav-icon" data-icon-active>
+                <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2 3.5 10.3V20.5h6v-6h5v6h6V10.3L12 3.2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+                <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><path d="M12 3.2 3.5 10.3V20.5h6v-6h5v6h6V10.3L12 3.2z" fill="currentColor"/></svg>
+              </span>
+              <span>Inicio</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" href="#/buscar" data-nav="buscar" data-testid="nav-buscar">
+              <span class="nav-icon" data-icon-active>
+                <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="3"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+              </span>
+              <span>Buscar</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+      <section class="panel sidebar-library" aria-labelledby="titulo-biblioteca" data-testid="sidebar-library">
+        <div class="library-head">
+          <h2 class="library-heading" id="titulo-biblioteca">
+            <a class="library-heading-link" href="#/biblioteca" data-testid="sidebar-library-link">
+              <svg class="icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M4.5 3.5v17M9.5 3.5v17M14 4.2l5.5 16.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span>Tu biblioteca</span>
+            </a>
+          </h2>
+        </div>
+        <div id="sidebar-actions"></div>
+        <div id="sidebar-chips"></div>
+        <ul class="library-list" id="sidebar-list" data-testid="sidebar-list"></ul>
+      </section>
+    </nav>
+
+    <main class="panel main" id="main" tabindex="-1" data-testid="main">
+      <p class="offline-banner" id="offline-banner" role="status" data-testid="offline-banner" hidden>Sin conexión. Solo suenan las canciones descargadas y las subidas a este navegador.</p>
+      <div id="view" class="view"></div>
+    </main>
+
+    <aside class="panel queue-panel" id="queue-panel" aria-label="Cola de reproducción" data-testid="queue-panel" hidden></aside>
+
+    <footer class="player-bar" id="player-bar" aria-label="Reproductor" data-testid="player-bar"></footer>
+
+    <div class="mini-player" id="mini-player" data-testid="mini-player" hidden></div>
+
+    <nav class="tabbar" aria-label="Principal" data-testid="tabbar">
+      <a class="tab-link" href="#/" data-nav="inicio" data-testid="tab-inicio">
+        <span class="nav-icon" data-icon-active>
+          <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2 3.5 10.3V20.5h6v-6h5v6h6V10.3L12 3.2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><path d="M12 3.2 3.5 10.3V20.5h6v-6h5v6h6V10.3L12 3.2z" fill="currentColor"/></svg>
+        </span>
+        <span class="tab-label">Inicio</span>
+      </a>
+      <a class="tab-link" href="#/buscar" data-nav="buscar" data-testid="tab-buscar">
+        <span class="nav-icon" data-icon-active>
+          <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="3"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        </span>
+        <span class="tab-label">Buscar</span>
+      </a>
+      <a class="tab-link" href="#/biblioteca" data-nav="biblioteca" data-testid="tab-biblioteca">
+        <span class="nav-icon" data-icon-active>
+          <svg class="icon nav-icon-off" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M4.5 3.5v17M9.5 3.5v17M14 4.2l5.5 16.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg class="icon nav-icon-on" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" hidden><path d="M4.5 3.5v17M9.5 3.5v17M14 4.2l5.5 16.3" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        </span>
+        <span class="tab-label">Tu biblioteca</span>
+      </a>
+    </nav>
+  </div>
+  <p class="toast" role="status" aria-live="polite" data-testid="toast"></p>
+  <audio id="audio" preload="metadata"></audio>
+  <noscript><p class="noscript">Reminiscencia necesita JavaScript para funcionar.</p></noscript>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

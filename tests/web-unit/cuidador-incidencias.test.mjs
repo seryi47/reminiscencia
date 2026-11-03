@@ -1,4 +1,5 @@
-// Pruebas de las incidencias de la biblioteca (cuidador, C-a2): validaciones, cuerpo y enlace de GitHub.
+// Pruebas de las incidencias de la biblioteca (hoja «Subir canciones», «Desde Internet Archive»): validaciones,
+// cuerpo y enlace de GitHub.
 // El cuerpo se comprueba con un analizador que replica _read_fields de backend/sonidos/issue_request.py, para
 // que una petición que pasa aquí sea una petición que el backend acepta. Todos los datos son ficticios.
 // Ejecución: node --test tests/web-unit/cuidador-incidencias.test.mjs
@@ -11,20 +12,10 @@ import {
   buildIssueBody,
   buildIssueTitle,
   buildIssueUrl,
-  checkFolderInput,
-  checkSongIdInput,
-  checkTagsInput,
-  checkTextInput,
-  checkYearInput,
   classifyUrl,
-  evaluateEditForm,
-  evaluateFolderForm,
   evaluateImportForm,
-  evaluatePublishForm,
   isFolderId,
   isSongId,
-  normalizeFolderId,
-  normalizeSongId,
   normalizeTags,
   REQUEST_LIMITS,
   validateImportRequest,
@@ -231,41 +222,13 @@ describe('identificadores y campos de texto', () => {
     assert.equal(isFolderId('0123456789a'), false);
   });
 
-  test('se aceptan la s minúscula y las letras en mayúscula, y se devuelve la forma canónica', () => {
-    assert.equal(normalizeSongId('  s0123456789ABCDEF '), 'S0123456789abcdef');
-    assert.equal(normalizeFolderId(' 0123ABCDEF '), '0123abcdef');
-    assert.deepEqual(checkSongIdInput('s0123456789ABCDEF'), { value: SONG, message: null });
-    assert.match(checkSongIdInput('').message, /Escribe el identificador/);
-    assert.match(checkSongIdInput('S12').message, /16 caracteres hexadecimales/);
-    assert.deepEqual(checkFolderInput(''), { value: null, message: null });
-    assert.match(checkFolderInput('', { required: true }).message, /Escribe el identificador de la carpeta/);
-  });
-
-  test('el texto de una sola línea no admite control ni se queda en blanco si es obligatorio', () => {
-    assert.match(checkTextInput('   ', { name: 'El título', max: 200, required: true }).message, /no puede quedar en blanco/);
-    assert.match(checkTextInput('a\u0007b', { name: 'El título', max: 200 }).message, /caracteres de control/);
-    assert.equal(checkTextInput('  Charleston  ', { name: 'El título', max: 200 }).value, 'Charleston');
-  });
-
-  test('el año vacío es null; un número fuera de rango o con letras no vale', () => {
-    assert.deepEqual(checkYearInput(''), { value: null, message: null });
-    assert.deepEqual(checkYearInput(' 1974 '), { value: 1974, message: null });
-    assert.match(checkYearInput('999').message, /entre 1000 y 2100/);
-    assert.match(checkYearInput('2101').message, /entre 1000 y 2100/);
-    assert.match(checkYearInput('19a4').message, /entre 1000 y 2100/);
-  });
-
   test('las etiquetas se normalizan: minúsculas, sin repetir ni vacías', () => {
     assert.deepEqual(normalizeTags([' Jazz ', 'jazz', '', 'Años 20']), ['jazz', 'años 20']);
-    assert.deepEqual(checkTagsInput(' Jazz,, jazz ,Vals ').value, ['jazz', 'vals']);
-    assert.deepEqual(checkTagsInput('').value, []);
-    const tooMany = Array.from({ length: 21 }, (_, index) => `t${index}`).join(',');
-    assert.match(checkTagsInput(tooMany).message, /como máximo 20/);
-    assert.match(checkTagsInput('a'.repeat(41)).message, /como máximo 40/);
+    assert.deepEqual(normalizeTags('no es una lista'), []);
   });
 });
 
-describe('formularios evaluados (lógica de la hoja)', () => {
+describe('formulario de importación evaluado (lógica de la hoja)', () => {
   test('importar por URL: el formulario vale con una URL de Internet Archive', () => {
     const result = evaluateImportForm({ url: 'https://archive.org/details/ejemplo-de-prueba', license: '', title: '' });
     assert.deepEqual(result.errors, {});
@@ -277,52 +240,6 @@ describe('formularios evaluados (lógica de la hoja)', () => {
     const result = evaluateImportForm({ url: 'https://ejemplo.org/a.wav', license: '   ', title: '' });
     assert.equal(result.request, null);
     assert.deepEqual(Object.keys(result.errors), ['license']);
-  });
-
-  test('publicar o despublicar: genera la operación con el interruptor', () => {
-    assert.deepEqual(evaluatePublishForm({ songId: SONG, published: true }).request,
-      { action: 'organize', payload: { op: 'edit_song', song_id: SONG, public: true } });
-    assert.deepEqual(evaluatePublishForm({ songId: 's0123456789abcdef', published: false }).request.payload,
-      { op: 'edit_song', song_id: SONG, public: false });
-    assert.match(evaluatePublishForm({ songId: 'nope' }).errors.songId, /16 caracteres/);
-  });
-
-  test('editar datos: sin cambios no hay petición y se indica qué falta', () => {
-    const baseline = { id: SONG, title: 'Charleston', artist: '', year: null, tags: ['jazz'], folder_id: null };
-    const result = evaluateEditForm({ songId: SONG, baseline, title: 'Charleston', artist: '', year: '', tags: 'jazz', folderId: '' });
-    assert.equal(result.request, null);
-    assert.match(result.status, /al menos un campo/);
-  });
-
-  test('editar datos: solo se envían los campos que cambian, y vaciar la carpeta envía null', () => {
-    const baseline = { id: SONG, title: 'Charleston', artist: '', year: null, tags: ['jazz'], folder_id: FOLDER };
-    const result = evaluateEditForm({ songId: SONG, baseline, title: 'Charleston', artist: 'Banda de prueba', year: '1925', tags: 'jazz', folderId: '' });
-    assert.deepEqual(result.request.payload, {
-      op: 'edit_song', song_id: SONG, artist: 'Banda de prueba', year: 1925, folder_id: null,
-    });
-  });
-
-  test('editar datos: con la canción conocida, el título no puede quedar en blanco', () => {
-    const baseline = { id: SONG, title: 'Charleston', artist: '', year: null, tags: [], folder_id: null };
-    const result = evaluateEditForm({ songId: SONG, baseline, title: '  ', artist: '', year: '', tags: '', folderId: '' });
-    assert.equal(result.request, null);
-    assert.match(result.errors.title, /no puede quedar en blanco/);
-  });
-
-  test('editar datos de una canción desconocida: solo los campos con valor', () => {
-    const result = evaluateEditForm({ songId: OTHER_SONG, baseline: null, title: '', artist: 'Artista de prueba', year: '', tags: 'Jazz', folderId: '' });
-    assert.deepEqual(result.request.payload, { op: 'edit_song', song_id: OTHER_SONG, artist: 'Artista de prueba', tags: ['jazz'] });
-  });
-
-  test('carpetas: crear envía parent_id null; renombrar y borrar piden el identificador', () => {
-    assert.deepEqual(evaluateFolderForm({ action: 'create', name: 'Años 20' }).request.payload,
-      { op: 'create_folder', name: 'Años 20', parent_id: null });
-    assert.deepEqual(evaluateFolderForm({ action: 'rename', folderId: FOLDER, name: 'Años veinte' }).request.payload,
-      { op: 'rename_folder', folder_id: FOLDER, name: 'Años veinte' });
-    assert.deepEqual(evaluateFolderForm({ action: 'delete', folderId: FOLDER }).request.payload,
-      { op: 'delete_folder', folder_id: FOLDER });
-    assert.match(evaluateFolderForm({ action: 'rename', folderId: '', name: 'X' }).errors.folderId, /Escribe el identificador/);
-    assert.match(evaluateFolderForm({ action: 'create', name: '' }).errors.name, /no puede quedar en blanco/);
   });
 });
 
@@ -354,16 +271,6 @@ describe('título y enlace de la incidencia', () => {
     assert.equal(new URL(url).searchParams.get('body'), body);
     assert.deepEqual(parseLikeBackend(new URL(url).searchParams.get('body')), {
       action: 'import', url: 'https://ejemplo.org/a.mp3', license: 'CC BY 4.0', title: 'Tema',
-    });
-  });
-
-  test('una petición de organize del formulario de canción pasa el analizador del backend', () => {
-    const baseline = { id: SONG, title: 'Charleston', artist: '', year: null, tags: [], folder_id: null };
-    const request = evaluateEditForm({ songId: SONG, baseline, title: 'Charleston', artist: 'Banda', year: '1925', tags: 'jazz, años 20', folderId: FOLDER }).request;
-    const fields = parseLikeBackend(buildIssueBody(request));
-    assert.equal(fields.action, 'organize');
-    assert.deepEqual(JSON.parse(fields.payload), {
-      op: 'edit_song', song_id: SONG, artist: 'Banda', year: 1925, tags: ['jazz', 'años 20'], folder_id: FOLDER,
     });
   });
 });

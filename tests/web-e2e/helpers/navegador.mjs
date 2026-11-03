@@ -1,11 +1,11 @@
-// Navegador de pruebas: Chrome con puppeteer-core, un contexto aislado por prueba y los anchos de DESIGN 15.
+// Navegador de pruebas: Chrome con puppeteer-core, un contexto aislado por prueba y los anchos de DESIGN §4.
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 
-/** Anchos de referencia de DESIGN 15 (sección 4). */
+/** Anchos de referencia de DESIGN §4: teléfono, tableta vertical, escritorio estrecho y escritorio. */
 export const VIEWPORTS = Object.freeze({
   telefono: Object.freeze({ width: 390, height: 844 }),
   tabletaVertical: Object.freeze({ width: 820, height: 1180 }),

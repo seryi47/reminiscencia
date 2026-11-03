@@ -1,6 +1,7 @@
-// Pruebas de la subida local de audio del cuidador (node:test, sin navegador).
+// Pruebas de la subida local de audio (node:test, sin navegador).
 // Cubren el nombre a título, los límites y el tamaño estimado, la comprobación de espacio, el CRC y el
-// empaquetado Ogg Opus, y el filtrado de canciones locales en la descarga sin conexión (ADR-0012).
+// empaquetado Ogg Opus, el filtrado de canciones locales en la descarga sin conexión (ADR-0012) y la lectura del
+// registro que usa el service worker para servir audio/L….opus (ADR-0014).
 // Todos los datos son ficticios. Ejecución: node --test tests/web-unit/subida-local.test.mjs
 
 import assert from 'node:assert/strict';
@@ -14,7 +15,9 @@ import {
   estimateOpusBytes,
   formatMegabytes,
   isDeletableSong,
-  isLocalAudioUrl,
+  isLocalSongId,
+  localAudioPath,
+  readLocalRecord,
   LOCAL_AUDIO_ACCEPT,
   LocalAudioError,
   MAX_DURATION_S,
@@ -151,10 +154,12 @@ describe('identificadores y utilidades de Opus', () => {
     assert.equal(preSkipFromHead(new Uint8Array(4)), null);
   });
 
-  test('solo las URL blob son de canciones locales', () => {
-    assert.equal(isLocalAudioUrl('blob:https://x.example/abc'), true);
-    assert.equal(isLocalAudioUrl('audio/S1.opus'), false);
-    assert.equal(isLocalAudioUrl(null), false);
+  test('el identificador local es L más 16 hexadecimales y su audio se sirve en audio/<id>.opus', () => {
+    assert.equal(isLocalSongId('L0011223344556677'), true);
+    assert.equal(isLocalSongId('S0011223344556677'), false);
+    assert.equal(isLocalSongId('L00112233'), false);
+    assert.equal(isLocalSongId(null), false);
+    assert.equal(localAudioPath('L0011223344556677'), 'audio/L0011223344556677.opus');
   });
 
   test('el selector de archivos acepta audio y las extensiones habituales', () => {
@@ -275,6 +280,15 @@ function fakeIndexedDb({ records = [], failDelete = false } = {}) {
     transaction() {
       const tx = { oncomplete: null, onerror: null, onabort: null, error: null };
       const objectStore = {
+        get(key) {
+          const req = { onsuccess: null, result: undefined };
+          setTimeout(() => {
+            req.result = store.get(key);
+            req.onsuccess?.();
+            tx.oncomplete?.();
+          }, 0);
+          return req;
+        },
         delete(key) {
           const req = { onsuccess: null };
           setTimeout(() => {
@@ -370,5 +384,31 @@ describe('borrado de una canción local', () => {
 
   test('sin almacenamiento de audio en el navegador avisa en lugar de fallar en silencio', async () => {
     await assert.rejects(deleteLocalSong('L0011223344556677', {}), LocalAudioError);
+  });
+});
+
+describe('canción local servida por el service worker', () => {
+  test('con el service worker, el audio es audio/<id>.opus y no se crea URL de objeto', () => {
+    const record = { id: 'L0011223344556677', title: 'Local', durationS: 60, createdAt: 1_700_000_000_000, blob: new Blob([new Uint8Array(8)]) };
+    const song = songFromRecord(record, { viaServiceWorker: true });
+    assert.equal(song.audio, 'audio/L0011223344556677.opus');
+    assert.equal(song.local, true);
+    assert.equal(song.createdAt, record.createdAt);
+  });
+
+  test('sin service worker, el audio es una URL de objeto (blob:)', () => {
+    const record = { id: 'L0011223344556677', title: 'Local', durationS: 60, blob: new Blob([new Uint8Array(8)]) };
+    const song = songFromRecord(record);
+    assert.match(song.audio, /^blob:/);
+    URL.revokeObjectURL(song.audio);
+  });
+
+  test('readLocalRecord devuelve el registro guardado, o null si no existe o el id no es local', async () => {
+    const record = { id: 'L0011223344556677', title: 'Local', durationS: 60, blob: new Blob([new Uint8Array(8)]) };
+    const { env } = fakeIndexedDb({ records: [record] });
+    assert.equal(await readLocalRecord('L0011223344556677', env), record);
+    assert.equal(await readLocalRecord('L8899aabbccddeeff', env), null);
+    assert.equal(await readLocalRecord('S0011223344556677', env), null);
+    assert.equal(await readLocalRecord('L0011223344556677', {}), null);
   });
 });

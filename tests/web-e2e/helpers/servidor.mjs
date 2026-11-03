@@ -1,6 +1,8 @@
 // Servidor estático para las pruebas de extremo a extremo.
-// Sirve frontend/web (la raíz de Vercel) con node:http, sin dependencias externas.
+// Sirve frontend/web (la raíz de Vercel) con node:http, sin dependencias externas, y con la misma política de
+// contenido (CSP) que vercel.json, para que las pruebas fallen si la web carga algo que producción bloquearía.
 // Admite sustituciones por ruta (por ejemplo, un catálogo de prueba ficticio en data/songs.json).
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
@@ -27,6 +29,17 @@ const MIME_TYPES = {
   ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
 };
+
+// Cabecera Content-Security-Policy de vercel.json (regla «/(.*)»).
+function readCsp(root) {
+  try {
+    const config = JSON.parse(readFileSync(join(root, "vercel.json"), "utf8"));
+    const rule = config.headers?.find((item) => item.source === "/(.*)");
+    return rule?.headers?.find((item) => item.key === "Content-Security-Policy")?.value ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function mimeTypeOf(path) {
   return MIME_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
@@ -58,18 +71,31 @@ async function resolveInside(root, pathname) {
   }
 }
 
-function sendText(response, status, text, method) {
-  response.writeHead(status, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+function sendText(response, status, text, method, csp) {
+  response.writeHead(status, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", ...(csp ? { "Content-Security-Policy": csp } : {}) });
   response.end(method === "HEAD" ? undefined : text);
 }
 
-function sendBody(response, body, type, method) {
-  response.writeHead(200, {
-    "Content-Type": type,
-    "Content-Length": body.length,
-    "Cache-Control": "no-store",
-  });
-  response.end(method === "HEAD" ? undefined : body);
+// Con cabecera Range de un solo tramo responde 206, como Vercel: Chrome lo necesita para buscar dentro del audio.
+function sendBody(request, response, body, type, csp) {
+  const headers = { "Content-Type": type, "Cache-Control": "no-store", "Accept-Ranges": "bytes", ...(csp ? { "Content-Security-Policy": csp } : {}) };
+  const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? "");
+  if (range && (range[1] !== "" || range[2] !== "")) {
+    const size = body.length;
+    const start = range[1] === "" ? Math.max(0, size - Number(range[2])) : Number(range[1]);
+    const end = range[1] === "" || range[2] === "" ? size - 1 : Math.min(Number(range[2]), size - 1);
+    if (start >= size || start > end) {
+      response.writeHead(416, { ...headers, "Content-Range": `bytes */${size}` });
+      response.end();
+      return;
+    }
+    const part = body.subarray(start, end + 1);
+    response.writeHead(206, { ...headers, "Content-Length": part.length, "Content-Range": `bytes ${start}-${end}/${size}` });
+    response.end(request.method === "HEAD" ? undefined : part);
+    return;
+  }
+  response.writeHead(200, { ...headers, "Content-Length": body.length });
+  response.end(request.method === "HEAD" ? undefined : body);
 }
 
 /**
@@ -84,6 +110,7 @@ export async function startStaticServer({ root = WEB_ROOT, overrides = new Map()
     throw new Error(`No existe la raíz que se debe servir: ${absoluteRoot}`);
   }
 
+  const csp = readCsp(absoluteRoot);
   const server = createServer(async (request, response) => {
     try {
       const { pathname } = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -92,19 +119,19 @@ export async function startStaticServer({ root = WEB_ROOT, overrides = new Map()
       const override = overrides.get(decoded);
       if (override) {
         if (override.file && !(await isFile(override.file))) {
-          return sendText(response, 404, "No encontrado", request.method);
+          return sendText(response, 404, "No encontrado", request.method, csp);
         }
         const body = override.file ? await readFile(override.file) : Buffer.from(override.body ?? "", "utf8");
-        return sendBody(response, body, override.type ?? mimeTypeOf(decoded), request.method);
+        return sendBody(request, response, body, override.type ?? mimeTypeOf(decoded), csp);
       }
 
       const file = await resolveInside(absoluteRoot, decoded);
       if (!file) {
-        return sendText(response, 404, "No encontrado", request.method);
+        return sendText(response, 404, "No encontrado", request.method, csp);
       }
-      return sendBody(response, await readFile(file), mimeTypeOf(file), request.method);
+      return sendBody(request, response, await readFile(file), mimeTypeOf(file), csp);
     } catch (error) {
-      return sendText(response, 500, `Error del servidor de pruebas: ${error.message}`, request.method);
+      return sendText(response, 500, `Error del servidor de pruebas: ${error.message}`, request.method, csp);
     }
   });
 

@@ -1,11 +1,16 @@
-// Subida local de audio del cuidador (ADR-0012). Los archivos que el cuidador elige en SU navegador se decodifican
-// con decodeAudioData, se remuestrean a 48 kHz y se codifican a Opus con AudioEncoder (WebCodecs). El resultado se
+// Subida local de audio (ADR-0012): los archivos que la persona elige en SU navegador se decodifican con
+// decodeAudioData, se remuestrean a 48 kHz y se codifican a Opus con AudioEncoder (WebCodecs). El resultado se
 // empaqueta como Ogg Opus (el mismo contenedor que el catálogo) y se guarda en una base de IndexedDB de este navegador.
-// Nada sale del dispositivo: no hay fetch ni POST con el audio, no entra en la copia cifrada ni en el catálogo público.
+// Nada sale del dispositivo: no hay fetch ni POST con el audio y no entra en el catálogo público.
+//
+// Reproducción (ADR-0014): con el service worker activo, cada canción local se sirve en audio/<id>.opus desde esta
+// base (sw.js), una ruta del propio origen que admite la política de contenido (media-src 'self'). Sin service
+// worker se usa una URL de objeto (blob:).
 //
 // Las funciones puras (título, límites, tamaño, espacio, empaquetado Ogg) van exportadas para las pruebas
 // (tests/web-unit/subida-local.test.mjs) y no tocan el navegador. Lo que usa el navegador se resuelve dentro de las
-// funciones, nunca al cargar el módulo.
+// funciones, nunca al cargar el módulo. La carpeta js/cuidador/ conserva su nombre por las referencias de la
+// documentación; ya no hay modo cuidador.
 
 export const LOCAL_DB_NAME = 'reminiscencia-audio-local';
 export const LOCAL_DB_VERSION = 1;
@@ -271,9 +276,14 @@ export function buildOggOpus({
   return concatBytes(pages);
 }
 
-/** Decide si una URL es de una canción local (blob de este navegador). */
-export function isLocalAudioUrl(url) {
-  return typeof url === 'string' && url.startsWith('blob:');
+/** Identificador de canción local: «L» + 16 hexadecimales. */
+export function isLocalSongId(id) {
+  return typeof id === 'string' && /^L[0-9a-f]{16}$/.test(id);
+}
+
+/** Ruta del propio origen donde el service worker sirve una canción local. */
+export function localAudioPath(id) {
+  return `audio/${id}.opus`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -388,10 +398,22 @@ function revokeObjectUrls() {
   objectUrls.clear();
 }
 
-/** Canción con la forma del catálogo. El audio es una URL de objeto del blob guardado en este navegador. */
-export function songFromRecord(record) {
-  const url = URL.createObjectURL(record.blob);
-  objectUrls.set(record.id, url);
+// ¿Sirve el service worker las canciones locales? Solo si ya controla la página.
+function serviceWorkerServes(env) {
+  return Boolean(env.navigator?.serviceWorker?.controller);
+}
+
+/**
+ * Canción con la forma del catálogo. Con viaServiceWorker, el audio es audio/<id>.opus (lo sirve sw.js desde esta
+ * base); si no, una URL de objeto del blob guardado en este navegador.
+ */
+export function songFromRecord(record, { viaServiceWorker = false } = {}) {
+  let url;
+  if (viaServiceWorker) url = localAudioPath(record.id);
+  else {
+    url = URL.createObjectURL(record.blob);
+    objectUrls.set(record.id, url);
+  }
   return {
     id: record.id,
     title: record.title,
@@ -401,6 +423,7 @@ export function songFromRecord(record) {
     folder_id: null,
     duration_s: record.durationS,
     local: true,
+    createdAt: record.createdAt,
     audio: url,
   };
 }
@@ -410,12 +433,27 @@ export async function loadLocalSongs(env = globalThis) {
   revokeObjectUrls();
   try {
     const records = await readAllRecords(env);
+    const viaServiceWorker = serviceWorkerServes(env);
     return records
       .filter((record) => record && typeof record.id === 'string' && record.blob instanceof Blob)
-      .map(songFromRecord);
+      .map((record) => songFromRecord(record, { viaServiceWorker }));
   } catch (error) {
     console.error('Reminiscencia: no se pudieron cargar las canciones subidas desde este dispositivo.', error);
     return [];
+  }
+}
+
+/**
+ * Registro guardado de una canción local, o null. Lo usa el service worker (sw.js) para servir su audio, así que
+ * no lanza errores: sin base o sin registro devuelve null.
+ */
+export async function readLocalRecord(id, env = globalThis) {
+  if (!isLocalSongId(id)) return null;
+  try {
+    const record = await withStore('readonly', (store) => store.get(id), env);
+    return record && record.blob instanceof Blob ? record : null;
+  } catch {
+    return null;
   }
 }
 
@@ -620,7 +658,7 @@ export async function addLocalFiles(files, { onProgress = () => {}, env = global
         blob,
       };
       await putRecord(record, env);
-      added.push(songFromRecord(record));
+      added.push(songFromRecord(record, { viaServiceWorker: serviceWorkerServes(env) }));
     } catch (error) {
       const message = error instanceof LocalAudioError ? error.message : 'No se pudo añadir este archivo.';
       if (!(error instanceof LocalAudioError)) console.error('Reminiscencia: fallo al añadir audio local.', error);

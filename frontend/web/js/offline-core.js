@@ -6,7 +6,7 @@
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 4;
+export const SHELL_VERSION = 5;
 
 /** Prefijo de las cachés del shell; sirve para reconocer las antiguas al limpiar. */
 export const SHELL_CACHE_PREFIX = 'reminiscencia-shell-';
@@ -21,7 +21,7 @@ const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 
 const SHELL_PATHS = new Set(['/', '/index.html', '/manifest.webmanifest']);
 const SHELL_PATTERNS = [
-  /^\/js\/(?:[^/]+\/)*[^/]+\.js$/, // módulos, también los de js/paciente/ y js/cuidador/
+  /^\/js\/(?:[^/]+\/)*[^/]+\.js$/, // módulos, también los de js/ui/, js/views/ y js/cuidador/
   /^\/css\/[^/]+\.css$/,
   /^\/fonts\/[^/]+\.woff2$/,
   /^\/data\/[^/]+\.json$/,
@@ -39,54 +39,32 @@ export const SHELL_ASSETS = Object.freeze([
   '/index.html',
   '/manifest.webmanifest',
   '/css/tokens.css',
-  '/css/base.css',
-  '/css/paciente-shell.css',
-  '/css/paciente-escuchar.css',
-  '/css/paciente-listas.css',
-  '/css/cuidador-shell.css',
-  '/css/cuidador-biblioteca.css',
-  '/css/cuidador-perfiles.css',
-  '/css/cuidador-contenido.css',
-  '/fonts/atkinson-next-400.woff2',
-  '/fonts/atkinson-next-600.woff2',
-  '/fonts/atkinson-next-700.woff2',
+  '/css/app.css',
+  '/fonts/figtree-400.woff2',
+  '/fonts/figtree-600.woff2',
+  '/fonts/figtree-700.woff2',
+  '/fonts/figtree-800.woff2',
   '/js/app.js',
+  '/js/catalog.js',
+  '/js/local-library.js',
   '/js/offline-core.js',
-  '/js/pwa.js',
-  '/js/backup.js',
-  '/js/crypto.js',
   '/js/player.js',
-  '/js/prefs.js',
-  '/js/schema.js',
-  '/js/store.js',
+  '/js/pwa.js',
   '/js/intake.js',
-  '/data/catalog.json',
-  '/js/paciente/buscar.js',
-  '/js/paciente/carpetas.js',
-  '/js/paciente/escuchar.js',
-  '/js/paciente/listas.js',
-  '/js/paciente/salida.js',
-  '/js/paciente/shell.js',
-  '/js/cuidador/ajustes.js',
-  '/js/cuidador/asistente.js',
-  '/js/cuidador/biblioteca.js',
+  '/js/ui/dom.js',
+  '/js/ui/icons.js',
+  '/js/views/collection.js',
+  '/js/views/components.js',
+  '/js/views/home.js',
+  '/js/views/library.js',
+  '/js/views/player-ui.js',
+  '/js/views/search.js',
+  '/js/views/upload.js',
   '/js/cuidador/incidencias.js',
-  '/js/cuidador/inicio.js',
-  '/js/cuidador/lista-editor.js',
-  '/js/cuidador/listas-perfil.js',
-  '/js/cuidador/observacion-hoja.js',
-  '/js/cuidador/observaciones.js',
-  '/js/cuidador/opciones-paciente.js',
-  '/js/cuidador/panel.js',
-  '/js/cuidador/perfil.js',
-  '/js/cuidador/perfiles.js',
-  '/js/cuidador/recuerdo-editor.js',
-  '/js/cuidador/recuerdos.js',
-  '/js/cuidador/sesion.js',
-  '/js/cuidador/shell.js',
   '/js/cuidador/subida-local.js',
   '/data/songs.json',
   '/data/folders.json',
+  '/data/catalog.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/icon-maskable-512.png',
@@ -126,6 +104,16 @@ export function isShellRequest(url) {
 export function isDataRequest(url) {
   const path = pathOf(url);
   return path !== null && DATA_PATTERN.test(path);
+}
+
+const LOCAL_AUDIO_PATTERN = /^\/audio\/(L[0-9a-f]{16})\.opus$/;
+
+/** Identificador de una canción subida a este navegador si la ruta es /audio/L<16 hex>.opus (la sirve el service
+ *  worker desde IndexedDB; ADR-0014), o null. */
+export function localAudioId(url) {
+  const path = pathOf(url);
+  const match = path === null ? null : LOCAL_AUDIO_PATTERN.exec(path);
+  return match ? match[1] : null;
 }
 
 /** ¿Es un audio de la biblioteca (/audio/<id>.opus)? */
