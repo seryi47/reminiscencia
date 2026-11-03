@@ -16,6 +16,7 @@ import {
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 45_000;
 const HTML_TIMEOUT_MS = 30_000;
+const TITLE_TIMEOUT_MS = 8_000;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const require = createRequire(import.meta.url);
 
@@ -209,18 +210,57 @@ async function readPlaylistHtml(url, fetchImpl) {
   return extractPlaylistHtml(await response.text());
 }
 
-async function readVideoTitle(url, fetchImpl) {
-  const response = await fetchWithTimeout(fetchImpl, canonicalVideoUrl(videoId(url.href)), {
-    headers: {
-      Accept: 'text/html,application/xhtml+xml',
-      'Accept-Encoding': 'gzip, deflate',
-      'User-Agent': upstreamHeaders()['User-Agent'],
-    },
-  }, HTML_TIMEOUT_MS);
-  if (!response.ok) throw new YoutubeApiError(502, 'No se pudo leer el título original del vídeo de YouTube.');
-  const title = extractVideoTitleHtml(await response.text());
-  if (!title) throw new YoutubeApiError(502, 'YouTube no devolvió el título original del vídeo.');
-  return title;
+async function readVideoTitle(url, { fetchImpl, spawnImpl, env }) {
+  const id = videoId(url.href);
+  const canonicalUrl = canonicalVideoUrl(id);
+  const oembedUrl = new URL('https://www.youtube.com/oembed');
+  oembedUrl.searchParams.set('url', canonicalUrl);
+  oembedUrl.searchParams.set('format', 'json');
+
+  try {
+    const response = await fetchWithTimeout(fetchImpl, oembedUrl.href, {
+      headers: { Accept: 'application/json', 'User-Agent': upstreamHeaders()['User-Agent'] },
+    }, TITLE_TIMEOUT_MS);
+    if (response.ok) {
+      let data;
+      try {
+        data = await response.json();
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+      }
+      if (typeof data?.title === 'string' && data.title.trim()) {
+        return data.title.trim().slice(0, 200);
+      }
+    }
+  } catch (error) {
+    if (!(error instanceof YoutubeApiError)) throw error;
+  }
+
+  try {
+    const response = await fetchWithTimeout(fetchImpl, canonicalUrl, {
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Encoding': 'gzip, deflate',
+        'User-Agent': upstreamHeaders()['User-Agent'],
+      },
+    }, HTML_TIMEOUT_MS);
+    if (response.ok) {
+      const title = extractVideoTitleHtml(await response.text());
+      if (title) return title;
+    }
+  } catch (error) {
+    if (!(error instanceof YoutubeApiError)) throw error;
+  }
+
+  try {
+    const result = await runYtdlp(new URL(canonicalUrl), { spawnImpl, env });
+    const [item] = extractPlaylist({ url: new URL(canonicalUrl), ...result });
+    if (item?.title) return item.title;
+  } catch (error) {
+    if (!(error instanceof YoutubeApiError)) throw error;
+  }
+
+  throw new YoutubeApiError(502, 'No se pudo leer el título original del vídeo de YouTube.');
 }
 
 export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = process.env, fetchImpl = globalThis.fetch } = {}) {
@@ -231,12 +271,12 @@ export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = pro
     const url = playlistUrl || youtubeUrl(value);
     if (!url) throw new YoutubeApiError(400, 'La URL de YouTube no es válida.');
 
-    // Para un único vídeo no hace falta enumerar nada con yt-dlp. Esto evita
-    // que un bloqueo de la API de YouTube en la IP de Vercel impida convertir
-    // enlaces individuales. Leemos el título de la página pública para que el
-    // nombre del archivo y el del catálogo no se reduzcan al ID del vídeo.
+    // OEmbed es la fuente primaria del título; la página y yt-dlp son alternativas
+    // para los vídeos que no devuelven metadatos por esa vía.
     if (!playlistUrl) {
-      return json(200, { items: [{ url: url.href, title: await readVideoTitle(url, fetchImpl) }] });
+      return json(200, {
+        items: [{ url: url.href, title: await readVideoTitle(url, { fetchImpl, spawnImpl, env }) }],
+      });
     }
 
     try {

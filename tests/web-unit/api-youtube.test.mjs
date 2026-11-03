@@ -53,19 +53,50 @@ describe('API del importador de YouTube', () => {
   });
 
   test('lee el título original de un vídeo individual, incluidos los enlaces cortos', async () => {
-    const html = 'var ytInitialPlayerResponse = ' + JSON.stringify({
-      videoDetails: { videoId: 'abcdefghijk', title: 'Título original &amp; versión oficial' },
-    }) + ';';
+    let calls = 0;
     const response = await handlePlaylist(playlistRequest('https://youtu.be/abcdefghijk'), {
       spawnImpl: () => { throw new Error('No debe enumerar un vídeo individual'); },
       fetchImpl: async (url) => {
-        assert.equal(url, videoUrl);
-        return new Response(html, { status: 200 });
+        calls += 1;
+        const parsed = new URL(url);
+        assert.equal(parsed.pathname, '/oembed');
+        assert.equal(parsed.searchParams.get('url'), videoUrl);
+        return new Response(JSON.stringify({ title: 'Título original & versión oficial' }), { status: 200 });
       },
     });
     assert.equal(response.status, 200);
+    assert.equal(calls, 1);
     assert.deepEqual(await response.json(), { items: [
       { url: 'https://youtu.be/abcdefghijk', title: 'Título original & versión oficial' },
+    ] });
+  });
+
+  test('usa los metadatos HTML si YouTube no ofrece oEmbed', async () => {
+    const html = 'var ytInitialPlayerResponse = ' + JSON.stringify({
+      videoDetails: { videoId: 'abcdefghijk', title: 'Título alternativo' },
+    }) + ';';
+    const response = await handlePlaylist(playlistRequest(videoUrl), {
+      spawnImpl: () => { throw new Error('No debe necesitar yt-dlp si la página da el título'); },
+      fetchImpl: async (url) => new URL(url).pathname === '/oembed'
+        ? new Response('', { status: 404 })
+        : new Response(html, { status: 200 }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { items: [
+      { url: videoUrl, title: 'Título alternativo' },
+    ] });
+  });
+
+  test('usa yt-dlp como último recurso para el título del vídeo individual', async () => {
+    const response = await handlePlaylist(playlistRequest(videoUrl), {
+      spawnImpl: () => fakeProcess('abcdefghijk\tTítulo de yt-dlp\n'),
+      fetchImpl: async (url) => new URL(url).pathname === '/oembed'
+        ? new Response('', { status: 404 })
+        : new Response('<title>YouTube</title>', { status: 200 }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { items: [
+      { url: videoUrl, title: 'Título de yt-dlp' },
     ] });
   });
 
@@ -80,10 +111,13 @@ describe('API del importador de YouTube', () => {
 
   test('no sustituye un título inaccesible por el ID del vídeo', async () => {
     const response = await handlePlaylist(playlistRequest('https://youtu.be/abcdefghijk'), {
-      fetchImpl: async () => new Response('<title>YouTube</title>', { status: 200 }),
+      spawnImpl: () => fakeProcess('', 1),
+      fetchImpl: async (url) => new URL(url).pathname === '/oembed'
+        ? new Response('{}', { status: 200 })
+        : new Response('<title>YouTube</title>', { status: 200 }),
     });
     assert.equal(response.status, 502);
-    assert.match((await response.json()).error, /no devolvió el título original/);
+    assert.match((await response.json()).error, /título original/);
   });
 
   test('recupera una playlist desde ytInitialData si yt-dlp falla', async () => {
