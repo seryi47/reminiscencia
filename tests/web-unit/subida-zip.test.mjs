@@ -13,8 +13,12 @@ import { buildZip, fakeAudio, zipFile } from './zip-fixtures.mjs';
 
 const S = STATES;
 const keys = () => { let n = 0; return () => { n += 1; return `g${n}`; }; };
-const settle = async () => {
-  for (let i = 0; i < 60; i += 1) await new Promise((resolve) => setImmediate(resolve));
+const settle = async (tracker) => {
+  const deadline = Date.now() + 5000;
+  while (tracker.items().some((item) => ![S.SAVED, S.ERROR].includes(item.state))) {
+    if (Date.now() >= deadline) throw new Error('La cola de ZIP no terminó dentro del tiempo esperado.');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
 };
 
 function albumZip() {
@@ -122,7 +126,7 @@ describe('gestor con canciones de un ZIP', () => {
       source.file.open = async () => { log.push(`abrir ${source.name}`); return open(); };
     }
     tracker.addSources(sources);
-    await settle();
+    await settle(tracker);
     assert.deepEqual(log, [
       'abrir 01 Vals de la tarde.mp3',
       'convertir 01 Vals de la tarde.mp3 (4096 bytes, File)',
@@ -150,7 +154,7 @@ describe('gestor con canciones de un ZIP', () => {
     ]), 'Mixto.zip');
     const roto = new File([fakeAudio(8, 100)], 'Roto.zip');
     tracker.addSources(await expandSelection([roto, cifrado], { newGroupKey: keys() }));
-    await settle();
+    await settle(tracker);
     const items = tracker.items();
     assert.deepEqual(items.map((item) => [item.name, item.state, item.error, item.retryable]), [
       ['Roto.zip', S.ERROR, DAMAGED_TEXT, false],
