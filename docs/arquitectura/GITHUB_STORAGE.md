@@ -1,6 +1,6 @@
 # Almacenamiento en GitHub: audio, catálogo y límites
 
-- Estado: 2026-11-02, con la interfaz única (ADR-0009).
+- Estado: 2026-11-02; nota del 2026-11-03: la interfaz ya no tiene usuarios (ADR-0015) y las canciones también entran por el buzón `audio-library/buzon/` (`buzon.yml`, ADR-0014), que borra cada archivo tras procesarlo, aunque el original queda en el historial de git y cuenta para su tamaño.
 - Decisiones: ADR-0003 (almacenamiento en el ecosistema GitHub, parcialmente superada), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo), ADR-0008 (entrada por incidencias) y ADR-0010 (procesado y publicación separados).
 - Código: `backend/sonidos/` (`limits.py`, `catalog.py`, `pipeline.py`, `publish.py`, `paquete.py`) y `scripts/check_repo_limits.py`.
 
@@ -66,7 +66,7 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 
 ## 6. Flujo de incidencias (ADR-0008, ADR-0010)
 
-1. **Petición.** El propietario abre una incidencia con la etiqueta `biblioteca`. Su cuerpo son líneas `clave: valor` (`action: import` con `url`, `license` y `title`, o `action: organize` con un `payload` en JSON de una línea). La interfaz (Biblioteca del modo cuidador, «Gestionar la biblioteca») prepara el texto y abre el formulario de nueva incidencia de GitHub con el texto ya escrito; lo envía el propietario. El workflow solo actúa si el autor es el propietario y la etiqueta está al crear la incidencia: si se añade después, no se lanza (ADR-0008).
+1. **Petición.** Una cuenta con permiso de escritura abre una incidencia con la etiqueta `biblioteca`. Su cuerpo son líneas `clave: valor` (`action: import` con `url`, `license` y `title`, o `action: organize` con un `payload` en JSON de una línea). Para importar, la hoja «Subir canciones» de la web («Desde Internet Archive») prepara el texto y abre el formulario de nueva incidencia de GitHub con el texto ya escrito; `organize` se escribe a mano (la hoja «Gestionar la biblioteca» del modo cuidador se retiró con ADR-0015). El workflow solo actúa si el autor tiene permiso de escritura y la etiqueta está al crear la incidencia: si se añade después, no se lanza (ADR-0008, enmienda de 2026-11-02).
 2. **Validación.** `scripts/issue_request.py` valida la petición con `sonidos/issue_request.py`: claves y operaciones en lista blanca, identificadores con formato fijo, límites de longitud y booleanos JSON estrictos.
 3. **Procesado (`procesar`, sin token).** `scripts/ci_library.py` aplica la petición: importa (`pipeline.py`) o organiza (crea, renombra o borra carpetas, y edita canciones). Después regenera los datos públicos en su copia, pero no los empaqueta. `scripts/empaquetar_cambios.py` deja en el artefacto `biblioteca-paquete` solo el catálogo y el audio que cambiaron, con un día de retención.
 4. **Publicación (`publicar`, con token solo para subir).** Descarga el paquete y lo valida (`backend/sonidos/paquete.py`) antes de tocar el repositorio:

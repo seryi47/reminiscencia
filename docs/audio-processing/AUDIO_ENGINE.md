@@ -1,5 +1,7 @@
 # Motor de audio de Reminiscencia
 
+> **Nota de estado (2026-11-03).** La parte 2 describe el reproductor de la interfaz única (ADR-0009), **retirado** por [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) (decisión 9): ya no hay modos paciente y cuidador, límite de volumen por perfil, arranque al 60 % con fundido, temporizador, bloqueo de pantalla ni eventos del estudio. El reproductor actual (cola, aleatorio, repetir y volumen) está en [PLAYER.md](../user-experience/PLAYER.md). La parte 1 no describe el buzón (`buzon.yml` y `backend/sonidos/buzon.py`, ADR-0014), que convierte con el mismo perfil `opus-64k`.
+
 Estado: la parte 1 describe `main` (8a19a09), ya fusionado (`main` está ahora en 7f93756, que solo añade `web.yml`, no descrito aquí). La parte 2 describe `frontend/web/js/player.js` de la interfaz única (feat/ui-publica, commit 9d4ae8f; ADR-0009). Las frases de la parte 2 que dicen que el reproductor no está conectado a la interfaz son anteriores a la integración y están pendientes de revisión (ver ROADMAP). La rama feat/gestion-backend (cabeza 22b444a, que incluye 679b11c) cambia el workflow y varios módulos de la parte 1; esos cambios no se describen aquí (ver Pendiente).
 
 Revisado con el código el 2026-11-02. Las constantes se toman del código. Lo que no se ha podido comprobar, o lo que sigue sin fusionar, está en [Pendiente](#pendiente).
@@ -150,7 +152,9 @@ Los valores son los que declara `limits.py`, que indica haberlos verificado en d
 - El job `test` de `backend.yml` instala ffmpeg, instala el paquete con `[dev]` y ejecuta `python -m pytest -q`.
 - Ejecutadas en esta revisión sobre el código de `main` (8a19a09): `python3 -m pytest -q` en `backend/`, con Python 3.14.6, pytest 9.0.3 y ffmpeg/ffprobe en el PATH. Resultado: 42 pruebas aprobadas, código de salida 0.
 
-## 2. Motor de reproducción en la web (feat/ui-publica)
+## 2. Motor de reproducción en la web (feat/ui-publica; retirado por ADR-0015)
+
+> Retirado. Esta parte se conserva como registro del reproductor de ADR-0009. El actual está en `docs/user-experience/PLAYER.md`.
 
 Estado: describe la rama feat/ui-publica pendiente de fusión (commit cc8ef01). Código: `frontend/web/js/player.js`. Pruebas: `tests/web-unit/player.test.mjs`.
 
@@ -311,7 +315,7 @@ Cada evento incluye `type`, `at` (ISO 8601), `songId`, `position` (segundos, 0,1
 - **Ejecución de extremo a extremo.** En esta revisión no se ha ejecutado el pipeline con una descarga real, ni de Internet Archive ni de un fichero directo. Las pruebas de backend sí se han ejecutado (1.10).
 - **`release.py`.** No está conectado a ningún workflow.
 
-**Reproductor (parte 2)**
+**Reproductor (parte 2; retirado por ADR-0015, sin seguimiento)**
 
 - **iOS e iPadOS (DESIGN.md, sección 16).** Verificar GainNode, Wake Lock, Media Session y la persistencia de almacenamiento. No se puede hacer desde este repositorio.
 - **Conexión con la interfaz.** Ningún fichero versionado crea el reproductor. En el worktree local, nadie llama a `createPlayer` ni a `setProfile`: hay que pasar `{ id, volumeLimit, repeatList }` del perfil, o `repeatList` no llega al reproductor. `docs/user-experience/PLAYER.md` recoge lo mismo: en feat/ui-publica ningún módulo importa `createPlayer`.

@@ -1,8 +1,14 @@
 # ADR-0012: Audio subido desde este dispositivo, solo en el navegador
 
-- Estado: aceptada (ampliada a la APK por ADR-0013)
+- Estado: aceptada (ampliada a la APK por ADR-0013; sustituida en parte por [ADR-0015](ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) el 2026-11-03, ver la nota de estado)
 - Fecha: 2026-11-02
 - Relaciona: ADR-0003 (audio en GitHub), ADR-0006 (audio publicado en la web), ADR-0007 (catálogo), ADR-0008 (entrada por incidencias) y ADR-0009 (interfaz única y datos locales del cuidador)
+
+> **Nota de estado (2026-11-03).** Con [ADR-0015](ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) la web no tiene usuarios ni modo cuidador: la subida es la opción «Solo en este navegador» de la hoja «Subir canciones», al alcance de cualquiera que use ese navegador. Siguen vigentes el origen, el almacenamiento en `reminiscencia-audio-local`, las tasas de Opus, los límites y el aviso a navegadores sin soporte (decisiones 1 a 5 y 8). Cambian:
+> - **Decisión 6 y consecuencia «Metadatos fuera de la copia»:** la copia cifrada `.rmc` se retiró (ADR-0015, decisión 4), así que el pendiente de confirmar qué entra en ella ya no aplica.
+> - **Decisión 7:** la CSP de producción (`media-src 'self'`) no admite URL de objeto. Con el service worker activo, cada canción local se pide en `audio/L<16 hex>.opus` y `sw.js` la sirve desde IndexedDB, con rangos; sin service worker se usa la URL de objeto, que la CSP bloquea (ADR-0015, decisión 7). El reproductor es el de ADR-0015, sin modo paciente.
+> - **Decisión 9:** `SHELL_VERSION` es hoy 5.
+> - **Consecuencia sobre el borrado:** resuelto el pendiente de los vínculos huérfanos. Al borrar una canción local se quita también de «Me gusta» y de las listas (`forgetSong` en `js/local-library.js`). Ya no hay perfiles a los que vincularla.
 
 ## Contexto
 

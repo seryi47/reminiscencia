@@ -2,6 +2,7 @@
 
 - **Proyecto:** Reminiscencia (rama `feat/investigacion`).
 - **Versión:** 0.1, borrador de diseño (2 de noviembre de 2026).
+- **Nota de estado (2026-11-03):** el instrumento que describe este borrador (perfiles, presentaciones C0 a C2 con recuerdo y fotografía, familiaridad y preferencia por canción, observaciones y registro del estudio de DESIGN 1.0) se **retiró** de la web y de la APK con [ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md). Las referencias a DESIGN y a SECURITY §2.1, §3.1 a §3.3 y §5 de este texto son las de la versión 1.0, que queda en git. Cómo estudiar H2, H3 y H4 sin ese registro está pendiente de decisión (ROADMAP, «Investigación»). El diseño de las hipótesis, los instrumentos clínicos y el marco ético siguen siendo válidos como borrador.
 - **Estado:** no es un protocolo aprobado. Sin informe favorable del comité de ética no se contacta con personas ni se recogen datos de participantes (sección 6).
 
 ## 0. Alcance y convenciones
