@@ -5,7 +5,8 @@ scripts/issue_request.py deja en GITHUB_ENV tras validarla. Este script nunca le
 comandos: vuelve a validar la petición con sonidos.issue_request y la aplica:
 
   import     descarga, convierte y añade la canción al catálogo (sonidos.pipeline)
-  organize   crea, renombra o borra carpetas y edita canciones, incluida su publicación (public)
+  organize   crea, renombra, edita (nombre y artista del álbum) o borra carpetas y edita canciones, incluida su
+             publicación (public). Al borrar una carpeta se borra también su portada (ADR-0016).
 
 Siempre termina regenerando la parte pública de la web, para que catálogo y web coincidan.
 Imprime el resultado como JSON. Ante cualquier error imprime {"error": "..."} y sale con código 1.
@@ -25,10 +26,12 @@ sys.path.insert(0, str(ROOT / "backend"))
 from sonidos import catalog  # noqa: E402
 from sonidos.issue_request import request_from_env  # noqa: E402
 from sonidos.pipeline import import_url  # noqa: E402
+from sonidos.portadas import COVER_ID  # noqa: E402
 from sonidos.publish import sync_public  # noqa: E402
 
 CATALOG = ROOT / "audio-library" / "indexes" / "catalog.json"
 AUDIO = ROOT / "audio-library" / "audio"
+COVERS = ROOT / "audio-library" / "covers"
 STAGING = ROOT / "audio-library" / "staging"
 WEB = ROOT / "frontend" / "web"
 
@@ -37,9 +40,15 @@ def organize(data: dict, payload: dict) -> dict:
     """Aplica una operación ya validada por sonidos.issue_request.validate_payload."""
     operation = payload["op"]
     if operation == "create_folder":
-        return {"folder": catalog.create_folder(data, payload["name"], payload.get("parent_id"))}
+        return {"folder": catalog.create_folder(data, payload["name"], payload.get("parent_id"), payload.get("artist"))}
     if operation == "rename_folder":
         return {"folder": catalog.rename_folder(data, payload["folder_id"], payload["name"])}
+    if operation == "edit_folder":
+        if "artist" in payload:
+            folder = catalog.edit_folder(data, payload["folder_id"], payload["name"], payload["artist"])
+        else:
+            folder = catalog.edit_folder(data, payload["folder_id"], payload["name"])
+        return {"folder": folder}
     if operation == "delete_folder":
         catalog.delete_folder(data, payload["folder_id"])
         return {"deleted": payload["folder_id"]}
@@ -47,6 +56,18 @@ def organize(data: dict, payload: dict) -> dict:
         fields = {key: value for key, value in payload.items() if key not in ("op", "song_id")}
         return {"song": catalog.update_song(data, payload["song_id"], fields)}
     raise catalog.CatalogError(f"operación desconocida: {operation}")
+
+
+def _remove_cover(folder_id: str) -> None:
+    """La portada de una carpeta borrada ya no la usa nadie. Solo ids con portada posible (F + 16 hexadecimales)."""
+    if not COVER_ID.fullmatch(folder_id):
+        return
+    if COVERS.is_symlink():
+        raise catalog.CatalogError("enlace simbólico en audio-library/covers")
+    cover = COVERS / f"{folder_id}.jpg"
+    if cover.is_symlink():
+        raise catalog.CatalogError(f"enlace simbólico en la portada {folder_id}.jpg")
+    cover.unlink(missing_ok=True)
 
 
 def run(env: Mapping[str, str]) -> dict:
@@ -60,7 +81,9 @@ def run(env: Mapping[str, str]) -> dict:
         data = catalog.load(CATALOG)
         result = organize(data, request["payload"])
         catalog.save(CATALOG, data)
-    result["web"] = sync_public(catalog_path=CATALOG, audio_dir=AUDIO, web_dir=WEB)
+        if request["payload"]["op"] == "delete_folder":
+            _remove_cover(request["payload"]["folder_id"])
+    result["web"] = sync_public(catalog_path=CATALOG, audio_dir=AUDIO, web_dir=WEB, covers_dir=COVERS)
     return result
 
 

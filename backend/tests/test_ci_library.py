@@ -19,6 +19,7 @@ def ci(tmp_path, monkeypatch):
     base = tmp_path / "repo"
     monkeypatch.setattr(module, "CATALOG", base / "audio-library" / "indexes" / "catalog.json")
     monkeypatch.setattr(module, "AUDIO", base / "audio-library" / "audio")
+    monkeypatch.setattr(module, "COVERS", base / "audio-library" / "covers")
     monkeypatch.setattr(module, "STAGING", base / "audio-library" / "staging")
     monkeypatch.setattr(module, "WEB", base / "frontend" / "web")
     return module
@@ -131,3 +132,51 @@ def test_main_prints_the_result_as_json_and_exits_0(ci, monkeypatch, capsys):
     assert ci.main() == 0
     output = json.loads(capsys.readouterr().out)
     assert output["folder"]["name"] == "Jazz" and output["web"]["folders"] == 1
+
+
+def test_organize_album_with_artist_reaches_folders_json(ci):
+    created = _organize(ci, {"op": "create_folder", "name": "Boleros", "artist": "Antonio Machín"})
+    folder_id = created["folder"]["id"]
+    assert folder_id.startswith("F") and len(folder_id) == 17
+
+    edited = _organize(ci, {"op": "edit_folder", "folder_id": folder_id, "name": "Boleros de siempre"})
+    assert edited["folder"] == {"id": folder_id, "name": "Boleros de siempre", "parent_id": None, "artist": "Antonio Machín"}
+    folders = json.loads((ci.WEB / "data" / "folders.json").read_text(encoding="utf-8"))
+    assert folders == [edited["folder"]]
+
+    cleared = _organize(ci, {"op": "edit_folder", "folder_id": folder_id, "name": "Boleros", "artist": ""})
+    assert "artist" not in cleared["folder"]
+    assert "artist" not in json.loads((ci.WEB / "data" / "folders.json").read_text(encoding="utf-8"))[0]
+
+
+def test_organize_edit_song_changes_title_and_artist(ci):
+    song_id = _seed_private_song(ci)
+
+    result = _organize(ci, {"op": "edit_song", "song_id": song_id, "title": "Ojos verdes", "artist": "Concha Piquer"})
+
+    song = catalog.load(ci.CATALOG)["songs"][0]
+    assert result["song"]["title"] == song["title"] == "Ojos verdes"
+    assert song["artist"] == "Concha Piquer"
+
+
+def test_organize_edit_folder_on_a_missing_folder_fails(ci):
+    with pytest.raises(catalog.CatalogError, match="no existe la carpeta"):
+        _organize(ci, {"op": "edit_folder", "folder_id": "F0123456789abcdef", "name": "x"})
+
+
+def test_deleting_an_album_removes_its_cover_and_its_public_copy(ci):
+    folder_id = _organize(ci, {"op": "create_folder", "name": "Tangos"})["folder"]["id"]
+    data = catalog.load(ci.CATALOG)
+    catalog.set_cover(data, folder_id, f"covers/{folder_id}.jpg")
+    catalog.save(ci.CATALOG, data)
+    ci.COVERS.mkdir(parents=True)
+    (ci.COVERS / f"{folder_id}.jpg").write_bytes(b"jpeg")
+    _organize(ci, {"op": "edit_folder", "folder_id": folder_id, "name": "Tangos", "artist": "Carlos Gardel"})
+    assert (ci.WEB / "covers" / f"{folder_id}.jpg").read_bytes() == b"jpeg"
+    [carpeta] = json.loads((ci.WEB / "data" / "folders.json").read_text(encoding="utf-8"))
+    assert carpeta["cover"] == f"covers/{folder_id}.jpg" and carpeta["artist"] == "Carlos Gardel"
+
+    _organize(ci, {"op": "delete_folder", "folder_id": folder_id})
+
+    assert not (ci.COVERS / f"{folder_id}.jpg").exists()
+    assert not (ci.WEB / "covers" / f"{folder_id}.jpg").exists()

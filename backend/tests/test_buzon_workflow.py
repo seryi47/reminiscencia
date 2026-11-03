@@ -35,6 +35,7 @@ def test_runs_only_on_pushes_to_main_that_touch_the_mailbox():
     assert "\n  push:\n    branches: [main]\n" in trigger
     assert '"audio-library/buzon/**"' in trigger
     assert '"!audio-library/buzon/README.md"' in trigger
+    assert '"!audio-library/buzon/portadas/.gitkeep"' in trigger  # la carpeta de portadas no lanza el workflow
     for other in ("issues", "pull_request", "workflow_run", "schedule"):
         assert other not in trigger
 

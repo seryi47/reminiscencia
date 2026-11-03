@@ -420,6 +420,69 @@ def test_rename_and_delete_folder_are_accepted():
     assert deleted == {"op": "delete_folder", "folder_id": FOLDER}
 
 
+ALBUM = "F0123456789abcdef"
+
+
+def test_folder_ids_accept_the_new_f_format_and_the_previous_one():
+    for folder_id in (ALBUM, FOLDER):
+        assert validate_payload({"op": "delete_folder", "folder_id": folder_id})["folder_id"] == folder_id
+    for bad in ("f0123456789abcdef", "F0123456789ABCDEF", "F0123456789abcde", "S0123456789abcdef", "F0123456789abcdef0"):
+        with pytest.raises(RequestError, match="id de carpeta"):
+            validate_payload({"op": "delete_folder", "folder_id": bad})
+
+
+def test_create_folder_accepts_an_optional_artist_of_up_to_80_characters():
+    payload = validate_payload({"op": "create_folder", "name": "Boleros", "artist": "  Antonio Machín  "})
+
+    assert payload == {"op": "create_folder", "name": "Boleros", "parent_id": None, "artist": "Antonio Machín"}
+    assert validate_payload({"op": "create_folder", "name": "B", "artist": ""})["artist"] == ""
+    assert len(validate_payload({"op": "create_folder", "name": "B", "artist": "a" * 80})["artist"]) == 80
+    with pytest.raises(RequestError, match="artist supera los 80"):
+        validate_payload({"op": "create_folder", "name": "B", "artist": "a" * 81})
+
+
+def test_edit_folder_needs_folder_id_and_name_and_accepts_an_optional_artist():
+    request = parse_request(organize({"op": "edit_folder", "folder_id": ALBUM, "name": " Coplas ", "artist": "Concha Piquer"}))
+
+    assert request["payload"] == {"op": "edit_folder", "folder_id": ALBUM, "name": "Coplas", "artist": "Concha Piquer"}
+    assert validate_payload({"op": "edit_folder", "folder_id": ALBUM, "name": "Coplas"}) == {
+        "op": "edit_folder", "folder_id": ALBUM, "name": "Coplas",
+    }
+    assert validate_payload({"op": "edit_folder", "folder_id": ALBUM, "name": "C", "artist": " "})["artist"] == ""
+    with pytest.raises(RequestError, match="falta el campo name"):
+        validate_payload({"op": "edit_folder", "folder_id": ALBUM, "artist": "x"})
+    with pytest.raises(RequestError, match="falta el campo folder_id"):
+        validate_payload({"op": "edit_folder", "name": "x"})
+    with pytest.raises(RequestError, match="name no puede estar vacío"):
+        validate_payload({"op": "edit_folder", "folder_id": ALBUM, "name": "  "})
+    with pytest.raises(RequestError, match="name supera los 80"):
+        validate_payload({"op": "edit_folder", "folder_id": ALBUM, "name": "n" * 81})
+    with pytest.raises(RequestError, match="artist supera los 80"):
+        validate_payload({"op": "edit_folder", "folder_id": ALBUM, "name": "n", "artist": "a" * 81})
+    with pytest.raises(RequestError, match="campo desconocido en edit_folder: cover"):
+        validate_payload({"op": "edit_folder", "folder_id": ALBUM, "name": "n", "cover": "covers/x.jpg"})
+    with pytest.raises(RequestError, match="artist debe ser texto"):
+        validate_payload({"op": "edit_folder", "folder_id": ALBUM, "name": "n", "artist": None})
+
+
+@pytest.mark.parametrize("field", ["name", "artist"])
+@pytest.mark.parametrize("op", ["create_folder", "edit_folder"])
+@pytest.mark.parametrize("separator", ["\n", "\r", "\u2028", "\u2029", "\u202e"])
+def test_album_name_and_artist_are_a_single_line(op, field, separator):
+    data = {"op": op, "name": "Álbum", "folder_id": ALBUM, "artist": "Artista"}
+    if op == "create_folder":
+        del data["folder_id"]
+    data[field] = f"una{separator}dos"
+    with pytest.raises(RequestError, match="caracteres de control"):
+        validate_payload(data)
+
+
+def test_edit_song_changes_title_and_artist():
+    request = parse_request(organize({"op": "edit_song", "song_id": SONG, "title": " Ojos verdes ", "artist": "Concha Piquer"}))
+
+    assert request["payload"] == {"op": "edit_song", "song_id": SONG, "title": "Ojos verdes", "artist": "Concha Piquer"}
+
+
 def test_payload_must_include_op():
     with pytest.raises(RequestError, match="falta el campo op"):
         validate_payload({"name": "x"})

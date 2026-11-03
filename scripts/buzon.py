@@ -1,8 +1,9 @@
 """Punto de entrada del job 'procesar' de buzon.yml (ADR-0014).
 
-Procesa las subidas a audio-library/buzon/ del push que lanzó el workflow (sonidos.buzon.procesar_buzon): las
-convierte a Opus, las añade al catálogo y las borra del buzón. No confirma ni sube: después, el job empaqueta los
-cambios con scripts/empaquetar_cambios.py (ACTION=buzon) y 'publicar' los valida y los aplica.
+Procesa las subidas a audio-library/buzon/ del push que lanzó el workflow (sonidos.buzon.procesar_buzon): convierte
+las canciones a Opus y las portadas de audio-library/buzon/portadas/ a JPEG de 640×640 (ADR-0016), las añade al
+catálogo y las borra del buzón. No confirma ni sube: después, el job empaqueta los cambios con
+scripts/empaquetar_cambios.py (ACTION=buzon) y 'publicar' los valida y los aplica.
 
 Entradas, solo por variables de entorno (nunca por la línea de comandos):
   ACTOR                 la cuenta de GitHub que hizo el push (github.actor)

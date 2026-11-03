@@ -13,9 +13,12 @@ Estructura del paquete:
                                   estado: A (nuevo), M (modificado) o D (borrado)
   cambios/<ruta>                  contenido de cada fichero A o M
 
-La acción 'buzon' (workflow buzon.yml, ADR-0014) es la única que puede borrar archivos de audio-library/buzon/, y
-solo borrarlos: nunca añadirlos ni cambiarlos. Solo se admiten nombres válidos del buzón (sonidos.buzon.nombre_valido)
-y nunca sus ficheros fijos (README.md, .gitkeep).
+La acción 'buzon' (workflow buzon.yml, ADR-0014) es la única que puede borrar archivos de audio-library/buzon/ y de
+audio-library/buzon/portadas/, y solo borrarlos: nunca añadirlos ni cambiarlos. Solo se admiten nombres válidos del
+buzón (sonidos.buzon.nombre_valido) y nunca sus ficheros fijos (README.md, .gitkeep).
+
+Portadas (ADR-0016): audio-library/covers/<ID>.jpg (se añade, cambia o borra con el catálogo) y su copia pública,
+frontend/web/covers/<ID>.jpg, que la publicación regenera. ID es S o F seguida de 16 hexadecimales; solo .jpg.
 """
 
 from __future__ import annotations
@@ -29,8 +32,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from sonidos.buzon import BUZON_DIRECTORY, PLACEHOLDERS, nombre_valido
+from sonidos.buzon import BUZON_DIRECTORY, PLACEHOLDERS, PORTADAS_DIRECTORY, nombre_valido
 from sonidos.issue_request import ACTIONS as ISSUE_ACTIONS
+from sonidos.portadas import COVER_NAME, COVERS_DIRECTORY, WEB_COVERS_DIRECTORY
 from sonidos.publish import sync_public
 
 BUZON_ACTION = "buzon"
@@ -49,6 +53,7 @@ WEB_AUDIO_DIRECTORY = "frontend/web/audio"
 AUDIO_DIRECTORIES = (SOURCE_AUDIO_DIRECTORY, WEB_AUDIO_DIRECTORY)
 DATA_DIRECTORY = "frontend/web/data"
 DATA_FILES = frozenset({"songs.json", "folders.json", "catalog.json"})
+COVER_DIRECTORIES = (COVERS_DIRECTORY, WEB_COVERS_DIRECTORY)
 AUDIO_NAME = re.compile(r"S[0-9a-f]{16}\.opus")
 STATES = ("A", "M", "D")
 MAX_CHANGES = 2000
@@ -83,35 +88,43 @@ def ruta_permitida(ruta: object) -> bool:
     directory, _, name = ruta.rpartition("/")
     if directory in AUDIO_DIRECTORIES:
         return AUDIO_NAME.fullmatch(name) is not None
+    if directory in COVER_DIRECTORIES:
+        return COVER_NAME.fullmatch(name) is not None
     if directory == DATA_DIRECTORY:
         return name in DATA_FILES
     return False
 
 
 def ruta_buzon(ruta: object) -> bool:
-    """Un archivo directo del buzón con nombre válido, que no sea uno de sus ficheros fijos (ADR-0014)."""
+    """Un archivo directo del buzón o de su carpeta de portadas, con nombre válido, que no sea uno de sus ficheros
+    fijos (ADR-0014, ADR-0016)."""
     if not isinstance(ruta, str):
         return False
     directory, _, name = ruta.rpartition("/")
-    return directory == BUZON_DIRECTORY and name not in PLACEHOLDERS and nombre_valido(name)
+    return directory in (BUZON_DIRECTORY, PORTADAS_DIRECTORY) and name not in PLACEHOLDERS and nombre_valido(name)
 
 
 def borrado_permitido(ruta: str) -> bool:
-    """Un paquete solo puede borrar audio de la biblioteca (una canción despublicada o retirada) y, con la acción
-    'buzon', los archivos ya procesados del buzón. Nunca borra el catálogo ni los datos públicos: esos solo se
-    reescriben."""
+    """Un paquete solo puede borrar audio y portadas de la biblioteca (una canción despublicada, una carpeta borrada)
+    y, con la acción 'buzon', los archivos ya procesados del buzón. Nunca borra el catálogo ni los datos públicos:
+    esos solo se reescriben."""
     if ruta_buzon(ruta):
         return True
     directory, _, name = ruta.rpartition("/")
+    if directory in COVER_DIRECTORIES:
+        return COVER_NAME.fullmatch(name) is not None
     return directory in AUDIO_DIRECTORIES and AUDIO_NAME.fullmatch(name) is not None
 
 
 def ruta_derivada(ruta: str) -> bool:
-    """La parte pública que sale del catálogo y del audio: los tres datos de la web y el audio publicado. El procesado
-    no la empaqueta, y la publicación la regenera con sonidos.publish.sync_public (ADR-0010)."""
+    """La parte pública que sale del catálogo, del audio y de las portadas: los tres datos de la web, el audio
+    publicado y las portadas publicadas. El procesado no la empaqueta, y la publicación la regenera con
+    sonidos.publish.sync_public (ADR-0010, ADR-0016)."""
     directory, _, name = ruta.rpartition("/")
     if directory == WEB_AUDIO_DIRECTORY:
         return AUDIO_NAME.fullmatch(name) is not None
+    if directory == WEB_COVERS_DIRECTORY:
+        return COVER_NAME.fullmatch(name) is not None
     return directory == DATA_DIRECTORY and name in DATA_FILES
 
 
@@ -311,11 +324,15 @@ def publish_package(package: Path, repo: Path, *, head: str) -> dict:
     if not (repo / CATALOG_FILE).is_file():
         # Sin catálogo, sync_public lo tomaría por vacío y borraría toda la parte pública.
         raise PaqueteError("falta el catálogo en main")
-    _refuse_links(repo, CATALOG_FILE, DATA_DIRECTORY, WEB_AUDIO_DIRECTORY, SOURCE_AUDIO_DIRECTORY)
+    _refuse_links(
+        repo, CATALOG_FILE, DATA_DIRECTORY, WEB_AUDIO_DIRECTORY, SOURCE_AUDIO_DIRECTORY,
+        COVERS_DIRECTORY, WEB_COVERS_DIRECTORY,
+    )
     before = _public_digests(repo)
     try:
         web = sync_public(
             catalog_path=repo / CATALOG_FILE, audio_dir=repo / SOURCE_AUDIO_DIRECTORY, web_dir=repo / WEB_DIRECTORY,
+            covers_dir=repo / COVERS_DIRECTORY,
         )
     except (KeyError, TypeError, AttributeError, ValueError) as error:
         raise PaqueteError(f"el catálogo no se puede regenerar la parte pública: {error!r}") from error
@@ -354,11 +371,15 @@ def _check_only_expected(repo: Path, expected: set[str], message: str) -> None:
 
 
 def _public_digests(repo: Path) -> dict[str, str]:
-    """Huella de cada fichero de la parte pública del checkout: los datos de la web y el audio publicado."""
+    """Huella de cada fichero de la parte pública del checkout: los datos de la web, el audio y las portadas
+    publicados."""
     rutas = [f"{DATA_DIRECTORY}/{name}" for name in sorted(DATA_FILES)]
     audio = repo / WEB_AUDIO_DIRECTORY
     if audio.is_dir():
         rutas += [f"{WEB_AUDIO_DIRECTORY}/{file.name}" for file in sorted(audio.glob("*.opus"))]
+    covers = repo / WEB_COVERS_DIRECTORY
+    if covers.is_dir():
+        rutas += [f"{WEB_COVERS_DIRECTORY}/{file.name}" for file in sorted(covers.glob("*.jpg"))]
     digests = {}
     for ruta in rutas:
         path = repo / ruta

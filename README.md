@@ -55,6 +55,16 @@ Ten en cuenta:
 - Desde el navegador, GitHub admite hasta 25 MiB por archivo. Usa MP3 o FLAC antes que WAV: cuatro minutos de WAV ocupan unos 42 MB.
 - Lo que se sube queda en el historial de git aunque se borre del buzón. No subas nada sin derecho a usarlo ni datos de pacientes.
 
+#### Portadas de canciones y de álbumes
+
+Las portadas se suben al mismo buzón, en su carpeta `portadas` (ADR-0016): https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas
+
+- El nombre del archivo es el id de la canción (`S` seguida de 16 caracteres hexadecimales) o de la carpeta (`F` seguida de 16) y la extensión `.jpg`, `.jpeg`, `.png` o `.webp`; por ejemplo, `S5aac103b6eb2ecf4.jpg`. Los ids están en `audio-library/indexes/catalog.json`.
+- Hasta 10 MB por imagen. No hace falta línea de licencia, pero sí permiso de escritura.
+- El workflow `buzon` la recorta al centro, la convierte a un JPEG de 640×640 sin metadatos y la guarda en `audio-library/covers/<id>.jpg`; la web y la APK la ven en `covers/<id>.jpg` si la canción es pública, o siempre si es de una carpeta. Subir otra imagen con el mismo nombre la sustituye.
+- Si el id no existe o la imagen no es válida, se rechaza, se borra del buzón y el motivo sale en el resumen de la ejecución.
+- Sube solo portadas que puedas usar: quedan en el historial de git y, las públicas, en la web. Nunca fotografías de pacientes ni de otras personas.
+
 ### Desde Internet Archive
 
 Para importar un ítem de Internet Archive con licencia (o un fichero de audio directo con licencia declarada). La hoja valida la dirección en el navegador, con la misma lista de bloqueo de 42 plataformas que el backend, y abre en GitHub una incidencia nueva con la etiqueta `biblioteca` y el texto ya escrito; hay que pulsar «Submit new issue» para enviarla. Solo se procesan las incidencias de cuentas con permiso de escritura (job `autorizar`). La canción entra **privada** hasta que se publica por incidencia (abajo). YouTube y las plataformas de streaming no se admiten.
@@ -89,7 +99,8 @@ payload: {"op":"edit_song","song_id":"S<16 caracteres hexadecimales>","public":t
 
 - `"public":true` publica la canción; `"public":false` la despublica. Son booleanos JSON, no texto.
 - Los identificadores tienen la forma `S` seguida de 16 caracteres hexadecimales, y están en `audio-library/indexes/catalog.json`.
-- `edit_song` también admite `title`, `artist`, `year`, `tags` y `folder_id`. Las carpetas se gestionan con `create_folder`, `rename_folder` y `delete_folder`. No hay borrado de canciones: hoy solo se despublican.
+- `edit_song` también admite `title`, `artist`, `year`, `tags` y `folder_id`. Las carpetas se gestionan con `create_folder`, `rename_folder`, `edit_folder` y `delete_folder`. No hay borrado de canciones: hoy solo se despublican.
+- Una carpeta es también un álbum, con artista opcional (ADR-0016): `{"op":"create_folder","name":"Boleros","artist":"Antonio Machín"}` o `{"op":"edit_folder","folder_id":"F<16 caracteres hexadecimales>","name":"Boleros","artist":"Antonio Machín"}`. `name` tiene de 1 a 80 caracteres y `artist`, de 0 a 80 (vacío lo quita), los dos en una línea. Las carpetas nuevas tienen ids `F` seguida de 16 caracteres hexadecimales; las anteriores, de 10, siguen valiendo.
 
 ### Qué pasa después
 
