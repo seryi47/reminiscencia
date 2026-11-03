@@ -1,6 +1,6 @@
 # ADR-0017: Subida directa a GitHub desde la web pública
 
-- Estado: aceptada (sin probar en Vercel ni en GitHub)
+- Estado: aceptada; en `main` (merges `d68add5` de la web y `3d97a37` de la APK). Probada en producción el 2026-11-03: «Prueba subida directa.mp3» subida desde la web (`8ac2d17`), publicada por `buzon.yml` como «Prueba subida directa» (`e7eaa73`) y despublicada después con la incidencia #21 (`6d62aee`). Sin constancia de prueba en producción: una subida de varios trozos y una subida desde la APK
 - Fecha: 2026-11-03
 - Sustituye: en [ADR-0008](ADR-0008-entrada-por-incidencias.md), decisión 1, «ni token de GitHub en la web, ni funciones de Vercel (`api/`)»: ahora hay una función, `frontend/web/api/subir.js`, con un token en las variables de entorno de Vercel. En [ADR-0012](ADR-0012-audio-subido-local-solo-navegador.md), la subida nueva «Solo en este navegador»: la hoja ya no la ofrece. En [ADR-0014](ADR-0014-buzon-de-canciones.md), que solo suban al buzón las cuentas con permiso de escritura.
 - Relacionadas: ADR-0007 (catálogo como fuente de verdad), ADR-0010 (procesado y publicación separados), ADR-0011 (publicar regenera la parte pública), ADR-0013 (APK) y ADR-0015 (interfaz sin usuarios).

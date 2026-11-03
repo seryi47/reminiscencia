@@ -1,6 +1,6 @@
 # ADR-0016: Portadas de canciones y de álbumes, y álbumes con artista
 
-- Estado: aceptada (sin probar en GitHub)
+- Estado: aceptada; en `main` (merge `aba83c2`). Probada en GitHub el 2026-11-03: una portada subida al buzón (`237a5cb`) está en `audio-library/covers/` y `frontend/web/covers/`
 - Fecha: 2026-11-03
 - Relacionadas: ADR-0007 (catálogo como fuente de verdad), ADR-0008 (entrada por incidencias), ADR-0010 (procesado y publicación separados), ADR-0011 (publicar regenera la parte pública), ADR-0014 (buzón) y ADR-0015 (interfaz con el aspecto de Spotify).
 

@@ -1,10 +1,10 @@
 # ADR-0014: Buzón de canciones subidas desde GitHub
 
-- Estado: aceptada. Vía privada probada en GitHub el 2026-11-03 (ver «Cómo se prueba»); vía pública sin probar.
+- Estado: aceptada. Vías privada y pública probadas en GitHub el 2026-11-03 (ver «Cómo se prueba» y la nota de estado).
 - Fecha: 2026-11-03
 - Relacionadas: ADR-0007 (catálogo como fuente de verdad), ADR-0008 (entrada por incidencias), ADR-0010 (procesado y publicación separados) y ADR-0011 (publicar regenera la parte pública).
 
-> **Nota de estado (2026-11-03).** Con [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) la web y la APK suben al buzón por trozos, sin cuenta de GitHub, mediante la función `api/subir` (`audio-library/buzon/.partes/<UUID>/`); el buzón une las partes cuando llega el manifiesto y las procesa como cualquier archivo, públicas con la licencia de la web. La subida desde la página de GitHub sigue igual para quien tiene permiso de escritura.
+> **Nota de estado (2026-11-03).** Con [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) la web y la APK suben al buzón por trozos de hasta 4 MiB, sin cuenta de GitHub, mediante la función de Vercel `frontend/web/api/subir.js`, que usa el `GITHUB_TOKEN` de las variables de entorno de Vercel (`audio-library/buzon/.partes/<UUID>/`); el buzón une las partes cuando llega el manifiesto y las procesa como cualquier archivo, públicas con la licencia fija de la web. Los pushes que solo añaden trozos intermedios (`.partes/**/*.part`) no lanzan el workflow. La web y la APK ya no abren la página de subida de GitHub; esa vía sigue igual para quien tiene permiso de escritura, y en ella siguen valiendo el límite de 25 MiB por archivo del navegador de GitHub y la línea «Licencia: …» de la decisión 2. Probado el 2026-11-03: la vía pública desde GitHub («prueba-licencia», commit `9c8c6ef`, que entró pública en `d3b4877`) y la subida desde la web en producción («Prueba subida directa.mp3», `8ac2d17`, publicada como «Prueba subida directa» en `e7eaa73` y despublicada después con la incidencia #21, `6d62aee`). Sigue sin probar la cola compartida con `biblioteca.yml`.
 
 ## Contexto
 

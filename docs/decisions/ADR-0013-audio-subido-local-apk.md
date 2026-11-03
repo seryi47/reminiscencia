@@ -1,8 +1,10 @@
 # ADR-0013: Audio subido desde el teléfono, solo en la APK
 
-- Estado: aceptada
+- Estado: aceptada; la subida de canciones nuevas solo en el teléfono queda sustituida por [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) el 2026-11-03 (ver la nota de estado)
 - Fecha: 2026-11-02
 - Relaciona: ADR-0012 (misma decisión en la web; este ADR la extiende a la APK y cambia su línea «no se tocan ... la APK»), ADR-0004 (app Android), ADR-0007 (catálogo desde la web) y ADR-0009 (datos locales del cuidador).
+
+> **Nota de estado (2026-11-03, ADR-0017).** La APK ya no guarda canciones nuevas solo en el teléfono. «Subir canciones» (`mobile/lib/shared_upload.dart`, commit `b148b74`, merge `3d97a37`) sube siempre para todos, como la web: elige uno o varios archivos (WAV, MP3, M4A, FLAC u OGG), convierte cada uno a Opus con FFmpeg en el teléfono, sin los límites de 60 MB y 20 minutos de la decisión 4, y lo envía en trozos de hasta 4 MiB a `https://reminiscencia.vercel.app/api/subir`, que lo guarda en el buzón del repositorio con el `GITHUB_TOKEN` de Vercel; el workflow `buzon` lo publica con la licencia fija de la web. La app no guarda ningún token. Las canciones subidas antes con este ADR siguen en `biblioteca-local/`, suenan sin red y se borran desde su fila (decisiones 3, 5, 6, 7 y 9 vigentes para ellas). La decisión 12 (conversión solo en primer plano) se aplica también a la subida para todos: lo que no llegó a subirse queda como pendiente. Lo que este ADR dice de «nada sale del dispositivo» describe la subida de antes.
 
 ## Contexto
 

@@ -150,7 +150,6 @@ ADR-0015 retira el PIN con los modos paciente y cuidador. No hay ninguna contras
 - El commit `0fa6ed3` retiró `frontend/web/admin`, `frontend/web/api` y `frontend/web/lib`. Según su mensaje, el propietario ha pedido que no exista ninguna administración en la web. Ya no hay funciones de Vercel ni `ADMIN_PASSWORD` (CHANGELOG.md, línea 23).
 - No hay campos de contraseña en la web pública ni en la APK.
 - Desde ADR-0017 hay una función de Vercel, `frontend/web/api/subir.js`, que sube al buzón con `GITHUB_TOKEN` (variable de entorno de Vercel). No es administración: solo escribe trozos de audio en `audio-library/buzon/.partes/` (§3.12). Siguen sin existir `frontend/web/admin` y `frontend/web/lib` (`backend/tests/test_biblioteca_workflow.py`).
-- La documentación todavía describe la administración retirada (§5, C).
 
 ### 3.5 Incidencias de GitHub con permiso de escritura: Implementado, con pendientes
 
@@ -200,7 +199,7 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 - Copia de Android: el manifiesto no declara `android:allowBackup` (vale el valor por defecto), pero sí `fullBackupContent` y `dataExtractionRules`, que excluyen `biblioteca-local/` (el audio subido en el teléfono) de la copia y del traspaso entre dispositivos. Las listas y «Me gusta» (`colecciones.json`) sí pueden entrar en la copia del sistema; no son datos sensibles.
 - La subida para todos usa la misma función `/api/subir` de la web (ADR-0017); la app no guarda tokens.
 
-### 3.11 Buzón de canciones (`buzon.yml`, ADR-0014): Implementado, verificado en parte
+### 3.11 Buzón de canciones (`buzon.yml`, ADR-0014): Implementado, verificado en GitHub
 
 **Quién puede subir.**
 - Subir a `audio-library/buzon/` desde la página de subida de GitHub exige permiso de escritura en el repositorio, porque es un commit a `main`.
@@ -222,15 +221,15 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 
 **Subidas por trozos (ADR-0017).** Una carpeta `audio-library/buzon/.partes/<UUID>/` sin `manifiesto.json` se ignora. Con manifiesto válido (`{"nombre": "<nombre>.opus", "partes": N}`, de 1 a 1000) y todas las partes, se unen en orden en el buzón (con sufijo si el nombre existe) y se procesan como cualquier archivo, con la licencia del commit del manifiesto o, si el push no lo trae, la de la web. Un manifiesto no válido se rechaza y borra su carpeta; un id que no es UUID, enlaces, elementos que no son partes y partes que faltan se dejan para revisar. El paquete solo puede borrar `.partes/<UUID>/<índice>.part` y `.partes/<UUID>/manifiesto.json`, y solo con la acción `buzon`.
 
-**Verificación en GitHub (2026-11-03).** La ejecución por push del archivo de prueba terminó en verde sin procesar nada: el evento no traía las listas de archivos. Desde `34a1f06`, si el evento no nombra archivos (o la ejecución es manual), se procesa lo que haya en el buzón con el mensaje del último commit del push. La ejecución manual dio de alta «tono-de-prueba-buzon» como privada (`4f6c73d`). Sin verificar: una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`.
+**Verificación en GitHub (2026-11-03).** La ejecución por push del archivo de prueba terminó en verde sin procesar nada: el evento no traía las listas de archivos. Desde `34a1f06`, si el evento no nombra archivos (o la ejecución es manual), se procesa lo que haya en el buzón con el mensaje del último commit del push. La ejecución manual dio de alta «tono-de-prueba-buzon» como privada (`4f6c73d`). Vía pública: «prueba-licencia», subida desde GitHub con «Licencia: CC0 1.0 …» (`9c8c6ef`), entró pública (`d3b4877`) y se despublicó después. Subida por trozos desde la web: ver §3.12. Sin verificar: la cola compartida con `biblioteca.yml`.
 
-### 3.12 Subida desde la web pública (`frontend/web/api/subir.js`, ADR-0017): Implementado, sin probar en Vercel
+### 3.12 Subida desde la web pública (`frontend/web/api/subir.js`, ADR-0017): Implementado, probado en producción
 
 - **Decisión del propietario.** «Subir canciones» sube siempre al repositorio, para todos, sin cuenta. No hay límite de subidas por hora ni de tamaño por archivo; solo el de Vercel (4,5 MB por petición), por eso se sube en trozos de hasta 4 MiB.
 - **Token.** Solo en `process.env.GITHUB_TOKEN` (Vercel). Va solo a `api.github.com`, en la cabecera `Authorization`. No se escribe en los registros (solo el estado HTTP de GitHub) ni en las respuestas; si falta, la función responde 500 con un mensaje claro. El código del navegador no conoce ningún token (`tests/web-unit/upload.test.mjs`). Debe ser un token personal con «Contents: write» solo en este repositorio.
 - **Validación en la función**: primer trozo Ogg Opus (página de inicio `OggS` con `OpusHead` versión 1); cada trozo no vacío y hasta 4 MiB; un archivo por petición (se rechaza `multipart/*`); cabeceras `X-Nombre-Archivo`, `X-Subida-Id` (UUID), `X-Parte` y `X-Partes` (de 1 a 1000) validadas; nombre limpio (sin ruta ni extensión original, NFC, solo los caracteres de `nombre_valido`, hasta 150 caracteres y 180 bytes, con `.opus`); escribe solo en `audio-library/buzon/.partes/<UUID>/`; nunca sobrescribe (trozo repetido igual: sin commit; distinto: 409; fuera de orden: 409; tras el manifiesto: 409; nombre final con sufijo si existe). Commit en `main` con la API de git (blob, árbol, commit y referencia sin forzar, con reintento si `main` cambió).
 - **No hay**: límite por hora, captcha, cuentas, moderación previa ni comprobación de derechos. La web muestra un texto fijo: «Al subir, declaras que tienes derecho a publicar estos archivos».
-- Pruebas: `tests/web-unit/api-subir.test.mjs` (GitHub simulado), `tests/web-unit/subida-publica.test.mjs` y `tests/web-e2e/funcional.e2e.mjs` (función simulada en el servidor de pruebas). Sin probar con Vercel ni con el token real.
+- Pruebas: `tests/web-unit/api-subir.test.mjs` (GitHub simulado), `tests/web-unit/subida-publica.test.mjs` y `tests/web-e2e/funcional.e2e.mjs` (función simulada en el servidor de pruebas). **Probado en producción el 2026-11-03**, con Vercel y el token real: «Prueba subida directa.mp3» llegó por `/api/subir` (commit `8ac2d17`, un trozo y su manifiesto, con la cuenta del token), `buzon.yml` la aceptó (`autorizar` pasó con esa cuenta), la unió y la publicó como «Prueba subida directa» (`e7eaa73`), y se despublicó después con la incidencia #21 (`6d62aee`). Los trozos intermedios no lanzan el workflow: el filtro de `buzon.yml` excluye `audio-library/buzon/.partes/**/*.part`. No se ha probado una subida de varios trozos en producción.
 
 ## 4. Amenazas y riesgos residuales
 
@@ -282,11 +281,11 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 
 **R10. Documentación desactualizada.** Resuelta en lo principal (2-nov-2026).
 
-- Nota (3-nov-2026): la documentación se puso al día con ADR-0015 y ADR-0014. `METHODOLOGY.md` y la parte 2 de `AUDIO_ENGINE.md` describen el instrumento y el reproductor retirados y llevan nota de estado; varios comentarios del código citan ADR-0014 donde debería decir ADR-0015 (ROADMAP).
+- Nota (3-nov-2026): la documentación se puso al día con ADR-0014, ADR-0015, ADR-0016 y ADR-0017. `METHODOLOGY.md` y la parte 2 de `AUDIO_ENGINE.md` describen el instrumento y el reproductor retirados y llevan nota de estado; los comentarios del código ya citan ADR-0015 para la interfaz (`88f9275`).
 
-- Evidencia: CLAUDE.md, PROJECT_MASTER.md, ROADMAP.md, ADR-0005 y ADR-0007 ya indican que la administración está retirada; ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02. Ningún fichero del repositorio lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. Las referencias antiguas a `library.yml` y a la administración de `docs/audio-processing/AUDIO_ENGINE.md` y `docs/datos/DATABASE.md` se corrigieron el 2-nov-2026.
+- Evidencia: CLAUDE.md, PROJECT_MASTER.md, ROADMAP.md, ADR-0005 y ADR-0007 ya indican que la administración está retirada; ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02. Ningún fichero del repositorio lee `ADMIN_PASSWORD`; `GITHUB_TOKEN` solo lo lee la función `/api/subir` (ADR-0017), además del token propio de los workflows. Las referencias antiguas a `library.yml` y a la administración de `docs/audio-processing/AUDIO_ENGINE.md` y `docs/datos/DATABASE.md` se corrigieron el 2-nov-2026.
 - Riesgo: que alguien dé por protegida una vía que no existe, o mantenga una lista de bloqueo duplicada que ya no existe.
-- Propuesta: borrar `ADMIN_PASSWORD` y `GITHUB_TOKEN` de Vercel si siguen configuradas (ROADMAP.md, «Pendiente»).
+- Propuesta: borrar `ADMIN_PASSWORD` de Vercel si sigue configurada (ROADMAP.md, «Pendiente»). `GITHUB_TOKEN` se queda: lo usa `/api/subir`.
 
 **R11. Pérdida de la clave de firma de Android.**
 
@@ -304,7 +303,7 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 **R13. Subida pública sin cuentas (ADR-0017).**
 
 - Evidencia: §3.12. Cualquiera que entre en la web puede subir audio, y entra público en la biblioteca con la licencia de la web.
-- Riesgos: (a) publicación de grabaciones sin derechos, ofensivas o con datos de pacientes, que quedan para siempre en el historial de git aunque se retiren; (b) crecimiento del repositorio sin límite (trozos en el historial y audio convertido), hasta los límites de GitHub (R3, `check_repo_limits.py`); (c) agotar la cuota de la API del token (5000 peticiones por hora) o los minutos de Actions con muchas subidas (cada trozo es un commit y una ejecución del buzón); (d) si el token se filtrara, da escritura en el repositorio; (e) atribución: todas las subidas de la web quedan como «Subida por <cuenta del token>».
+- Riesgos: (a) publicación de grabaciones sin derechos, ofensivas o con datos de pacientes, que quedan para siempre en el historial de git aunque se retiren; (b) crecimiento del repositorio sin límite (trozos en el historial y audio convertido), hasta los límites de GitHub (R3, `check_repo_limits.py`); (c) agotar la cuota de la API del token (5000 peticiones por hora) o los minutos de Actions con muchas subidas (cada trozo es un commit; solo el del manifiesto lanza una ejecución del buzón); (d) si el token se filtrara, da escritura en el repositorio; (e) atribución: todas las subidas de la web quedan como «Subida por <cuenta del token>».
 - Mitigación: solo Ogg Opus en el primer trozo, nombre y ruta cerrados al buzón, sin sobrescribir; el buzón vuelve a validar y convierte con ffmpeg sin token (§3.11, R1); el token no llega al navegador. Riesgos aceptados por el propietario.
 - Propuesta: token de grano fino limitado a este repositorio y a «Contents: write», con caducidad; revisar el resumen de cada ejecución del buzón; vigilar el tamaño del repositorio; si hay abuso, añadir un límite o un captcha (decisión del propietario).
 
@@ -326,7 +325,7 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 
 10. Retirados por ADR-0015, antes en esta lista: conectar la capa de datos del cuidador, persistencia y aviso de cuota de la copia, fotografías (reducción y EXIF), PIN y almacén del registro del estudio.
 11. Decidir el instrumento del estudio que sustituya al registro retirado (ADR-0015, consecuencias) y rehacer §2.3 antes de recoger datos.
-12. Buzón: probar una subida con «Licencia: …» y la cola compartida con `biblioteca.yml`; revisar la atribución cuando el evento no nombra archivos (R12). Subida desde la web (§3.12): desplegar en Vercel y probar la función real con el token (ESM en `api/subir.js`, firma `POST(request)`, límite de cuerpo); comprobar que `buzon.yml` se lanza con archivos dentro de `.partes/` y que `autorizar` acepta la cuenta del token. Propuesta: excluir `audio-library/buzon/.partes/**/*.part` del filtro de `buzon.yml`, para que solo el manifiesto lance el workflow.
+12. Buzón: probar la cola compartida con `biblioteca.yml`; revisar la atribución cuando el evento no nombra archivos (R12). Subida desde la web (§3.12): probar en producción una subida de varios trozos. Hecho el 2026-11-03: la vía pública con «Licencia: …», la función real en Vercel con el token, que `autorizar` acepta la cuenta del token y que solo el manifiesto lanza el workflow (los `.part` están excluidos del filtro de `buzon.yml`).
 13. Licencias declaradas en el buzón: incluirlas en el dictamen de §5 A.4.
 14. Base `reminiscencia` de la versión anterior en los navegadores: decidir si se explica cómo borrarla (R5).
 15. Gestión por incidencias de GitHub: implementada para cuentas con permiso de escritura (§3.5). Pendiente: revisar el filtro de autor antes de hacer público el repositorio (ADR-0008).
@@ -342,7 +341,7 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 
 23. Resuelto: CLAUDE.md ya no describe la administración ni la lista de bloqueo duplicada en `validate.js` (comprobado el 2-nov-2026).
 24. Resuelto: la fila de administración de PROJECT_MASTER.md figura como retirada (ADR-0008).
-25. Resuelto en lo referente a la administración. Queda la acción del propietario de borrar `ADMIN_PASSWORD` en Vercel. `GITHUB_TOKEN` ya no se borra: lo usa la función `/api/subir` (ADR-0017). ROADMAP.md, «Pendiente», sigue pidiendo borrar los dos.
+25. Resuelto en lo referente a la administración. Queda la acción del propietario de borrar `ADMIN_PASSWORD` en Vercel. `GITHUB_TOKEN` ya no se borra: lo usa la función `/api/subir` (ADR-0017). ROADMAP.md, «Pendiente», ya solo pide borrar `ADMIN_PASSWORD` (corregido el 2026-11-03).
 26. Resuelto: ADR-0005 y ADR-0007 llevan nota de estado de 2026-11-02, y los puntos 4 y 5 de ADR-0007 están superados por ADR-0008.
 27. Resuelto: `.github/workflows/library.yml` ya no existe en `main`; su comentario obsoleto salió con el fichero.
 28. Resuelto: DESIGN.md 2.0 (ADR-0015) ya no trata fotografías, PIN ni la app Android como PWA.

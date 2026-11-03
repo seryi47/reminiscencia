@@ -2,14 +2,14 @@
 
 Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la música, la memoria autobiográfica y el Alzheimer.
 
-**Estado (2026-11-03):** la web pública y la app Android funcionan sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)): no hay perfiles, modos paciente ni cuidador, PIN ni registro del estudio, y todos ven la misma biblioteca, hoy con 10 canciones públicas (las privadas no se muestran). La biblioteca se gestiona con incidencias de GitHub (ADR-0008) y con el buzón de subida (ADR-0014), al que la web sube para todos con la función `/api/subir` (ADR-0017); no hay panel de administración. Pendiente: las 18 referencias abiertas de `BIBLIOGRAPHY.md` (no verificadas), decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015) y los estudios con personas.
+**Estado (2026-11-03):** la web pública y la app Android funcionan sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)): no hay perfiles, modos paciente ni cuidador, PIN ni registro del estudio, y todos ven la misma biblioteca, hoy con 10 canciones públicas (las privadas no se muestran). La biblioteca se gestiona con incidencias de GitHub (ADR-0008) y con el buzón de subida (ADR-0014), al que la web y la APK suben para todos con la función `/api/subir` (ADR-0017; probado en producción el 2026-11-03 con «Prueba subida directa.mp3», publicada como «Prueba subida directa» y despublicada después con la incidencia #21); no hay panel de administración. Las canciones y las carpetas (álbumes) tienen portada (ADR-0016), y el importador toma el artista y el año de Internet Archive. Pendiente: las 18 referencias abiertas de `BIBLIOGRAPHY.md` (no verificadas), decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015) y los estudios con personas.
 
 | Qué | Dónde |
 |---|---|
 | Escuchar (público) | https://reminiscencia.vercel.app |
 | App Android | `mobile/` (lee la biblioteca de la web; versión 1.2.0+3) |
 | Cambios en la biblioteca | Incidencias con la etiqueta `biblioteca`, procesadas por el workflow `biblioteca` |
-| Subir canciones para todos | Página de subida de `audio-library/buzon/`, procesada por el workflow `buzon` |
+| Subir canciones para todos | «Subir canciones» en la web o en la APK (función `/api/subir`), procesada por el workflow `buzon`; con permiso de escritura, también la página de subida de `audio-library/buzon/` |
 
 ## Cómo se usa la web
 
@@ -34,7 +34,7 @@ El botón **Subir canciones** sube siempre **para todos** (ADR-0017): eliges uno
 - No hay límite de subidas ni de tamaño por archivo; el buzón rechaza un archivo unido de más de 100 MiB (unas cuatro horas de Opus). Un navegador sin conversión a Opus (WebCodecs) no puede subir: usa Chrome o Edge actualizados.
 - La función necesita la variable de entorno `GITHUB_TOKEN` en Vercel (token personal de una cuenta con permiso de escritura, con «Contents: write»). El token nunca llega al navegador. Sin ella, la hoja muestra que la subida no está configurada.
 
-Las canciones que se guardaron antes **solo en este navegador** (ADR-0012) siguen sonando en Tu biblioteca y se borran desde la hoja, en «Guardadas solo en este navegador», o desde el menú de su fila. La app Android usa la misma función `/api/subir` (ADR-0017).
+Las canciones que se guardaron antes **solo en este navegador** (ADR-0012) siguen sonando en Tu biblioteca y se borran desde la hoja, en «Guardadas solo en este navegador», o desde el menú de su fila. La app Android usa la misma función `/api/subir` (ADR-0017): convierte a Opus en el teléfono y envía los mismos trozos; las canciones subidas antes «Solo en este teléfono» (ADR-0013) siguen sonando y se pueden borrar.
 
 ### Desde GitHub (con permiso de escritura)
 

@@ -2,7 +2,7 @@
 
 Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cuando sus pruebas pasan y la documentación está al día. La investigación y el desarrollo avanzan en paralelo.
 
-Estado a 2026-11-03, según `main`: web y APK sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)), que sustituye en parte a la interfaz única de [ADR-0009](docs/decisions/ADR-0009-interfaz-unica-y-datos-locales.md).
+Estado a 2026-11-03, según `main`: web y APK sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)), que sustituye en parte a la interfaz única de [ADR-0009](docs/decisions/ADR-0009-interfaz-unica-y-datos-locales.md); portadas y álbumes ([ADR-0016](docs/decisions/ADR-0016-portadas-y-albumes.md)); artista y año importados de Internet Archive; y «Subir canciones» para todos en la web y la APK por la función de Vercel `/api/subir` ([ADR-0017](docs/decisions/ADR-0017-subida-directa-github-web-publica.md)), probada en producción el 2026-11-03.
 
 ## Estado por fase
 
@@ -11,9 +11,9 @@ Estado a 2026-11-03, según `main`: web y APK sin usuarios y con el aspecto de S
 | 0. Investigación | En curso | Bibliografía verificada (30 entradas numeradas). En `main`, RESEARCH, ALZHEIMER_RESEARCH (borrador), METHODOLOGY (borrador v0.1, sin protocolo aprobado) y SECURITY | Revisión sistemática | Revisión de aplicaciones existentes; dictamen legal sobre audio; texto completo de [B4]; 35 puntos en «Pendientes» de BIBLIOGRAPHY.md |
 | 1. Base del proyecto | Hecho | Estructura, ADR-0001 a 0003, pruebas en CI, repositorio privado | — | — |
 | 2. Motor de audio | En curso | Experimento objetivo de compresión (cinco grabaciones, 2026-10-31) | — | Prueba perceptual MUSHRA; variantes en GitHub Releases; silencios, picos y calidad de señal |
-| 3. Servicio y administración | En curso | Catálogo; importación; publicación y despublicación por incidencias, probadas con incidencias reales; buzón de subida (`buzon.yml`, ADR-0014), probado por la vía privada; administración retirada | — | Probar el buzón con «Licencia: …»; borrado de canciones |
-| 4. Web pública | Implementada sin usuarios | Interfaz sin usuarios con el aspecto de Spotify (ADR-0015, DESIGN 2.0): listas y «Me gusta» en este navegador, uso sin conexión, subida «Solo en este navegador» (ADR-0012), «Para todos» (buzón, ADR-0014) y «Desde Internet Archive» (incidencia, lista de bloqueo de 42 entradas); desplegada desde `main` | — | Lectores de pantalla y dispositivos reales; `added_at` en los datos públicos; llevar listas a otro navegador (DESIGN §15) |
-| 5. Android | En curso | App 1.2.0+3 sin usuarios, con el aspecto de Spotify, listas y «Me gusta» en el teléfono, copia sin conexión y subida local; workflow `android.yml` con release separada por arquitectura | — | Primera ejecución de `android.yml` y release `android-v1.2.0`; firma de producción en CI; pruebas en dispositivo físico; copia de seguridad de la clave |
+| 3. Servicio y administración | En curso | Catálogo; importación; publicación y despublicación por incidencias, probadas con incidencias reales; buzón de subida (`buzon.yml`, ADR-0014), probado por las vías privada y pública; subida desde la web y la APK por `/api/subir` (ADR-0017), probada en producción; administración retirada | — | Cola compartida del buzón con `biblioteca.yml`; borrado de canciones |
+| 4. Web pública | Implementada sin usuarios | Interfaz sin usuarios con el aspecto de Spotify (ADR-0015, DESIGN 3.0): listas y «Me gusta» en este navegador, uso sin conexión, «Subir canciones» para todos por `/api/subir` (ADR-0017), portadas y álbumes (ADR-0016) e «Importar desde Internet Archive» (incidencia, lista de bloqueo de 42 entradas); desplegada desde `main` | — | Lectores de pantalla y dispositivos reales; `added_at` en los datos públicos; llevar listas a otro navegador (DESIGN §15) |
+| 5. Android | En curso | App 1.2.0+3 sin usuarios, con el aspecto de Spotify, listas y «Me gusta» en el teléfono, copia sin conexión y «Subir canciones» para todos por `/api/subir` (ADR-0017); workflow `android.yml` con release separada por arquitectura | — | Primera ejecución de `android.yml` y release `android-v1.2.0`; firma de producción en CI; pruebas en dispositivo físico; copia de seguridad de la clave |
 | 6. Investigación de campo | Pendiente | — | — | Decidir cómo se estudian las hipótesis sin el registro del estudio (ADR-0015); protocolo y aprobación ética; estudio piloto |
 
 ## Fase 0: investigación (en curso)
@@ -46,14 +46,14 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 | Frente | Qué entrega | Estado |
 |---|---|---|
 | Auditoría del brief | Matriz de requisitos con evidencia y verificación adversarial de lo marcado como hecho | Hecho (según CHANGELOG): 0 requisitos cumplidos del todo, 40 parciales, 8 pendientes y 1 descartado |
-| Panel de diseño | Especificación de diseño en `docs/user-experience/DESIGN.md` | Hecho: versión 1.0, cierre de diseño del 31-oct-2026. Sustituida por DESIGN 2.0 (2026-11-03): interfaz sin usuarios con el aspecto de Spotify (ADR-0015). La versión 1.0 y el rediseño con la estructura de Apple Music quedan en el historial de git |
+| Panel de diseño | Especificación de diseño en `docs/user-experience/DESIGN.md` | Hecho: versión 1.0, cierre de diseño del 31-oct-2026. Sustituida por DESIGN 2.0 (2026-11-03): interfaz sin usuarios con el aspecto de Spotify (ADR-0015), y esta por DESIGN 3.0 (2026-11-03: distribución de Spotify de 2025, portadas, álbumes y edición). La versión 1.0 y el rediseño con la estructura de Apple Music quedan en el historial de git |
 | Web de escucha | Interfaz nueva según el diseño y uso sin conexión (PWA) | Implementada sin usuarios (ADR-0015). Las fotos y los recuerdos por perfil se retiraron con el modo paciente |
 | Datos locales del cuidador | Perfiles, fotos, recuerdos, listas, observaciones e historial en IndexedDB; copia cifrada con contraseña | **Retirado** por ADR-0015: quedan solo las listas y «Me gusta» (`reminiscencia-biblioteca`), sin copia |
 | Panel del cuidador | Interfaz para gestionar todo lo anterior, con PIN local de ajustes | **Retirado** por ADR-0015, con el modo cuidador y el PIN |
 | App Android | Listas, icono propio, tableta, ajustes persistentes, pruebas | En curso: lo implementado está en la fase 5 (el modo paciente se retiró en la 1.2.0); falta la prueba en dispositivo físico |
 | Compresión | Experimento reproducible con ffmpeg y métricas objetivas (sin pruebas perceptuales con personas) | En curso: la parte objetiva está hecha (2026-10-31); falta la prueba perceptual |
 | Investigación | Referencias verificadas por DOI y estado del arte; metodología del piloto; seguridad y RGPD | En curso: bibliografía, RESEARCH, METHODOLOGY y SECURITY en `main` como borradores; sin protocolo aprobado |
-| Documentación técnica | ARCHITECTURE, DATABASE (modelo entidad-relación), PLAYER, AUDIO_ENGINE, GITHUB_STORAGE | Al día con ADR-0015 (2026-11-03): ARCHITECTURE, DATABASE y PLAYER. La parte 2 de AUDIO_ENGINE describe el reproductor retirado y queda marcada como tal |
+| Documentación técnica | ARCHITECTURE, DATABASE (modelo entidad-relación), PLAYER, AUDIO_ENGINE, GITHUB_STORAGE | Al día con ADR-0015, ADR-0016 y ADR-0017 (2026-11-03): ARCHITECTURE, DATABASE, GITHUB_STORAGE y PLAYER. La parte 2 de AUDIO_ENGINE describe el reproductor retirado y queda marcada como tal |
 | Pruebas de extremo a extremo | Navegador: escucha, subida, uso sin conexión, accesibilidad y medidas | Rehechas para ADR-0015 en `tests/web-e2e/` (`funcional`, `a11y` y `medidas`); `web-e2e.yml` en verde sobre `ae22479` |
 | Compilación de APK en GitHub Actions | Artefactos de depuración y producción; carpetas `releases/android/debug` y `production` | En curso: `android.yml` y las carpetas están en `main`; la release lleva un APK por arquitectura. Sin ninguna ejecución todavía |
 
@@ -63,7 +63,10 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 - [x] Prueba real con incidencias `biblioteca`: importar, publicar y despublicar «Tell me pretty maiden» (incidencias #1 a #3, 2026-11-02). El workflow respondió y cerró las tres.
 - [x] Publicación real de una canción por incidencia: «Nomyn Fragments» (CC BY 4.0), 2026-11-02, commit del bot `7b73d19`.
 - [x] Buzón de subida (ADR-0014), en `main`. Probado en GitHub por la vía privada el 2026-11-03 (ejecución manual; la primera por push no procesó nada y se corrigió en `34a1f06`).
-- [ ] Buzón: una subida real con «Licencia: …» (vía pública) y la cola compartida con `biblioteca.yml`.
+- [x] Buzón por la vía pública: «prueba-licencia» subida desde GitHub con «Licencia: CC0 1.0 …» (commit `9c8c6ef`) entró pública (`d3b4877`), 2026-11-03.
+- [x] Subida desde la web por `/api/subir` (ADR-0017), probada en producción el 2026-11-03: «Prueba subida directa.mp3» (commit `8ac2d17`) se publicó como «Prueba subida directa» (`e7eaa73`) y se despublicó después con la incidencia #21 (`6d62aee`).
+- [x] Artista y año importados de los metadatos de Internet Archive (`800b1ce`, merge `007c7eb`).
+- [ ] Buzón: la cola compartida con `biblioteca.yml`.
 - [x] Administración retirada en favor de incidencias de GitHub (ADR-0008): no hay `ADMIN_PASSWORD` que configurar.
 - [x] Funciones de Vercel con contraseña, validación y falla cerrada (retiradas después, en ADR-0008).
 - [x] Con la versión anterior del workflow, ya retirada: publicar, despublicar, carpetas y edición de metadatos, probados en GitHub.
@@ -72,12 +75,13 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 
 ## Fase 4: web pública (implementada sin usuarios)
 - [x] Desplegada en https://reminiscencia.vercel.app (Git integration, Root Directory `frontend/web`).
-- [x] Interfaz sin usuarios con el aspecto de Spotify (ADR-0015, DESIGN 2.0), en `main` el 2026-11-03: Inicio, Buscar, Tu biblioteca, páginas de carpeta y lista, reproductor con cola, aleatorio y repetir.
+- [x] Interfaz sin usuarios con el aspecto de Spotify (ADR-0015, DESIGN 3.0), en `main` el 2026-11-03: Inicio, Buscar, Tu biblioteca, páginas de carpeta y lista, reproductor con cola, aleatorio y repetir.
 - [x] Listas y «Me gusta» solo en este navegador (`js/local-library.js`).
-- [x] Subida «Solo en este navegador» (ADR-0012), con borrado que limpia listas y «Me gusta»; «Para todos» (buzón, ADR-0014); «Desde Internet Archive» (incidencia, ADR-0008).
+- [x] «Subir canciones» sube siempre para todos (ADR-0017): uno o varios archivos, convertidos a Opus en el navegador y enviados por trozos de hasta 4 MiB a `/api/subir`, sin pasos ni límites de tamaño ni por hora; «Importar desde Internet Archive» (incidencia, ADR-0008). Las canciones guardadas antes «Solo en este navegador» (ADR-0012) siguen sonando y se borran limpiando listas y «Me gusta».
+- [x] Portadas de canciones y álbumes (ADR-0016).
 - [x] Lista de bloqueo de la web igual que la del backend (42 entradas).
 - [x] Cabeceras de seguridad (CSP) en `frontend/web/vercel.json`; las canciones locales suenan por el service worker sin abrir la CSP a `blob:`.
-- [x] Pruebas unitarias (274) y de extremo a extremo (`funcional`, `a11y` y `medidas`), en verde en `main`.
+- [x] Pruebas unitarias (342 el 2026-11-03, local) y de extremo a extremo (`funcional`, `a11y` y `medidas`), en verde en `main`.
 - [x] Comprobador de producción `scripts/smoke_produccion.mjs`.
 - Retirado por ADR-0015 (antes marcado como hecho): modos paciente y cuidador, perfiles, PIN, recuerdos, fotografías, observaciones, sesiones y registro del estudio, copia cifrada `.rmc` y la hoja «Gestionar la biblioteca».
 - [ ] Lectores de pantalla y dispositivos reales (DESIGN §12).
@@ -88,7 +92,7 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 ## Fase 5: Android (en curso)
 - [x] ADR-0004 (Flutter), app que lee la biblioteca de la web.
 - [x] Listas, favoritos, ajustes persistentes, diseño de tableta e icono propio (integrado el 2026-10-31). El modo paciente se retiró en la 1.2.0 (ADR-0015).
-- [x] Versión 1.2.0+3: sin usuarios, aspecto de la app de Spotify, «Me gusta», «Subir canciones» con «Solo en este teléfono» y «Para todos» (en `main` el 2026-11-03).
+- [x] Versión 1.2.0+3: sin usuarios, aspecto de la app de Spotify, «Me gusta», «Subir canciones» (en `main` el 2026-11-03). Desde `b148b74` (merge `3d97a37`) sube para todos por `/api/subir`, como la web (ADR-0017).
 - [x] Release por etiqueta con un APK de producción por arquitectura (`arm64-v8a`, `armeabi-v7a` y `x86_64`) y `SHA256SUMS.txt`.
 - [ ] Etiqueta `android-v1.2.0` y su release en GitHub.
 - [x] Workflow `android.yml` en `main`: análisis, pruebas, APK de depuración y de producción, y release por etiqueta `android-vX.Y.Z`.
@@ -96,7 +100,7 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 - [x] Reproducción en streaming y en segundo plano, notificación y auriculares (emulador Android 15).
 - [x] Copia para escuchar sin conexión, probada con la red apagada.
 - [x] APK 1.1.0 firmada para producción (clave de subida propia).
-- [x] Subida de audio local en la APK, convertida a Opus con FFmpeg y solo en el dispositivo (ADR-0013, en `main`). Pendiente de probar en dispositivo físico, como el resto de la fase.
+- [x] Subida de audio local en la APK, convertida a Opus con FFmpeg y solo en el dispositivo (ADR-0013). Sustituida por la subida para todos de ADR-0017; las canciones locales de antes siguen sonando y se borran. Pendiente de probar en dispositivo físico, como el resto de la fase.
 - [ ] Pruebas en dispositivo físico: llamadas, Bluetooth, TalkBack, tabletas.
 - [ ] Copia de seguridad de la clave de firma fuera de este equipo.
 - **Cierre:** probada en dispositivo real.
@@ -109,12 +113,12 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 ## Pendiente
 
 Del propietario (no lo puede hacer el repositorio):
-- Borrar las variables `ADMIN_PASSWORD` y `GITHUB_TOKEN` de Vercel. Ningún fichero del código las lee (ADR-0008).
-- Revocar el token de GitHub que usaba la administración retirada.
+- Borrar la variable `ADMIN_PASSWORD` de Vercel si sigue configurada: ningún fichero del código la lee (ADR-0008). `GITHUB_TOKEN` **no** se borra: lo usa la función `/api/subir` (ADR-0017).
+- Revocar el token de GitHub que usaba la administración retirada, si no es el mismo que hoy está en `GITHUB_TOKEN`.
 - Clave de firma de Android: sin ella no se puede verificar la compilación de release.
 - Leer el texto completo de [B4] para resolver la discrepancia abierta con [clinica-03] (BIBLIOGRAPHY.md).
 - Las 18 referencias abiertas de BIBLIOGRAPHY.md: no verificadas o parciales; no se citan hasta resolverlas.
-- Probar el buzón con una subida real que lleve «Licencia: …» (la canción entra pública y cambia la parte pública).
+- Probar la cola compartida del buzón con `biblioteca.yml`.
 
 Investigación (ADR-0015, consecuencias):
 - **Cómo estudiar las hipótesis sin el registro del estudio.** La web ya no registra sesiones, eventos, condiciones C0 a C2, recuerdos ni observaciones. H2 (recuerdo autobiográfico), H3 (familiaridad) y H4 (fotografía asociada) necesitan otro instrumento o una decisión nueva antes del piloto. Hasta entonces, `METHODOLOGY.md` (borrador v0.1) describe un instrumento que ya no existe.
@@ -123,11 +127,10 @@ Interfaz (DESIGN §15):
 - Probar con dispositivos y lectores de pantalla reales (VoiceOver, TalkBack y NVDA).
 - Fechas de alta (`added_at`) en los datos públicos para que «Añadidas recientemente» sea fiel.
 - Llevar listas y «Me gusta» a otro navegador (no hay copia ni exportación).
-- Comentarios del código que citan ADR-0014 para la interfaz sin usuarios (`frontend/web/js/app.js`, `local-library.js`, `offline-core.js`, `sw.js`, `js/cuidador/incidencias.js` y `subida-local.js`): el número correcto es ADR-0015. Cambiarlos es un cambio de código.
 
 Retirado por ADR-0015 (antes en esta lista): las discrepancias de DESIGN §17 de la versión 1.0 (parámetros de ruta de la biblioteca del cuidador, «Terminar sesión», borrador del recuerdo, atajos del paciente, «Olvidé el PIN», registro del estudio, validadores de `schema.js`, carpetas del cuidador, elección de modo en el primer uso, texto de fotografías y deshacer en Biblioteca) y el fallo e2e de filas de la Biblioteca del cuidador. Ese código ya no existe.
 
-Hecho, antes en esta lista: `js/intake.js` ya no es un residuo (lo usa la hoja «Subir canciones» para validar la importación); publicar una canción real en GitHub («Nomyn Fragments», 2026-11-02); `publicar` regenera los datos públicos desde el catálogo (ADR-0011); `backend.yml` no ejecuta pruebas web (las ejecutan `web.yml` y `web-e2e.yml`); colaboradores con permiso de escritura e Internet Archive `/download/` (commit `8d29978`, merge `5c060c1`).
+Hecho, antes en esta lista: `js/intake.js` ya no es un residuo (lo usa la hoja «Subir canciones» para validar la importación); publicar una canción real en GitHub («Nomyn Fragments», 2026-11-02); `publicar` regenera los datos públicos desde el catálogo (ADR-0011); `backend.yml` no ejecuta pruebas web (las ejecutan `web.yml` y `web-e2e.yml`); colaboradores con permiso de escritura e Internet Archive `/download/` (commit `8d29978`, merge `5c060c1`); los comentarios del código que citaban ADR-0014 para la interfaz sin usuarios ya citan ADR-0015 (`88f9275`); el buzón por la vía pública con «Licencia: …» (2026-11-03).
 
 Documentación por actualizar:
 - ADR-0005, ADR-0007, ADR-0008 (sus cifras de pruebas están desactualizadas) y RELEASE.md.

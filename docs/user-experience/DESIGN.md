@@ -12,9 +12,9 @@ Se replican la distribución, los colores y el comportamiento de Spotify web. No
 
 - Una sola biblioteca pública para todos: `data/songs.json` y `data/folders.json`, que genera el backend. Las carpetas del catálogo se llaman **«Álbumes»** en toda la interfaz; el contrato conserva sus nombres (`folder_id`, `create_folder`, `edit_folder`). No hay cuentas, perfiles, modos, PIN ni sesiones. La web abre en Inicio.
 - Las listas propias y «Me gusta» se guardan solo en este navegador (IndexedDB `reminiscencia-biblioteca`; `js/local-library.js`), también la foto propia de una lista.
-- Las canciones subidas «Solo en este navegador» viven en su propia base (`reminiscencia-audio-local`, ADR-0012) y nunca salen del dispositivo.
-- La web no escribe en la biblioteca pública (ADR-0008): editar una canción o un álbum, crear un álbum o cambiar una portada abre GitHub en otra pestaña con la petición ya escrita (§11).
-- PWA sin framework ni dependencias de runtime, que funciona sin conexión. Sin scripts de terceros, analítica ni tokens.
+- «Subir canciones» sube siempre para todos, por la función `/api/subir` (ADR-0017, §12). Las canciones subidas antes «Solo en este navegador» siguen en su propia base (`reminiscencia-audio-local`, ADR-0012), nunca salen del dispositivo y se pueden borrar; ya no se guardan nuevas.
+- Salvo la subida de canciones (§12), la web no escribe en la biblioteca pública (ADR-0008): editar una canción o un álbum, crear un álbum o cambiar una portada abre GitHub en otra pestaña con la petición ya escrita (§11).
+- PWA sin framework ni dependencias de runtime, que funciona sin conexión. Sin scripts de terceros, analítica ni tokens en el navegador.
 
 ## 2. Colores
 
@@ -146,15 +146,17 @@ Anchos de referencia de las pruebas: 390 (teléfono), 820 (tableta), 1024 y 1440
 
 ## 12. Subir canciones
 
-«+ Crear» › «Subir canciones» abre una hoja con tres opciones:
+«+ Crear» › «Subir canciones» abre una hoja con una sola forma de subir, para todos (ADR-0017), sin pasos ni casillas:
 
-1. **Solo en este navegador.** Archivos WAV, MP3, M4A, OGG o FLAC (hasta 60 MB y 20 minutos), convertidos a Opus y guardados solo aquí (ADR-0012), con progreso, la lista de lo subido y «Borrar». Suenan en `audio/L….opus`, servidas desde IndexedDB por `sw.js`.
-2. **Para todos.** Abre en otra pestaña `https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon`, con las condiciones: permiso de escritura, hasta 25 MB por archivo, una línea «Licencia: …» en el mensaje del commit (sin ella quedan privadas) y quien sube responde de esa declaración.
-3. **Desde Internet Archive.** Dirección, licencia (solo en un fichero directo) y título opcional, validados por `incidencias.js` e `intake.js` con la lista de bloqueo de 42 plataformas (ADR-0008).
+1. **Elegir archivos.** Uno o varios archivos WAV, MP3, M4A, FLAC, OGG u OPUS, sin límite de tamaño ni de duración ni de subidas por hora. Texto fijo: «Al subir, declaras que tienes derecho a publicar estos archivos». Cada archivo se convierte a Opus en este navegador (`convertToOpus` de `js/cuidador/subida-local.js`) y se envía, de uno en uno y en orden, a la función del propio origen `POST /api/subir` en trozos de hasta 4 MiB (`js/cuidador/subida-publica.js`). La función (`frontend/web/api/subir.js`) los guarda con `GITHUB_TOKEN` de Vercel en `audio-library/buzon/.partes/<id>/`; con el último escribe el manifiesto, y el workflow `buzon` une, convierte, cataloga y publica con la licencia fija de la web. El título de la canción es el nombre del archivo sin extensión. Progreso por archivo («Convirtiendo» o «Subiendo n de N») y resultado por archivo («Subida: llegará a todos en un par de minutos» o el error). Un navegador sin conversión a Opus (WebCodecs) ve el aviso y el botón desactivado.
+2. **Guardadas solo en este navegador.** Solo si hay alguna: las canciones subidas antes con ADR-0012, que siguen sonando en `audio/L….opus` (servidas desde IndexedDB por `sw.js`) y se pueden «Borrar». Ya no se guardan nuevas.
+3. **Importar desde Internet Archive.** Dirección, licencia (solo en un fichero directo) y título opcional, validados por `incidencias.js` e `intake.js` con la lista de bloqueo de 42 plataformas (ADR-0008); abre la incidencia en GitHub. El artista y el año se toman de los metadatos del ítem.
+
+Quien tiene permiso de escritura puede seguir subiendo desde la página de GitHub del buzón con una línea «Licencia: …» (ADR-0014); la hoja ya no la abre.
 
 ## 13. Sin conexión
 
-- `sw.js` precarga el shell (`SHELL_ASSETS` de `js/offline-core.js`, versión 7), pide los datos primero a la red, guarda las portadas al verse y sirve el audio descargado desde `reminiscencia-audio-v1`, con rangos. Al llegar una versión nueva, la página se recarga una vez (`js/pwa.js`).
+- `sw.js` precarga el shell (`SHELL_ASSETS` de `js/offline-core.js`, versión 8), pide los datos primero a la red, guarda las portadas al verse y sirve el audio descargado desde `reminiscencia-audio-v1`, con rangos. Al llegar una versión nueva, la página se recarga una vez (`js/pwa.js`).
 - «Descargar» guarda las canciones de esa colección; pulsado otra vez, las quita. Sin conexión, un aviso arriba del contenido lo dice y las no descargadas se ven atenuadas.
 
 ## 14. Accesibilidad (WCAG 2.2 AA)
@@ -180,7 +182,7 @@ Anchos de referencia de las pruebas: 390 (teléfono), 820 (tableta), 1024 y 1440
 | Buscar | `view-search`, `search-input`, `search-clear`, `search-status`, `search-results`, `search-chip-*`, `top-result`, `top-result-play`, `search-songs`, `search-more-songs`, `search-albums`, `search-playlists`, `search-albumes-grid`, `search-listas-grid`, `search-empty`, `browse-grid`, `browse-tile` |
 | Reproductor | `player-bar`, `player-cover`, `player-title`, `player-artist`, `player-like`, `player-shuffle`, `player-prev`, `player-play`, `player-next`, `player-repeat`, `player-time`, `player-progress`, `player-progress-track`, `player-duration`, `player-now`, `player-lyrics`, `player-queue`, `player-device`, `player-mute`, `player-volume`, `player-fullscreen`, `now-panel-title`, `now-panel-body`, `now-close`, `now-track`, `now-like`, `now-next`, `now-open-queue`, `queue-added`, `queue-next`, `queue-item`, `queue-dialog`, `mini-player`, `mini-open`, `mini-title`, `mini-like`, `mini-play`, `full-player`, `full-play`, `full-prev`, `full-next`, `full-shuffle`, `full-repeat`, `full-like`, `full-progress`, `full-queue` |
 | Edición | `edit-song`, `edit-song-title`, `edit-song-artist`, `edit-song-cover`, `edit-song-link`, `edit-album`, `edit-album-name`, `edit-album-artist`, `edit-album-cover`, `edit-album-link`, `create-album`, `create-album-name`, `create-album-artist`, `create-album-link`, `move-album`, `move-album-option`, `move-album-link`, `<hoja>-link-status`, `edit-note`, `cover-sheet`, `cover-id`, `cover-copy`, `cover-rules`, `cover-github-link`, `playlist-edit`, `playlist-edit-choose`, `playlist-edit-file`, `playlist-edit-remove-photo`, `playlist-edit-name`, `playlist-edit-description`, `playlist-edit-status`, `playlist-edit-save` |
-| Subir | `upload-sheet`, `upload-option-local`, `upload-option-todos`, `upload-option-archive`, `upload-back`, `upload-panel-local`, `upload-pick`, `upload-file-input`, `upload-status`, `upload-support`, `upload-failures`, `upload-local-list`, `upload-delete`, `upload-panel-todos`, `upload-rules`, `upload-github-link`, `upload-panel-archive`, `archive-url`, `archive-license`, `archive-title`, `archive-status`, `archive-issue-link` |
+| Subir | `upload-sheet`, `upload-panel`, `upload-rights`, `upload-support`, `upload-pick`, `upload-file-input`, `upload-status`, `upload-results`, `upload-local`, `upload-local-list`, `upload-delete`, `upload-open-archive`, `upload-back`, `upload-panel-archive`, `archive-url`, `archive-license`, `archive-title`, `archive-status`, `archive-issue-link` |
 | Diálogos | `confirm`, `confirm-ok`, `confirm-cancel`, `prompt`, `prompt-input`, `prompt-ok`, `<diálogo>-close` |
 
 ## 16. Medidas comprobadas
@@ -207,9 +209,8 @@ Anchos de referencia de las pruebas: 390 (teléfono), 820 (tableta), 1024 y 1440
 
 ## 17. Estado y pendiente
 
-- Implementado en la rama `feat/web-spotify-2`, con pruebas unitarias y de extremo a extremo.
+- En `main` (merge `315a7c3` de `feat/web-spotify-2`), con pruebas unitarias y de extremo a extremo. El backend de `edit_folder`, `artist` y el buzón de portadas está en `main` (merge `aba83c2`, ADR-0016). La hoja «Subir canciones» de §12 es la de ADR-0017 (merge `d68add5`).
 - Pendiente:
-  - el backend que procesa `edit_folder`, `artist` y el buzón de portadas (rama `feat/portadas-albumes`); hasta que esté en `main`, esas incidencias no se aplican;
   - probar en dispositivos y con lectores de pantalla reales (§14);
   - fechas de alta en el catálogo (`added_at`) para que «Añadidas recientemente» sea fiel;
   - llevar listas, fotos y «Me gusta» a otro navegador (no hay copia ni exportación).
