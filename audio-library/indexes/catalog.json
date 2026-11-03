@@ -258,6 +258,22 @@
       "size_bytes": 12358298,
       "added_at": "2026-11-03T10:52:43+00:00",
       "public": false
+    },
+    {
+      "id": "S08ce57f28ce4b29a",
+      "title": "Prueba subida directa",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "08ce57f28ce4b29a8d64c4b61fb82db3ae23dc05a0bdb9b9e3de9d3e7689683b",
+      "duration_s": 3.006,
+      "codec": "opus",
+      "size_bytes": 16311,
+      "added_at": "2026-11-03T11:19:23+00:00",
+      "public": true
     }
   ]
 }
