@@ -12,6 +12,7 @@ import 'network.dart';
 import 'offline_choice.dart';
 import 'playback.dart';
 import 'playback_plan.dart';
+import 'shared_upload.dart';
 import 'song.dart';
 
 /// Estado de la biblioteca para la interfaz: canciones, álbumes (carpetas en los datos), errores visibles y descargas.
@@ -26,6 +27,7 @@ class LibraryController extends ChangeNotifier {
     this.offline,
     this.network,
     this.covers,
+    this.uploader,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now {
     _lastSongId = playback.nowPlaying.value.songId;
@@ -46,6 +48,9 @@ class LibraryController extends ChangeNotifier {
 
   /// Portadas de la web guardadas en el teléfono. Null si no se guardan (pruebas).
   final CoverStore? covers;
+
+  /// Subida a la biblioteca común por la función de la web. Null si no está disponible.
+  final SharedUploader? uploader;
 
   final DateTime Function() _clock;
 
@@ -87,7 +92,7 @@ class LibraryController extends ChangeNotifier {
   /// True si el usuario pidió escuchar sin conexión (la sincronización descargará en Wi-Fi).
   bool get offlineWanted => _offlineWanted;
 
-  /// True mientras se convierten y guardan archivos elegidos en este teléfono.
+  /// True mientras se convierten y suben archivos a la biblioteca común.
   bool get importing => _importing;
   String get importProgress => _importProgress;
 
@@ -358,32 +363,34 @@ class LibraryController extends ChangeNotifier {
     unawaited(_pruneAudio());
   }
 
-  /// Convierte y guarda archivos elegidos en este teléfono. Las canciones aparecen en la lista sin recargar la biblioteca.
-  /// No recarga la cola de reproducción: si hace falta, playAt la prepara al tocar una canción.
-  Future<LocalAddResult> addLocalFiles(List<PickedAudioFile> files) async {
-    final library = local;
-    if (library == null) {
+  /// Comprueba la red antes de elegir archivos. Sin subida disponible, true (el error lo da [uploadShared]).
+  Future<bool> canUpload() async {
+    final shared = uploader;
+    if (shared == null) return true;
+    return shared.hasConnection();
+  }
+
+  /// Convierte y sube a la biblioteca común los archivos elegidos, de uno en uno y en trozos.
+  /// Sin red lanza AppException sin intentar nada. Lo subido llega a todos cuando el buzón lo publica.
+  Future<SharedUploadResult> uploadShared(List<PickedAudioFile> files) async {
+    final shared = uploader;
+    if (shared == null) {
       throw const AppException(
-        'Añadir audio no está disponible en este teléfono.',
+        'Subir canciones no está disponible en este teléfono.',
       );
     }
-    if (files.isEmpty) return const LocalAddResult(added: [], failed: []);
+    if (files.isEmpty || _importing) return const SharedUploadResult([]);
     _importing = true;
     _importProgress = 'Preparando…';
     notifyListeners();
     try {
-      final result = await library.addFiles(
+      return await shared.upload(
         files,
-        onProgress: (index, total, title) {
-          _importProgress = 'Convirtiendo ${index + 1} de $total: $title';
+        onProgress: (progress) {
+          _importProgress = progress.describe();
           notifyListeners();
         },
       );
-      if (result.added.isNotEmpty) {
-        _localSongs = [..._localSongs, ...result.added];
-        _songs = [..._catalog, ..._localSongs];
-      }
-      return result;
     } finally {
       _importing = false;
       _importProgress = '';
@@ -393,7 +400,7 @@ class LibraryController extends ChangeNotifier {
 
   /// Para la conversión al salir de la app (no sigue en segundo plano).
   Future<void> pauseImport() async {
-    if (_importing) await local?.cancelImport();
+    if (_importing) await uploader?.cancel();
   }
 
   /// Borra una canción subida desde este teléfono. Las canciones del catálogo público no se pueden borrar desde aquí.

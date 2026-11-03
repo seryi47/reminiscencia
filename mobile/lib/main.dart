@@ -1,5 +1,6 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import 'app.dart';
 import 'collections_controller.dart';
@@ -14,6 +15,7 @@ import 'offline_choice.dart';
 import 'playlist_covers.dart';
 import 'services.dart';
 import 'settings_store.dart';
+import 'shared_upload.dart';
 import 'sonidos_audio_handler.dart';
 
 Future<void> main() async {
@@ -63,6 +65,12 @@ Future<void> main() async {
           offline: SharedPrefsOfflineChoice(),
           network: const ConnectivityNetworkInfo(),
           covers: covers,
+          // Subida para todos: la función de la web guarda en el buzón; la app no tiene ningún token.
+          uploader: SharedUploader(
+            client: http.Client(),
+            converter: const FfmpegOpusConverter(enforceLimits: false),
+            hasConnection: hasAnyConnection,
+          ),
         ),
         playback: handler,
         covers: covers,

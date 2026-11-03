@@ -1,11 +1,10 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../library_controller.dart';
+import '../app_error.dart';
 import '../local_audio.dart';
 import '../services.dart';
+import '../shared_upload.dart';
 import '../theme.dart';
-import '../url_opener.dart';
 import 'collection_page.dart';
 import 'collection_ref.dart';
 import 'common.dart';
@@ -15,7 +14,7 @@ import 'playlist_flows.dart';
 enum LibraryFilter { all, playlists, albums }
 
 /// Tu biblioteca: «Canciones que te gustan», tus listas, los álbumes del catálogo y lo subido en este teléfono.
-/// Arriba, «Subir canciones» (solo en este teléfono o para todos) y crear una lista.
+/// Arriba, «Subir canciones» (a la biblioteca común, para todos) y crear una lista.
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key, required this.services});
 
@@ -91,7 +90,7 @@ class _LibraryPageState extends State<LibraryPage> {
                       key: const Key('upload-songs'),
                       onPressed: library.importing
                           ? null
-                          : () => showUploadSheet(context, services),
+                          : () => uploadSongs(context, services),
                       icon: const Icon(Icons.upload_rounded),
                       label: const Text('Subir canciones'),
                     ),
@@ -100,10 +99,20 @@ class _LibraryPageState extends State<LibraryPage> {
                         liveRegion: true,
                         child: Text(
                           library.importProgress,
+                          key: const Key('upload-progress'),
                           style: theme.textTheme.bodySmall,
                         ),
                       ),
                   ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Text(
+                  kUploadRightsNotice,
+                  style: theme.textTheme.bodySmall,
                 ),
               ),
             ),
@@ -252,138 +261,92 @@ class _LibraryRow extends StatelessWidget {
   }
 }
 
-/// Hoja «Subir canciones»: «Solo en este teléfono» (subida local, ADR-0013) o «Para todos» (GitHub).
-Future<void> showUploadSheet(BuildContext context, AppServices services) {
-  return showModalBottomSheet<void>(
-    context: context,
-    useRootNavigator: true,
-    isScrollControlled: true,
-    builder: (sheetContext) {
-      final theme = Theme.of(sheetContext);
-      return SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    'Subir canciones',
-                    style: theme.textTheme.titleLarge,
-                  ),
-                ),
-              ),
-              ListTile(
-                key: const Key('upload-local'),
-                leading: const Icon(Icons.phone_android_rounded),
-                title: const Text('Solo en este teléfono'),
-                subtitle: const Text(
-                  'WAV, MP3, M4A, FLAC u OGG. Se convierten a Opus y se quedan en este teléfono, sin publicarse.',
-                ),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  pickAndAddLocal(context, services.library);
-                },
-              ),
-              ListTile(
-                key: const Key('upload-shared'),
-                leading: const Icon(Icons.public_rounded),
-                title: const Text('Para todos'),
-                subtitle: const Text(
-                  'Se suben a la biblioteca común desde GitHub, en el navegador.',
-                ),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  showSharedUploadDialog(context, services);
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
-/// Explica la subida «Para todos» y abre la página de GitHub en el navegador.
-Future<void> showSharedUploadDialog(
-  BuildContext context,
-  AppServices services,
-) async {
-  final open = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Subir para todos'),
-      content: const SingleChildScrollView(
-        child: Text(
-          'Se abrirá en el navegador la página de GitHub para subir archivos a la carpeta '
-          'audio-library/buzon del repositorio de la biblioteca.\n\n'
-          'Hace falta una cuenta de GitHub con permiso de escritura en el repositorio.\n\n'
-          'En el mensaje del commit escribe «Licencia: …» con la licencia de las canciones '
-          '(por ejemplo, «Licencia: dominio público»). Sin ella, las canciones quedan privadas '
-          'y no se publican para nadie.',
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('Abrir GitHub'),
-        ),
-      ],
-    ),
-  );
-  if (open != true || !context.mounted) return;
+/// «Subir canciones»: sin hojas ni confirmaciones. Comprueba la red, elige uno o varios archivos y los sube
+/// a la biblioteca común (convertidos a Opus, de uno en uno). Al terminar, el resultado de cada archivo.
+Future<void> uploadSongs(BuildContext context, AppServices services) async {
   final messenger = ScaffoldMessenger.of(context);
-  final opened = await services.openUrl(kSharedUploadUri);
-  if (!opened) {
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          'No se pudo abrir el navegador. Abre a mano: $kSharedUploadUri',
-        ),
-      ),
-    );
-  }
-}
-
-/// Elige archivos de audio del teléfono y los convierte (subida local).
-Future<void> pickAndAddLocal(
-  BuildContext context,
-  LibraryController library,
-) async {
-  final messenger = ScaffoldMessenger.of(context);
-  // Sin allowMultiple: pickFiles ya admite varios archivos (el parámetro está obsoleto).
-  final picked = await FilePicker.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: kLocalAudioExtensions,
-  );
-  if (picked.isEmpty) return;
-  final files = [
-    for (final file in picked)
-      if (file.path != null) PickedAudioFile(name: file.name, path: file.path!),
-  ];
-  if (files.isEmpty) {
-    messenger.showSnackBar(
-      const SnackBar(content: Text('No se pudo leer ninguno de los archivos.')),
-    );
+  final library = services.library;
+  if (!await library.canUpload()) {
+    messenger.showSnackBar(const SnackBar(content: Text(kOfflineMessage)));
     return;
   }
+  final List<PickedAudioFile> files;
   try {
-    final result = await library.addLocalFiles(files);
-    messenger.showSnackBar(SnackBar(content: Text(describeAddResult(result))));
+    files = await services.pickAudio();
   } catch (error) {
     messenger.showSnackBar(
       SnackBar(
-        content: Text('No se pudo añadir el audio: ${describeError(error)}'),
+        content: Text(
+          'No se pudieron elegir los archivos: ${describeError(error)}',
+        ),
       ),
     );
+    return;
   }
+  if (files.isEmpty) return;
+  final SharedUploadResult result;
+  try {
+    result = await library.uploadShared(files);
+  } catch (error) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          error is AppException
+              ? error.message
+              : 'No se pudo subir: ${describeError(error)}',
+        ),
+      ),
+    );
+    return;
+  }
+  if (result.items.isEmpty) return;
+  messenger.showSnackBar(SnackBar(content: Text(describeUploadResult(result))));
+  if (!context.mounted) return;
+  await showUploadResults(context, result);
+}
+
+/// Resultado de cada archivo subido.
+Future<void> showUploadResults(
+  BuildContext context,
+  SharedUploadResult result,
+) {
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      final theme = Theme.of(dialogContext);
+      return AlertDialog(
+        title: const Text('Subir canciones'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final item in result.items)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(switch (item.outcome) {
+                    UploadOutcome.uploaded => Icons.check_circle_rounded,
+                    UploadOutcome.failed => Icons.error_outline_rounded,
+                    UploadOutcome.pending => Icons.schedule_rounded,
+                  }),
+                  title: Text(item.title),
+                  subtitle: Text(
+                    item.outcome == UploadOutcome.uploaded
+                        ? item.message
+                        : 'No se pudo subir: ${item.message}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      );
+    },
+  );
 }

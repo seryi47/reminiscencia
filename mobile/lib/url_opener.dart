@@ -4,11 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 /// Abre una dirección en el navegador del teléfono. Devuelve false si no se pudo.
 typedef UrlOpener = Future<bool> Function(Uri uri);
 
-/// Página de GitHub para subir canciones «Para todos»: el buzón de la biblioteca.
-final Uri kSharedUploadUri = Uri.parse(
-  'https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon',
-);
-
 /// Implementación real: navegador externo (la app no guarda ni ve ninguna sesión de GitHub).
 Future<bool> openInBrowser(Uri uri) async {
   try {

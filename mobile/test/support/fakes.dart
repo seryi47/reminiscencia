@@ -17,6 +17,7 @@ import 'package:reminiscencia/playback.dart';
 import 'package:reminiscencia/playlist_covers.dart';
 import 'package:reminiscencia/services.dart';
 import 'package:reminiscencia/settings_store.dart';
+import 'package:reminiscencia/shared_upload.dart';
 import 'package:reminiscencia/song.dart';
 
 /// Canción de prueba con id y título predecibles.
@@ -318,6 +319,8 @@ buildTestServices({
   bool canOpenUrls = true,
   Iterable<String> availableCovers = const [],
   ImagePicker? pickImage,
+  SharedUploader? uploader,
+  AudioFilesPicker? pickAudio,
 }) {
   final source = FakeLibrarySource(
     songs: songs,
@@ -336,6 +339,7 @@ buildTestServices({
       source: source,
       playback: playback,
       covers: coverStore,
+      uploader: uploader,
     ),
     playback: playback,
     collections: CollectionsController(
@@ -350,6 +354,7 @@ buildTestServices({
       return canOpenUrls;
     },
     pickImage: pickImage ?? () async => null,
+    pickAudio: pickAudio ?? () async => const [],
     clock: () => now ?? DateTime(2026, 11, 3, 10),
   );
   return (
