@@ -299,7 +299,7 @@ void main() {
     );
 
     test(
-      'a los 10 minutos: «Sigue procesándose» y deja de comprobar; la biblioteca lo reconoce después',
+      'a los 10 minutos queda pendiente de aparecer y sigue comprobando; la biblioteca lo reconoce después',
       () async {
         final t = tracker();
         await t.start([picked('Lenta.mp3')]);
@@ -315,7 +315,7 @@ void main() {
         final entry = t.entries.single;
         expect(entry.stage, UploadStage.slow);
         expect(entry.statusText, kSlowPublishMessage);
-        expect(timers.active, isEmpty);
+        expect(timers.active, isNotEmpty);
         final fetches = published.fetches;
 
         // Más tarde, una sincronización normal de la biblioteca (sin peticiones extra) la encuentra.
@@ -509,7 +509,76 @@ void main() {
     );
 
     test(
-      'al volver tras 10 minutos fuera, mira una vez y, si no está, «Sigue procesándose»',
+      'reconoce una pista de playlist ya publicada por álbum, título y artista',
+      () async {
+        expect(youtubeFolderId('PLVU-jIOit29A'), 'F04b14b9c99130a4d');
+        published.songs = [
+          const PublishedSong('S1', 'Charleston'),
+          const PublishedSong(
+            'S40',
+            'Cada vez',
+            artist: 'Desakato',
+            folderId: 'F04b14b9c99130a4d',
+          ),
+        ];
+        final t = tracker();
+        await t.start([
+          const PickedAudioFile(
+            name: 'Cada vez.wav',
+            path: '/origen/Cada vez.wav',
+            youtubePlaylistId: 'PLVU-jIOit29A',
+            youtubePlaylistName: 'Nuestro desacato',
+            artist: 'Desakato',
+          ),
+        ]);
+        await settleIo();
+        timers.fire();
+        await settleIo();
+
+        final entry = t.entries.single;
+        expect(entry.stage, UploadStage.published);
+        expect(entry.publishedId, 'S40');
+        expect(entry.statusText, kAlreadyPublishedLabel);
+        t.dispose();
+      },
+    );
+
+    test('no da por duplicada una pista con otro álbum o artista', () async {
+      published.songs = [
+        const PublishedSong('S1', 'Charleston'),
+        const PublishedSong(
+          'S41',
+          'Cada vez',
+          artist: 'Desakato',
+          folderId: 'F0000000000000000',
+        ),
+        const PublishedSong(
+          'S42',
+          'Cada vez',
+          artist: 'Otro',
+          folderId: 'F04b14b9c99130a4d',
+        ),
+      ];
+      final t = tracker();
+      await t.start([
+        const PickedAudioFile(
+          name: 'Cada vez.wav',
+          path: '/origen/Cada vez.wav',
+          youtubePlaylistId: 'PLVU-jIOit29A',
+          youtubePlaylistName: 'Nuestro desacato',
+          artist: 'Desakato',
+        ),
+      ]);
+      await settleIo();
+      timers.fire();
+      await settleIo();
+
+      expect(t.entries.single.stage, UploadStage.publishing);
+      t.dispose();
+    });
+
+    test(
+      'al volver tras 10 minutos fuera, mira una vez y, si no está, queda pendiente de aparecer',
       () async {
         final t = tracker();
         await t.start([picked('Uno.mp3')]);
@@ -519,7 +588,7 @@ void main() {
         t.setForeground(true);
         await settleIo();
         expect(t.entries.single.stage, UploadStage.slow);
-        expect(timers.active, isEmpty);
+        expect(timers.active, isNotEmpty);
         t.dispose();
       },
     );

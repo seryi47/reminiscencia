@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -25,13 +26,15 @@ import 'zip_audio.dart';
 /// Cada cuánto se mira si ya está publicada.
 const Duration kPublishPollInterval = Duration(seconds: 20);
 
-/// Tiempo máximo de comprobación desde que se guarda en GitHub.
+/// Tras este tiempo desde que se guarda en GitHub, la canción pasa a «pendiente de aparecer».
+/// Sigue comprobándose con la app en primer plano hasta reconocerla.
 const Duration kPublishPollLimit = Duration(minutes: 10);
 
 const String kPublishingLabel = 'Publicándose…';
 const String kUploadErrorLabel = 'Error';
 const String kSlowPublishMessage =
-    'Sigue procesándose; aparecerá en la biblioteca cuando termine';
+    'Aún no aparece en la biblioteca; seguiremos comprobando';
+const String kAlreadyPublishedLabel = 'Ya estaba en la biblioteca';
 
 /// Prefijo de las canciones provisionales: no coincide con «S» (catálogo) ni con «L» (solo en este teléfono).
 const String kProvisionalIdPrefix = 'P';
@@ -70,18 +73,24 @@ Timer _periodic(Duration period, void Function() onTick) =>
 /// Canción publicada (solo lo que hace falta para reconocerla).
 @immutable
 class PublishedSong {
-  const PublishedSong(this.id, this.title);
+  const PublishedSong(this.id, this.title, {this.artist = '', this.folderId});
 
   final String id;
   final String title;
+  final String artist;
+  final String? folderId;
 }
+
+/// Id estable del álbum de una playlist de YouTube (el mismo que calcula `sonidos.catalog`).
+String youtubeFolderId(String playlistId) =>
+    'F${sha256.convert(utf8.encode('youtube:$playlistId')).toString().substring(0, 16)}';
 
 /// Lee las canciones publicadas en la web.
 abstract interface class PublishedSongsSource {
   Future<List<PublishedSong>> fetch();
 }
 
-/// `data/songs.json` de la web, sin caché intermedia. Solo lee id y título.
+/// `data/songs.json` de la web, sin caché intermedia. Solo lee id, título, artista y álbum.
 class HttpPublishedSongs implements PublishedSongsSource {
   HttpPublishedSongs({required this.client, Uri? uri})
     : uri = uri ?? Uri.parse('${kLibraryBase}data/songs.json');
@@ -101,7 +110,7 @@ class HttpPublishedSongs implements PublishedSongsSource {
   }
 }
 
-/// Id y título de cada canción de un `songs.json`. Las entradas raras se omiten.
+/// Id, título, artista y álbum de cada canción de un `songs.json`. Las entradas raras se omiten.
 List<PublishedSong> parsePublishedSongs(String body) {
   final decoded = jsonDecode(body);
   if (decoded is! List) {
@@ -110,7 +119,14 @@ List<PublishedSong> parsePublishedSongs(String body) {
   return [
     for (final entry in decoded)
       if (entry is Map && entry['id'] is String && entry['title'] is String)
-        PublishedSong(entry['id'] as String, entry['title'] as String),
+        PublishedSong(
+          entry['id'] as String,
+          entry['title'] as String,
+          artist: entry['artist'] is String ? entry['artist'] as String : '',
+          folderId: entry['folder_id'] is String
+              ? entry['folder_id'] as String
+              : null,
+        ),
   ];
 }
 
@@ -175,6 +191,9 @@ class UploadEntry {
   /// Id de la canción publicada.
   String? publishedId;
 
+  /// La canción ya estaba publicada (el buzón la deduplicó) y se reconoció por álbum, título y artista.
+  bool alreadyPresent = false;
+
   /// Grupo del ZIP del que salió (clave `Z…` y nombre del ZIP). Null si se eligió suelta.
   final String? groupKey;
   final String? groupName;
@@ -200,7 +219,8 @@ class UploadEntry {
     UploadStage.sending => 'Subiendo… $percent %',
     UploadStage.saved => 'Guardada en GitHub',
     UploadStage.publishing => 'Publicándose… (suele tardar 2–3 minutos)',
-    UploadStage.published => 'Publicada',
+    UploadStage.published =>
+      alreadyPresent ? kAlreadyPublishedLabel : 'Publicada',
     UploadStage.slow => kSlowPublishMessage,
     UploadStage.failed => 'Error: ${error ?? 'no se pudo subir.'}',
   };
@@ -789,7 +809,7 @@ class UploadTracker extends ChangeNotifier {
   void setForeground(bool foreground) {
     if (_foreground == foreground) return;
     _foreground = foreground;
-    if (foreground && _entries.any((e) => e.awaitingPublication)) {
+    if (foreground && _entries.any((e) => e.matchable)) {
       unawaited(checkNow());
     }
     _ensurePolling();
@@ -804,9 +824,7 @@ class UploadTracker extends ChangeNotifier {
   void _ensurePolling() {
     if (_disposed) return;
     final needed =
-        _foreground &&
-        published != null &&
-        _entries.any((e) => e.awaitingPublication);
+        _foreground && published != null && _entries.any((e) => e.matchable);
     if (needed && _timer == null) {
       _timer = _timerFactory(kPublishPollInterval, () => unawaited(checkNow()));
     } else if (!needed && _timer != null) {
@@ -815,11 +833,11 @@ class UploadTracker extends ChangeNotifier {
     }
   }
 
-  /// Mira una vez si ya están publicadas. Lo que pase de 10 minutos queda como «Sigue procesándose».
+  /// Mira una vez si ya están publicadas. Lo que pase de 10 minutos queda pendiente de aparecer y se sigue comprobando.
   Future<void> checkNow() async {
     final source = published;
     if (source == null || _checking || !_foreground) return;
-    final waiting = _entries.where((e) => e.awaitingPublication).toList();
+    final waiting = _entries.where((e) => e.matchable).toList();
     if (waiting.isEmpty) {
       _ensurePolling();
       return;
@@ -854,7 +872,15 @@ class UploadTracker extends ChangeNotifier {
   /// Con la biblioteca recién sincronizada (sin peticiones nuevas): reconoce lo que ya se publicó.
   void reconcile(List<Song> catalog) {
     if (!_entries.any((e) => e.matchable)) return;
-    _match([for (final song in catalog) PublishedSong(song.id, song.title)]);
+    _match([
+      for (final song in catalog)
+        PublishedSong(
+          song.id,
+          song.title,
+          artist: song.artist,
+          folderId: song.folderId,
+        ),
+    ]);
     _changed();
     _ensurePolling();
     unawaited(_persist());
@@ -887,7 +913,45 @@ class UploadTracker extends ChangeNotifier {
         onPublished?.call(entry);
         break;
       }
+      if (entry.stage == UploadStage.published) continue;
+      final duplicate = _existingPlaylistSong(entry, remote, claimed);
+      if (duplicate == null) continue;
+      claimed.add(duplicate.id);
+      entry
+        ..stage = UploadStage.published
+        ..publishedId = duplicate.id
+        ..alreadyPresent = true;
+      if (!_notices.isClosed) {
+        _notices.add(
+          UploadNotice(
+            key: entry.key,
+            message: '«${entry.title}» ya estaba en la biblioteca.',
+          ),
+        );
+      }
+      onPublished?.call(entry);
     }
+  }
+
+  /// Pista ya publicada de la misma playlist (el buzón deduplica por contenido y devuelve el id existente).
+  /// Solo vale si coinciden álbum, título y artista.
+  PublishedSong? _existingPlaylistSong(
+    UploadEntry entry,
+    List<PublishedSong> remote,
+    Set<String> claimed,
+  ) {
+    final playlistId = entry.youtubePlaylistId;
+    if (playlistId == null || entry.artist.isEmpty) return null;
+    final folderId = youtubeFolderId(playlistId);
+    final title = foldTitle(entry.title);
+    final artist = foldTitle(entry.artist);
+    for (final song in remote) {
+      if (claimed.contains(song.id) || song.folderId != folderId) continue;
+      if (foldTitle(song.title) == title && foldTitle(song.artist) == artist) {
+        return song;
+      }
+    }
+    return null;
   }
 
   /// Borra la copia Opus de una canción ya publicada (cuando no suena ni está en la cola).
