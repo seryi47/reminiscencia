@@ -12,8 +12,7 @@
       "id": "F417639bc3d88755f",
       "name": "Fiesta",
       "parent_id": null,
-      "youtube_playlist_id": "PLN_xqb8Gm0xY",
-      "artist": "C. Tangana y Israel B"
+      "youtube_playlist_id": "PLN_xqb8Gm0xY"
     }
   ],
   "songs": [
@@ -512,6 +511,22 @@
       "codec": "opus",
       "size_bytes": 916894,
       "added_at": "2026-11-04T12:45:22+00:00",
+      "public": true
+    },
+    {
+      "id": "Sfb2d0500aa3c6e26",
+      "title": "512",
+      "artist": "Jhayco y Mora",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "fb2d0500aa3c6e26482639de8618875f5663dd766a3ff3a12aec98426c1f2e40",
+      "duration_s": 195.809,
+      "codec": "opus",
+      "size_bytes": 1200430,
+      "added_at": "2026-11-04T12:53:27+00:00",
       "public": true
     }
   ]
