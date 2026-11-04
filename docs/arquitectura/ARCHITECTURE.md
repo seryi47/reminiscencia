@@ -141,8 +141,8 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 - Audio local de antes: las canciones guardadas «Solo en este navegador» (ADR-0012) o «Solo en este teléfono» (ADR-0013) siguen sonando y se borran; ya no se guardan nuevas (ADR-0017).
 - APK 1.2.4+8; el workflow `android.yml` pasó análisis, pruebas y compilación de depuración. La producción se omitió porque no están configurados los secretos de firma; no hay release nueva ni prueba en un dispositivo físico.
 - Comprobador de producción: `scripts/smoke_produccion.mjs`.
-- Pruebas locales (2026-11-03): 404 unitarias de la web, 141 E2E y accesibilidad, 715 del backend y 225 de Flutter; `flutter analyze` sin incidencias.
-- Biblioteca actual: 23 canciones en el catálogo, 12 publicadas, 11 privadas (entre ellas, las de prueba del buzón) y ninguna carpeta.
+- Pruebas locales (2026-11-04): 413 unitarias de la web, 141 E2E y accesibilidad, 726 del backend y 227 de Flutter; `flutter analyze` sin incidencias.
+- Biblioteca actual: 30 canciones en el catálogo, 19 publicadas, 11 privadas (entre ellas, las de prueba del buzón) y un álbum, «Nuestro desacato» de Desakato.
 - Investigación: bibliografía, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`.
 - CI: `backend.yml`, `biblioteca.yml`, `buzon.yml`, `web.yml`, `web-e2e.yml` y `android.yml`.
 

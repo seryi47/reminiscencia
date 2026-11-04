@@ -1,6 +1,6 @@
 # Almacenamiento en GitHub: audio, catálogo y límites
 
-- Estado: 2026-11-03; la interfaz ya no tiene usuarios (ADR-0015) y las canciones también entran por el buzón `audio-library/buzon/` (`buzon.yml`, ADR-0014), que borra cada archivo tras procesarlo, aunque el original queda en el historial de git y cuenta para su tamaño. Desde ADR-0017, «Subir canciones» en la web y en la APK escribe también en el repositorio: la función de Vercel `frontend/web/api/subir.js` guarda cada trozo de la subida con un commit en `audio-library/buzon/.partes/<id>/`, y esos trozos (Opus ya convertido en el dispositivo) también quedan en el historial. Portadas en `audio-library/covers/` (ADR-0016). Cifras actualizadas tras `main` `1a1d4c8`.
+- Estado: 2026-11-04; la interfaz ya no tiene usuarios (ADR-0015) y las canciones también entran por el buzón `audio-library/buzon/` (`buzon.yml`, ADR-0014), que borra cada archivo tras procesarlo, aunque el original queda en el historial de git y cuenta para su tamaño. Desde ADR-0017, «Subir canciones» en la web y en la APK escribe también en el repositorio: la función de Vercel `frontend/web/api/subir.js` guarda cada trozo de la subida con un commit en `audio-library/buzon/.partes/<id>/`, y esos trozos (Opus ya convertido en el dispositivo) también quedan en el historial. Portadas en `audio-library/covers/` (ADR-0016). Cifras verificadas en la rama `main`.
 - Decisiones: ADR-0003 (almacenamiento en el ecosistema GitHub, parcialmente superada), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo), ADR-0008 (entrada por incidencias), ADR-0010 (procesado y publicación separados), ADR-0014 (buzón), ADR-0016 (portadas) y ADR-0017 (subida para todos por `/api/subir`).
 - Código: `backend/sonidos/` (`limits.py`, `catalog.py`, `pipeline.py`, `publish.py`, `paquete.py`) y `scripts/check_repo_limits.py`.
 
@@ -8,9 +8,9 @@
 
 | Ruta | Qué contiene | Estado en main | Llega al público |
 |---|---|---|---|
-| `audio-library/indexes/catalog.json` | Catálogo: 23 canciones (12 públicas) y ninguna carpeta | Versionado | No |
-| `audio-library/audio/<id>.opus` | Audio de reproducción de todas las canciones (23 ficheros, unos 24 MiB) | Versionado | No |
-| `frontend/web/audio/<id>.opus` | Audio de las canciones publicadas (12 ficheros, unos 17 MiB) | Versionado | Sí, lo sirve Vercel |
+| `audio-library/indexes/catalog.json` | Catálogo: 30 canciones (19 públicas y 11 privadas) y un álbum | Versionado | No |
+| `audio-library/audio/<id>.opus` | Audio de reproducción de todas las canciones (30 ficheros) | Versionado | No |
+| `frontend/web/audio/<id>.opus` | Audio de las canciones publicadas (19 ficheros) | Versionado | Sí, lo sirve Vercel |
 | `audio-library/covers/<id>.jpg` y `frontend/web/covers/<id>.jpg` | Portadas de 640×640 (hoy una); a la web van las de canciones públicas y todas las carpetas (ADR-0016) | Versionado | Las de `frontend/web/covers/` |
 | `audio-library/buzon/` (y `.partes/<id>/`) | Carpeta de paso del workflow `buzon`: archivos subidos desde GitHub y trozos de `/api/subir`, que se borran al procesarlos | Versionado de paso; queda en el historial | No |
 | `frontend/web/data/songs.json`, `folders.json`, `catalog.json` | Datos públicos, regenerados desde el catálogo | Versionado | Sí, lo sirve Vercel |

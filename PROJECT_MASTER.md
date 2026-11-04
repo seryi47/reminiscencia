@@ -67,7 +67,7 @@ Numeración: `ADR-0009` es la interfaz única y `ADR-0010` el procesado y la pub
 
 | Módulo | Estado | Pruebas |
 |---|---|---|
-| Catálogo versionado (`backend/sonidos/catalog.py`) | Implementado; fuente de verdad. 23 canciones: 12 públicas y 11 privadas | 14 (`test_catalog.py`) |
+| Catálogo versionado (`backend/sonidos/catalog.py`) | Implementado; fuente de verdad. 30 canciones: 19 públicas y 11 privadas; un álbum con artista y portada | 14 (`test_catalog.py`) |
 | Importación por URL (`pipeline.py`, `intake.py`, `sources.py`) | Implementado; corre en el job `procesar` de `biblioteca.yml`. Cada redirección y cada conexión validan la dirección. Acepta `archive.org/details/<id>` y `archive.org/download/<id>` | 123 de fuentes (`test_sources.py`), 25 de descargas (`test_intake.py`) y 8 de importación (`test_pipeline.py`) |
 | Contrato de las peticiones (`issue_request.py`, `scripts/issue_request.py`) | Implementado; valida el texto de la incidencia antes de tocar nada | 98 casos (`test_issue_request.py`) |
 | Publicación y sincronización con la web (`publish.py`) | Implementado; la web solo recibe canciones públicas | 7 (`test_publish.py`) |

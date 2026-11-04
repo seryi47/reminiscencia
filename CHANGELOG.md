@@ -6,7 +6,7 @@
 - La web y la APK conservan álbum y artista por pista hasta el manifiesto de `/api/subir`; el buzón asigna el artista a cada canción, deriva el artista del álbum cuando todas las pistas coinciden y reutiliza el álbum estable por ID de playlist.
 - `organize_youtube_playlist` repara en una única petición playlists ya publicadas, sin volver a convertir ni subir el audio.
 - Los vídeos individuales y las subidas manuales siguen sin álbum. El flujo conserva la declaración de derechos y la publicación pública habituales.
-- Añadidas pruebas de extracción y propagación de artistas, manifiesto, reparación del catálogo y compatibilidad web/Android. El workflow de reparación terminó correctamente y las siete canciones de «Nuestro desacato» aparecen en producción con el artista Desakato y el mismo álbum. La APK está en `main`; no se ha publicado una release.
+- Añadidas pruebas de extracción y propagación de artistas, manifiesto, reparación del catálogo y compatibilidad web/Android. El workflow de reparación terminó correctamente y las siete canciones de «Nuestro desacato» aparecen en producción con el artista Desakato; el álbum también muestra ese artista. La APK está en `main`; no se ha publicado una release.
 
 ## 1.2.3 (2026-11-03)
 
