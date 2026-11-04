@@ -1,6 +1,13 @@
 {
   "version": 1,
-  "folders": [],
+  "folders": [
+    {
+      "id": "F04b14b9c99130a4d",
+      "name": "Nuestro desacato",
+      "parent_id": null,
+      "youtube_playlist_id": "PLVU-jIOit29A"
+    }
+  ],
   "songs": [
     {
       "id": "S5aac103b6eb2ecf4",
@@ -374,10 +381,10 @@
     {
       "id": "S134ae74e57dc15f5",
       "title": "A la soledad",
-      "artist": "",
+      "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F04b14b9c99130a4d",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "134ae74e57dc15f5e56ae8df66b302c8e655f7bc497fc6913d3ad53d93437f3e",
@@ -390,10 +397,10 @@
     {
       "id": "Sb721835fc334a625",
       "title": "Animales hambrientos",
-      "artist": "",
+      "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F04b14b9c99130a4d",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "b721835fc334a62545f8e77e10201392f2d4179a9c46435b19c94d0efb7c0afc",
@@ -406,10 +413,10 @@
     {
       "id": "S1fc0b6a1923ebc29",
       "title": "Cada vez",
-      "artist": "",
+      "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F04b14b9c99130a4d",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "1fc0b6a1923ebc29168542fb45c431a740a587b428759ff27b182d81f1747c41",
@@ -422,10 +429,10 @@
     {
       "id": "Sa886421c43a60416",
       "title": "Cuando salga el sol",
-      "artist": "",
+      "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F04b14b9c99130a4d",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "a886421c43a604162d8a0f9c247c953a1852e946c822b760105ccb0799c7c065",
@@ -438,10 +445,10 @@
     {
       "id": "S4870623de92f3869",
       "title": "La Cura",
-      "artist": "",
+      "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F04b14b9c99130a4d",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "4870623de92f3869f14fff7e6ebba40f06c88827b1edfd18bfa247af48694671",
@@ -454,10 +461,10 @@
     {
       "id": "Sa01435c80917aa25",
       "title": "Octubres rotos",
-      "artist": "",
+      "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F04b14b9c99130a4d",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "a01435c80917aa25afbc0218ad470eb5a1b03efcdb19a38de2309190437c4d29",
@@ -470,10 +477,10 @@
     {
       "id": "S6e61247551537851",
       "title": "Sombras",
-      "artist": "",
+      "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F04b14b9c99130a4d",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "6e61247551537851c5377d11f829263e9de355b7cbfb8dc0eb0b21c67c35b415",
