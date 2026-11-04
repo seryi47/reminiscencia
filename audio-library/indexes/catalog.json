@@ -528,6 +528,22 @@
       "size_bytes": 1200430,
       "added_at": "2026-11-04T12:53:27+00:00",
       "public": true
+    },
+    {
+      "id": "S12d6b208f1069add",
+      "title": "Todo De Ti (Official Video)",
+      "artist": "Rauw Alejandro",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "12d6b208f1069add0c0632f99c72c1e3956486074830f918a0b64c43409b6ee4",
+      "duration_s": 211.471,
+      "codec": "opus",
+      "size_bytes": 1297850,
+      "added_at": "2026-11-04T13:02:19+00:00",
+      "public": true
     }
   ]
 }
