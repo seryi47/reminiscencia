@@ -3,6 +3,7 @@
 // ya existía), lo que se guarda en localStorage y el gestor completo con la conversión, el envío, el reloj y los
 // temporizadores simulados. Datos ficticios. Ejecución: node --test tests/web-unit/subida-estado.test.mjs
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe, test } from 'node:test';
 
 import {
@@ -19,7 +20,9 @@ import {
   progressOf,
   publishedNotice,
   SAVED_PAUSE_MS,
+  SLOW_POLL_MS,
   serializeItems,
+  SONGS_FETCH_TIMEOUT_MS,
   songsFetcher,
   STATES,
   STORAGE_KEY,
@@ -95,10 +98,10 @@ describe('máquina de estados', () => {
     assert.equal(transition(lost, { type: 'retry' }), lost);
   });
 
-  test('si tarda demasiado: «Sigue procesándose» (y aún puede publicarse después)', () => {
+  test('si tarda demasiado sigue pendiente de aparecer y aún puede publicarse después', () => {
     const publishing = { ...createItem({ key: 'k', name: 'a.wav', title: 'a' }), state: S.PUBLISHING, savedAt: 0 };
     const slow = transition(publishing, { type: 'slow' });
-    assert.equal(statusText(slow), 'Sigue procesándose; aparecerá en la biblioteca cuando termine');
+    assert.equal(statusText(slow), 'Aún no aparece en la biblioteca; seguiremos comprobando');
     assert.equal(transition(slow, { type: 'published', songId: 'S9' }).state, S.PUBLISHED);
   });
 
@@ -116,7 +119,7 @@ describe('máquina de estados', () => {
     assert.equal(summaryText([]), '');
     assert.equal(summaryText([item(S.PUBLISHED), item(S.PUBLISHED), item(S.PUBLISHING)]), '2 de 3 publicadas');
     assert.equal(summaryText([item(S.SENDING)]), '0 de 1 publicada');
-    assert.equal(summaryText([item(S.PUBLISHED), item(S.ERROR), item(S.SLOW)]), '1 de 3 publicadas · 1 con error · 1 sigue procesándose');
+    assert.equal(summaryText([item(S.PUBLISHED), item(S.ERROR), item(S.SLOW)]), '1 de 3 publicadas · 1 con error · 1 pendiente de aparecer');
     assert.equal(activeCount([item(S.QUEUED), item(S.CONVERTING), item(S.SENDING), item(S.SAVED), item(S.PUBLISHING), item(S.PUBLISHED), item(S.ERROR), item(S.SLOW)]), 5);
     assert.equal(indicatorText(0), '');
     assert.equal(indicatorText(1), 'Publicándose 1 canción');
@@ -168,9 +171,25 @@ describe('detección de la canción publicada', () => {
       return new Response('[{"id":"S1","title":"a"}]', { status: 200 });
     }, 'data/songs.json');
     assert.deepEqual(await ok(), [{ id: 'S1', title: 'a' }]);
-    assert.deepEqual(calls, [['data/songs.json', { cache: 'no-store' }]]);
+    assert.equal(calls[0][0], 'data/songs.json');
+    assert.equal(calls[0][1].cache, 'no-store');
+    assert.ok(calls[0][1].signal instanceof AbortSignal);
     await assert.rejects(songsFetcher(async () => new Response('x', { status: 500 }))());
     await assert.rejects(songsFetcher(async () => new Response('{}', { status: 200 }))());
+  });
+
+  test('songsFetcher aborta una lectura que no responde', async () => {
+    let aborted = false;
+    const fetch = songsFetcher((_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(signal.reason);
+      }, { once: true });
+    }), 'data/songs.json', 5);
+
+    await assert.rejects(fetch(), { name: 'AbortError' });
+    assert.equal(aborted, true);
+    assert.equal(SONGS_FETCH_TIMEOUT_MS, 15_000);
   });
 });
 
@@ -362,8 +381,8 @@ describe('gestor de subidas', () => {
     assert.equal(tracker.byLocalId(calls.copies[0].id).state, S.PUBLISHED);
   });
 
-  test('tras 10 minutos sin aparecer: «Sigue procesándose» y deja de comprobar', async () => {
-    const { tracker, timers, clock } = setup();
+  test('tras 10 minutos sigue comprobando más despacio y reconoce una publicación tardía', async () => {
+      const { tracker, timers, clock, server, storage } = setup();
     tracker.add([{ name: 'Lenta.wav' }], { titleOf: () => 'Lenta' });
     await settle();
     timers.run(SAVED_PAUSE_MS);
@@ -377,8 +396,68 @@ describe('gestor de subidas', () => {
     timers.run(POLL_MS);
     await settle();
     assert.deepEqual(states(tracker), [S.SLOW]);
-    assert.equal(statusText(tracker.items()[0]), 'Sigue procesándose; aparecerá en la biblioteca cuando termine');
+    assert.equal(statusText(tracker.items()[0]), 'Aún no aparece en la biblioteca; seguiremos comprobando');
+    assert.deepEqual(timers.pending(), [SLOW_POLL_MS]);
+
+    server.songs.push({ id: 'S10', title: 'Lenta' });
+    clock.now += SLOW_POLL_MS;
+    timers.run(SLOW_POLL_MS);
+    await settle();
+    assert.deepEqual(states(tracker), [S.PUBLISHED]);
+    assert.equal(tracker.items()[0].songId, 'S10');
     assert.deepEqual(timers.pending(), []);
+    assert.equal(storage.getItem(STORAGE_KEY), null);
+  });
+
+  test('una pista duplicada de la misma playlist se reconoce por álbum, título y artista', async () => {
+    const playlistId = 'PLVU-jIOit29A';
+    const folderId = `F${createHash('sha256').update(`youtube:${playlistId}`).digest('hex').slice(0, 16)}`;
+    const existing = { id: 'S9', title: 'Cada vez', artist: 'Desakato', folder_id: folderId };
+    const { tracker, calls } = setup({ songs: [existing] });
+    tracker.addSources([{
+      file: { name: 'Cada vez.wav' },
+      name: 'Cada vez.wav',
+      title: 'Cada vez',
+    }], {
+      album: { id: playlistId, name: 'Nuestro desacato' },
+      trackArtists: ['Desakato'],
+    });
+    await settle();
+    assert.deepEqual(states(tracker), [S.SAVED]);
+
+    await tracker.checkNow();
+
+    assert.deepEqual(states(tracker), [S.PUBLISHED]);
+    assert.equal(tracker.items()[0].songId, 'S9');
+    assert.equal(tracker.items()[0].alreadyPresent, true);
+    assert.equal(statusText(tracker.items()[0]), 'Ya estaba en la biblioteca');
+    assert.equal(calls.published[0].found[0].song.id, 'S9');
+  });
+
+  test('un título coincidente no se reconoce como duplicado si cambia el álbum o el artista', async () => {
+    const playlistId = 'PLVU-jIOit29A';
+    const folderId = `F${createHash('sha256').update(`youtube:${playlistId}`).digest('hex').slice(0, 16)}`;
+    const otherFolderId = `F${createHash('sha256').update('youtube:PL-otra-playlist').digest('hex').slice(0, 16)}`;
+    const { tracker } = setup({
+      songs: [
+        { id: 'S8', title: 'Cada vez', artist: 'Desakato', folder_id: otherFolderId },
+        { id: 'S9', title: 'Cada vez', artist: 'Otro artista', folder_id: folderId },
+      ],
+    });
+    tracker.addSources([{
+      file: { name: 'Cada vez.wav' },
+      name: 'Cada vez.wav',
+      title: 'Cada vez',
+    }], {
+      album: { id: playlistId, name: 'Nuestro desacato' },
+      trackArtists: ['Desakato'],
+    });
+    await settle();
+
+    await tracker.checkNow();
+
+    assert.deepEqual(states(tracker), [S.SAVED]);
+    assert.equal(tracker.items()[0].songId, null);
   });
 
   test('sin red, una comprobación fallida no rompe nada: se vuelve a intentar', async () => {

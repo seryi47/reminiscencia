@@ -1,10 +1,13 @@
 // Estado de cada subida de «Subir canciones» (ADR-0017), de principio a fin, como en Spotify: cada archivo pasa por
 // En cola → Convirtiendo a Opus… → Subiendo… 45 % (por trozos) → Guardada en GitHub → Publicándose… → Publicada, o
-// acaba en «Error: <motivo>» (con Reintentar) o, si tarda más de 10 minutos, en «Sigue procesándose».
+// acaba en «Error: <motivo>» (con Reintentar) o, si tarda más de 10 minutos, queda pendiente de aparecer y se revisa
+// cada minuto hasta reconocerla en el catálogo. Las pistas ya existentes se reconocen solo si coinciden playlist,
+// título y artista.
 //
 // «Publicada» es de verdad: tras guardarse en GitHub se lee /data/songs.json cada 15 s (sin caché) hasta que aparece
 // una canción con un id que no estaba antes de subir y con el título de la subida (el nombre del archivo sin extensión
-// o, si el buzón tuvo que cambiarlo, el que devolvió /api/subir).
+// o, si el buzón tuvo que cambiarlo, el que devolvió /api/subir). Si el buzón deduplicó una pista de playlist ya
+// publicada, se reconoce por el álbum estable de esa playlist, el título y el artista.
 //
 // En cuanto termina la conversión, el Opus se guarda en este navegador (subida-local.js) para que la canción salga ya
 // en la biblioteca, con la etiqueta «Publicándose…», y se pueda escuchar; al publicarse, la app la sustituye por la
@@ -15,6 +18,8 @@
 // inyectadas) se prueban en node (tests/web-unit/subida-estado.test.mjs).
 
 export const POLL_MS = 15_000;
+export const SLOW_POLL_MS = 60_000;
+export const SONGS_FETCH_TIMEOUT_MS = 15_000;
 export const MAX_WAIT_MS = 10 * 60_000;
 export const SAVED_PAUSE_MS = 2_000;
 export const STORAGE_KEY = 'reminiscencia.subidas';
@@ -102,7 +107,7 @@ const clamp01 = (value) => (Number.isFinite(value) ? Math.min(1, Math.max(0, val
  * Aplica un evento a una subida y devuelve la subida nueva (sin cambiar la original). Un evento que no vale en el
  * estado actual devuelve la misma subida (el mismo objeto). Eventos:
  * convert { fraction }, converted { localId }, send { fraction }, saved { serverName, at, knownIds }, publishing,
- * published { songId, songTitle }, slow, fail { message, retryable }, retry.
+ * published { songId, songTitle, alreadyPresent }, slow, fail { message, retryable }, retry.
  */
 export function transition(item, event) {
   const type = event?.type;
@@ -127,7 +132,14 @@ export function transition(item, event) {
     case 'publishing':
       return { ...item, state: S.PUBLISHING };
     case 'published':
-      return { ...item, state: S.PUBLISHED, fraction: 1, songId: String(event.songId), songTitle: event.songTitle ?? item.title };
+      return {
+        ...item,
+        state: S.PUBLISHED,
+        fraction: 1,
+        songId: String(event.songId),
+        songTitle: event.songTitle ?? item.title,
+        alreadyPresent: event.alreadyPresent === true,
+      };
     case 'slow':
       return { ...item, state: S.SLOW };
     case 'fail':
@@ -147,8 +159,8 @@ export function statusText(item) {
     case S.SENDING: return `Subiendo… ${Math.round(clamp01(item.fraction) * 100)}${NBSP}%`;
     case S.SAVED: return 'Guardada en GitHub';
     case S.PUBLISHING: return 'Publicándose… (suele tardar 2–3 minutos)';
-    case S.PUBLISHED: return 'Publicada';
-    case S.SLOW: return 'Sigue procesándose; aparecerá en la biblioteca cuando termine';
+    case S.PUBLISHED: return item.alreadyPresent ? 'Ya estaba en la biblioteca' : 'Publicada';
+    case S.SLOW: return 'Aún no aparece en la biblioteca; seguiremos comprobando';
     case S.ERROR: return `Error: ${item.error ?? 'No se ha podido subir este archivo.'}`;
     default: return '';
   }
@@ -170,7 +182,7 @@ export function progressOf(item) {
   }
 }
 
-/** Resumen de la hoja: «2 de 3 publicadas», con los errores y las que siguen procesándose si las hay. */
+/** Resumen de la hoja: «2 de 3 publicadas», con errores y las que aún no aparecen en el catálogo. */
 export function summaryText(items) {
   const list = Array.isArray(items) ? items : [];
   if (list.length === 0) return '';
@@ -180,7 +192,7 @@ export function summaryText(items) {
   const errors = count(S.ERROR);
   if (errors > 0) parts.push(`${errors} con error`);
   const slow = count(S.SLOW);
-  if (slow > 0) parts.push(slow === 1 ? '1 sigue procesándose' : `${slow} siguen procesándose`);
+  if (slow > 0) parts.push(slow === 1 ? '1 pendiente de aparecer' : `${slow} pendientes de aparecer`);
   return parts.join(' · ');
 }
 
@@ -204,7 +216,7 @@ export function publishedNotice(titles) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Detección de la canción publicada (funciones puras)
+// Detección de la canción publicada
 // ---------------------------------------------------------------------------------------------
 
 /** Título comparable: NFC, sin espacios a los lados ni repetidos y sin distinguir mayúsculas. */
@@ -231,17 +243,49 @@ export function findNewSong(songs, { titles = [], knownIds = [] } = {}) {
     && wanted.has(normalizeTitle(song.title))) ?? null;
 }
 
+async function youtubeFolderId(playlistId) {
+  if (!globalThis.crypto?.subtle?.digest || typeof TextEncoder !== 'function') {
+    console.error('Reminiscencia: este navegador no permite verificar duplicados de playlists.');
+    return null;
+  }
+  try {
+    const bytes = new TextEncoder().encode(`youtube:${playlistId}`);
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes));
+    const hex = [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    return `F${hex.slice(0, 16)}`;
+  } catch (error) {
+    console.error('Reminiscencia: no se pudo verificar el álbum de una playlist.', error);
+    return null;
+  }
+}
+
+function findExistingPlaylistSong(songs, item, folderId) {
+  if (!folderId || !item.artist) return null;
+  const wantedTitles = new Set(titleCandidates(item));
+  const wantedArtist = normalizeTitle(item.artist);
+  return songs.find((song) => song
+    && song.folder_id === folderId
+    && wantedTitles.has(normalizeTitle(song.title))
+    && normalizeTitle(song.artist) === wantedArtist) ?? null;
+}
+
 /**
  * Función que lee /data/songs.json siempre de la red (cache: 'no-store'), para no confundir una copia vieja con
  * «todavía no está». Devuelve la lista o lanza si la respuesta no vale.
  */
-export function songsFetcher(fetchImpl = globalThis.fetch, url = 'data/songs.json') {
+export function songsFetcher(fetchImpl = globalThis.fetch, url = 'data/songs.json', timeoutMs = SONGS_FETCH_TIMEOUT_MS) {
   return async () => {
-    const response = await fetchImpl(url, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`${url}: ${response.status}`);
-    const data = await response.json();
-    if (!Array.isArray(data)) throw new Error(`${url}: no es una lista`);
-    return data;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(url, { cache: 'no-store', signal: controller.signal });
+      if (!response.ok) throw new Error(`${url}: ${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error(`${url}: no es una lista`);
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
   };
 }
 
@@ -364,6 +408,7 @@ export function createUploadTracker(deps = {}) {
     clearTimer = (id) => clearTimeout(id),
     newKey = defaultKey,
     pollMs = POLL_MS,
+    slowPollMs = SLOW_POLL_MS,
     maxWaitMs = MAX_WAIT_MS,
     savedPauseMs = SAVED_PAUSE_MS,
   } = deps;
@@ -515,8 +560,17 @@ export function createUploadTracker(deps = {}) {
     if (watched.length === 0) return;
     polling = true;
     let songs = null;
+    const folderIds = new Map();
     try {
       songs = await fetchSongs();
+      if (Array.isArray(songs)) {
+        for (const entry of watched) {
+          const playlistId = entry.item.album?.id;
+          if (playlistId && entry.item.artist && !folderIds.has(playlistId)) {
+            folderIds.set(playlistId, await youtubeFolderId(playlistId));
+          }
+        }
+      }
     } catch {
       songs = null;
     } finally {
@@ -530,10 +584,23 @@ export function createUploadTracker(deps = {}) {
         .filter((entry) => WAITING_STATES.includes(entry.item.state) || entry.item.state === S.SLOW)
         .sort((a, b) => (a.item.savedAt ?? 0) - (b.item.savedAt ?? 0));
       for (const entry of ordered) {
-        const song = findNewSong(songs, { titles: titleCandidates(entry.item), knownIds: [...(entry.item.knownIds ?? []), ...claimed] });
+        let song = findNewSong(songs, {
+          titles: titleCandidates(entry.item),
+          knownIds: [...(entry.item.knownIds ?? []), ...claimed],
+        });
+        let alreadyPresent = false;
+        if (!song && entry.item.album && entry.item.artist) {
+          song = findExistingPlaylistSong(songs, entry.item, folderIds.get(entry.item.album.id));
+          alreadyPresent = Boolean(song);
+        }
         if (!song) continue;
         claimed.add(song.id);
-        entry.item = transition(entry.item, { type: 'published', songId: song.id, songTitle: song.title });
+        entry.item = transition(entry.item, {
+          type: 'published',
+          songId: song.id,
+          songTitle: song.title,
+          alreadyPresent,
+        });
         found.push({ item: { ...entry.item }, song });
       }
       // Una canción reconocida no vale para ninguna otra subida, tampoco tras recargar.
@@ -562,6 +629,7 @@ export function createUploadTracker(deps = {}) {
     if (disposed) return;
     emit();
     if (entries.some((entry) => WAITING_STATES.includes(entry.item.state))) schedulePoll(pollMs);
+    else if (entries.some((entry) => entry.item.state === S.SLOW)) schedulePoll(slowPollMs);
   }
 
   /**

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## Sin publicar: seguimiento de subidas pendientes (2026-11-04)
+
+- «Tus subidas» ya no deja de comprobar una canción tras los primeros diez minutos: cambia a «Aún no aparece en la biblioteca; seguiremos comprobando» y revisa el catálogo cada minuto hasta encontrarla.
+- Si se vuelve a importar una pista ya publicada desde la misma playlist, se reconoce por el ID estable del álbum, el título y el artista, y se indica «Ya estaba en la biblioteca» en vez de dejarla publicándose indefinidamente.
+- Las lecturas de `songs.json` tienen un límite de 15 segundos para que una petición de red atascada no congele el seguimiento.
+- La caché del shell de la web pasa a `SHELL_VERSION = 18`; las subidas antiguas guardadas en el navegador se conservan y vuelven a revisarse.
+- Añadidas pruebas de publicación tardía, cancelación por timeout y detección de duplicados sin aceptar coincidencias de otro álbum o artista.
+
 ## Sin publicar: APK 1.2.4+8 (2026-11-04; web desplegada)
 
 - La lectura de playlists completa el artista de cada vídeo desde las columnas de YouTube Music, también cuando `yt-dlp` devuelve correctamente los títulos.
@@ -85,7 +93,7 @@ Pedido del propietario: la hoja se quedaba en «Subida: llegará a todos en un p
 
 ### Cambiado
 - La hoja «Subir canciones» tiene una fila por archivo con icono, nombre (con elipsis; entero en `title`), el paso en texto y una barra: «En cola» → «Convirtiendo a Opus…» → «Subiendo… 45 %» (por trozos) → «Guardada en GitHub» → «Publicándose… (suele tardar 2–3 minutos)» → «Publicada» con «Reproducir», o «Error: <motivo>» con «Reintentar». Arriba, el resumen «2 de 3 publicadas». Se pueden elegir más archivos mientras se suben otros.
-- «Publicada» es de verdad: tras guardarse en GitHub, la web lee `data/songs.json` cada 15 s (`cache: 'no-store'`) hasta que aparece una canción con un id que no estaba antes de subir y con ese título (o el que dio el buzón). Si pasan 10 minutos: «Sigue procesándose; aparecerá en la biblioteca cuando termine», y deja de comprobar.
+- «Publicada» es de verdad: tras guardarse en GitHub, la web lee `data/songs.json` cada 15 s (`cache: 'no-store'`) hasta que aparece una canción con un id que no estaba antes de subir y con ese título (o el que dio el buzón). Si pasan 10 minutos, queda pendiente de aparecer y se consulta cada minuto; una pista ya existente de una playlist se reconoce solo por el ID estable del álbum, el título y el artista.
 - La canción sale en la biblioteca en cuanto termina la conversión: su Opus se guarda en este navegador, sale en «Tus subidas» (`#/subidas`), «Añadidas recientemente» y «Todas las canciones» con la etiqueta «Publicándose…» y se puede escuchar ya (`audio/L….opus`). Al publicarse se sustituye por la pública sin recargar ni cortar lo que suena (también en «Me gusta», las listas y la cola) y la copia se borra al dejar de sonar.
 - Al cerrar la hoja, las subidas siguen: indicador «Publicándose 1 canción» al pie de «Tu biblioteca», aviso «“<título>” ya está en la biblioteca» y biblioteca al día sola. Las pendientes se guardan en `localStorage` (`reminiscencia.subidas`, con try/catch) y se siguen comprobando al volver; las cortadas a medias quedan con «Reintentar» (reenvía la copia local).
 - Accesibilidad: región `aria-live` con cada cambio de paso, el paso siempre en texto (no solo color), foco a la fila al pulsar «Reintentar».
