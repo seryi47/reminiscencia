@@ -106,6 +106,24 @@ def youtube_album(data: dict, playlist_id: str, name: str) -> tuple[dict, bool]:
     return folder, True
 
 
+def sync_youtube_album_artist(data: dict, folder_id: str) -> bool:
+    """Deriva el artista del álbum si todas sus canciones conocidas tienen el mismo artista."""
+    folder = find_folder(data, folder_id)
+    if not folder.get("youtube_playlist_id"):
+        return False
+    artists = {
+        song["artist"].strip()
+        for song in data["songs"]
+        if song.get("folder_id") == folder_id
+        and isinstance(song.get("artist"), str)
+        and song["artist"].strip()
+    }
+    artist = next(iter(artists)) if len(artists) == 1 else ""
+    previous_artist = folder.get("artist") or ""
+    _set_artist(folder, artist)
+    return previous_artist != artist
+
+
 def add_song(data: dict, *, sha256: str, title: str, license: str, source: str,
              codec: str, duration_s: float, size_bytes: int, artist: str = "",
              year: int | None = None) -> tuple[dict, bool]:
@@ -155,9 +173,13 @@ def update_song(data: dict, song_id: str, fields: dict) -> dict:
         raise CatalogError("public debe ser true o false (booleano, no texto ni número)")
     if fields.get("public") is True and song.get("license") == LICENSE_UNDECLARED:
         raise CatalogError("no se puede publicar una canción sin licencia declarada")
+    previous_folder_id = song.get("folder_id")
     if "folder_id" in fields and not fields["folder_id"]:
         fields["folder_id"] = None
     song.update(fields)
+    if "artist" in fields or "folder_id" in fields:
+        for folder_id in {previous_folder_id, song.get("folder_id")} - {None}:
+            sync_youtube_album_artist(data, folder_id)
     return song
 
 

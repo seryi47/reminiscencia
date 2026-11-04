@@ -176,16 +176,58 @@ def test_organize_youtube_playlist_assigns_artist_and_stable_album(ci):
     saved = catalog.load(ci.CATALOG)
     assert result["folder"]["id"] == expected_id
     assert result["folder"]["youtube_playlist_id"] == "PLVU-jIOit29A"
+    assert result["folder"]["artist"] == "Desakato"
     assert result["songs"][0]["artist"] == "Desakato"
     assert result["songs"][0]["folder_id"] == expected_id
     public_folder = json.loads((ci.WEB / "data" / "folders.json").read_text(encoding="utf-8"))[0]
     assert public_folder["name"] == "Nuestro desacato"
+    assert public_folder["artist"] == "Desakato"
     assert "youtube_playlist_id" not in public_folder
 
     repeated = _organize(ci, {**payload, "name": "Nombre actualizado"})
     assert repeated["folder"]["id"] == expected_id
     assert repeated["folder"]["name"] == "Nombre actualizado"
     assert len(saved["folders"]) == 1
+
+
+def test_youtube_album_artist_is_derived_and_cleared_for_mixed_artists(ci):
+    song_ids = [_seed_private_song(ci)]
+    data = catalog.load(ci.CATALOG)
+    second_song, _ = catalog.add_song(
+        data,
+        sha256="cd" * 32,
+        title="Otro tema",
+        license="CC0 1.0",
+        source="direct-url:ejemplo.com/otro.mp3",
+        codec="opus",
+        duration_s=5.0,
+        size_bytes=10,
+    )
+    catalog.save(ci.CATALOG, data)
+    (ci.AUDIO / f"{second_song['id']}.opus").write_bytes(b"opus-bytes")
+    song_ids.append(second_song["id"])
+    for song_id in song_ids:
+        _organize(ci, {"op": "edit_song", "song_id": song_id, "public": True})
+
+    payload = {
+        "op": "organize_youtube_playlist",
+        "playlist_id": "PLVU-jIOit29A",
+        "name": "Nuestro desacato",
+        "songs": [
+            {"song_id": song_ids[0], "artist": "Desakato"},
+            {"song_id": song_ids[1], "artist": "Desakato"},
+        ],
+    }
+    result = _organize(ci, payload)
+
+    assert result["folder"]["artist"] == "Desakato"
+
+    _organize(ci, {"op": "edit_song", "song_id": song_ids[1], "artist": "Otro artista"})
+
+    saved = catalog.load(ci.CATALOG)
+    assert "artist" not in saved["folders"][0]
+    public_folder = json.loads((ci.WEB / "data" / "folders.json").read_text(encoding="utf-8"))[0]
+    assert "artist" not in public_folder
 
 
 def test_organize_youtube_playlist_missing_song_does_not_create_album(ci):

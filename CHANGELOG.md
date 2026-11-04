@@ -1,9 +1,9 @@
 # CHANGELOG
 
-## Sin publicar: APK 1.2.4+8 (2026-11-03; web desplegada)
+## Sin publicar: APK 1.2.4+8 (2026-11-04; web desplegada)
 
 - La lectura de playlists completa el artista de cada vídeo desde las columnas de YouTube Music, también cuando `yt-dlp` devuelve correctamente los títulos.
-- La web y la APK conservan álbum y artista por pista hasta el manifiesto de `/api/subir`; el buzón asigna el artista a cada canción y reutiliza el álbum estable por ID de playlist.
+- La web y la APK conservan álbum y artista por pista hasta el manifiesto de `/api/subir`; el buzón asigna el artista a cada canción, deriva el artista del álbum cuando todas las pistas coinciden y reutiliza el álbum estable por ID de playlist.
 - `organize_youtube_playlist` repara en una única petición playlists ya publicadas, sin volver a convertir ni subir el audio.
 - Los vídeos individuales y las subidas manuales siguen sin álbum. El flujo conserva la declaración de derechos y la publicación pública habituales.
 - Añadidas pruebas de extracción y propagación de artistas, manifiesto, reparación del catálogo y compatibilidad web/Android. El workflow de reparación terminó correctamente y las siete canciones de «Nuestro desacato» aparecen en producción con el artista Desakato y el mismo álbum. La APK está en `main`; no se ha publicado una release.

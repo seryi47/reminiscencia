@@ -90,7 +90,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 | Subida para todos | `js/cuidador/subida-publica.js` y `js/views/upload.js` | Hoja «Subir canciones»: uno o varios archivos, convertidos y enviados de uno en uno, en trozos, a `/api/subir`; progreso y resultado por archivo. No conoce ningún token (ADR-0017). |
 | Importación desde la web | `js/cuidador/incidencias.js` y `js/intake.js` | Validan la petición de «Importar desde Internet Archive» y preparan la incidencia (ADR-0008). La carpeta `js/cuidador/` conserva el nombre aunque ya no hay modo cuidador. |
 | Pruebas de la web | `tests/web-unit/` (`node:test`), `tests/web-e2e/` (puppeteer-core y axe-core) | Lógica sin navegador, y pruebas de extremo a extremo y de accesibilidad con Chrome. |
-| App Android | `mobile/` | Flutter 1.2.4+7, sin usuarios y con el aspecto de la app de Spotify. Lee la biblioteca de la web y guarda copia local; listas y «Me gusta» en `colecciones.json` del teléfono. «Subir canciones» sube para todos por `/api/subir` (`lib/shared_upload.dart`, ADR-0017); Homeostasia importa vídeos y playlists de YouTube. ADR-0004 y ADR-0013. |
+| App Android | `mobile/` | Flutter 1.2.4+8, sin usuarios y con el aspecto de la app de Spotify. Lee la biblioteca de la web y guarda copia local; listas y «Me gusta» en `colecciones.json` del teléfono. «Subir canciones» sube para todos por `/api/subir` (`lib/shared_upload.dart`, ADR-0017); Homeostasia importa vídeos y playlists de YouTube, con artistas por canción y artista común en el álbum (ADR-0019). ADR-0004 y ADR-0013. |
 | Backend | `backend/sonidos/` | `catalog`, `intake`, `sources`, `pipeline`, `buzon`, `paquete`, `publish`, `probe`, `compression`, `hashing`, `limits` e `issue_request`. `release.py` existe, pero ningún workflow lo usa. |
 | Scripts | `scripts/` | `issue_request.py`, `empaquetar_cambios.py`, `ci_library.py`, `buzon.py`, `aplicar_paquete.py`, `responder_incidencia.py`, `check_repo_limits.py`, `smoke_produccion.mjs` (comprueba la web pública) y `android/verify_apk.sh`. |
 | Investigación | Raíz del repositorio | `BIBLIOGRAPHY.md`, `RESEARCH.md`, `ALZHEIMER_RESEARCH.md`, `METHODOLOGY.md` y `SECURITY.md`. |
@@ -139,7 +139,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 - Portadas de canciones y álbumes, y álbumes con artista (ADR-0016). El importador toma el artista y el año de Internet Archive.
 - Web y APK sin usuarios, con el aspecto de Spotify (ADR-0015): sin perfiles, modos, PIN, registro del estudio ni copia `.rmc`. Listas y «Me gusta» solo en el dispositivo.
 - Audio local de antes: las canciones guardadas «Solo en este navegador» (ADR-0012) o «Solo en este teléfono» (ADR-0013) siguen sonando y se borran; ya no se guardan nuevas (ADR-0017).
-- APK 1.2.4+7; `android.yml` publica, por etiqueta `android-vX.Y.Z`, un APK de producción por arquitectura. La compilación local está validada; aún no se ha probado en un dispositivo físico ni publicado como release.
+- APK 1.2.4+8; el workflow `android.yml` pasó análisis, pruebas y compilación de depuración. La producción se omitió porque no están configurados los secretos de firma; no hay release nueva ni prueba en un dispositivo físico.
 - Comprobador de producción: `scripts/smoke_produccion.mjs`.
 - Pruebas locales (2026-11-03): 404 unitarias de la web, 141 E2E y accesibilidad, 715 del backend y 225 de Flutter; `flutter analyze` sin incidencias.
 - Biblioteca actual: 23 canciones en el catálogo, 12 publicadas, 11 privadas (entre ellas, las de prueba del buzón) y ninguna carpeta.
