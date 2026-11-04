@@ -2032,6 +2032,22 @@
       "size_bytes": 1526042,
       "added_at": "2026-11-04T14:16:07+00:00",
       "public": true
+    },
+    {
+      "id": "S24abaac642b84805",
+      "title": "Ella (prod. by alPeDue)",
+      "artist": "El Bobe",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "24abaac642b84805f10668b8bf501367cffd7f770d7eb4bceb706fbe08b43bd1",
+      "duration_s": 191.618,
+      "codec": "opus",
+      "size_bytes": 1176461,
+      "added_at": "2026-11-04T14:22:20+00:00",
+      "public": true
     }
   ]
 }
