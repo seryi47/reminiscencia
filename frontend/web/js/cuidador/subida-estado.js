@@ -79,6 +79,7 @@ export function createItem({ key, name, title, createdAt = 0, group = null, albu
     localId: null,
     serverName: null,
     knownIds: null,
+    expectedId: null,
     savedAt: null,
     songId: null,
     songTitle: null,
@@ -95,7 +96,7 @@ const FROM = Object.freeze({
   send: [S.SENDING],
   saved: [S.SENDING],
   publishing: [S.SAVED],
-  published: [S.SAVED, S.PUBLISHING, S.SLOW],
+  published: [S.SAVED, S.PUBLISHING, S.SLOW, S.ERROR],
   slow: [S.SAVED, S.PUBLISHING],
   fail: [S.QUEUED, S.CONVERTING, S.SENDING],
   retry: [S.ERROR],
@@ -139,6 +140,7 @@ export function transition(item, event) {
         songId: String(event.songId),
         songTitle: event.songTitle ?? item.title,
         alreadyPresent: event.alreadyPresent === true,
+        error: null,
       };
     case 'slow':
       return { ...item, state: S.SLOW };
@@ -243,6 +245,17 @@ export function findNewSong(songs, { titles = [], knownIds = [] } = {}) {
     && wanted.has(normalizeTitle(song.title))) ?? null;
 }
 
+/** Id que el buzón da a un Opus: «S» + los 16 primeros hexadecimales de su SHA-256 (backend/sonidos/catalog.py). */
+export async function expectedSongId(bytes) {
+  try {
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes));
+    return `S${[...digest.slice(0, 8)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  } catch (error) {
+    console.error('Reminiscencia: no se pudo calcular el identificador esperado de la canción.', error);
+    return null;
+  }
+}
+
 async function youtubeFolderId(playlistId) {
   if (!globalThis.crypto?.subtle?.digest || typeof TextEncoder !== 'function') {
     console.error('Reminiscencia: este navegador no permite verificar duplicados de playlists.');
@@ -306,7 +319,7 @@ export function serializeItems(items) {
     .filter((item) => PERSISTED_STATES.includes(item.state))
     .filter((item) => WAITING_STATES.includes(item.state) || item.state === S.SLOW || item.localId)
     .map((item) => ({
-      key: item.key, name: item.name, title: item.title, state: item.state, localId: item.localId,
+      key: item.key, name: item.name, title: item.title, state: item.state, localId: item.localId, expectedId: item.expectedId ?? null,
       serverName: item.serverName, knownIds: item.knownIds, savedAt: item.savedAt, error: item.error, createdAt: item.createdAt,
       group: item.group ?? null,
       album: item.album ?? null,
@@ -344,6 +357,7 @@ export function parseItems(raw) {
         artist: entry.artist,
       }),
       localId: isText(entry.localId) ? entry.localId : null,
+      expectedId: /^S[0-9a-f]{16}$/.test(entry.expectedId ?? '') ? entry.expectedId : null,
       serverName: isText(entry.serverName) ? entry.serverName : null,
       knownIds: Array.isArray(entry.knownIds) ? entry.knownIds.filter(isText) : [],
       savedAt: Number.isFinite(entry.savedAt) ? entry.savedAt : null,
@@ -500,6 +514,7 @@ export function createUploadTracker(deps = {}) {
       }
     }
     entry.bytes = bytes;
+    entry.item = { ...entry.item, expectedId: await expectedSongId(bytes) };
     dispatch(entry, { type: 'converted', localId: entry.item.localId });
     const result = await send(bytes, {
       fileName: entry.item.name,
@@ -584,11 +599,15 @@ export function createUploadTracker(deps = {}) {
         .filter((entry) => WAITING_STATES.includes(entry.item.state) || entry.item.state === S.SLOW)
         .sort((a, b) => (a.item.savedAt ?? 0) - (b.item.savedAt ?? 0));
       for (const entry of ordered) {
-        let song = findNewSong(songs, {
-          titles: titleCandidates(entry.item),
-          knownIds: [...(entry.item.knownIds ?? []), ...claimed],
-        });
-        let alreadyPresent = false;
+        // El id sale del contenido: así se reconoce también la canción que el buzón ya tenía (duplicada).
+        let song = entry.item.expectedId ? songs.find((candidate) => candidate?.id === entry.item.expectedId) ?? null : null;
+        let alreadyPresent = Boolean(song && (entry.item.knownIds ?? []).includes(song.id));
+        if (!song) {
+          song = findNewSong(songs, {
+            titles: titleCandidates(entry.item),
+            knownIds: [...(entry.item.knownIds ?? []), ...claimed],
+          });
+        }
         if (!song && entry.item.album && entry.item.artist) {
           song = findExistingPlaylistSong(songs, entry.item, folderIds.get(entry.item.album.id));
           alreadyPresent = Boolean(song);
@@ -630,6 +649,43 @@ export function createUploadTracker(deps = {}) {
     emit();
     if (entries.some((entry) => WAITING_STATES.includes(entry.item.state))) schedulePoll(pollMs);
     else if (entries.some((entry) => entry.item.state === S.SLOW)) schedulePoll(slowPollMs);
+  }
+
+  /**
+   * Una subida con error y copia local puede haber llegado igualmente (la respuesta se perdió) o ser una canción que
+   * el buzón ya tenía. Su id sale del contenido: si ya está en songs.json, se da por publicada.
+   */
+  async function resolveFailed() {
+    const failed = entries.filter((entry) => entry.item.state === S.ERROR && entry.item.localId && entry.item.retryable);
+    if (failed.length === 0) return;
+    let songs = null;
+    try {
+      songs = await fetchSongs();
+    } catch {
+      return;
+    }
+    if (disposed || !Array.isArray(songs)) return;
+    const byId = new Map(songs.filter((song) => song && typeof song.id === 'string').map((song) => [song.id, song]));
+    const found = [];
+    for (const entry of failed) {
+      if (entry.item.state !== S.ERROR) continue;
+      let expectedId = entry.item.expectedId;
+      if (!expectedId) {
+        const bytes = await readCopy(entry.item.localId).catch(() => null);
+        expectedId = bytes ? await expectedSongId(bytes) : null;
+      }
+      const song = expectedId ? byId.get(expectedId) : null;
+      if (!song || entry.item.state !== S.ERROR) continue;
+      entry.item = transition({ ...entry.item, expectedId }, { type: 'published', songId: song.id, songTitle: song.title, alreadyPresent: true });
+      found.push({ item: { ...entry.item }, song });
+    }
+    if (found.length === 0 || disposed) return;
+    try {
+      await onPublished(found, songs);
+    } catch (error) {
+      console.error('Reminiscencia: fallo al poner al día la biblioteca.', error);
+    }
+    emit();
   }
 
   /**
@@ -703,6 +759,7 @@ export function createUploadTracker(deps = {}) {
       }
       emit();
       if (entries.some((entry) => WAITING_STATES.includes(entry.item.state) || entry.item.state === S.SLOW)) check();
+      resolveFailed();
     },
     /** Estado de una subida por el id de su copia local, o null. */
     byLocalId(localId) {

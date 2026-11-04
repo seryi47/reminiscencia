@@ -38,7 +38,11 @@ void main() {
   });
 
   test('Folder lee el árbol de carpetas', () {
-    final folder = Folder.fromJson({'id': 'f2', 'name': 'Jazz', 'parent_id': 'f1'});
+    final folder = Folder.fromJson({
+      'id': 'f2',
+      'name': 'Jazz',
+      'parent_id': 'f1',
+    });
     expect(folder.parentId, 'f1');
   });
 }

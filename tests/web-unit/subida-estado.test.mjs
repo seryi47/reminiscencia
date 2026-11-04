@@ -10,6 +10,7 @@ import {
   activeCount,
   createItem,
   createUploadTracker,
+  expectedSongId,
   findNewSong,
   INTERRUPTED_TEXT,
   indicatorText,
@@ -458,6 +459,35 @@ describe('gestor de subidas', () => {
 
     assert.deepEqual(states(tracker), [S.SAVED]);
     assert.equal(tracker.items()[0].songId, null);
+  });
+
+  test('un Opus que el buzón ya tenía se reconoce por su id de contenido, aunque cambie el título', async () => {
+    const id = await expectedSongId(new Uint8Array([1, 2, 3]));
+    assert.match(id, /^S[0-9a-f]{16}$/);
+    const { tracker, calls } = setup({ songs: [{ id, title: 'Otro título distinto' }] });
+    tracker.add([{ name: 'Tono.wav' }], { titleOf: () => 'Tono' });
+    await settle();
+    await tracker.checkNow();
+    assert.deepEqual(states(tracker), [S.PUBLISHED]);
+    assert.equal(tracker.items()[0].songId, id);
+    assert.equal(calls.published.length, 1);
+  });
+
+  test('al reabrir, una copia local con error cuyo Opus ya está publicado se da por resuelta', async () => {
+    const id = await expectedSongId(new Uint8Array([9, 9]));
+    const { tracker, calls } = setup({ songs: [{ id, title: 'Sudores Frios' }] });
+    tracker.restore({ pendingCopies: [{ id: 'L0000000000000009', title: 'Sudores Frios' }] });
+    await settle();
+    assert.deepEqual(states(tracker), [S.PUBLISHED]);
+    assert.equal(statusText(tracker.items()[0]), 'Ya estaba en la biblioteca');
+    assert.equal(calls.published[0].found[0].item.localId, 'L0000000000000009');
+  });
+
+  test('al reabrir, una copia local con error cuyo Opus no está publicado sigue con Reintentar', async () => {
+    const { tracker } = setup();
+    tracker.restore({ pendingCopies: [{ id: 'L0000000000000009', title: 'Sudores Frios' }] });
+    await settle();
+    assert.deepEqual(states(tracker), [S.ERROR]);
   });
 
   test('sin red, una comprobación fallida no rompe nada: se vuelve a intentar', async () => {

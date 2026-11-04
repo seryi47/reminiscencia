@@ -7,6 +7,7 @@
 - Las lecturas de `songs.json` tienen un límite de 15 segundos para que una petición de red atascada no congele el seguimiento.
 - La caché del shell de la web pasa a `SHELL_VERSION = 18`; las subidas antiguas guardadas en el navegador se conservan y vuelven a revisarse.
 - Añadidas pruebas de publicación tardía, cancelación por timeout y detección de duplicados sin aceptar coincidencias de otro álbum o artista.
+- Recibo por contenido: el id de una canción es `S` + los 16 primeros hexadecimales del SHA-256 de su Opus, así que web y APK calculan el id esperado y lo buscan en `songs.json`. Reconoce con exactitud lo que el buzón ya tenía (aunque el título sea otro) y lo que llegó aunque la respuesta se perdiera. Al abrir la app, una subida con error cuya canción ya está publicada (caso de «[HDLR LIVE] … Sudores Frios») se da por resuelta («Ya estaba en la biblioteca») y su copia local se sustituye por la pública. `SHELL_VERSION = 19`.
 - APK: el mismo comportamiento (`upload_tracker.dart`): las pendientes siguen comprobándose pasados diez minutos con la app en primer plano y las pistas de playlist ya publicadas se reconocen por álbum, título y artista. Nueva dependencia directa `crypto` (ya era transitiva). Pruebas Flutter: 229 en verde; sin probar en dispositivo.
 
 ## Sin publicar: APK 1.2.4+8 (2026-11-04; web desplegada)

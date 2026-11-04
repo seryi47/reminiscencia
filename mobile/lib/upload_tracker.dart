@@ -194,6 +194,9 @@ class UploadEntry {
   /// La canción ya estaba publicada (el buzón la deduplicó) y se reconoció por álbum, título y artista.
   bool alreadyPresent = false;
 
+  /// Id que el buzón da a este Opus: `S` + 16 hexadecimales de su SHA-256. Se calcula al comprobar.
+  String? expectedId;
+
   /// Grupo del ZIP del que salió (clave `Z…` y nombre del ZIP). Null si se eligió suelta.
   final String? groupKey;
   final String? groupName;
@@ -850,7 +853,9 @@ class UploadTracker extends ChangeNotifier {
     }
     _changed();
     try {
-      _match(await source.fetch());
+      final remote = await source.fetch();
+      await _matchByContent(remote);
+      _match(remote);
     } catch (error) {
       debugPrint('subida: no se pudo comprobar la publicación: $error');
     } finally {
@@ -884,6 +889,64 @@ class UploadTracker extends ChangeNotifier {
     _changed();
     _ensurePolling();
     unawaited(_persist());
+  }
+
+  /// Id de contenido de la copia Opus (el buzón nombra la canción `S` + SHA-256[:16]).
+  Future<String?> _contentId(UploadEntry entry) async {
+    final cached = entry.expectedId;
+    if (cached != null) return cached;
+    final path = entry.opusPath;
+    if (path == null) return null;
+    try {
+      final digest = await sha256.bind(File(path).openRead()).first;
+      return entry.expectedId = 'S${digest.toString().substring(0, 16)}';
+    } catch (error) {
+      debugPrint('subida: no se pudo calcular el id de contenido: $error');
+      return null;
+    }
+  }
+
+  /// Reconoce por contenido lo que el buzón ya tenía (duplicadas) y lo que llegó aunque la respuesta se perdiera
+  /// (con error). Es una correspondencia exacta, a diferencia del título.
+  Future<void> _matchByContent(List<PublishedSong> remote) async {
+    final byId = {for (final song in remote) song.id: song};
+    for (final entry in List.of(_entries)) {
+      if (!entry.matchable && entry.stage != UploadStage.failed) continue;
+      final id = await _contentId(entry);
+      final song = id == null ? null : byId[id];
+      if (song == null) continue;
+      entry
+        ..stage = UploadStage.published
+        ..publishedId = song.id
+        ..alreadyPresent = entry.baseline?.contains(song.id) ?? true
+        ..error = null;
+      if (!_notices.isClosed) {
+        _notices.add(
+          UploadNotice(
+            key: entry.key,
+            message: entry.alreadyPresent
+                ? '«${entry.title}» ya estaba en la biblioteca.'
+                : '«${entry.title}» ya está publicada.',
+          ),
+        );
+      }
+      onPublished?.call(entry);
+    }
+  }
+
+  /// Al abrir la app: una subida con error cuyo Opus ya está publicado se da por resuelta.
+  Future<void> _resolveFailed() async {
+    final source = published;
+    if (source == null || !_entries.any((e) => e.stage == UploadStage.failed)) {
+      return;
+    }
+    try {
+      await _matchByContent(await source.fetch());
+      _changed();
+      await _persist();
+    } catch (error) {
+      debugPrint('subida: no se pudo resolver lo fallido: $error');
+    }
   }
 
   void _match(List<PublishedSong> remote) {
@@ -1044,6 +1107,7 @@ class UploadTracker extends ChangeNotifier {
     if (_foreground && _entries.any((e) => e.awaitingPublication)) {
       unawaited(checkNow());
     }
+    unawaited(_resolveFailed());
     _ensurePolling();
   }
 

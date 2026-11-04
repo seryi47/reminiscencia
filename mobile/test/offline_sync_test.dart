@@ -214,26 +214,29 @@ void main() {
       expect(controller.online, isTrue);
     });
 
-    test('una canción retirada pierde su audio en caché cuando deja de estar en uso', () async {
-      web.catalogIds = [kA, kB];
-      final playback = FakePlaybackPort();
-      final controller = controllerWith(playback: playback);
-      await controller.load();
-      await writeCachedAudio(kA);
-      await writeCachedAudio(kB);
+    test(
+      'una canción retirada pierde su audio en caché cuando deja de estar en uso',
+      () async {
+        web.catalogIds = [kA, kB];
+        final playback = FakePlaybackPort();
+        final controller = controllerWith(playback: playback);
+        await controller.load();
+        await writeCachedAudio(kA);
+        await writeCachedAudio(kB);
 
-      // B se retira de la web, pero sigue en la cola cargada: no se borra todavía.
-      web.catalogIds = [kA];
-      await controller.load();
-      expect(await hasCachedAudio(kB), isTrue, reason: 'sigue en la cola');
-      expect(await hasCachedAudio(kA), isTrue);
+        // B se retira de la web, pero sigue en la cola cargada: no se borra todavía.
+        web.catalogIds = [kA];
+        await controller.load();
+        expect(await hasCachedAudio(kB), isTrue, reason: 'sigue en la cola');
+        expect(await hasCachedAudio(kA), isTrue);
 
-      // Al tocar A la cola pasa a ser solo A: B ya no está en uso y se borra.
-      await controller.playSong(controller.songs.single);
-      await _waitUntilGone(() => hasCachedAudio(kB));
-      expect(await hasCachedAudio(kB), isFalse);
-      expect(await hasCachedAudio(kA), isTrue);
-    });
+        // Al tocar A la cola pasa a ser solo A: B ya no está en uso y se borra.
+        await controller.playSong(controller.songs.single);
+        await _waitUntilGone(() => hasCachedAudio(kB));
+        expect(await hasCachedAudio(kB), isFalse);
+        expect(await hasCachedAudio(kA), isTrue);
+      },
+    );
 
     test('una canción local queda intacta cuando la web cambia', () async {
       web.catalogIds = [kA];

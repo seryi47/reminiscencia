@@ -14,15 +14,18 @@ void main() {
     expect(xml, contains('<exclude domain="root" path="$exclusion" />'));
   });
 
-  test('la copia en la nube y el traspaso (API 31 y posteriores) excluyen biblioteca-local', () {
-    final xml = File('$xmlDir/data_extraction_rules.xml').readAsStringSync();
-    expect(xml, contains('<cloud-backup>'));
-    expect(xml, contains('<device-transfer>'));
-    final excludes = RegExp('<exclude domain="root" path="$exclusion" />')
-        .allMatches(xml)
-        .length;
-    expect(excludes, 2);
-  });
+  test(
+    'la copia en la nube y el traspaso (API 31 y posteriores) excluyen biblioteca-local',
+    () {
+      final xml = File('$xmlDir/data_extraction_rules.xml').readAsStringSync();
+      expect(xml, contains('<cloud-backup>'));
+      expect(xml, contains('<device-transfer>'));
+      final excludes = RegExp(
+        '<exclude domain="root" path="$exclusion" />',
+      ).allMatches(xml).length;
+      expect(excludes, 2);
+    },
+  );
 
   test('las portadas propias de las listas tampoco salen del teléfono', () {
     const covers = 'app_flutter/listas-portadas/';
@@ -36,8 +39,13 @@ void main() {
   });
 
   test('el manifiesto apunta a las dos reglas', () {
-    final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
     expect(manifest, contains('android:fullBackupContent="@xml/backup_rules"'));
-    expect(manifest, contains('android:dataExtractionRules="@xml/data_extraction_rules"'));
+    expect(
+      manifest,
+      contains('android:dataExtractionRules="@xml/data_extraction_rules"'),
+    );
   });
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -576,6 +577,30 @@ void main() {
       expect(t.entries.single.stage, UploadStage.publishing);
       t.dispose();
     });
+
+    test(
+      'un Opus que el buzón ya tenía se reconoce por su id de contenido',
+      () async {
+        final t = tracker();
+        await t.start([picked('Otro nombre.mp3')]);
+        await settleIo();
+        final path = t.entries.single.opusPath!;
+        final digest = sha256
+            .convert(await File(path).readAsBytes())
+            .toString();
+        published.songs = [
+          const PublishedSong('S1', 'Charleston'),
+          PublishedSong('S${digest.substring(0, 16)}', 'Título distinto'),
+        ];
+        timers.fire();
+        await settleIo();
+
+        final entry = t.entries.single;
+        expect(entry.stage, UploadStage.published);
+        expect(entry.publishedId, 'S${digest.substring(0, 16)}');
+        t.dispose();
+      },
+    );
 
     test(
       'al volver tras 10 minutos fuera, mira una vez y, si no está, queda pendiente de aparecer',
