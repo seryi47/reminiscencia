@@ -1440,6 +1440,22 @@
       "size_bytes": 1530817,
       "added_at": "2026-11-04T13:22:12+00:00",
       "public": true
+    },
+    {
+      "id": "S840cf6ec18ec09b1",
+      "title": "Entre poetas y presos",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "840cf6ec18ec09b1a0268d19e60c674663c0e9708c8395e6e83b41abd455631b",
+      "duration_s": 267.651,
+      "codec": "opus",
+      "size_bytes": 1643552,
+      "added_at": "2026-11-04T13:34:42+00:00",
+      "public": true
     }
   ]
 }
