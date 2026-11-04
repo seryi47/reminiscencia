@@ -71,7 +71,7 @@ action: organize
 payload: {"op":"edit_song","song_id":"S0123456789abcdef","public":true,"tags":["jazz"]}
 ```
 
-Operaciones: `create_folder` (`name`, `parent_id`), `rename_folder` (`folder_id`, `name`), `delete_folder` (`folder_id`) y `edit_song` (`song_id` y, opcionalmente, `title`, `artist`, `year`, `tags`, `folder_id` y `public`). Publicar y despublicar es `edit_song` con `public`.
+Operaciones: `create_folder` (`name`, `parent_id`), `rename_folder` (`folder_id`, `name`), `delete_folder` (`folder_id`), `edit_song` (`song_id` y, opcionalmente, `title`, `artist`, `year`, `tags`, `folder_id` y `public`) y `organize_youtube_playlist` (`playlist_id`, `name`, `songs`, lista de `{song_id, artist}`). Esta última crea o reutiliza el álbum estable de la playlist y asigna álbum y artista a las canciones en una sola escritura; sirve también para reparar importaciones anteriores incompletas.
 
 Reglas: una clave por línea; una clave desconocida o repetida es un error; una línea sin dos puntos se ignora; una clave con valor vacío equivale a no enviarla; los ids de carpeta son de 10 caracteres hexadecimales en minúscula y los de canción, `S` seguida de 16; `public` y los demás booleanos son `true` o `false` de JSON, nunca texto.
 

@@ -16,6 +16,7 @@ Las operaciones son puras sobre el fichero: cada cambio se guarda entero y de fo
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -82,6 +83,27 @@ def find_folder(data: dict, folder_id: str) -> dict:
         if folder["id"] == folder_id:
             return folder
     raise CatalogError(f"no existe la carpeta {folder_id}")
+
+
+def youtube_album(data: dict, playlist_id: str, name: str) -> tuple[dict, bool]:
+    """Crea o reutiliza el álbum estable de una playlist; el id de YouTube queda solo en el catálogo interno."""
+    for folder in data["folders"]:
+        if folder.get("youtube_playlist_id") == playlist_id:
+            changed = folder.get("name") != name
+            folder["name"] = name
+            return folder, changed
+
+    folder_id = f"F{hashlib.sha256(f'youtube:{playlist_id}'.encode()).hexdigest()[:16]}"
+    if any(folder.get("id") == folder_id for folder in data["folders"]):
+        raise CatalogError("el id del álbum de YouTube coincide con una carpeta existente")
+    folder = {
+        "id": folder_id,
+        "name": name,
+        "parent_id": None,
+        "youtube_playlist_id": playlist_id,
+    }
+    data["folders"].append(folder)
+    return folder, True
 
 
 def add_song(data: dict, *, sha256: str, title: str, license: str, source: str,

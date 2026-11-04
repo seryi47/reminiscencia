@@ -1,11 +1,12 @@
 # CHANGELOG
 
-## Sin publicar: web y APK, playlists de YouTube como álbumes (2026-11-03)
+## Sin publicar: web y APK, artistas y álbumes de playlists de YouTube (2026-11-03)
 
-- La lectura de playlists usa `yt-dlp` y, si falla o falta el título, YouTube Music con continuaciones y el HTML público como alternativas. Las peticiones a YouTube Music usan un User-Agent de navegador para recibir sus datos completos. El proxy devuelve el título original y falla explícitamente si no puede obtenerlo.
-- La web y la APK envían la metadata del álbum en los trozos y el manifiesto común de `/api/subir`. El buzón crea o reutiliza una carpeta estable por ID de playlist y asigna ahí todas sus canciones; la publicación existente hace visible el álbum en ambas apps.
+- La lectura de playlists completa el artista de cada vídeo desde las columnas de YouTube Music, también cuando `yt-dlp` devuelve correctamente los títulos.
+- La web y la APK conservan álbum y artista por pista hasta el manifiesto de `/api/subir`; el buzón asigna el artista a cada canción y reutiliza el álbum estable por ID de playlist.
+- `organize_youtube_playlist` repara en una única petición playlists ya publicadas, sin volver a convertir ni subir el audio.
 - Los vídeos individuales y las subidas manuales siguen sin álbum. El flujo conserva la declaración de derechos y la publicación pública habituales.
-- Añadidas pruebas de continuaciones, título, manifiesto, creación del álbum y propagación en web, backend y Flutter. La validación desplegada con la playlist «Nuestro desacato» queda pendiente.
+- Añadidas pruebas de extracción y propagación de artistas, manifiesto, reparación del catálogo y compatibilidad web/Android. La validación desplegada con la playlist «Nuestro desacato» queda pendiente.
 
 ## 1.2.3 (2026-11-03)
 

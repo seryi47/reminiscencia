@@ -61,13 +61,14 @@ export function cleanAlbum(album) {
 }
 
 /** Subida nueva, en cola. group: el ZIP del que sale; album: la playlist de YouTube, si corresponde. */
-export function createItem({ key, name, title, createdAt = 0, group = null, album = null }) {
+export function createItem({ key, name, title, createdAt = 0, group = null, album = null, artist = '' }) {
   return {
     key: String(key),
     name: String(name ?? ''),
     title: String(title ?? ''),
     group: cleanGroup(group),
     album: cleanAlbum(album),
+    artist: typeof artist === 'string' ? Array.from(artist.trim()).slice(0, 200).join('') : '',
     state: S.QUEUED,
     fraction: 0,
     localId: null,
@@ -265,6 +266,7 @@ export function serializeItems(items) {
       serverName: item.serverName, knownIds: item.knownIds, savedAt: item.savedAt, error: item.error, createdAt: item.createdAt,
       group: item.group ?? null,
       album: item.album ?? null,
+      artist: item.artist,
     }));
   return JSON.stringify({ version: STORAGE_VERSION, items: kept });
 }
@@ -295,6 +297,7 @@ export function parseItems(raw) {
         createdAt: Number(entry.createdAt) || 0,
         group: entry.group,
         album: entry.album,
+        artist: entry.artist,
       }),
       localId: isText(entry.localId) ? entry.localId : null,
       serverName: isText(entry.serverName) ? entry.serverName : null,
@@ -456,6 +459,7 @@ export function createUploadTracker(deps = {}) {
     const result = await send(bytes, {
       fileName: entry.item.name,
       album: entry.item.album,
+      artist: entry.item.artist,
       onChunk: ({ index, total }) => dispatch(entry, { type: 'send', fraction: (index + 1) / total }),
     });
     dispatch(entry, { type: 'saved', serverName: result?.nombre, at: now(), knownIds });
@@ -564,9 +568,11 @@ export function createUploadTracker(deps = {}) {
    * Añade subidas ya preparadas (subida-zip.js): [{ file, name, title, group, error }]. Con error, la subida entra
    * directamente en «Error» sin Reintentar (por ejemplo, un ZIP dañado). Devuelve las claves.
    */
-  function addSources(sources, { album = null } = {}) {
+  function addSources(sources, { album = null, trackArtists = [] } = {}) {
     const keys = [];
-    for (const source of Array.from(sources ?? [])) {
+    const sourceList = Array.from(sources ?? []);
+    const artists = sourceList.length === trackArtists.length ? trackArtists : [];
+    for (const [index, source] of sourceList.entries()) {
       const key = newKey();
       const item = createItem({
         key,
@@ -575,6 +581,7 @@ export function createUploadTracker(deps = {}) {
         createdAt: now(),
         group: source?.group,
         album: source?.album ?? album,
+        artist: source?.artist ?? artists[index] ?? '',
       });
       if (source?.error) {
         entries.push({ item: { ...item, state: S.ERROR, error: String(source.error), retryable: false }, file: null, bytes: null });
@@ -597,8 +604,8 @@ export function createUploadTracker(deps = {}) {
       return () => listeners.delete(listener);
     },
     /** Añade archivos a la cola (se suben de uno en uno y en orden). Devuelve las claves. */
-    add(files, { titleOf = (file) => file?.name ?? '', album = null } = {}) {
-      return addSources(Array.from(files ?? []).map((file) => ({ file, name: file?.name, title: titleOf(file) })), { album });
+    add(files, { titleOf = (file) => file?.name ?? '', album = null, trackArtists = [] } = {}) {
+      return addSources(Array.from(files ?? []).map((file) => ({ file, name: file?.name, title: titleOf(file) })), { album, trackArtists });
     },
     addSources,
     /** Vuelve a poner en cola una subida con error. true si se ha podido. */

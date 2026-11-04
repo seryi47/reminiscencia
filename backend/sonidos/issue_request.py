@@ -13,7 +13,8 @@ Este módulo la valida antes de tocar la red o el catálogo:
   de casos. No admite payload.
 - action organize: payload obligatorio, un objeto JSON en una sola línea. No admite url, license ni title.
   Operaciones: create_folder (name, parent_id y artist opcionales), rename_folder, edit_folder (name obligatorio y
-  artist opcional, ADR-0016), delete_folder y edit_song.
+  artist opcional, ADR-0016), delete_folder, edit_song y organize_youtube_playlist (reparar un álbum y los artistas
+  de todas sus canciones en una petición).
 
 Las URL se validan con sonidos.sources (classify, resolve_direct_file, ia_identifier): la misma
 lógica que usa la importación.
@@ -50,6 +51,7 @@ YEAR_MAX = catalog.YEAR_MAX
 FOLDER_ID_RE = re.compile(r"F[0-9a-f]{16}|[0-9a-f]{10}")
 SONG_ID_RE = re.compile(r"S[0-9a-f]{16}")
 ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+YOUTUBE_PLAYLIST_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,200}")
 
 # Operaciones de organize: campos obligatorios y opcionales, además de "op".
 OPERATIONS = {
@@ -60,6 +62,10 @@ OPERATIONS = {
     "edit_song": (
         frozenset({"song_id"}),
         frozenset({"title", "artist", "year", "tags", "folder_id", "public"}),
+    ),
+    "organize_youtube_playlist": (
+        frozenset({"playlist_id", "name", "songs"}),
+        frozenset(),
     ),
 }
 
@@ -154,6 +160,32 @@ def validate_payload(data: object) -> dict:
         }
     if operation == "delete_folder":
         return {"op": operation, "folder_id": _folder_id(data["folder_id"], field="folder_id")}
+    if operation == "organize_youtube_playlist":
+        playlist_id = data["playlist_id"]
+        if not isinstance(playlist_id, str) or not YOUTUBE_PLAYLIST_ID_RE.fullmatch(playlist_id):
+            raise RequestError("playlist_id no es válido")
+        raw_songs = data["songs"]
+        if not isinstance(raw_songs, list) or not 1 <= len(raw_songs) <= 200:
+            raise RequestError("songs debe contener entre 1 y 200 canciones")
+        songs = []
+        seen = set()
+        for entry in raw_songs:
+            if not isinstance(entry, dict) or set(entry) != {"song_id", "artist"}:
+                raise RequestError("cada canción debe incluir solo song_id y artist")
+            song_id = _song_id(entry["song_id"])
+            if song_id in seen:
+                raise RequestError(f"song_id repetido en songs: {song_id}")
+            seen.add(song_id)
+            songs.append({
+                "song_id": song_id,
+                "artist": _text(entry["artist"], "artist", 0, MAX_ARTIST_CHARS),
+            })
+        return {
+            "op": operation,
+            "playlist_id": playlist_id,
+            "name": _text(data["name"], "name", 1, MAX_TITLE_CHARS),
+            "songs": songs,
+        }
     return _edit_song(data)
 
 

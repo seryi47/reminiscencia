@@ -46,6 +46,7 @@ void main() {
                 {
                   'url': 'https://www.youtube.com/watch?v=abcdefghijk',
                   'title': 'Primera',
+                  'artist': 'Desakato',
                 },
                 {
                   'url': 'https://www.youtube.com/watch?v=abcdefghijk',
@@ -74,6 +75,8 @@ void main() {
         contains('youtube.com/playlist'),
       );
       expect(tracks.map((track) => track.title), ['Primera', 'Segunda']);
+      expect(tracks.first.artist, 'Desakato');
+      expect(tracks.last.artist, '');
       expect(tracks.every((track) => track.playlistId == 'PL_demo'), isTrue);
       expect(
         tracks.every((track) => track.playlistTitle == 'Nuestra playlist'),

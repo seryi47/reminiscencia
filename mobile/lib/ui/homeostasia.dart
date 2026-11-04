@@ -192,6 +192,7 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
           PickedAudioFile(
             name: audio.name,
             path: audio.path,
+            artist: audio.track.artist,
             youtubePlaylistId: audio.track.playlistId,
             youtubePlaylistName: audio.track.playlistTitle,
           ),

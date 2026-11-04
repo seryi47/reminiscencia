@@ -28,14 +28,21 @@ class YoutubeTrack {
   const YoutubeTrack({
     required this.url,
     required this.title,
+    this.artist = '',
     this.playlistId,
     this.playlistTitle,
   });
 
   final String url;
   final String title;
+  final String artist;
   final String? playlistId;
   final String? playlistTitle;
+}
+
+String _artistText(Object? value) {
+  if (value is! String) return '';
+  return String.fromCharCodes(value.trim().runes.take(200));
 }
 
 /// WAV descargado y listo para entrar en la cola normal de subidas.
@@ -243,6 +250,7 @@ class YoutubeImporter {
         YoutubeTrack(
           url: itemUrl,
           title: title,
+          artist: _artistText(raw['artist']),
           playlistId: playlistId,
           playlistTitle: playlistTitle,
         ),

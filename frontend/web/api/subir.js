@@ -147,7 +147,16 @@ export function parseUploadHeaders(headers) {
     }
     album = { id: albumId, name: albumName };
   }
-  return { fileName, uploadId, index, total, ...(album ? { album } : {}) };
+  let artist = header(headers, 'x-artista-cancion');
+  try {
+    artist = artist ? decodeURIComponent(artist) : '';
+  } catch {
+    throw new UploadError(400, 'El nombre del artista no está bien codificado.');
+  }
+  if ([...artist].length > 200 || /[\u0000-\u001f\u007f]/u.test(artist)) {
+    throw new UploadError(400, 'El nombre del artista no es válido.');
+  }
+  return { fileName, uploadId, index, total, ...(album ? { album } : {}), ...(artist ? { artist } : {}) };
 }
 
 /** Comprueba el cuerpo de un trozo: no vacío, hasta 4 MB y, el primero, Ogg Opus. */
@@ -234,7 +243,7 @@ function encodePath(path) {
 }
 
 /** Guarda un trozo con un commit en main. Reintenta si main cambia entre la lectura y la actualización. */
-async function storeChunk({ github, uploadId, index, total, stem, bytes, album }) {
+async function storeChunk({ github, uploadId, index, total, stem, bytes, album, artist }) {
   const blobSha = gitBlobSha(bytes);
   let blobCreated = false;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -272,7 +281,7 @@ async function storeChunk({ github, uploadId, index, total, stem, bytes, album }
         path: manifestPath(uploadId),
         mode: '100644',
         type: 'blob',
-        content: `${JSON.stringify({ nombre: name, partes: total, ...(album ? { album } : {}) })}\n`,
+        content: `${JSON.stringify({ nombre: name, partes: total, ...(album ? { album } : {}), ...(artist ? { artist } : {}) })}\n`,
       });
     }
     const tree = expect(await github('POST', '/git/trees', { base_tree: head?.tree?.sha, tree: entries }), [201], 'crear el árbol');
@@ -309,14 +318,14 @@ export async function handleUpload(request, { env = {}, fetchImpl = globalThis.f
       console.error('subir: falta la variable de entorno GITHUB_TOKEN');
       throw new UploadError(500, 'La subida no está configurada en el servidor (falta GITHUB_TOKEN). Avisa a quien mantiene la web.');
     }
-    const { fileName, uploadId, index, total, album } = parseUploadHeaders(request.headers);
+    const { fileName, uploadId, index, total, album, artist } = parseUploadHeaders(request.headers);
     const declared = Number(request.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > MAX_CHUNK_BYTES) checkChunk({ length: declared }, -1);
     const bytes = new Uint8Array(await request.arrayBuffer());
     checkChunk(bytes, index);
     const stem = cleanStem(fileName);
     const github = githubClient(token, fetchImpl);
-    const stored = await storeChunk({ github, uploadId, index, total, stem, bytes, album });
+    const stored = await storeChunk({ github, uploadId, index, total, stem, bytes, album, artist });
     const complete = index === total - 1;
     return json(200, {
       ok: true,

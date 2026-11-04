@@ -240,9 +240,14 @@ function musicPlaylistItems(data) {
           ?.playNavigationEndpoint?.watchEndpoint?.videoId;
       const title = textFrom(renderer.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text)
         || textFrom(renderer.title);
+      const artist = textFrom(renderer.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer?.text).trim();
       if (VIDEO_ID.test(id ?? '') && title.trim() && !seen.has(id)) {
         seen.add(id);
-        items.push({ url: canonicalVideoUrl(id), title: title.trim().slice(0, 200) });
+        items.push({
+          url: canonicalVideoUrl(id),
+          title: title.trim().slice(0, 200),
+          ...(artist ? { artist: Array.from(artist.trim()).slice(0, 200).join('') } : {}),
+        });
       }
     }
     Object.values(value).forEach(visit);
@@ -467,10 +472,18 @@ export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = pro
     }
 
     let musicError = null;
-    if (items.length === 0 || !title) {
+    if (items.length === 0 || !title || items.some((item) => !item.artist)) {
       try {
         const music = await readPlaylistMusic(url, fetchImpl);
-        if (items.length === 0) items = music.items;
+        if (items.length === 0) {
+          items = music.items;
+        } else {
+          const artistsById = new Map(music.items.map((item) => [videoId(item.url), item.artist]));
+          items = items.map((item) => {
+            const artist = item.artist || artistsById.get(videoId(item.url));
+            return artist ? { ...item, artist } : item;
+          });
+        }
         if (!title) title = music.title;
       } catch (error) {
         if (!(error instanceof YoutubeApiError)) throw error;

@@ -150,12 +150,14 @@ void main() {
           path: '/temporal/Cada vez.wav',
           youtubePlaylistId: 'PLVU-jIOit29A',
           youtubePlaylistName: 'Nuestro desacato',
+          artist: 'Desakato',
         ),
       ]);
 
       expect(requests, hasLength(1));
       expect(requests.single.headers['X-Album-Id'], 'PLVU-jIOit29A');
       expect(requests.single.headers['X-Album-Name'], 'Nuestro%20desacato');
+      expect(requests.single.headers['X-Artista-Cancion'], 'Desakato');
     });
 
     test(

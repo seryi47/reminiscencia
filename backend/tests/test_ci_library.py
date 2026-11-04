@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -157,6 +158,49 @@ def test_organize_edit_song_changes_title_and_artist(ci):
     song = catalog.load(ci.CATALOG)["songs"][0]
     assert result["song"]["title"] == song["title"] == "Ojos verdes"
     assert song["artist"] == "Concha Piquer"
+
+
+def test_organize_youtube_playlist_assigns_artist_and_stable_album(ci):
+    song_id = _seed_private_song(ci)
+    _organize(ci, {"op": "edit_song", "song_id": song_id, "public": True})
+    payload = {
+        "op": "organize_youtube_playlist",
+        "playlist_id": "PLVU-jIOit29A",
+        "name": "Nuestro desacato",
+        "songs": [{"song_id": song_id, "artist": "Desakato"}],
+    }
+
+    result = _organize(ci, payload)
+
+    expected_id = f"F{hashlib.sha256(b'youtube:PLVU-jIOit29A').hexdigest()[:16]}"
+    saved = catalog.load(ci.CATALOG)
+    assert result["folder"]["id"] == expected_id
+    assert result["folder"]["youtube_playlist_id"] == "PLVU-jIOit29A"
+    assert result["songs"][0]["artist"] == "Desakato"
+    assert result["songs"][0]["folder_id"] == expected_id
+    public_folder = json.loads((ci.WEB / "data" / "folders.json").read_text(encoding="utf-8"))[0]
+    assert public_folder["name"] == "Nuestro desacato"
+    assert "youtube_playlist_id" not in public_folder
+
+    repeated = _organize(ci, {**payload, "name": "Nombre actualizado"})
+    assert repeated["folder"]["id"] == expected_id
+    assert repeated["folder"]["name"] == "Nombre actualizado"
+    assert len(saved["folders"]) == 1
+
+
+def test_organize_youtube_playlist_missing_song_does_not_create_album(ci):
+    _seed_private_song(ci)
+    before = catalog.load(ci.CATALOG)
+
+    with pytest.raises(catalog.CatalogError, match="no existe la canción"):
+        _organize(ci, {
+            "op": "organize_youtube_playlist",
+            "playlist_id": "PLVU-jIOit29A",
+            "name": "Nuestro desacato",
+            "songs": [{"song_id": "S0123456789abcdef", "artist": "Desakato"}],
+        })
+
+    assert catalog.load(ci.CATALOG) == before
 
 
 def test_organize_edit_folder_on_a_missing_folder_fails(ci):

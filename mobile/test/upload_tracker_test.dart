@@ -122,6 +122,7 @@ void main() {
         path: '/origen/Cada vez.wav',
         youtubePlaylistId: 'PLVU-jIOit29A',
         youtubePlaylistName: 'Nuestro desacato',
+        artist: 'Desakato',
       );
 
       await t.start([file]);
@@ -129,9 +130,11 @@ void main() {
       expect(entry.stage, UploadStage.failed);
       expect(entry.youtubePlaylistId, 'PLVU-jIOit29A');
       expect(entry.youtubePlaylistName, 'Nuestro desacato');
+      expect(entry.artist, 'Desakato');
       final restored = UploadEntry.fromJson(entry.toJson());
       expect(restored.youtubePlaylistId, 'PLVU-jIOit29A');
       expect(restored.youtubePlaylistName, 'Nuestro desacato');
+      expect(restored.artist, 'Desakato');
 
       reply = (_) => okReply();
       await t.retry(entry.key);
@@ -144,6 +147,10 @@ void main() {
       expect(
         requests.map((request) => request.headers['X-Album-Name']),
         everyElement('Nuestro%20desacato'),
+      );
+      expect(
+        requests.map((request) => request.headers['X-Artista-Cancion']),
+        everyElement('Desakato'),
       );
       t.dispose();
     });

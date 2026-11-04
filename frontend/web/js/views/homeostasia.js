@@ -261,7 +261,8 @@ async function listarPlaylist(playlistUrl, signal) {
     .filter((item) => item && typeof item.url === 'string' && item.url)
     .map((item) => ({
       url: item.url,
-      title: typeof item.title === 'string' && item.title ? item.title : 'audio'
+      title: typeof item.title === 'string' && item.title ? item.title : 'audio',
+      artist: typeof item.artist === 'string' ? Array.from(item.artist.trim()).slice(0, 200).join('') : ''
     }))
     .filter((item) => {
       const videoId = getVideoId(item.url);
@@ -556,6 +557,7 @@ async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
 
 async function convertirPlaylist(items, onProgress, signal) {
   const files = [];
+  const trackArtists = [];
   const completedIds = [];
   const errors = [];
 
@@ -618,6 +620,7 @@ async function convertirPlaylist(items, onProgress, signal) {
 
         if (result.success) {
           files.push(result.file);
+          trackArtists.push(item.artist || '');
           completedIds.push(result.videoId);
         } else if (!result.skipped) {
           errors.push(result);
@@ -637,6 +640,7 @@ async function convertirPlaylist(items, onProgress, signal) {
 
   return {
     files,
+    trackArtists,
     completedIds,
     errors,
     total,
@@ -684,6 +688,7 @@ function homeostasiaPanel(ctx, close) {
   let pendingQueueFiles = [];
   let pendingQueueIds = [];
   let pendingQueueAlbum = null;
+  let pendingQueueArtists = [];
 
   // ------------------------------------------------
   // IMPORTADOR DE VÍDEOS Y PLAYLISTS
@@ -854,7 +859,7 @@ function homeostasiaPanel(ctx, close) {
       let queueError = '';
       if (result.files.length > 0) {
         try {
-          await ctx.addUploads(result.files, { album });
+          await ctx.addUploads(result.files, { album, trackArtists: result.trackArtists });
           result.completedIds.forEach((videoId) => {
             completedVideos.add(videoId);
             saveImportRecord(videoId, { state: 'queued' });
@@ -862,12 +867,14 @@ function homeostasiaPanel(ctx, close) {
           pendingQueueFiles = [];
           pendingQueueIds = [];
           pendingQueueAlbum = null;
+          pendingQueueArtists = [];
           progress.hidden = false;
         } catch (error) {
           console.error('Error añadiendo WAV a la cola de Homeostasia:', error);
           pendingQueueFiles = result.files;
           pendingQueueIds = result.completedIds;
           pendingQueueAlbum = album;
+          pendingQueueArtists = result.trackArtists;
           queueError = error.message || 'Los WAV se descargaron, pero no se pudieron añadir a la cola de subidas.';
         }
       }
@@ -924,7 +931,7 @@ function homeostasiaPanel(ctx, close) {
     if (pendingQueueFiles.length > 0) {
       const files = pendingQueueFiles;
       try {
-        await ctx.addUploads(files, { album: pendingQueueAlbum });
+        await ctx.addUploads(files, { album: pendingQueueAlbum, trackArtists: pendingQueueArtists });
         pendingQueueIds.forEach((videoId) => {
           completedVideos.add(videoId);
           saveImportRecord(videoId, { state: 'queued' });
@@ -932,6 +939,7 @@ function homeostasiaPanel(ctx, close) {
         pendingQueueFiles = [];
         pendingQueueIds = [];
         pendingQueueAlbum = null;
+        pendingQueueArtists = [];
         progress.hidden = false;
         retryButton.hidden = failedItems.length === 0;
         status.textContent = 'WAV añadidos a la cola de subidas.';
@@ -990,7 +998,7 @@ function homeostasiaPanel(ctx, close) {
       let queueError = '';
       if (result.files.length > 0) {
         try {
-          await ctx.addUploads(result.files, { album });
+          await ctx.addUploads(result.files, { album, trackArtists: result.trackArtists });
           result.completedIds.forEach((videoId) => {
             completedVideos.add(videoId);
             saveImportRecord(videoId, { state: 'queued' });
@@ -998,12 +1006,14 @@ function homeostasiaPanel(ctx, close) {
           pendingQueueFiles = [];
           pendingQueueIds = [];
           pendingQueueAlbum = null;
+          pendingQueueArtists = [];
           progress.hidden = false;
         } catch (error) {
           console.error('Error añadiendo WAV reintentados a la cola:', error);
           pendingQueueFiles = result.files;
           pendingQueueIds = result.completedIds;
           pendingQueueAlbum = album;
+          pendingQueueArtists = result.trackArtists;
           queueError = error.message || 'Los WAV se descargaron, pero no se pudieron añadir a la cola de subidas.';
         }
       }

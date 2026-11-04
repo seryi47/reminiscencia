@@ -5,8 +5,8 @@ scripts/issue_request.py deja en GITHUB_ENV tras validarla. Este script nunca le
 comandos: vuelve a validar la petición con sonidos.issue_request y la aplica:
 
   import     descarga, convierte y añade la canción al catálogo (sonidos.pipeline)
-  organize   crea, renombra, edita (nombre y artista del álbum) o borra carpetas y edita canciones, incluida su
-             publicación (public). Al borrar una carpeta se borra también su portada (ADR-0016).
+  organize   crea, renombra, edita (nombre y artista del álbum) o borra carpetas, edita canciones y organiza una
+             playlist de YouTube ya catalogada. Al borrar una carpeta se borra también su portada (ADR-0016).
 
 Siempre termina regenerando la parte pública de la web, para que catálogo y web coincidan.
 Imprime el resultado como JSON. Ante cualquier error imprime {"error": "..."} y sale con código 1.
@@ -55,6 +55,17 @@ def organize(data: dict, payload: dict) -> dict:
     if operation == "edit_song":
         fields = {key: value for key, value in payload.items() if key not in ("op", "song_id")}
         return {"song": catalog.update_song(data, payload["song_id"], fields)}
+    if operation == "organize_youtube_playlist":
+        tracks = payload["songs"]
+        songs = [catalog.find_song(data, track["song_id"]) for track in tracks]
+        playlist_id = payload["playlist_id"]
+        folder, _ = catalog.youtube_album(data, playlist_id, payload["name"])
+        folder_id = folder["id"]
+        updated = [
+            catalog.update_song(data, song["id"], {"artist": track["artist"], "folder_id": folder_id})
+            for song, track in zip(songs, tracks, strict=True)
+        ]
+        return {"folder": folder, "songs": updated}
     raise catalog.CatalogError(f"operación desconocida: {operation}")
 
 

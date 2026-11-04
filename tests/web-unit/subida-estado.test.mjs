@@ -70,6 +70,19 @@ describe('máquina de estados', () => {
     for (const type of ['fail', 'convert', 'slow', 'retry']) assert.equal(transition(published, { type }), published, type);
   });
 
+  test('conserva artista y álbum en la cola persistida', () => {
+    const item = createItem({
+      key: 'k-artist',
+      name: 'Cada vez.wav',
+      title: 'Cada vez',
+      album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
+      artist: 'Desakato',
+    });
+    const restored = parseItems(serializeItems([{ ...item, localId: 'L0011223344556677' }]));
+    assert.equal(restored[0].artist, 'Desakato');
+    assert.deepEqual(restored[0].album, { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' });
+  });
+
   test('un error lleva su motivo y se puede reintentar; sin archivo ni copia, no', () => {
     const sending = { ...createItem({ key: 'k', name: 'a.wav', title: 'a' }), state: S.SENDING, fraction: 0.5 };
     const failed = transition(sending, { type: 'fail', message: 'El archivo no es Ogg Opus.' });
@@ -262,8 +275,8 @@ function setup({ songs = [{ id: 'S1', title: 'Tono de prueba' }], send, storage 
       return song;
     },
     readCopy: async () => new Uint8Array([9, 9]),
-    send: send ?? (async (bytes, { fileName, album, onChunk }) => {
-      calls.send.push({ fileName, bytes: [...bytes], album });
+    send: send ?? (async (bytes, { fileName, album, artist, onChunk }) => {
+      calls.send.push({ fileName, bytes: [...bytes], album, artist });
       for (let index = 0; index < 3; index += 1) onChunk({ index, total: 3 });
       return { ok: true, nombre: fileName.replace(/\.[^.]*$/, '.opus') };
     }),
@@ -287,7 +300,7 @@ function setup({ songs = [{ id: 'S1', title: 'Tono de prueba' }], send, storage 
 const states = (tracker) => tracker.items().map((item) => item.state);
 
 describe('gestor de subidas', () => {
-  test('pasa y conserva el álbum de una playlist al subir sus canciones', async () => {
+  test('pasa y conserva álbum y artista de una playlist al subir sus canciones', async () => {
     const { tracker, calls, storage } = setup();
     const album = { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' };
     tracker.addSources([{
@@ -295,10 +308,12 @@ describe('gestor de subidas', () => {
       name: 'Cada vez.wav',
       title: 'Cada vez',
       album,
-    }]);
+    }], { trackArtists: ['Desakato'] });
     await settle();
     assert.deepEqual(calls.send[0].album, album);
+    assert.equal(calls.send[0].artist, 'Desakato');
     assert.deepEqual(JSON.parse(storage.getItem(STORAGE_KEY)).items[0].album, album);
+    assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)).items[0].artist, 'Desakato');
   });
 
   test('una subida pasa por todos los pasos y se da por publicada solo cuando songs.json trae un id nuevo con su título', async () => {

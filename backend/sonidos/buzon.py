@@ -38,8 +38,9 @@ las portadas.
 
 Subidas por trozos desde la web pública y la APK (ADR-0017): la función de Vercel guarda cada trozo de un Ogg Opus en
 audio-library/buzon/.partes/<id>/<índice>.part (id: UUID en minúsculas; índices desde 0) con un commit por trozo, y
-con el último escribe audio-library/buzon/.partes/<id>/manifiesto.json, {"nombre": "<nombre>.opus", "partes": N}, en
-un commit con la línea «Licencia: …». Una carpeta sin manifiesto es una subida en curso y se ignora. Con manifiesto y
+con el último escribe audio-library/buzon/.partes/<id>/manifiesto.json, {"nombre": "<nombre>.opus", "partes": N} (y,
+opcionalmente, los metadatos de álbum y artista de YouTube), en un commit con la línea «Licencia: …». Una carpeta sin
+manifiesto es una subida en curso y se ignora. Con manifiesto y
 las N partes, se unen en orden en audio-library/buzon/<nombre>.opus (con un sufijo « (2)», « (3)»... si ese nombre ya
 está), se borra la carpeta de partes y el archivo se procesa como cualquier otro, con la licencia del commit que trajo
 el manifiesto. Si este push no trae el manifiesto (otra ejecución de la cola llegó antes a main), se usa la licencia
@@ -50,7 +51,6 @@ que la función declara siempre (WEB_LICENSE): esas carpetas solo las escribe la
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import shutil
@@ -329,7 +329,8 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
             song_changed = _catalogar(
                 data, result, target=target, archivo=name, title=titulo_desde_nombre(name), motivo=motivo,
                 license_text=license_text, source=source, audio_dir=audio_dir, staging=staging,
-                album=albumes.get(path),
+                album=(albumes.get(path) or {}).get("album"),
+                artist=(albumes.get(path) or {}).get("artist"),
             )
             target.unlink()
             changed = changed or song_changed
@@ -352,21 +353,28 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     return result
 
 
-def _leer_manifiesto(path: Path) -> tuple[str, int, dict | None] | None:
-    """(nombre, partes, álbum) de un manifiesto válido, o None. Álbum es metadata opcional de una playlist de YouTube."""
+def _leer_manifiesto(path: Path) -> tuple[str, int, dict | None, str] | None:
+    """(nombre, partes, álbum, artista) de un manifiesto válido, o None."""
     try:
         if path.stat().st_size > MAX_MANIFEST_BYTES:
             return None
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, ValueError):
         return None
-    if not isinstance(data, dict) or not {"nombre", "partes"} <= set(data) or set(data) - {"nombre", "partes", "album"}:
+    if not isinstance(data, dict) or not {"nombre", "partes"} <= set(data) or set(data) - {
+        "nombre", "partes", "album", "artist"
+    }:
         return None
     nombre, partes = data["nombre"], data["partes"]
     if not isinstance(nombre, str) or not nombre_valido(nombre) or not nombre.lower().endswith(".opus") or len(nombre) <= 5:
         return None
     if isinstance(partes, bool) or not isinstance(partes, int) or not 1 <= partes <= MAX_PARTES:
         return None
+    artist = data.get("artist", "")
+    if (not isinstance(artist, str) or len(artist) > catalog.SONG_ARTIST_MAX_CHARS
+            or any(ord(char) < 32 or ord(char) == 127 for char in artist)):
+        return None
+    artist = artist.strip()
     album = None
     if "album" in data:
         candidate = data["album"]
@@ -380,7 +388,7 @@ def _leer_manifiesto(path: Path) -> tuple[str, int, dict | None] | None:
                 or any(ord(char) < 32 or ord(char) == 127 for char in album_name)):
             return None
         album = {"id": album_id, "name": album_name.strip()}
-    return nombre, partes, album
+    return nombre, partes, album, artist
 
 
 def _nombre_libre(buzon: Path, nombre: str) -> str:
@@ -436,7 +444,7 @@ def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str], *,
                                          "motivo": "el manifiesto de partes no es válido"})
             shutil.rmtree(entry)
             continue
-        nombre, total, album = spec
+        nombre, total, album, artist = spec
         names = {child.name for child in children} - {PARTES_MANIFEST}
         expected = {f"{index}.part" for index in range(total)}
         if expected - names:
@@ -453,8 +461,8 @@ def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str], *,
         shutil.rmtree(entry)
         final_path = f"{BUZON_DIRECTORY}/{final}"
         unidas[final_path] = del_evento.get(f"{ruta}/{PARTES_MANIFEST}", f"Licencia: {WEB_LICENSE}")
-        if album is not None and albumes is not None:
-            albumes[final_path] = album
+        if (album is not None or artist) and albumes is not None:
+            albumes[final_path] = {"album": album, "artist": artist}
     return unidas
 
 
@@ -525,7 +533,7 @@ def _procesar_portada(data: dict, result: dict, *, path: str, name: str, directo
 
 def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: str, motivo: str | None,
                license_text: str | None, source: str, audio_dir: Path, staging: Path,
-               album: dict | None = None) -> bool:
+               album: dict | None = None, artist: str | None = None) -> bool:
     """Comprueba que target es audio y lo añade al catálogo (o lo anota como rechazado con motivo, si ya trae uno).
     Anota el resultado con archivo como nombre y devuelve si cambió la biblioteca. No borra target."""
     info = None
@@ -540,10 +548,10 @@ def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: s
     if motivo is None:
         entry, motivo, song_changed = _add(
             data, target=target, archivo=archivo, title=title, info=info, license_text=license_text, source=source,
-            audio_dir=audio_dir, staging=staging,
+            audio_dir=audio_dir, staging=staging, artist=artist or "",
         )
         if motivo is None and album is not None and license_text:
-            folder, folder_changed = _youtube_album(data, album)
+            folder, folder_changed = catalog.youtube_album(data, album["id"], album["name"])
             song = catalog.find_song(data, entry["song_id"])
             association_changed = song.get("folder_id") != folder["id"]
             if association_changed:
@@ -554,28 +562,6 @@ def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: s
         return False
     result[entry.pop("lista")].append(entry)
     return song_changed
-
-
-def _youtube_album(data: dict, album: dict) -> tuple[dict, bool]:
-    """Crea o reutiliza un álbum estable para la playlist; su id de YouTube no se publica."""
-    playlist_id = album["id"]
-    for folder in data["folders"]:
-        if folder.get("youtube_playlist_id") == playlist_id:
-            changed = folder.get("name") != album["name"]
-            folder["name"] = album["name"]
-            return folder, changed
-
-    folder_id = f"F{hashlib.sha256(f'youtube:{playlist_id}'.encode()).hexdigest()[:16]}"
-    if any(folder.get("id") == folder_id for folder in data["folders"]):
-        raise BuzonError("el id del álbum de YouTube coincide con una carpeta existente")
-    folder = {
-        "id": folder_id,
-        "name": album["name"],
-        "parent_id": None,
-        "youtube_playlist_id": playlist_id,
-    }
-    data["folders"].append(folder)
-    return folder, True
 
 
 def _nombre_de_entrada(info: zipfile.ZipInfo) -> str:
@@ -698,12 +684,15 @@ def _motivo_de_rechazo(target: Path, name: str) -> str | None:
 
 
 def _add(data: dict, *, target: Path, archivo: str, title: str, info, license_text: str | None, source: str,
-         audio_dir: Path, staging: Path) -> tuple[dict, str | None, bool]:
+         audio_dir: Path, staging: Path, artist: str = "") -> tuple[dict, str | None, bool]:
     """Añade la canción (o reconoce la que ya está). Devuelve (entrada del resultado, motivo de rechazo, cambió)."""
     sha256 = sha256_file(target)
     name = archivo
     existing = next((song for song in data["songs"] if song["sha256"] == sha256), None)
     if existing is not None:
+        artist_changed = bool(artist and existing.get("artist") != artist)
+        if artist_changed:
+            catalog.update_song(data, existing["id"], {"artist": artist})
         if license_text and existing.get("license") == catalog.LICENSE_UNDECLARED:
             # La misma grabación, ahora con licencia: se declara y se publica.
             catalog.declare_license(data, existing["id"], license_text, source)
@@ -711,11 +700,11 @@ def _add(data: dict, *, target: Path, archivo: str, title: str, info, license_te
             return ({"lista": "publicas", "archivo": name, "song_id": existing["id"], "titulo": existing["title"],
                      "licencia": license_text, "nueva": False}, None, True)
         return ({"lista": "duplicadas", "archivo": name, "song_id": existing["id"], "titulo": existing["title"]},
-                None, False)
+                None, artist_changed)
 
     song, _ = catalog.add_song(
         data, sha256=sha256, title=title, license=license_text or catalog.LICENSE_UNDECLARED, source=source,
-        codec=info.codec, duration_s=info.duration_s, size_bytes=info.size_bytes,
+        codec=info.codec, duration_s=info.duration_s, size_bytes=info.size_bytes, artist=artist,
     )
     try:
         produced = transcode(target, staging / song["id"], PLAYBACK_PROFILE)

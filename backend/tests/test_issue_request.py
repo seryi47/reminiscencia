@@ -420,6 +420,40 @@ def test_rename_and_delete_folder_are_accepted():
     assert deleted == {"op": "delete_folder", "folder_id": FOLDER}
 
 
+def test_organize_youtube_playlist_validates_and_normalizes_all_song_artists():
+    payload = validate_payload({
+        "op": "organize_youtube_playlist",
+        "playlist_id": "PLVU-jIOit29A",
+        "name": "  Nuestro desacato ",
+        "songs": [{"song_id": SONG, "artist": " Desakato "}],
+    })
+
+    assert payload == {
+        "op": "organize_youtube_playlist",
+        "playlist_id": "PLVU-jIOit29A",
+        "name": "Nuestro desacato",
+        "songs": [{"song_id": SONG, "artist": "Desakato"}],
+    }
+
+
+def test_organize_youtube_playlist_rejects_bad_song_entries_and_duplicates():
+    base = {
+        "op": "organize_youtube_playlist",
+        "playlist_id": "PL_demo",
+        "name": "Playlist",
+        "songs": [{"song_id": SONG, "artist": "Artista"}],
+    }
+    for update, message in [
+        ({"playlist_id": "bad/id"}, "playlist_id no es válido"),
+        ({"songs": []}, "entre 1 y 200"),
+        ({"songs": [{"song_id": SONG, "artist": "A"}, {"song_id": SONG, "artist": "B"}]}, "repetido"),
+        ({"songs": [{"song_id": SONG}]}, "solo song_id y artist"),
+        ({"songs": [{"song_id": "invalid", "artist": "A"}]}, "song_id no es un id"),
+    ]:
+        with pytest.raises(RequestError, match=message):
+            validate_payload({**base, **update})
+
+
 ALBUM = "F0123456789abcdef"
 
 

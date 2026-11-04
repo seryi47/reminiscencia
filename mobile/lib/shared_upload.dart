@@ -29,6 +29,7 @@ const String kUploadPartHeader = 'X-Parte';
 const String kUploadPartsHeader = 'X-Partes';
 const String kUploadAlbumIdHeader = 'X-Album-Id';
 const String kUploadAlbumNameHeader = 'X-Album-Name';
+const String kUploadArtistHeader = 'X-Artista-Cancion';
 
 /// Texto fijo junto al botón. No hay casilla ni confirmación.
 const String kUploadRightsNotice =
@@ -316,6 +317,7 @@ class SharedUploader {
             ),
             albumId: file.youtubePlaylistId,
             albumName: file.youtubePlaylistName,
+            artist: file.artist,
           );
           add(sent.item.outcome, sent.item.message);
           if (sent.connectionLost) stopReason = _lostConnectionMessage;
@@ -343,6 +345,7 @@ class SharedUploader {
     String name, {
     String? albumId,
     String? albumName,
+    String artist = '',
     void Function(int part, int parts)? onPart,
   }) async {
     final title = titleFromFileName(name);
@@ -356,6 +359,7 @@ class SharedUploader {
         onPart ?? (_, _) {},
         albumId: albumId,
         albumName: albumName,
+        artist: artist,
       );
       return sent.item;
     } catch (error) {
@@ -375,6 +379,7 @@ class SharedUploader {
     void Function(int part, int parts) onPart, {
     String? albumId,
     String? albumName,
+    String artist = '',
   }) async {
     final title = titleFromFileName(name);
     try {
@@ -384,6 +389,7 @@ class SharedUploader {
         onPart,
         albumId: albumId,
         albumName: albumName,
+        artist: artist,
       );
       return (
         item: _item(name, title, UploadOutcome.uploaded, kUploadedMessage),
@@ -432,6 +438,7 @@ class SharedUploader {
     void Function(int part, int parts) onPart, {
     String? albumId,
     String? albumName,
+    String artist = '',
   }) async {
     final length = await opus.length();
     if (length == 0) {
@@ -455,6 +462,9 @@ class SharedUploader {
         if (albumId != null && albumName != null) {
           headers[kUploadAlbumIdHeader] = albumId;
           headers[kUploadAlbumNameHeader] = Uri.encodeComponent(albumName);
+        }
+        if (artist.isNotEmpty) {
+          headers[kUploadArtistHeader] = Uri.encodeComponent(artist);
         }
         await _sendWithOneRetry(headers, bytes);
       }

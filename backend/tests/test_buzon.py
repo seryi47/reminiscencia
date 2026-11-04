@@ -956,3 +956,35 @@ def test_procesar_empaquetar_y_publicar_un_zip(repo, tmp_path):
     staged = _git(repo, "diff", "--cached", "--name-status", "--no-renames").splitlines()
     assert f"D\t{ruta}" in staged
     assert f"A\tfrontend/web/audio/{song_id}.opus" in staged
+
+
+def test_subida_por_trozos_guarda_artista_y_asocia_la_cancion_al_album(repo, tmp_path):
+    upload_id = "123e4567-e89b-12d3-a456-426614174000"
+    parts = repo / BUZON / ".partes" / upload_id
+    parts.mkdir(parents=True)
+    (parts / "0.part").write_bytes(_tono(tmp_path, ".wav", 1250))
+    manifest_path = f"{BUZON}/.partes/{upload_id}/manifiesto.json"
+    (parts / "manifiesto.json").write_text(json.dumps({
+        "nombre": "Cada vez.opus",
+        "partes": 1,
+        "album": {"id": "PLVU-jIOit29A", "name": "Nuestro desacato"},
+        "artist": "Desakato",
+    }), encoding="utf-8")
+    _commit(repo, CON_LICENCIA)
+
+    result = procesar_buzon(
+        repo=repo,
+        event=_evento((CON_LICENCIA, [manifest_path])),
+        actor="ana",
+    )
+
+    song_id = result["publicas"][0]["song_id"]
+    song = _cancion(repo, song_id)
+    folder = next(
+        folder for folder in _catalogo(repo)["folders"]
+        if folder.get("youtube_playlist_id") == "PLVU-jIOit29A"
+    )
+    assert song["title"] == "Cada vez"
+    assert song["artist"] == "Desakato"
+    assert song["folder_id"] == folder["id"]
+    assert folder["name"] == "Nuestro desacato"

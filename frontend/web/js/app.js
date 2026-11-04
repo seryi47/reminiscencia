@@ -941,7 +941,7 @@ const ctx = {
   changeCover: (target) => openCoverSheet(ctx, target),
   openUpload: () => openUploadSheet(ctx),
   openHomeostasia: () => openHomeostasiaSheet(ctx),
-  addUploads: (files) => addUploads(files),
+  addUploads: (files, options) => addUploads(files, options),
   get uploads() {
     return uploads;
   },
@@ -1073,7 +1073,7 @@ function createUploads() {
     convert: (file, { onProgress }) => convertToOpus(file, { limits: false, checkStorage: false, onProgress }),
     saveCopy: (data) => saveUploadCopy(data),
     readCopy: (id) => readLocalBytes(id),
-    send: (bytes, { fileName, album, onChunk }) => sendOpus(bytes, { fileName, uploadId: crypto.randomUUID(), album, onChunk }),
+    send: (bytes, { fileName, album, artist, onChunk }) => sendOpus(bytes, { fileName, uploadId: crypto.randomUUID(), album, artist, onChunk }),
     fetchSongs: songsFetcher((url, init) => fetch(url, init), DATA_URLS.songs),
     currentIds: () => state.publicSongs.map((song) => song?.id),
     onCopy: (song) => {
@@ -1095,10 +1095,10 @@ let pendingSelection = Promise.resolve();
  * Archivos elegidos en la hoja: a la cola de subidas, con el título del nombre del archivo. Cada ZIP se abre aquí (solo
  * su directorio) y cada canción suya entra como una subida de su grupo (subida-zip.js); el ZIP no se sube.
  */
-function addUploads(files, { album = null } = {}) {
+function addUploads(files, { album = null, trackArtists = [] } = {}) {
   requestPersistence();
   const list = Array.from(files ?? []);
-  const run = pendingSelection.then(async () => uploads.addSources(await expandSelection(list), { album }));
+  const run = pendingSelection.then(async () => uploads.addSources(await expandSelection(list), { album, trackArtists }));
   pendingSelection = run.catch((error) => console.error('Reminiscencia: fallo al preparar la selección de archivos.', error));
   return run;
 }

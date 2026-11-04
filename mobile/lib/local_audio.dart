@@ -171,6 +171,7 @@ class PickedAudioFile {
     required this.name,
     required this.path,
     this.zip,
+    this.artist = '',
     this.youtubePlaylistId,
     this.youtubePlaylistName,
   });
@@ -178,6 +179,7 @@ class PickedAudioFile {
   final String name;
   final String path;
   final ZipSongRef? zip;
+  final String artist;
   final String? youtubePlaylistId;
   final String? youtubePlaylistName;
 }

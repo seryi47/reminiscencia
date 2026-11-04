@@ -155,12 +155,16 @@ describe('API del importador de YouTube', () => {
     const requests = [];
     const page = '<meta property="og:title" content="Nuestro desacato">'
       + '<script>{"INNERTUBE_API_KEY":"test-key","INNERTUBE_CLIENT_VERSION":"1.2.3"}</script>';
-    const renderer = (id, title) => ({
+    const renderer = (id, title, artist) => ({
       musicResponsiveListItemRenderer: {
         playlistItemData: { videoId: id },
         flexColumns: [{
           musicResponsiveListItemFlexColumnRenderer: {
             text: { runs: [{ text: title }] },
+          },
+        }, {
+          musicResponsiveListItemFlexColumnRenderer: {
+            text: { runs: [{ text: artist }] },
           },
         }],
       },
@@ -183,7 +187,7 @@ describe('API del importador de YouTube', () => {
           return new Response(JSON.stringify({
             contents: {
               musicPlaylistShelfRenderer: {
-                contents: [renderer('abcdefghijk', 'Primera')],
+                contents: [renderer('abcdefghijk', 'Primera', 'Desakato')],
                 continuations: [{ nextContinuationData: { continuation: 'NEXT' } }],
               },
             },
@@ -191,7 +195,7 @@ describe('API del importador de YouTube', () => {
         }
         assert.equal(body.continuation, 'NEXT');
         return new Response(JSON.stringify({
-          continuationContents: { musicPlaylistShelfContinuation: { contents: [renderer('lmnopqrstuv', 'Segunda')] } },
+          continuationContents: { musicPlaylistShelfContinuation: { contents: [renderer('lmnopqrstuv', 'Segunda', 'Desakato')] } },
         }), { status: 200 });
       },
     });
@@ -199,12 +203,46 @@ describe('API del importador de YouTube', () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       items: [
-        { url: videoUrl, title: 'Primera' },
-        { url: 'https://www.youtube.com/watch?v=lmnopqrstuv', title: 'Segunda' },
+        { url: videoUrl, title: 'Primera', artist: 'Desakato' },
+        { url: 'https://www.youtube.com/watch?v=lmnopqrstuv', title: 'Segunda', artist: 'Desakato' },
       ],
       playlist: { id: 'PL123', title: 'Nuestro desacato' },
     });
     assert.equal(requests.filter(({ url }) => url.pathname === '/youtubei/v1/browse').length, 2);
+  });
+
+  test('completa los artistas desde YouTube Music cuando yt-dlp sí devuelve las canciones', async () => {
+    const page = '<meta property="og:title" content="Nuestro desacato">'
+      + '<script>{"INNERTUBE_API_KEY":"test-key","INNERTUBE_CLIENT_VERSION":"1.2.3"}</script>';
+    const response = await handlePlaylist(playlistRequest('https://www.youtube.com/playlist?list=PL123'), {
+      spawnImpl: () => fakeProcess('abcdefghijk\tCada vez\n'),
+      fetchImpl: async (target) => {
+        const url = new URL(target);
+        if (url.pathname === '/oembed') return new Response(JSON.stringify({ title: 'Nuestro desacato' }), { status: 200 });
+        if (url.pathname === '/playlist') return new Response(page, { status: 200 });
+        return new Response(JSON.stringify({
+          contents: {
+            musicPlaylistShelfRenderer: {
+              contents: [{
+                musicResponsiveListItemRenderer: {
+                  playlistItemData: { videoId: 'abcdefghijk' },
+                  flexColumns: [
+                    { musicResponsiveListItemFlexColumnRenderer: { text: { simpleText: 'Cada vez' } } },
+                    { musicResponsiveListItemFlexColumnRenderer: { text: { simpleText: 'Desakato' } } },
+                  ],
+                },
+              }],
+            },
+          },
+        }), { status: 200 });
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      items: [{ url: videoUrl, title: 'Cada vez', artist: 'Desakato' }],
+      playlist: { id: 'PL123', title: 'Nuestro desacato' },
+    });
   });
 
   test('no crea títulos de playlist usando solo el ID si YouTube no da título', async () => {

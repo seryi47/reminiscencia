@@ -237,6 +237,14 @@ describe('cabeceras del contrato', () => {
     });
   });
 
+  test('lee y decodifica el artista opcional de una canción', () => {
+    assert.deepEqual(parseUploadHeaders(headers({
+      'X-Artista-Cancion': encodeURIComponent('Desakato'),
+    })), {
+      fileName: 'Vals.wav', uploadId: ID, index: 0, total: 1, artist: 'Desakato',
+    });
+  });
+
   test('rechaza lo que no cumple el contrato', () => {
     for (const extra of [
       { 'X-Nombre-Archivo': '' },
@@ -253,6 +261,8 @@ describe('cabeceras del contrato', () => {
       { 'X-Album-Id': 'PL123' },
       { 'X-Album-Id': 'PL123', 'X-Album-Name': '%E0%A4%A' },
       { 'X-Album-Id': 'PL123', 'X-Album-Name': encodeURIComponent('a'.repeat(201)) },
+      { 'X-Artista-Cancion': '%E0%A4%A' },
+      { 'X-Artista-Cancion': encodeURIComponent('a'.repeat(201)) },
       { 'Content-Type': 'multipart/form-data; boundary=x' },
     ]) {
       assert.throws(() => parseUploadHeaders(headers(extra)), (error) => error.status === 400 && /[a-záéíóú]/.test(error.message), JSON.stringify(extra));
@@ -296,6 +306,19 @@ describe('subida a GitHub', () => {
       nombre: 'Mi canción.opus',
       partes: 1,
       album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
+    });
+  });
+
+  test('incluye el artista de la canción en el manifiesto de subida', async () => {
+    const github = fakeGitHub();
+    const { status } = await send(github, {
+      headers: { 'X-Artista-Cancion': encodeURIComponent('Desakato') },
+    });
+    assert.equal(status, 200);
+    assert.deepEqual(JSON.parse(github.fileText(`${PARTS_DIRECTORY}/${ID}/manifiesto.json`)), {
+      nombre: 'Mi canción.opus',
+      partes: 1,
+      artist: 'Desakato',
     });
   });
 
