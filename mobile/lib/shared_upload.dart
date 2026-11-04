@@ -27,6 +27,8 @@ const String kUploadNameHeader = 'X-Nombre-Archivo';
 const String kUploadIdHeader = 'X-Subida-Id';
 const String kUploadPartHeader = 'X-Parte';
 const String kUploadPartsHeader = 'X-Partes';
+const String kUploadAlbumIdHeader = 'X-Album-Id';
+const String kUploadAlbumNameHeader = 'X-Album-Name';
 
 /// Texto fijo junto al botón. No hay casilla ni confirmación.
 const String kUploadRightsNotice =
@@ -312,6 +314,8 @@ class SharedUploader {
                 parts: parts,
               ),
             ),
+            albumId: file.youtubePlaylistId,
+            albumName: file.youtubePlaylistName,
           );
           add(sent.item.outcome, sent.item.message);
           if (sent.connectionLost) stopReason = _lostConnectionMessage;
@@ -337,6 +341,8 @@ class SharedUploader {
   Future<UploadItemResult> resend(
     File opus,
     String name, {
+    String? albumId,
+    String? albumName,
     void Function(int part, int parts)? onPart,
   }) async {
     final title = titleFromFileName(name);
@@ -344,7 +350,13 @@ class SharedUploader {
       return _item(name, title, UploadOutcome.failed, kNoConnectionReason);
     }
     try {
-      final sent = await _sendItem(opus, name, onPart ?? (_, _) {});
+      final sent = await _sendItem(
+        opus,
+        name,
+        onPart ?? (_, _) {},
+        albumId: albumId,
+        albumName: albumName,
+      );
       return sent.item;
     } catch (error) {
       return _item(
@@ -360,11 +372,19 @@ class SharedUploader {
   Future<({UploadItemResult item, bool connectionLost})> _sendItem(
     File opus,
     String name,
-    void Function(int part, int parts) onPart,
-  ) async {
+    void Function(int part, int parts) onPart, {
+    String? albumId,
+    String? albumName,
+  }) async {
     final title = titleFromFileName(name);
     try {
-      await _sendFile(opus, name, onPart);
+      await _sendFile(
+        opus,
+        name,
+        onPart,
+        albumId: albumId,
+        albumName: albumName,
+      );
       return (
         item: _item(name, title, UploadOutcome.uploaded, kUploadedMessage),
         connectionLost: false,
@@ -409,8 +429,10 @@ class SharedUploader {
   Future<void> _sendFile(
     File opus,
     String name,
-    void Function(int part, int parts) onPart,
-  ) async {
+    void Function(int part, int parts) onPart, {
+    String? albumId,
+    String? albumName,
+  }) async {
     final length = await opus.length();
     if (length == 0) {
       throw const AppException('el audio convertido está vacío.');
@@ -423,13 +445,18 @@ class SharedUploader {
         await reader.setPosition(part * chunkBytes);
         final bytes = await reader.read(chunkBytes);
         onPart(part, parts);
-        await _sendWithOneRetry({
+        final headers = <String, String>{
           'Content-Type': 'audio/ogg',
           kUploadNameHeader: encodeUploadName(name),
           kUploadIdHeader: id,
           kUploadPartHeader: '$part',
           kUploadPartsHeader: '$parts',
-        }, bytes);
+        };
+        if (albumId != null && albumName != null) {
+          headers[kUploadAlbumIdHeader] = albumId;
+          headers[kUploadAlbumNameHeader] = Uri.encodeComponent(albumName);
+        }
+        await _sendWithOneRetry(headers, bytes);
       }
     } finally {
       await reader.close();

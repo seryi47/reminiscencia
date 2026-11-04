@@ -142,6 +142,22 @@ void main() {
       },
     );
 
+    test('envía metadata de álbum de playlist en la subida pública', () async {
+      final uploader = uploaderWith((_, _) async => okReply());
+      await uploader.upload([
+        const PickedAudioFile(
+          name: 'Cada vez.wav',
+          path: '/temporal/Cada vez.wav',
+          youtubePlaylistId: 'PLVU-jIOit29A',
+          youtubePlaylistName: 'Nuestro desacato',
+        ),
+      ]);
+
+      expect(requests, hasLength(1));
+      expect(requests.single.headers['X-Album-Id'], 'PLVU-jIOit29A');
+      expect(requests.single.headers['X-Album-Name'], 'Nuestro%20desacato');
+    });
+
     test(
       'un archivo grande va en trozos de 4 MB como máximo, en orden y con el mismo id',
       () async {

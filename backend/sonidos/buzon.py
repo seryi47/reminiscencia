@@ -50,6 +50,7 @@ que la función declara siempre (WEB_LICENSE): esas carpetas solo las escribe la
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -287,7 +288,8 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     portadas_prefix = PORTADAS_DIRECTORY + "/"
     archivos = _archivos_a_procesar(event, buzon)
     del_evento = archivos_del_evento(event) if isinstance(event, Mapping) and "commits" in event else {}
-    archivos.update(_unir_partes(buzon, result, del_evento))
+    albumes: dict[str, dict] = {}
+    archivos.update(_unir_partes(buzon, result, del_evento, albumes=albumes))
     portadas = {path: message for path, message in archivos.items() if path.startswith(portadas_prefix)}
     try:
         for path, message in sorted(archivos.items()):
@@ -327,6 +329,7 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
             song_changed = _catalogar(
                 data, result, target=target, archivo=name, title=titulo_desde_nombre(name), motivo=motivo,
                 license_text=license_text, source=source, audio_dir=audio_dir, staging=staging,
+                album=albumes.get(path),
             )
             target.unlink()
             changed = changed or song_changed
@@ -349,23 +352,35 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     return result
 
 
-def _leer_manifiesto(path: Path) -> tuple[str, int] | None:
-    """(nombre, partes) de un manifiesto de partes válido, o None. Forma exacta {"nombre", "partes"}, nombre válido
-    del buzón terminado en .opus y entre 1 y MAX_PARTES partes."""
+def _leer_manifiesto(path: Path) -> tuple[str, int, dict | None] | None:
+    """(nombre, partes, álbum) de un manifiesto válido, o None. Álbum es metadata opcional de una playlist de YouTube."""
     try:
         if path.stat().st_size > MAX_MANIFEST_BYTES:
             return None
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, ValueError):
         return None
-    if not isinstance(data, dict) or set(data) != {"nombre", "partes"}:
+    if not isinstance(data, dict) or not {"nombre", "partes"} <= set(data) or set(data) - {"nombre", "partes", "album"}:
         return None
     nombre, partes = data["nombre"], data["partes"]
     if not isinstance(nombre, str) or not nombre_valido(nombre) or not nombre.lower().endswith(".opus") or len(nombre) <= 5:
         return None
     if isinstance(partes, bool) or not isinstance(partes, int) or not 1 <= partes <= MAX_PARTES:
         return None
-    return nombre, partes
+    album = None
+    if "album" in data:
+        candidate = data["album"]
+        if not isinstance(candidate, dict) or set(candidate) != {"id", "name"}:
+            return None
+        album_id = candidate["id"]
+        album_name = candidate["name"]
+        if not isinstance(album_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", album_id):
+            return None
+        if (not isinstance(album_name, str) or not album_name.strip() or len(album_name) > 200
+                or any(ord(char) < 32 or ord(char) == 127 for char in album_name)):
+            return None
+        album = {"id": album_id, "name": album_name.strip()}
+    return nombre, partes, album
 
 
 def _nombre_libre(buzon: Path, nombre: str) -> str:
@@ -386,7 +401,8 @@ def _nombre_libre(buzon: Path, nombre: str) -> str:
     raise BuzonError("no hay un nombre libre en el buzón para una subida por trozos")
 
 
-def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str]) -> dict[str, str]:
+def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str], *,
+                  albumes: dict[str, dict] | None = None) -> dict[str, str]:
     """Une las subidas por trozos completas de audio-library/buzon/.partes/ (ver el docstring del módulo). Devuelve las
     rutas del buzón de los archivos unidos con el mensaje de commit del que se lee su licencia."""
     directory = buzon / PARTES_SUBDIRECTORY
@@ -420,7 +436,7 @@ def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str]) -> di
                                          "motivo": "el manifiesto de partes no es válido"})
             shutil.rmtree(entry)
             continue
-        nombre, total = spec
+        nombre, total, album = spec
         names = {child.name for child in children} - {PARTES_MANIFEST}
         expected = {f"{index}.part" for index in range(total)}
         if expected - names:
@@ -435,7 +451,10 @@ def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str]) -> di
                 with (entry / f"{index}.part").open("rb") as part:
                     shutil.copyfileobj(part, joined)
         shutil.rmtree(entry)
-        unidas[f"{BUZON_DIRECTORY}/{final}"] = del_evento.get(f"{ruta}/{PARTES_MANIFEST}", f"Licencia: {WEB_LICENSE}")
+        final_path = f"{BUZON_DIRECTORY}/{final}"
+        unidas[final_path] = del_evento.get(f"{ruta}/{PARTES_MANIFEST}", f"Licencia: {WEB_LICENSE}")
+        if album is not None and albumes is not None:
+            albumes[final_path] = album
     return unidas
 
 
@@ -505,7 +524,8 @@ def _procesar_portada(data: dict, result: dict, *, path: str, name: str, directo
 
 
 def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: str, motivo: str | None,
-               license_text: str | None, source: str, audio_dir: Path, staging: Path) -> bool:
+               license_text: str | None, source: str, audio_dir: Path, staging: Path,
+               album: dict | None = None) -> bool:
     """Comprueba que target es audio y lo añade al catálogo (o lo anota como rechazado con motivo, si ya trae uno).
     Anota el resultado con archivo como nombre y devuelve si cambió la biblioteca. No borra target."""
     info = None
@@ -522,11 +542,40 @@ def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: s
             data, target=target, archivo=archivo, title=title, info=info, license_text=license_text, source=source,
             audio_dir=audio_dir, staging=staging,
         )
+        if motivo is None and album is not None and license_text:
+            folder, folder_changed = _youtube_album(data, album)
+            song = catalog.find_song(data, entry["song_id"])
+            association_changed = song.get("folder_id") != folder["id"]
+            if association_changed:
+                catalog.update_song(data, song["id"], {"folder_id": folder["id"]})
+            song_changed = song_changed or folder_changed or association_changed
     if motivo is not None:
         result["rechazados"].append({"archivo": archivo, "motivo": motivo})
         return False
     result[entry.pop("lista")].append(entry)
     return song_changed
+
+
+def _youtube_album(data: dict, album: dict) -> tuple[dict, bool]:
+    """Crea o reutiliza un álbum estable para la playlist; su id de YouTube no se publica."""
+    playlist_id = album["id"]
+    for folder in data["folders"]:
+        if folder.get("youtube_playlist_id") == playlist_id:
+            changed = folder.get("name") != album["name"]
+            folder["name"] = album["name"]
+            return folder, changed
+
+    folder_id = f"F{hashlib.sha256(f'youtube:{playlist_id}'.encode()).hexdigest()[:16]}"
+    if any(folder.get("id") == folder_id for folder in data["folders"]):
+        raise BuzonError("el id del álbum de YouTube coincide con una carpeta existente")
+    folder = {
+        "id": folder_id,
+        "name": album["name"],
+        "parent_id": None,
+        "youtube_playlist_id": playlist_id,
+    }
+    data["folders"].append(folder)
+    return folder, True
 
 
 def _nombre_de_entrada(info: zipfile.ZipInfo) -> str:

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## Sin publicar: web y APK, playlists de YouTube como álbumes (2026-11-03)
+
+- La lectura de playlists usa `yt-dlp` y, si falla o falta el título, YouTube Music con continuaciones y el HTML público como alternativas. Las peticiones a YouTube Music usan un User-Agent de navegador para recibir sus datos completos. El proxy devuelve el título original y falla explícitamente si no puede obtenerlo.
+- La web y la APK envían la metadata del álbum en los trozos y el manifiesto común de `/api/subir`. El buzón crea o reutiliza una carpeta estable por ID de playlist y asigna ahí todas sus canciones; la publicación existente hace visible el álbum en ambas apps.
+- Los vídeos individuales y las subidas manuales siguen sin álbum. El flujo conserva la declaración de derechos y la publicación pública habituales.
+- Añadidas pruebas de continuaciones, título, manifiesto, creación del álbum y propagación en web, backend y Flutter. La validación desplegada con la playlist «Nuestro desacato» queda pendiente.
+
 ## 1.2.3 (2026-11-03)
 
 - Recompilación de la APK con el importador de YouTube para vídeos individuales y playlists.
@@ -28,7 +35,7 @@ Pedido del propietario: un botón nuevo en «Crear», conectado con GitHub, con 
 
 ### Añadido
 - `js/views/homeostasia.js`: hoja «Homeostasia» que importa vídeos y playlists de YouTube. Los WAV entran en la misma cola que «Subir canciones» (`ctx.addUploads`): Opus en el navegador, trozos a `/api/subir` y el workflow `buzon` los publica. Muestra el resumen y «Ver el progreso» abre «Subir canciones».
-- El importador usa `/api/youtube/playlist` y proxies del mismo origen para yttowav, limita a cuatro conversiones simultáneas, valida WAVs y permite reintentar fallos. Guarda `jobId`/traza por vídeo en `localStorage` y reanuda el mismo trabajo al volver a importar; una respuesta 404 limpia el identificador para un intento nuevo. «Detener seguimiento» o cerrar la hoja detiene las consultas del cliente, no la conversión externa. El runtime necesita `yt-dlp` mediante `YTDLP_PATH` o `PATH`.
+- El importador usa `/api/youtube/playlist` y proxies del mismo origen para yttowav, limita a cuatro conversiones simultáneas, valida WAVs y permite reintentar fallos. Guarda `jobId`/traza por vídeo en `localStorage` y reanuda el mismo trabajo al volver a importar; una respuesta 404 limpia el identificador para un intento nuevo. «Detener seguimiento» o cerrar la hoja detiene las consultas del cliente, no la conversión externa. Para playlists se prefiere `yt-dlp` mediante `YTDLP_PATH` o `PATH`; si no está disponible, se prueban los respaldos de YouTube Music y HTML.
 - Diagnóstico en producción: las consultas repetidas eran sondeos del mismo estado, no nuevas conversiones. Una prueba posterior completó conversión, descarga y publicación; el WAV pasó FFmpeg y el Opus se reprodujo en Chrome de escritorio. La reproducción en un Android físico sigue pendiente.
 - Menú «Crear»: cuarta opción «Homeostasia». `SHELL_VERSION` pasa a 12.
 - PWA: `SHELL_VERSION` pasa a 15 para que los navegadores sustituyan el módulo Homeostasia guardado en la caché.

@@ -41,6 +41,7 @@ void main() {
           requested = request.url;
           return http.Response(
             jsonEncode({
+              'playlist': {'id': 'PL_demo', 'title': 'Nuestra playlist'},
               'items': [
                 {
                   'url': 'https://www.youtube.com/watch?v=abcdefghijk',
@@ -73,6 +74,11 @@ void main() {
         contains('youtube.com/playlist'),
       );
       expect(tracks.map((track) => track.title), ['Primera', 'Segunda']);
+      expect(tracks.every((track) => track.playlistId == 'PL_demo'), isTrue);
+      expect(
+        tracks.every((track) => track.playlistTitle == 'Nuestra playlist'),
+        isTrue,
+      );
     },
   );
 
@@ -83,6 +89,7 @@ void main() {
         requested = request.url;
         return http.Response(
           jsonEncode({
+            'playlist': {'id': 'PL_demo', 'title': 'Nuestra playlist'},
             'items': [
               {
                 'url': 'https://www.youtube.com/watch?v=abcdefghijk',
@@ -134,6 +141,7 @@ void main() {
             case '/api/youtube/playlist':
               return http.Response(
                 jsonEncode({
+                  'playlist': {'id': 'PL_demo', 'title': 'Nuestra playlist'},
                   'items': [
                     {
                       'url': 'https://www.youtube.com/watch?v=abcdefghijk',
@@ -186,6 +194,7 @@ void main() {
           if (request.url.path == '/api/youtube/playlist') {
             return http.Response(
               jsonEncode({
+                'playlist': {'id': 'PL_demo', 'title': 'Nuestra playlist'},
                 'items': [
                   {
                     'url': 'https://www.youtube.com/watch?v=abcdefghijk',
@@ -304,6 +313,7 @@ void main() {
             );
         if (request.url.path == '/api/youtube/playlist') {
           return jsonResponse({
+            'playlist': {'id': 'PL_demo', 'title': 'Nuestra playlist'},
             'items': [
               {
                 'url': 'https://www.youtube.com/watch?v=abcdefghijk',
@@ -393,6 +403,7 @@ void main() {
           if (request.url.path == '/api/youtube/playlist') {
             return http.Response(
               jsonEncode({
+                'playlist': {'id': 'PL_demo', 'title': 'Nuestra playlist'},
                 'items': [
                   {
                     'url': 'https://www.youtube.com/watch?v=abcdefghijk',

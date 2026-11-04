@@ -163,7 +163,8 @@ describe('detección de la canción publicada', () => {
 
 describe('localStorage', () => {
   test('guarda lo que espera y lo que tiene copia local; al leerlo, sigue publicándose o queda para reintentar', () => {
-    const base = (key, extra) => ({ ...createItem({ key, name: `${key}.wav`, title: key }), ...extra });
+    const album = { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' };
+    const base = (key, extra) => ({ ...createItem({ key, name: `${key}.wav`, title: key, album }), ...extra });
     const raw = serializeItems([
       base('esperando', { state: S.PUBLISHING, savedAt: 50, knownIds: ['S1'], serverName: 'esperando.opus' }),
       base('subiendo', { state: S.SENDING, localId: 'L0000000000000001' }),
@@ -180,6 +181,7 @@ describe('localStorage', () => {
     assert.equal(restored[0].savedAt, 50);
     assert.deepEqual(restored[0].knownIds, ['S1']);
     assert.equal(restored[0].serverName, 'esperando.opus');
+    assert.deepEqual(restored[0].album, album);
     assert.equal(restored[1].retryable, true);
   });
 
@@ -260,8 +262,8 @@ function setup({ songs = [{ id: 'S1', title: 'Tono de prueba' }], send, storage 
       return song;
     },
     readCopy: async () => new Uint8Array([9, 9]),
-    send: send ?? (async (bytes, { fileName, onChunk }) => {
-      calls.send.push({ fileName, bytes: [...bytes] });
+    send: send ?? (async (bytes, { fileName, album, onChunk }) => {
+      calls.send.push({ fileName, bytes: [...bytes], album });
       for (let index = 0; index < 3; index += 1) onChunk({ index, total: 3 });
       return { ok: true, nombre: fileName.replace(/\.[^.]*$/, '.opus') };
     }),
@@ -285,6 +287,20 @@ function setup({ songs = [{ id: 'S1', title: 'Tono de prueba' }], send, storage 
 const states = (tracker) => tracker.items().map((item) => item.state);
 
 describe('gestor de subidas', () => {
+  test('pasa y conserva el álbum de una playlist al subir sus canciones', async () => {
+    const { tracker, calls, storage } = setup();
+    const album = { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' };
+    tracker.addSources([{
+      file: { name: 'Cada vez.wav' },
+      name: 'Cada vez.wav',
+      title: 'Cada vez',
+      album,
+    }]);
+    await settle();
+    assert.deepEqual(calls.send[0].album, album);
+    assert.deepEqual(JSON.parse(storage.getItem(STORAGE_KEY)).items[0].album, album);
+  });
+
   test('una subida pasa por todos los pasos y se da por publicada solo cuando songs.json trae un id nuevo con su título', async () => {
     const { tracker, timers, clock, server, calls, history, storage } = setup();
     tracker.add([{ name: 'Tono de prueba.wav' }], { titleOf: () => 'Tono de prueba' });

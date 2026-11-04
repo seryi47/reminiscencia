@@ -8,7 +8,6 @@ import {
   fetchWithTimeout,
   json,
   publicError,
-  upstreamHeaders,
   videoId,
   youtubeUrl,
 } from './youtube-common.js';
@@ -16,8 +15,11 @@ import {
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 45_000;
 const HTML_TIMEOUT_MS = 30_000;
+const MUSIC_TIMEOUT_MS = 8_000;
+const MAX_MUSIC_RESPONSE_BYTES = 8 * 1024 * 1024;
 const TITLE_TIMEOUT_MS = 8_000;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+const YOUTUBE_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const require = createRequire(import.meta.url);
 
 function bundledExecutable() {
@@ -178,6 +180,13 @@ function textFrom(value) {
   return '';
 }
 
+function playlistTitleFromHtml(html) {
+  const title = metaContent(html, 'og:title')
+    || String(html ?? '').match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]
+    || '';
+  return decodeHtmlEntities(title).replace(/\s*-\s*YouTube Music\s*$/i, '').trim().slice(0, 200);
+}
+
 export function extractPlaylistHtml(html) {
   const items = [];
   const seen = new Set();
@@ -198,16 +207,177 @@ export function extractPlaylistHtml(html) {
   return items;
 }
 
+function findPlaylistShelf(data) {
+  if (!data || typeof data !== 'object') return null;
+  if (Array.isArray(data)) {
+    for (const value of data) {
+      const shelf = findPlaylistShelf(value);
+      if (shelf) return shelf;
+    }
+    return null;
+  }
+  if (data.musicPlaylistShelfRenderer) return data.musicPlaylistShelfRenderer;
+  for (const value of Object.values(data)) {
+    const shelf = findPlaylistShelf(value);
+    if (shelf) return shelf;
+  }
+  return null;
+}
+
+function musicPlaylistItems(data) {
+  const items = [];
+  const seen = new Set();
+  const visit = (value) => {
+    if (!value || typeof value !== 'object' || items.length >= MAX_PLAYLIST_ITEMS) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    const renderer = value.musicResponsiveListItemRenderer;
+    if (renderer) {
+      const id = renderer.playlistItemData?.videoId
+        || renderer.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer
+          ?.playNavigationEndpoint?.watchEndpoint?.videoId;
+      const title = textFrom(renderer.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text)
+        || textFrom(renderer.title);
+      if (VIDEO_ID.test(id ?? '') && title.trim() && !seen.has(id)) {
+        seen.add(id);
+        items.push({ url: canonicalVideoUrl(id), title: title.trim().slice(0, 200) });
+      }
+    }
+    Object.values(value).forEach(visit);
+  };
+  visit(data);
+  return items;
+}
+
+function continuationFrom(data) {
+  if (!data || typeof data !== 'object') return '';
+  if (Array.isArray(data)) {
+    for (const value of data) {
+      const token = continuationFrom(value);
+      if (token) return token;
+    }
+    return '';
+  }
+  const token = data.nextContinuationData?.continuation
+    || data.continuationEndpoint?.continuationCommand?.token
+    || data.continuationCommand?.token;
+  if (typeof token === 'string' && token) return token;
+  for (const value of Object.values(data)) {
+    const nested = continuationFrom(value);
+    if (nested) return nested;
+  }
+  return '';
+}
+
+async function readPlaylistOembed(url, fetchImpl) {
+  const oembedUrl = new URL('https://www.youtube.com/oembed');
+  oembedUrl.searchParams.set('url', url.href);
+  oembedUrl.searchParams.set('format', 'json');
+  const response = await fetchWithTimeout(fetchImpl, oembedUrl.href, {
+    headers: { Accept: 'application/json', 'User-Agent': YOUTUBE_USER_AGENT },
+  }, TITLE_TIMEOUT_MS);
+  if (!response.ok) return '';
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return '';
+  }
+  return typeof data?.title === 'string' ? data.title.trim().slice(0, 200) : '';
+}
+
+async function readPlaylistMusic(url, fetchImpl) {
+  const playlistId = url.searchParams.get('list');
+  const pageUrl = new URL('https://music.youtube.com/playlist');
+  pageUrl.searchParams.set('list', playlistId);
+  const page = await fetchWithTimeout(fetchImpl, pageUrl.href, {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml',
+      'Accept-Encoding': 'gzip, deflate',
+      'User-Agent': YOUTUBE_USER_AGENT,
+    },
+  }, HTML_TIMEOUT_MS);
+  if (!page.ok) throw new YoutubeApiError(502, 'YouTube Music no ha permitido leer la playlist.');
+  const html = await page.text();
+  const apiKey = html.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/)?.[1];
+  const clientVersion = html.match(/"INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)"/)?.[1];
+  if (!apiKey || !clientVersion) {
+    throw new YoutubeApiError(502, 'YouTube Music no ha devuelto los datos necesarios para leer la playlist.');
+  }
+
+  const endpoint = new URL('https://music.youtube.com/youtubei/v1/browse');
+  endpoint.searchParams.set('key', apiKey);
+  endpoint.searchParams.set('prettyPrint', 'false');
+  const context = { client: { clientName: 'WEB_REMIX', clientVersion, hl: 'es', gl: 'ES' } };
+  const browse = async (payload) => {
+    const response = await fetchWithTimeout(fetchImpl, endpoint.href, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Origin: 'https://music.youtube.com',
+        Referer: 'https://music.youtube.com/',
+        'User-Agent': YOUTUBE_USER_AGENT,
+      },
+      body: JSON.stringify({ context, ...payload }),
+    }, MUSIC_TIMEOUT_MS);
+    if (!response.ok) throw new YoutubeApiError(502, 'YouTube Music no ha devuelto la playlist.');
+    const body = await response.text();
+    if (Buffer.byteLength(body) > MAX_MUSIC_RESPONSE_BYTES) {
+      throw new YoutubeApiError(413, 'La playlist devuelve demasiados datos.');
+    }
+    try {
+      return JSON.parse(body);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      throw new YoutubeApiError(502, 'YouTube Music ha devuelto una respuesta no válida.');
+    }
+  };
+
+  const data = await browse({ browseId: `VL${playlistId}` });
+  const shelf = findPlaylistShelf(data);
+  if (!shelf) throw new YoutubeApiError(404, 'No se han encontrado canciones accesibles en la playlist.');
+
+  const items = [];
+  const seen = new Set();
+  const append = (pageData) => {
+    for (const item of musicPlaylistItems(pageData)) {
+      const id = videoId(item.url);
+      if (!seen.has(id) && items.length < MAX_PLAYLIST_ITEMS) {
+        seen.add(id);
+        items.push(item);
+      }
+    }
+  };
+  append(shelf);
+  let token = continuationFrom(shelf) || continuationFrom(data);
+  const tokens = new Set();
+  while (token && items.length < MAX_PLAYLIST_ITEMS && !tokens.has(token)) {
+    tokens.add(token);
+    const next = await browse({ continuation: token });
+    const nextShelf = findPlaylistShelf(next);
+    append(nextShelf ?? next);
+    token = continuationFrom(nextShelf ?? next);
+  }
+  if (items.length === 0) throw new YoutubeApiError(404, 'No se han encontrado canciones accesibles en la playlist.');
+
+  return { items, title: playlistTitleFromHtml(html) };
+}
+
 async function readPlaylistHtml(url, fetchImpl) {
   const response = await fetchWithTimeout(fetchImpl, url.href, {
     headers: {
       Accept: 'text/html,application/xhtml+xml',
       'Accept-Encoding': 'gzip, deflate',
-      'User-Agent': upstreamHeaders()['User-Agent'],
+      'User-Agent': YOUTUBE_USER_AGENT,
     },
   }, HTML_TIMEOUT_MS);
-  if (!response.ok) return [];
-  return extractPlaylistHtml(await response.text());
+  if (!response.ok) return { items: [], title: '' };
+  const html = await response.text();
+  return { items: extractPlaylistHtml(html), title: playlistTitleFromHtml(html) };
 }
 
 async function readVideoTitle(url, { fetchImpl, spawnImpl, env }) {
@@ -219,7 +389,7 @@ async function readVideoTitle(url, { fetchImpl, spawnImpl, env }) {
 
   try {
     const response = await fetchWithTimeout(fetchImpl, oembedUrl.href, {
-      headers: { Accept: 'application/json', 'User-Agent': upstreamHeaders()['User-Agent'] },
+      headers: { Accept: 'application/json', 'User-Agent': YOUTUBE_USER_AGENT },
     }, TITLE_TIMEOUT_MS);
     if (response.ok) {
       let data;
@@ -241,7 +411,7 @@ async function readVideoTitle(url, { fetchImpl, spawnImpl, env }) {
       headers: {
         Accept: 'text/html,application/xhtml+xml',
         'Accept-Encoding': 'gzip, deflate',
-        'User-Agent': upstreamHeaders()['User-Agent'],
+        'User-Agent': YOUTUBE_USER_AGENT,
       },
     }, HTML_TIMEOUT_MS);
     if (response.ok) {
@@ -279,19 +449,47 @@ export async function handlePlaylist(request, { spawnImpl = nodeSpawn, env = pro
       });
     }
 
+    let title = '';
+    try {
+      title = await readPlaylistOembed(url, fetchImpl);
+    } catch (error) {
+      if (!(error instanceof YoutubeApiError)) throw error;
+    }
+
+    let items = [];
+    let ytdlpError = null;
     try {
       const result = await runYtdlp(url, { spawnImpl, env });
-      return json(200, { items: extractPlaylist({ url, ...result }) });
+      items = extractPlaylist({ url, ...result });
     } catch (error) {
-      // YouTube suele bloquear yt-dlp desde IPs de nube, pero la página pública
-      // aún puede incluir su `ytInitialData` con los vídeos de la playlist.
-      if (!(error instanceof YoutubeApiError) || ![404, 502, 504].includes(error.status)) throw error;
-      try {
-        const items = await readPlaylistHtml(url, fetchImpl);
-        if (items.length > 0) return json(200, { items });
-      } catch { /* se conserva el diagnóstico seguro de yt-dlp */ }
-      throw error;
+      if (!(error instanceof YoutubeApiError) || ![404, 413, 502, 503, 504].includes(error.status)) throw error;
+      ytdlpError = error;
     }
+
+    let musicError = null;
+    if (items.length === 0 || !title) {
+      try {
+        const music = await readPlaylistMusic(url, fetchImpl);
+        if (items.length === 0) items = music.items;
+        if (!title) title = music.title;
+      } catch (error) {
+        if (!(error instanceof YoutubeApiError)) throw error;
+        musicError = error;
+      }
+    }
+
+    if (items.length === 0 || !title) {
+      const page = await readPlaylistHtml(url, fetchImpl);
+      if (items.length === 0) items = page.items;
+      if (!title) title = page.title;
+    }
+    if (items.length === 0) {
+      throw ytdlpError ?? musicError ?? new YoutubeApiError(404, 'No se han encontrado canciones accesibles en la playlist.');
+    }
+    if (!title) {
+      throw new YoutubeApiError(502, 'YouTube no ha devuelto el nombre original de la playlist.');
+    }
+    return json(200, { items, playlist: { id: url.searchParams.get('list'), title } });
   } catch (error) {
     return publicError(error);
   }

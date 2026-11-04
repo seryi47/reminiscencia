@@ -973,6 +973,7 @@ describe("Subir canciones", () => {
             status: 200,
             contentType: "application/json",
             body: JSON.stringify({
+              playlist: { id: "PL123", title: "Playlist de prueba" },
               items: videos.map((id, index) => ({
                 url: `https://www.youtube.com/watch?v=${id}`,
                 title: `Tema ${index + 1}`,
@@ -1037,6 +1038,7 @@ describe("Subir canciones", () => {
             status: 200,
             contentType: "application/json",
             body: JSON.stringify({
+              playlist: { id: "PL123", title: "Playlist de prueba" },
               items: [{ url: "https://www.youtube.com/watch?v=abcdefghijk", title: "Tema de prueba" }],
             }),
           });
@@ -1127,6 +1129,7 @@ describe("Subir canciones", () => {
             status: 200,
             contentType: "application/json",
             body: JSON.stringify({
+              playlist: { id: "PL123", title: "Playlist de prueba" },
               items: [{ url: "https://www.youtube.com/watch?v=abcdefghijk", title: "Tema de prueba" }],
             }),
           });

@@ -189,7 +189,12 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
       });
       final result = await widget.services.library.uploadShared([
         for (final audio in audios)
-          PickedAudioFile(name: audio.name, path: audio.path),
+          PickedAudioFile(
+            name: audio.name,
+            path: audio.path,
+            youtubePlaylistId: audio.track.playlistId,
+            youtubePlaylistName: audio.track.playlistTitle,
+          ),
       ]);
       if (mounted) _show(describeUploadResult(result));
     } catch (error) {

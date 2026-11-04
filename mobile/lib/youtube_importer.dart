@@ -25,10 +25,17 @@ const Duration kYoutubeDownloadTimeout = Duration(minutes: 3);
 
 /// Canción que devuelve el proxy de playlists.
 class YoutubeTrack {
-  const YoutubeTrack({required this.url, required this.title});
+  const YoutubeTrack({
+    required this.url,
+    required this.title,
+    this.playlistId,
+    this.playlistTitle,
+  });
 
   final String url;
   final String title;
+  final String? playlistId;
+  final String? playlistTitle;
 }
 
 /// WAV descargado y listo para entrar en la cola normal de subidas.
@@ -206,6 +213,20 @@ class YoutubeImporter {
         'La respuesta no contiene una lista válida de canciones.',
       );
     }
+    final playlistId = url.queryParameters['list'];
+    String? playlistTitle;
+    if (playlistId != null) {
+      final playlist = data['playlist'];
+      if (playlist is! Map ||
+          playlist['id'] != playlistId ||
+          playlist['title'] is! String ||
+          (playlist['title'] as String).trim().isEmpty) {
+        throw const AppException(
+          'YouTube no ha devuelto el nombre de la playlist; no se iniciará una importación sin álbum.',
+        );
+      }
+      playlistTitle = (playlist['title'] as String).trim();
+    }
     final seen = <String>{};
     final tracks = <YoutubeTrack>[];
     for (final raw in rawItems) {
@@ -218,7 +239,14 @@ class YoutubeImporter {
           raw['title'] is String && (raw['title'] as String).trim().isNotEmpty
           ? (raw['title'] as String).trim()
           : 'audio';
-      tracks.add(YoutubeTrack(url: itemUrl, title: title));
+      tracks.add(
+        YoutubeTrack(
+          url: itemUrl,
+          title: title,
+          playlistId: playlistId,
+          playlistTitle: playlistTitle,
+        ),
+      );
       if (tracks.length >= kYoutubeMaxPlaylistItems) break;
     }
     if (tracks.isEmpty) {

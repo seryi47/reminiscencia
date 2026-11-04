@@ -78,6 +78,18 @@ describe('trozos y cabeceras', () => {
       'X-Parte': '2',
       'X-Partes': '5',
     });
+    assert.deepEqual(chunkHeaders({
+      fileName: 'Tema.wav', uploadId: ID, index: 0, total: 1,
+      album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
+    }), {
+      'Content-Type': 'audio/ogg',
+      'X-Nombre-Archivo': 'Tema.wav',
+      'X-Subida-Id': ID,
+      'X-Parte': '0',
+      'X-Partes': '1',
+      'X-Album-Id': 'PLVU-jIOit29A',
+      'X-Album-Name': 'Nuestro%20desacato',
+    });
   });
 
   test('acepta los formatos de la hoja y el texto de derechos es fijo', () => {
@@ -100,6 +112,20 @@ describe('envío de un archivo', () => {
     ]);
     assert.deepEqual(server.calls.map((call) => [...call.bytes]), [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]);
     assert.deepEqual(progress, [{ index: 0, total: 3 }, { index: 1, total: 3 }, { index: 2, total: 3 }]);
+  });
+
+  test('propaga el álbum en todos los trozos del archivo', async () => {
+    const server = fakeServer();
+    await sendOpus(new Uint8Array([0, 1, 2, 3, 4]), {
+      fileName: 'Tema.wav',
+      uploadId: ID,
+      chunkBytes: 2,
+      album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
+      fetchImpl: server.fetchImpl,
+    });
+    assert.equal(server.calls.length, 3);
+    assert.ok(server.calls.every((call) => call.headers['X-Album-Id'] === 'PLVU-jIOit29A'));
+    assert.ok(server.calls.every((call) => call.headers['X-Album-Name'] === 'Nuestro%20desacato'));
   });
 
   test('reintenta un fallo de red o un 503 y sigue con el mismo trozo', async () => {

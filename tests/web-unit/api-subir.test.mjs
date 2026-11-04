@@ -227,6 +227,16 @@ describe('cabeceras del contrato', () => {
     });
   });
 
+  test('lee y decodifica el álbum opcional de YouTube', () => {
+    assert.deepEqual(parseUploadHeaders(headers({
+      'X-Album-Id': 'PLVU-jIOit29A',
+      'X-Album-Name': encodeURIComponent('Nuestro desacato'),
+    })), {
+      fileName: 'Vals.wav', uploadId: ID, index: 0, total: 1,
+      album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
+    });
+  });
+
   test('rechaza lo que no cumple el contrato', () => {
     for (const extra of [
       { 'X-Nombre-Archivo': '' },
@@ -239,6 +249,10 @@ describe('cabeceras del contrato', () => {
       { 'X-Partes': '0' },
       { 'X-Partes': '1001' },
       { 'X-Parte': '1', 'X-Partes': '1' },
+      { 'X-Album-Id': 'PL.demo', 'X-Album-Name': 'Album' },
+      { 'X-Album-Id': 'PL123' },
+      { 'X-Album-Id': 'PL123', 'X-Album-Name': '%E0%A4%A' },
+      { 'X-Album-Id': 'PL123', 'X-Album-Name': encodeURIComponent('a'.repeat(201)) },
       { 'Content-Type': 'multipart/form-data; boundary=x' },
     ]) {
       assert.throws(() => parseUploadHeaders(headers(extra)), (error) => error.status === 400 && /[a-záéíóú]/.test(error.message), JSON.stringify(extra));
@@ -266,6 +280,23 @@ describe('subida a GitHub', () => {
     assert.equal(tree.get(`${PARTS_DIRECTORY}/${ID}/0.part`), gitBlobSha(OPUS));
     assert.deepEqual(JSON.parse(github.fileText(`${PARTS_DIRECTORY}/${ID}/manifiesto.json`)), { nombre: 'Mi canción.opus', partes: 1 });
     assert.match(github.headCommit().message, /^Subida desde la web: Mi canción\.opus\n\nLicencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla\n$/);
+  });
+
+  test('incluye el álbum de YouTube en el manifiesto sin alterar los mensajes de licencia', async () => {
+    const github = fakeGitHub();
+    const { status } = await send(github, {
+      album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
+      headers: {
+        'X-Album-Id': 'PLVU-jIOit29A',
+        'X-Album-Name': encodeURIComponent('Nuestro desacato'),
+      },
+    });
+    assert.equal(status, 200);
+    assert.deepEqual(JSON.parse(github.fileText(`${PARTS_DIRECTORY}/${ID}/manifiesto.json`)), {
+      nombre: 'Mi canción.opus',
+      partes: 1,
+      album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
+    });
   });
 
   test('varios trozos en orden: el manifiesto y la licencia solo con el último; nada fuera de .partes', async () => {

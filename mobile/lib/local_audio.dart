@@ -167,11 +167,19 @@ Song songFromRecord(LocalSongRecord record, String filePath) {
 /// el nombre base de la canción dentro de él.
 @immutable
 class PickedAudioFile {
-  const PickedAudioFile({required this.name, required this.path, this.zip});
+  const PickedAudioFile({
+    required this.name,
+    required this.path,
+    this.zip,
+    this.youtubePlaylistId,
+    this.youtubePlaylistName,
+  });
 
   final String name;
   final String path;
   final ZipSongRef? zip;
+  final String? youtubePlaylistId;
+  final String? youtubePlaylistName;
 }
 
 /// Resultado de convertir una canción en el dispositivo.

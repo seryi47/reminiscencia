@@ -28,8 +28,8 @@ flowchart LR
     CI["CI: backend, web, web-e2e y android"]
   end
   FUENTES["Internet Archive o URL directa con licencia"]
-  YT["Vídeo o playlist propia de YouTube"]
-  YTDLP["yt-dlp: metadatos flat de playlist, máximo 200"]
+  YT["Vídeo o playlist accesible de YouTube"]
+  YTDLP["yt-dlp / YouTube Music / HTML: playlist y título, máximo 200"]
   YTTOWAV["api.yttowav.org"]
   VERCEL["Vercel: sirve frontend/web"]
   SUBIR["Función de Vercel api/subir.js (GITHUB_TOKEN)"]
@@ -39,16 +39,20 @@ flowchart LR
 
   NAVEG -->|"Desde Internet Archive abre la incidencia"| ISSUE
   NAVEG -->|"URL de vídeo o playlist"| YTAPI
-  YTAPI -->|"spawn con argumentos separados"| YTDLP
-  YTDLP -->|"IDs y títulos, sin descargar vídeos"| YTAPI
+  YTAPI -->|"yt-dlp primero; fuentes públicas de respaldo"| YTDLP
+  YTDLP -->|"IDs, títulos y continuaciones; sin descargar vídeos"| YTAPI
   YTAPI -->|"título original de vídeo individual"| YT
   YTAPI -->|"crear job, consultar y transmitir WAV"| YTTOWAV
   YTAPI -->|"File WAV a la cola existente"| NAVEG
+  YTAPI -->|"playlist: id y título originales"| NAVEG
   NAVEG -->|"Subir canciones: Opus en trozos de 4 MiB"| SUBIR
+  NAVEG -->|"Homeostasia: álbum en cada trozo"| SUBIR
   APP -->|"Homeostasia: playlist por proxy, hasta 4; reintentos y posición de cola"| YTAPI
   APP -->|"Subir canciones: Opus en trozos de 4 MiB"| SUBIR
+  APP -->|"Homeostasia: álbum en cada trozo"| SUBIR
   SUBIR -->|"un commit por trozo en buzon/.partes/; el último con manifiesto y Licencia"| BUZON
   BUZON -->|"permiso de escritura de quien hace el push"| BZWF
+  BUZON -->|"crea o reutiliza el álbum y asigna folder_id"| MAIN
   BZWF -->|"valida el paquete, confirma y sube"| MAIN
   ISSUE -->|"etiqueta biblioteca"| AUTORIZAR
   AUTORIZAR -->|"sin permiso: solo comenta"| ISSUE
@@ -71,14 +75,14 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 | Componente | Dónde está | Qué hace |
 |---|---|---|
 | Buzón | `audio-library/buzon/` | Carpeta de paso. La función `/api/subir` deja aquí los trozos de cada subida de la web o la APK (`.partes/<id>/` y su `manifiesto.json`; ADR-0017), y quien tiene permiso de escritura puede subir audio desde la página de subida de GitHub (ADR-0014). Las portadas van en `portadas/` (ADR-0016). `buzon.yml` lo convierte, lo da de alta y lo borra de aquí. |
-| Función de subida | `frontend/web/api/subir.js` | `POST /api/subir`, Node sin dependencias. Recibe un trozo de hasta 4 MiB con las cabeceras `X-Nombre-Archivo`, `X-Subida-Id`, `X-Parte` y `X-Partes` (hasta 1000 trozos), valida Ogg Opus en el primero y lo guarda con un commit en `main` por la API de git de GitHub, con `GITHUB_TOKEN` de Vercel. Con el último escribe el manifiesto y la línea «Licencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla». Sin límites de tamaño ni por hora, por decisión del propietario (ADR-0017). |
-| Importación YouTube | `frontend/web/api/youtube/`, `frontend/web/server/youtube-*.js` y `js/views/homeostasia.js` | `GET /api/youtube/playlist` ejecuta `yt-dlp --flat-playlist` (máximo 200 elementos, timeout 45 s) para playlists; para vídeos individuales obtiene el título original primero de oEmbed, con alternativas en la página pública y `yt-dlp`, y no usa el ID como título de reserva. No descarga audio en esta etapa. `POST /api/youtube/convert`, `GET /api/youtube/status` y `GET /api/youtube/download` son un proxy del mismo origen a yttowav; validan entradas, espacian dos segundos las creaciones, reintentan hasta seis veces los errores transitorios respetando `Retry-After`, muestran el estado y la posición/progreso de cola, y transmiten WAV con límite de 256 MiB. Web y Android persisten `jobId`/traza por vídeo y reanudan el trabajo existente; si el proxy devuelve 404, el siguiente intento puede crear uno nuevo. Detener o cerrar la interfaz detiene el sondeo local, no la conversión externa. Trazas UUID correlacionan cliente y logs Vercel; los registros muestreados omiten URL, título e ID del trabajo. El WAV vuelve a `ctx.addUploads` y sigue el flujo de `/api/subir` y `buzon`. Requiere `yt-dlp` instalado o empaquetado y `YTDLP_PATH` si no está en `PATH`; una prueba real completó la descarga y publicación. |
+| Función de subida | `frontend/web/api/subir.js` | `POST /api/subir`, Node sin dependencias. Recibe un trozo de hasta 4 MiB con las cabeceras `X-Nombre-Archivo`, `X-Subida-Id`, `X-Parte` y `X-Partes` (hasta 1000 trozos), valida Ogg Opus en el primero y lo guarda con un commit en `main` por la API de git de GitHub, con `GITHUB_TOKEN` de Vercel. Si es una playlist, acepta además `X-Album-Id` y `X-Album-Name` y guarda esa metadata en el manifiesto final; las subidas normales no cambian. Con el último trozo escribe también la línea «Licencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla». Sin límites de tamaño ni por hora, por decisión del propietario (ADR-0017 y ADR-0019). |
+| Importación YouTube | `frontend/web/api/youtube/`, `frontend/web/server/youtube-*.js` y `js/views/homeostasia.js` | `GET /api/youtube/playlist` usa primero `yt-dlp --flat-playlist` (máximo 200 elementos, timeout 45 s) y, si falta el título o la lista, la página y navegación de YouTube Music y el HTML público. Devuelve el título original y las continuaciones; falla si no hay título en lugar de sustituirlo por el ID. Para vídeos individuales obtiene el título original primero de oEmbed, con alternativas en la página pública y `yt-dlp`. `POST /api/youtube/convert`, `GET /api/youtube/status` y `GET /api/youtube/download` son un proxy del mismo origen a yttowav; validan entradas, espacian dos segundos las creaciones, reintentan hasta seis veces los errores transitorios respetando `Retry-After`, muestran el estado y la posición/progreso de cola, y transmiten WAV con límite de 256 MiB. Web y Android persisten `jobId`/traza por vídeo y reanudan el trabajo existente; si el proxy devuelve 404, el siguiente intento puede crear uno nuevo. Detener o cerrar la interfaz detiene el sondeo local, no la conversión externa. Trazas UUID correlacionan cliente y logs Vercel; los registros muestreados omiten URL, título e ID del trabajo. El WAV vuelve a la cola compartida; la playlist transporta su metadata hasta el buzón, donde todas sus canciones reciben un `folder_id` de álbum común. Se recomienda configurar `yt-dlp` y `YTDLP_PATH`, aunque los respaldos pueden funcionar sin el ejecutable; la importación y publicación del álbum aún requieren validación desplegada (ADR-0019). |
 | Catálogo | `audio-library/indexes/catalog.json` | Fuente de verdad: carpetas, canciones, licencia, huella SHA-256, origen y el indicador `public`. Versión 1. |
 | Audio de la biblioteca | `audio-library/audio/<id>.opus` | Opus de todas las canciones, también de las no publicadas. Lo genera la importación (`backend/sonidos/pipeline.py`). |
 | Audio publicado | `frontend/web/audio/<id>.opus` | Copia de las canciones con `public: true`. Lo sincroniza `backend/sonidos/publish.py`. |
 | Datos públicos | `frontend/web/data/` | `songs.json`, `folders.json` y `catalog.json`, solo con lo publicado. Los regenera `publish.py`. |
 | Biblioteca (CI) | `.github/workflows/biblioteca.yml` | Procesa las incidencias con la etiqueta `biblioteca` de cuentas con permiso de escritura, y las ejecuciones manuales. Tres jobs: `autorizar` (comprueba el permiso del autor; sin checkout), `procesar` (sin token) y `publicar` (escribe en `main`). ADR-0008 y ADR-0010. |
-| Buzón (CI) | `.github/workflows/buzon.yml` | Push a `main` que toca el buzón (salvo los que solo añaden trozos intermedios `.partes/**/*.part`), o a mano. Mismos tres jobs y misma cola (`library-catalog`) que `biblioteca.yml`. Une los trozos de `.partes/<id>/` cuando llega su manifiesto (ADR-0017). Con «Licencia: …» en el mensaje del commit, la canción entra pública; sin ella, privada (ADR-0014). |
+| Buzón (CI) | `.github/workflows/buzon.yml` | Push a `main` que toca el buzón (salvo los que solo añaden trozos intermedios `.partes/**/*.part`), o a mano. Mismos tres jobs y misma cola (`library-catalog`) que `biblioteca.yml`. Une los trozos de `.partes/<id>/` cuando llega su manifiesto (ADR-0017); si este contiene metadata de playlist, crea o reutiliza el álbum y asigna su `folder_id` a cada canción (ADR-0019). Con «Licencia: …» en el mensaje del commit, la canción entra pública; sin ella, privada (ADR-0014). |
 | Pruebas y límites (CI) | `backend.yml`, `web.yml`, `web-e2e.yml`, `android.yml` | `backend.yml`: pruebas de Python (3.12 y 3.13), límites de GitHub y app Flutter; no ejecuta pruebas web. `web.yml`: sintaxis y pruebas unitarias de la web. `web-e2e.yml`: pruebas de extremo a extremo con Chrome. `android.yml`: compilación de la app Android. |
 | Interfaz pública | `frontend/web/index.html`, `js/app.js`, `js/views/`, `js/ui/`, `js/catalog.js`, `js/player.js`, `css/`, `fonts/` | Una sola página sin usuarios que abre en Inicio (ADR-0015, DESIGN 3.0). `app.js` lleva las rutas (Inicio, Buscar, Tu biblioteca, carpeta, lista y «Me gusta»); `js/views/` pinta cada pantalla y la hoja «Subir canciones»; `player.js` reproduce (cola, aleatorio, repetir y volumen; ver `PLAYER.md`). |
 | Listas, «Me gusta» y PWA | `js/local-library.js`, `js/pwa.js`, `js/offline-core.js`, `sw.js`, `manifest.webmanifest` | IndexedDB `reminiscencia-biblioteca` (versión 1) para las listas y «Me gusta», solo en este navegador; volumen, aleatorio y repetir en localStorage; service worker y caché para el uso sin conexión. Retirados por ADR-0015: `store.js`, `schema.js`, `crypto.js`, `backup.js` (copia `.rmc`) y `prefs.js`. Ver `docs/datos/DATABASE.md`. |

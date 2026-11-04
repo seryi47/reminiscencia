@@ -257,7 +257,7 @@ async function listarPlaylist(playlistUrl, signal) {
   }
 
   const seen = new Set();
-  return data.items
+  const items = data.items
     .filter((item) => item && typeof item.url === 'string' && item.url)
     .map((item) => ({
       url: item.url,
@@ -269,6 +269,16 @@ async function listarPlaylist(playlistUrl, signal) {
       seen.add(videoId);
       return true;
     });
+  const hasPlaylistId = new URL(playlistUrl).searchParams.has('list');
+  let album = null;
+  if (hasPlaylistId) {
+    const playlist = data.playlist;
+    if (!playlist || typeof playlist.id !== 'string' || typeof playlist.title !== 'string' || !playlist.title.trim()) {
+      throw new Error('YouTube no ha devuelto el nombre de la playlist; no se iniciará una importación sin álbum.');
+    }
+    album = { id: playlist.id, name: playlist.title.trim() };
+  }
+  return { items, album };
 }
 
 // ==================================================
@@ -670,8 +680,10 @@ function homeostasiaPanel(ctx, close) {
   let destroyed = false;
   let importerController = null;
   let failedItems = [];
+  let failedAlbum = null;
   let pendingQueueFiles = [];
   let pendingQueueIds = [];
+  let pendingQueueAlbum = null;
 
   // ------------------------------------------------
   // IMPORTADOR DE VÍDEOS Y PLAYLISTS
@@ -783,7 +795,8 @@ function homeostasiaPanel(ctx, close) {
       status.textContent =
         'Leyendo YouTube…';
 
-      const items = await listarPlaylist(playlistUrl, controller.signal);
+      const { items, album } = await listarPlaylist(playlistUrl, controller.signal);
+      failedAlbum = album;
 
       if (items.length === 0) {
         throw new Error(
@@ -841,23 +854,26 @@ function homeostasiaPanel(ctx, close) {
       let queueError = '';
       if (result.files.length > 0) {
         try {
-          await ctx.addUploads(result.files);
+          await ctx.addUploads(result.files, { album });
           result.completedIds.forEach((videoId) => {
             completedVideos.add(videoId);
             saveImportRecord(videoId, { state: 'queued' });
           });
           pendingQueueFiles = [];
           pendingQueueIds = [];
+          pendingQueueAlbum = null;
           progress.hidden = false;
         } catch (error) {
           console.error('Error añadiendo WAV a la cola de Homeostasia:', error);
           pendingQueueFiles = result.files;
           pendingQueueIds = result.completedIds;
+          pendingQueueAlbum = album;
           queueError = error.message || 'Los WAV se descargaron, pero no se pudieron añadir a la cola de subidas.';
         }
       }
 
       retryButton.hidden = failedItems.length === 0 && pendingQueueFiles.length === 0;
+      if (failedItems.length === 0) failedAlbum = null;
       const conversionError = result.errors[0]?.error?.message;
       status.textContent = controller.signal.aborted
         ? `Seguimiento detenido. ${result.files.length} WAV listos para añadir; ` +
@@ -908,13 +924,14 @@ function homeostasiaPanel(ctx, close) {
     if (pendingQueueFiles.length > 0) {
       const files = pendingQueueFiles;
       try {
-        await ctx.addUploads(files);
+        await ctx.addUploads(files, { album: pendingQueueAlbum });
         pendingQueueIds.forEach((videoId) => {
           completedVideos.add(videoId);
           saveImportRecord(videoId, { state: 'queued' });
         });
         pendingQueueFiles = [];
         pendingQueueIds = [];
+        pendingQueueAlbum = null;
         progress.hidden = false;
         retryButton.hidden = failedItems.length === 0;
         status.textContent = 'WAV añadidos a la cola de subidas.';
@@ -969,25 +986,29 @@ function homeostasiaPanel(ctx, close) {
       stopButton.hidden = true;
 
       failedItems = result.errors.map(({ item }) => item).filter(Boolean);
+      const album = failedAlbum;
       let queueError = '';
       if (result.files.length > 0) {
         try {
-          await ctx.addUploads(result.files);
+          await ctx.addUploads(result.files, { album });
           result.completedIds.forEach((videoId) => {
             completedVideos.add(videoId);
             saveImportRecord(videoId, { state: 'queued' });
           });
           pendingQueueFiles = [];
           pendingQueueIds = [];
+          pendingQueueAlbum = null;
           progress.hidden = false;
         } catch (error) {
           console.error('Error añadiendo WAV reintentados a la cola:', error);
           pendingQueueFiles = result.files;
           pendingQueueIds = result.completedIds;
+          pendingQueueAlbum = album;
           queueError = error.message || 'Los WAV se descargaron, pero no se pudieron añadir a la cola de subidas.';
         }
       }
 
+      if (failedItems.length === 0) failedAlbum = null;
       retryButton.hidden = failedItems.length === 0 && pendingQueueFiles.length === 0;
       const conversionError = result.errors[0]?.error?.message;
       status.textContent = controller.signal.aborted

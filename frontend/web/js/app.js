@@ -1073,7 +1073,7 @@ function createUploads() {
     convert: (file, { onProgress }) => convertToOpus(file, { limits: false, checkStorage: false, onProgress }),
     saveCopy: (data) => saveUploadCopy(data),
     readCopy: (id) => readLocalBytes(id),
-    send: (bytes, { fileName, onChunk }) => sendOpus(bytes, { fileName, uploadId: crypto.randomUUID(), onChunk }),
+    send: (bytes, { fileName, album, onChunk }) => sendOpus(bytes, { fileName, uploadId: crypto.randomUUID(), album, onChunk }),
     fetchSongs: songsFetcher((url, init) => fetch(url, init), DATA_URLS.songs),
     currentIds: () => state.publicSongs.map((song) => song?.id),
     onCopy: (song) => {
@@ -1095,10 +1095,10 @@ let pendingSelection = Promise.resolve();
  * Archivos elegidos en la hoja: a la cola de subidas, con el título del nombre del archivo. Cada ZIP se abre aquí (solo
  * su directorio) y cada canción suya entra como una subida de su grupo (subida-zip.js); el ZIP no se sube.
  */
-function addUploads(files) {
+function addUploads(files, { album = null } = {}) {
   requestPersistence();
   const list = Array.from(files ?? []);
-  const run = pendingSelection.then(async () => uploads.addSources(await expandSelection(list)));
+  const run = pendingSelection.then(async () => uploads.addSources(await expandSelection(list), { album }));
   pendingSelection = run.catch((error) => console.error('Reminiscencia: fallo al preparar la selección de archivos.', error));
   return run;
 }

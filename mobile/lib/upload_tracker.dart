@@ -143,6 +143,8 @@ class UploadEntry {
     this.error,
     this.groupKey,
     this.groupName,
+    this.youtubePlaylistId,
+    this.youtubePlaylistName,
   });
 
   /// Id de la canción provisional (`P` + 16 hexadecimales).
@@ -175,6 +177,8 @@ class UploadEntry {
   /// Grupo del ZIP del que salió (clave `Z…` y nombre del ZIP). Null si se eligió suelta.
   final String? groupKey;
   final String? groupName;
+  final String? youtubePlaylistId;
+  final String? youtubePlaylistName;
 
   /// Porcentaje enviado, por trozos.
   int get percent => parts <= 0 ? 0 : (part * 100 / parts).round();
@@ -244,6 +248,9 @@ class UploadEntry {
     'error': error,
     if (groupKey != null) 'group': groupKey,
     if (groupName != null) 'group_name': groupName,
+    if (youtubePlaylistId != null) 'youtube_playlist_id': youtubePlaylistId,
+    if (youtubePlaylistName != null)
+      'youtube_playlist_name': youtubePlaylistName,
   };
 
   /// Lanza FormatException si la entrada no es válida.
@@ -267,7 +274,10 @@ class UploadEntry {
     final duration = json['duration_s'];
     final group = json['group'];
     final groupName = json['group_name'];
+    final playlistId = json['youtube_playlist_id'];
+    final playlistName = json['youtube_playlist_name'];
     final grouped = group is String && groupName is String;
+    final hasPlaylist = playlistId is String && playlistName is String;
     return UploadEntry(
       key: key,
       name: name,
@@ -282,6 +292,8 @@ class UploadEntry {
       error: error is String ? error : null,
       groupKey: grouped ? group : null,
       groupName: grouped ? groupName : null,
+      youtubePlaylistId: hasPlaylist ? playlistId : null,
+      youtubePlaylistName: hasPlaylist ? playlistName : null,
     );
   }
 }
@@ -586,6 +598,8 @@ class UploadTracker extends ChangeNotifier {
         source: file,
         groupKey: group?.key,
         groupName: group?.name,
+        youtubePlaylistId: file.youtubePlaylistId,
+        youtubePlaylistName: file.youtubePlaylistName,
       );
 
   /// Lee las canciones de un ZIP. Si no se puede abrir, el grupo lleva el motivo y no tiene canciones.
@@ -632,6 +646,8 @@ class UploadTracker extends ChangeNotifier {
         final item = await shared.resend(
           opus,
           entry.name,
+          albumId: entry.youtubePlaylistId,
+          albumName: entry.youtubePlaylistName,
           onPart: (part, parts) {
             entry
               ..part = part

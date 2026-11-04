@@ -37,13 +37,17 @@ export function splitChunks(bytes, size = CHUNK_BYTES) {
 }
 
 /** Cabeceras de un trozo según el contrato de /api/subir (frontend/web/api/subir.js). */
-export function chunkHeaders({ fileName, uploadId, index, total }) {
+export function chunkHeaders({ fileName, uploadId, index, total, album }) {
   return {
     'Content-Type': 'audio/ogg',
     'X-Nombre-Archivo': encodeURIComponent(String(fileName ?? '')),
     'X-Subida-Id': uploadId,
     'X-Parte': String(index),
     'X-Partes': String(total),
+    ...(album ? {
+      'X-Album-Id': album.id,
+      'X-Album-Name': encodeURIComponent(album.name),
+    } : {}),
   };
 }
 
@@ -78,11 +82,18 @@ async function sendChunk(chunk, headers, fetchImpl) {
  * Envía unos bytes Ogg Opus ya convertidos, trozo a trozo y en orden. onChunk recibe { index, total } tras cada
  * trozo. Devuelve la respuesta del último trozo.
  */
-export async function sendOpus(bytes, { fileName, uploadId, fetchImpl = globalThis.fetch, chunkBytes = CHUNK_BYTES, onChunk = () => {} } = {}) {
+export async function sendOpus(bytes, {
+  fileName,
+  uploadId,
+  album,
+  fetchImpl = globalThis.fetch,
+  chunkBytes = CHUNK_BYTES,
+  onChunk = () => {},
+} = {}) {
   const chunks = splitChunks(bytes, chunkBytes);
   let last = null;
   for (let index = 0; index < chunks.length; index += 1) {
-    last = await sendChunk(chunks[index], chunkHeaders({ fileName, uploadId, index, total: chunks.length }), fetchImpl);
+    last = await sendChunk(chunks[index], chunkHeaders({ fileName, uploadId, index, total: chunks.length, album }), fetchImpl);
     onChunk({ index, total: chunks.length });
   }
   return last;

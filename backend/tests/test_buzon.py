@@ -503,7 +503,7 @@ def opus_bytes(tmp_path: Path) -> bytes:
 
 
 def _trozos(repo: Path, data: bytes, partes: int, *, upload_id: str = UPLOAD_ID, nombre: str = "Vals.opus",
-            manifiesto: object = True, faltan: tuple[int, ...] = ()) -> list[str]:
+            manifiesto: object = True, faltan: tuple[int, ...] = (), album: dict | None = None) -> list[str]:
     """Escribe los trozos de data (y el manifiesto) en .partes/<upload_id>/ y devuelve sus rutas."""
     folder = repo / PARTES / upload_id
     folder.mkdir(parents=True, exist_ok=True)
@@ -515,7 +515,8 @@ def _trozos(repo: Path, data: bytes, partes: int, *, upload_id: str = UPLOAD_ID,
         (folder / f"{index}.part").write_bytes(data[index * size:(index + 1) * size])
         rutas.append(f"{PARTES}/{upload_id}/{index}.part")
     if manifiesto is not None and manifiesto is not False:
-        contenido = {"nombre": nombre, "partes": partes} if manifiesto is True else manifiesto
+        contenido = {"nombre": nombre, "partes": partes, **({"album": album} if album else {})} \
+            if manifiesto is True else manifiesto
         texto = contenido if isinstance(contenido, str) else json.dumps(contenido)
         (folder / "manifiesto.json").write_text(texto, encoding="utf-8")
         rutas.append(f"{PARTES}/{upload_id}/manifiesto.json")
@@ -595,6 +596,10 @@ def test_si_hay_mas_partes_que_en_el_manifiesto_se_deja_para_revisar(repo, opus_
         {"nombre": "Vals.opus", "partes": 1001},
         {"nombre": "Vals.opus", "partes": "2"},
         {"nombre": "Vals.opus", "partes": True},
+        {"nombre": "Vals.opus", "partes": 2, "album": {"id": "../x", "name": "Playlist"}},
+        {"nombre": "Vals.opus", "partes": 2, "album": {"id": "PL123", "name": ""}},
+        {"nombre": "Vals.opus", "partes": 2, "album": {"id": "PL123", "name": "x" * 201}},
+        {"nombre": "Vals.opus", "partes": 2, "album": {"id": "PL123", "name": "Album", "extra": 1}},
         ["Vals.opus", 2],
     ],
 )
@@ -657,6 +662,33 @@ def test_si_el_push_no_trae_el_manifiesto_se_usa_la_licencia_de_la_web(repo, opu
 
     [entrada] = result["publicas"]
     assert entrada["licencia"] == buzon.WEB_LICENSE
+
+
+def test_playlist_crea_un_album_estable_y_asocia_todas_las_canciones_publicas(repo, tmp_path):
+    album = {"id": "PLVU-jIOit29A", "name": "Nuestro desacato"}
+    first = make_tone(tmp_path / "uno.opus", seconds=1.0, sample_rate=48000, frequency=440).read_bytes()
+    second = make_tone(tmp_path / "dos.opus", seconds=1.0, sample_rate=48000, frequency=660).read_bytes()
+    first_id = UPLOAD_ID
+    second_id = "1f8fad5b-d9cb-469f-a165-70867728950e"
+    first_paths = _trozos(repo, first, 1, upload_id=first_id, nombre="Cada vez.opus", album=album)
+    second_paths = _trozos(repo, second, 1, upload_id=second_id, nombre="Cuando salga el sol.opus", album=album)
+    rutas = first_paths + second_paths
+    _commit(repo, LICENCIA_WEB)
+
+    result = procesar_buzon(repo=repo, event=_evento((LICENCIA_WEB, rutas)), actor="ana")
+
+    assert len(result["publicas"]) == 2
+    data = _catalogo(repo)
+    [folder] = [item for item in data["folders"] if item.get("youtube_playlist_id") == album["id"]]
+    assert folder["name"] == "Nuestro desacato"
+    assert folder["youtube_playlist_id"] == album["id"]
+    assert folder["id"].startswith("F") and len(folder["id"]) == 17
+    songs = [song for song in data["songs"] if song["id"] in {item["song_id"] for item in result["publicas"]}]
+    assert len(songs) == 2
+    assert all(song["folder_id"] == folder["id"] and song["public"] is True for song in songs)
+    published_folders = json.loads((repo / "frontend" / "web" / "data" / "folders.json").read_text(encoding="utf-8"))
+    assert {"id": folder["id"], "name": "Nuestro desacato", "parent_id": None} in published_folders
+    assert all("youtube_playlist_id" not in item for item in published_folders)
 
 
 def test_ruta_de_partes():

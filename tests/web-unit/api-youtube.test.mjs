@@ -31,12 +31,16 @@ describe('API del importador de YouTube', () => {
         invocation = { command, args, options };
         return fakeProcess('abcdefghijk\tPrimera\nabcdefghijk\tDuplicada\nlmnopqrstuv\tSegunda\n');
       },
+      fetchImpl: async () => new Response(JSON.stringify({ title: 'Nuestro desacato' }), { status: 200 }),
     });
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { items: [
-      { url: videoUrl, title: 'Primera' },
-      { url: 'https://www.youtube.com/watch?v=lmnopqrstuv', title: 'Segunda' },
-    ] });
+    assert.deepEqual(await response.json(), {
+      items: [
+        { url: videoUrl, title: 'Primera' },
+        { url: 'https://www.youtube.com/watch?v=lmnopqrstuv', title: 'Segunda' },
+      ],
+      playlist: { id: 'PL123', title: 'Nuestro desacato' },
+    });
     assert.equal(invocation.command, '/opt/yt-dlp');
     assert.ok(invocation.args.includes('--flat-playlist'));
     assert.equal(invocation.args[invocation.args.indexOf('--print') + 1], '%(id)s\t%(title)s');
@@ -47,7 +51,10 @@ describe('API del importador de YouTube', () => {
   test('rechaza URLs que no sean playlists y oculta errores de yt-dlp', async () => {
     const invalid = await handlePlaylist(playlistRequest('https://example.com/?url=http://127.0.0.1'), { spawnImpl: () => fakeProcess('') });
     assert.equal(invalid.status, 400);
-    const failed = await handlePlaylist(playlistRequest('https://www.youtube.com/playlist?list=PL123'), { spawnImpl: () => fakeProcess('', 1) });
+    const failed = await handlePlaylist(playlistRequest('https://www.youtube.com/playlist?list=PL123'), {
+      spawnImpl: () => fakeProcess('', 1),
+      fetchImpl: async () => new Response('', { status: 404 }),
+    });
     assert.equal(failed.status, 502);
     assert.match((await failed.json()).error, /No se pudo leer/);
   });
@@ -121,7 +128,7 @@ describe('API del importador de YouTube', () => {
   });
 
   test('recupera una playlist desde ytInitialData si yt-dlp falla', async () => {
-    const html = 'ytInitialData = ' + JSON.stringify({ contents: [
+    const html = '<meta property="og:title" content="Playlist desde HTML">ytInitialData = ' + JSON.stringify({ contents: [
       { videoId: 'abcdefghijk', title: { runs: [{ text: 'Primera' }] } },
       { videoId: 'lmnopqrstuv', title: { simpleText: 'Segunda' } },
     ] }) + ';';
@@ -135,7 +142,69 @@ describe('API del importador de YouTube', () => {
       fetchImpl: async () => new Response(html, { status: 200 }),
     });
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).items.length, 2);
+    assert.deepEqual(await response.json(), {
+      items: [
+        { url: videoUrl, title: 'Primera' },
+        { url: 'https://www.youtube.com/watch?v=lmnopqrstuv', title: 'Segunda' },
+      ],
+      playlist: { id: 'PL123', title: 'Playlist desde HTML' },
+    });
+  });
+
+  test('lee la playlist y sus continuaciones desde YouTube Music si yt-dlp falla', async () => {
+    const requests = [];
+    const page = '<meta property="og:title" content="Nuestro desacato">'
+      + '<script>{"INNERTUBE_API_KEY":"test-key","INNERTUBE_CLIENT_VERSION":"1.2.3"}</script>';
+    const renderer = (id, title) => ({
+      musicResponsiveListItemRenderer: {
+        playlistItemData: { videoId: id },
+        flexColumns: [{
+          musicResponsiveListItemFlexColumnRenderer: {
+            text: { runs: [{ text: title }] },
+          },
+        }],
+      },
+    });
+    const response = await handlePlaylist(playlistRequest('https://www.youtube.com/playlist?list=PL123'), {
+      spawnImpl: () => fakeProcess('', 1),
+      fetchImpl: async (target, init = {}) => {
+        const url = new URL(target);
+        requests.push({ url, init });
+        assert.match(init.headers['User-Agent'], /^Mozilla\/5\.0 .*Chrome\//);
+        if (url.pathname === '/oembed') return new Response('', { status: 404 });
+        if (url.hostname === 'music.youtube.com' && url.pathname === '/playlist') {
+          return new Response(page, { status: 200 });
+        }
+        assert.equal(url.hostname, 'music.youtube.com');
+        assert.equal(url.pathname, '/youtubei/v1/browse');
+        const body = JSON.parse(init.body);
+        if (body.browseId) {
+          assert.equal(body.browseId, 'VLPL123');
+          return new Response(JSON.stringify({
+            contents: {
+              musicPlaylistShelfRenderer: {
+                contents: [renderer('abcdefghijk', 'Primera')],
+                continuations: [{ nextContinuationData: { continuation: 'NEXT' } }],
+              },
+            },
+          }), { status: 200 });
+        }
+        assert.equal(body.continuation, 'NEXT');
+        return new Response(JSON.stringify({
+          continuationContents: { musicPlaylistShelfContinuation: { contents: [renderer('lmnopqrstuv', 'Segunda')] } },
+        }), { status: 200 });
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      items: [
+        { url: videoUrl, title: 'Primera' },
+        { url: 'https://www.youtube.com/watch?v=lmnopqrstuv', title: 'Segunda' },
+      ],
+      playlist: { id: 'PL123', title: 'Nuestro desacato' },
+    });
+    assert.equal(requests.filter(({ url }) => url.pathname === '/youtubei/v1/browse').length, 2);
   });
 
   test('no crea títulos de playlist usando solo el ID si YouTube no da título', async () => {
@@ -151,7 +220,7 @@ describe('API del importador de YouTube', () => {
   });
 
   test('usa el fallback también si yt-dlp no llega a arrancar', async () => {
-    const html = 'ytInitialData = ' + JSON.stringify({ contents: [
+    const html = '<meta property="og:title" content="Playlist desde HTML">ytInitialData = ' + JSON.stringify({ contents: [
       { videoId: 'abcdefghijk', title: { simpleText: 'Primera' } },
     ] }) + ';';
     const response = await handlePlaylist(playlistRequest('https://www.youtube.com/playlist?list=PL123'), {
@@ -164,7 +233,10 @@ describe('API del importador de YouTube', () => {
       fetchImpl: async () => new Response(html, { status: 200 }),
     });
     assert.equal(response.status, 200);
-    assert.deepEqual((await response.json()).items, [{ url: videoUrl, title: 'Primera' }]);
+    assert.deepEqual(await response.json(), {
+      items: [{ url: videoUrl, title: 'Primera' }],
+      playlist: { id: 'PL123', title: 'Playlist desde HTML' },
+    });
   });
 
   test('fija WAV/original y solo devuelve el identificador del job', async () => {

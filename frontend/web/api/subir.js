@@ -38,6 +38,7 @@ const MAX_ATTEMPTS = 5;
 const API = 'https://api.github.com';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const INTEGER = /^(?:0|[1-9][0-9]{0,3})$/;
+const PLAYLIST_ID = /^[A-Za-z0-9_-]{1,200}$/;
 // La misma lista que backend/sonidos/buzon.py (_NAME_PUNCTUATION), además de letras, marcas y números.
 const NAME_PUNCTUATION = new Set(" ._-()[]'’&,!¡¿+#");
 const NAME_CHAR = /[\p{L}\p{M}\p{N}]/u;
@@ -129,7 +130,24 @@ export function parseUploadHeaders(headers) {
   const total = Number(rawTotal);
   if (total < 1 || total > MAX_PARTS) throw new UploadError(400, `Un archivo se puede enviar en 1 a ${MAX_PARTS} trozos.`);
   if (index >= total) throw new UploadError(400, 'El número de trozo no cabe en el total de trozos.');
-  return { fileName, uploadId, index, total };
+  const albumId = header(headers, 'x-album-id');
+  let albumName = header(headers, 'x-album-name');
+  try {
+    albumName = albumName ? decodeURIComponent(albumName) : '';
+  } catch {
+    throw new UploadError(400, 'El nombre del álbum no está bien codificado.');
+  }
+  let album;
+  if (albumId || albumName) {
+    if (!PLAYLIST_ID.test(albumId) || !albumName) {
+      throw new UploadError(400, 'El álbum de YouTube debe incluir un identificador y un nombre válidos.');
+    }
+    if ([...albumName].length > 200 || /[\u0000-\u001f\u007f]/u.test(albumName)) {
+      throw new UploadError(400, 'El nombre del álbum no es válido.');
+    }
+    album = { id: albumId, name: albumName };
+  }
+  return { fileName, uploadId, index, total, ...(album ? { album } : {}) };
 }
 
 /** Comprueba el cuerpo de un trozo: no vacío, hasta 4 MB y, el primero, Ogg Opus. */
@@ -216,7 +234,7 @@ function encodePath(path) {
 }
 
 /** Guarda un trozo con un commit en main. Reintenta si main cambia entre la lectura y la actualización. */
-async function storeChunk({ github, uploadId, index, total, stem, bytes }) {
+async function storeChunk({ github, uploadId, index, total, stem, bytes, album }) {
   const blobSha = gitBlobSha(bytes);
   let blobCreated = false;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -254,7 +272,7 @@ async function storeChunk({ github, uploadId, index, total, stem, bytes }) {
         path: manifestPath(uploadId),
         mode: '100644',
         type: 'blob',
-        content: `${JSON.stringify({ nombre: name, partes: total })}\n`,
+        content: `${JSON.stringify({ nombre: name, partes: total, ...(album ? { album } : {}) })}\n`,
       });
     }
     const tree = expect(await github('POST', '/git/trees', { base_tree: head?.tree?.sha, tree: entries }), [201], 'crear el árbol');
@@ -291,14 +309,14 @@ export async function handleUpload(request, { env = {}, fetchImpl = globalThis.f
       console.error('subir: falta la variable de entorno GITHUB_TOKEN');
       throw new UploadError(500, 'La subida no está configurada en el servidor (falta GITHUB_TOKEN). Avisa a quien mantiene la web.');
     }
-    const { fileName, uploadId, index, total } = parseUploadHeaders(request.headers);
+    const { fileName, uploadId, index, total, album } = parseUploadHeaders(request.headers);
     const declared = Number(request.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > MAX_CHUNK_BYTES) checkChunk({ length: declared }, -1);
     const bytes = new Uint8Array(await request.arrayBuffer());
     checkChunk(bytes, index);
     const stem = cleanStem(fileName);
     const github = githubClient(token, fetchImpl);
-    const stored = await storeChunk({ github, uploadId, index, total, stem, bytes });
+    const stored = await storeChunk({ github, uploadId, index, total, stem, bytes, album });
     const complete = index === total - 1;
     return json(200, {
       ok: true,

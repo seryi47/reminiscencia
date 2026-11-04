@@ -114,6 +114,40 @@ void main() {
   );
 
   group('estados', () {
+    test('conserva el álbum de YouTube al reintentar una subida', () async {
+      final t = tracker();
+      reply = (_) => errorReply(400, 'rechazo de prueba');
+      const file = PickedAudioFile(
+        name: 'Cada vez.wav',
+        path: '/origen/Cada vez.wav',
+        youtubePlaylistId: 'PLVU-jIOit29A',
+        youtubePlaylistName: 'Nuestro desacato',
+      );
+
+      await t.start([file]);
+      final entry = t.entries.single;
+      expect(entry.stage, UploadStage.failed);
+      expect(entry.youtubePlaylistId, 'PLVU-jIOit29A');
+      expect(entry.youtubePlaylistName, 'Nuestro desacato');
+      final restored = UploadEntry.fromJson(entry.toJson());
+      expect(restored.youtubePlaylistId, 'PLVU-jIOit29A');
+      expect(restored.youtubePlaylistName, 'Nuestro desacato');
+
+      reply = (_) => okReply();
+      await t.retry(entry.key);
+
+      expect(requests, hasLength(2));
+      expect(
+        requests.map((request) => request.headers['X-Album-Id']),
+        everyElement('PLVU-jIOit29A'),
+      );
+      expect(
+        requests.map((request) => request.headers['X-Album-Name']),
+        everyElement('Nuestro%20desacato'),
+      );
+      t.dispose();
+    });
+
     test(
       'cada paso hasta «Guardada en GitHub», con porcentaje por trozos',
       () async {
