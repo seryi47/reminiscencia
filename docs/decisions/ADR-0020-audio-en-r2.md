@@ -1,6 +1,6 @@
 # ADR-0020: Audio en Cloudflare R2 (preparación, sin cortar Vercel)
 
-- Estado: aceptada; activa en la APK y en la copia automática. La web sigue leyendo el audio de Vercel.
+- Estado: aceptada; activa en la APK y en la copia automática. La web también lee de R2 (por su service worker), con Vercel de respaldo.
 - Fecha: 2026-11-05.
 - Relacionadas: ADR-0014 y ADR-0017 (buzón y subida), ADR-0008 (publicación por workflows).
 
@@ -19,7 +19,7 @@ Cloudflare R2 no cobra la salida de datos y su capa gratuita incluye 10 GB de al
 ## Estado (2026-11-05)
 
 - Hecho: bucket `reminiscencia-audio` con acceso público por `r2.dev` y CORS (`GET` y `HEAD` desde la web y `localhost`, con `Range`); 188 canciones subidas; secretos `R2_*` en GitHub; `.github/workflows/r2.yml` copia el audio nuevo cuando terminan `buzon` o `biblioteca` (sin permiso de escritura, sin borrar); la APK descarga de R2 (`kAudioBase`) y, si falla, de Vercel (segundo intento).
-- Pendiente: la web (PWA) lee todavía de Vercel; su service worker guarda el audio por ruta del mismo origen y moverla exige adaptarlo. El streaming de la APK lee de R2 y no tiene respaldo, así que una canción recién subida puede tardar unos segundos en sonar hasta que `r2.yml` la copie.
+- La web mantiene las rutas `/audio/<id>.opus`; el service worker (`fetchAudio`) las pide a R2 con `Range` y, si falla, al propio origen; la CSP añade solo el bucket a `connect-src`. Sin service worker activo (primera visita) el audio sale de Vercel. El streaming de la APK lee de R2 y no tiene respaldo, así que una canción recién subida puede tardar unos segundos en sonar hasta que `r2.yml` la copie.
 - `r2.dev` está pensado para pruebas (Cloudflare puede limitar la velocidad); para producción conviene un dominio propio.
 
 ## Activación (fases, cada una reversible)

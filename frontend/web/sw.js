@@ -10,6 +10,7 @@ import {
   isShellRequest,
   localAudioId,
   parseRange,
+  r2AudioUrl,
   SHELL_ASSETS,
   SHELL_CACHE_PREFIX,
   shellCacheName,
@@ -131,9 +132,28 @@ async function audioResponse(request) {
   }
   const cache = await caches.open(AUDIO_CACHE);
   const cached = await cache.match(request);
-  if (!cached) return fetch(request);
+  if (!cached) return fetchAudio(request, range);
   if (!range) return cached;
   return sliceResponse(await cached.blob(), cached.headers.get('content-type') || 'audio/ogg', range);
+}
+
+/** Audio fuera de la caché: primero R2 (no cobra la salida de datos; ADR-0020) y, si falla o no tiene la canción, el
+ *  propio origen (Vercel). Se reenvía el Range para poder buscar dentro del tema. */
+async function fetchAudio(request, range) {
+  const r2 = r2AudioUrl(request.url);
+  if (r2) {
+    try {
+      const response = await fetch(r2, {
+        headers: range ? { Range: range } : {},
+        mode: 'cors',
+        credentials: 'omit',
+      });
+      if (response.ok) return response;
+    } catch {
+      // Sin R2 se usa el origen propio.
+    }
+  }
+  return fetch(request);
 }
 
 /** Responde con el fichero entero (200) o con el tramo de la cabecera Range (206, o 416 si queda fuera). */

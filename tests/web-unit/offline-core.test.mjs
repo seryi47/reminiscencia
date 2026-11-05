@@ -11,6 +11,8 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  AUDIO_ORIGIN,
+  r2AudioUrl,
   audioCacheName,
   coverCacheName,
   formatBytes,
@@ -253,6 +255,21 @@ describe('clasificación de peticiones', () => {
     assert.equal(isDataRequest('/data/notas.txt'), false);
     assert.equal(isAudioRequest('/audio/demo-1.opus'), true);
     assert.equal(isAudioRequest('/audio/demo-1.mp3'), false);
+  });
+
+  test('el audio de la biblioteca se pide a R2 y las canciones locales o ajenas no', () => {
+    assert.equal(r2AudioUrl('/audio/S0123456789abcdef.opus'), `${AUDIO_ORIGIN}/audio/S0123456789abcdef.opus`);
+    assert.equal(r2AudioUrl('https://reminiscencia.vercel.app/audio/Sabc.opus?x=1'), `${AUDIO_ORIGIN}/audio/Sabc.opus`);
+    assert.equal(r2AudioUrl('/audio/L0011223344556677.opus'), null);
+    assert.equal(r2AudioUrl('/audio/demo.mp3'), null);
+    assert.equal(r2AudioUrl('/data/songs.json'), null);
+  });
+
+  test('el service worker prueba R2 y vuelve al propio origen si falla', () => {
+    const sw = readFileSync(join(fileURLToPath(new URL('../../frontend/web/', import.meta.url)), 'sw.js'), 'utf8');
+    assert.match(sw, /fetchAudio\(request, range\)/);
+    assert.match(sw, /if \(response\.ok\) return response;/);
+    assert.match(sw, /return fetch\(request\);\n\}/);
   });
 
   test('no toma por audio las rutas con subcarpetas o recorridos', () => {

@@ -3,6 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { AUDIO_ORIGIN } from "../../frontend/web/js/offline-core.js";
 
 const WEB = new URL("../../frontend/web/", import.meta.url);
 const read = (path) => readFileSync(new URL(path, WEB), "utf8");
@@ -27,7 +28,8 @@ describe("vercel.json: Content-Security-Policy", () => {
     assert.deepEqual(directives.get("script-src"), ["'self'"]);
     assert.deepEqual(directives.get("object-src"), ["'none'"]);
     assert.deepEqual(directives.get("media-src"), ["'self'"]);
-    assert.deepEqual(directives.get("connect-src"), ["'self'"]);
+    // Además de la propia web, solo el bucket de audio de R2 (lo lee el service worker; ADR-0020).
+    assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN]);
     assert.deepEqual(directives.get("frame-ancestors"), ["'none'"]);
   });
 

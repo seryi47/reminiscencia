@@ -6,7 +6,18 @@
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 19;
+export const SHELL_VERSION = 20;
+
+/** Origen público del bucket de audio en Cloudflare R2 (ADR-0020). Debe coincidir con connect-src de vercel.json. */
+export const AUDIO_ORIGIN = 'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev';
+
+/** URL en R2 de un audio de la biblioteca (/audio/<id>.opus), o null si no lo es. Las canciones subidas a este
+ *  navegador (L<16 hex>) no están en R2. */
+export function r2AudioUrl(url) {
+  const path = pathOf(url);
+  if (path === null || !AUDIO_PATTERN.test(path) || LOCAL_AUDIO_PATTERN.test(path)) return null;
+  return `${AUDIO_ORIGIN}${path}`;
+}
 
 /** Prefijo de las cachés del shell; sirve para reconocer las antiguas al limpiar. */
 export const SHELL_CACHE_PREFIX = 'reminiscencia-shell-';
