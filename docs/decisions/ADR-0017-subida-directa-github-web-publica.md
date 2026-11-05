@@ -5,6 +5,8 @@
 - Sustituye: en [ADR-0008](ADR-0008-entrada-por-incidencias.md), decisión 1, «ni token de GitHub en la web, ni funciones de Vercel (`api/`)»: ahora hay una función, `frontend/web/api/subir.js`, con un token en las variables de entorno de Vercel. En [ADR-0012](ADR-0012-audio-subido-local-solo-navegador.md), la subida nueva «Solo en este navegador»: la hoja ya no la ofrece. En [ADR-0014](ADR-0014-buzon-de-canciones.md), que solo suban al buzón las cuentas con permiso de escritura.
 - Relacionadas: ADR-0007 (catálogo como fuente de verdad), ADR-0010 (procesado y publicación separados), ADR-0011 (publicar regenera la parte pública), ADR-0013 (APK) y ADR-0015 (interfaz sin usuarios).
 
+> **Nota (2026-11-05):** desde la fase 3 de [ADR-0020](ADR-0020-audio-en-r2.md), `frontend/web/audio/` ya no existe: el audio público lo sirve Cloudflare R2 y Vercel redirige `/audio/<id>.opus` al bucket.
+
 ## Contexto
 
 Hasta ahora, «Subir canciones» ofrecía dos caminos: guardar el audio solo en el navegador (ADR-0012) o abrir la página de subida de GitHub, que exige una cuenta con permiso de escritura y una línea «Licencia: …» escrita a mano (ADR-0014). Para casi todas las personas que usan la web, ninguno de los dos sirve para que una canción llegue a los demás.

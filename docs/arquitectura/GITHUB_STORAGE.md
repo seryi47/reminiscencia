@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `audio-library/indexes/catalog.json` | Catálogo: 30 canciones (19 públicas y 11 privadas) y un álbum | Versionado | No |
 | `audio-library/audio/<id>.opus` | Audio de reproducción de todas las canciones (30 ficheros) | Versionado | No |
-| `frontend/web/audio/<id>.opus` | Audio de las canciones publicadas (19 ficheros) | Versionado | Sí, lo sirve Vercel |
+| `frontend/web/audio/<id>.opus` | Ya no existe (ADR-0020, fase 3): el audio publicado lo sirve Cloudflare R2 desde `audio-library/audio/` | — | Vercel redirige `/audio/*` a R2 |
 | `audio-library/covers/<id>.jpg` y `frontend/web/covers/<id>.jpg` | Portadas de 640×640 (hoy una); a la web van las de canciones públicas y todas las carpetas (ADR-0016) | Versionado | Las de `frontend/web/covers/` |
 | `audio-library/buzon/` (y `.partes/<id>/`) | Carpeta de paso del workflow `buzon`: archivos subidos desde GitHub y trozos de `/api/subir`, que se borran al procesarlos | Versionado de paso; queda en el historial | No |
 | `frontend/web/data/songs.json`, `folders.json`, `catalog.json` | Datos públicos, regenerados desde el catálogo | Versionado | Sí, lo sirve Vercel |
@@ -27,7 +27,7 @@ Por incidencia (ADR-0008):
 2. **Descarga.** El original va a `audio-library/staging/`, un directorio de trabajo sin rastrear, con los límites de `intake.py`. Se borra al terminar, también si la importación falla (`pipeline.py`).
 3. **Conversión.** ffmpeg lo convierte a Opus a 64 kb/s, con el perfil `opus-64k` de `compression.py`, y lo deja en `audio-library/audio/<id>.opus`. Antes, `probe.py` (ffprobe) lee sus metadatos.
 4. **Catálogo.** Se añade la canción con `public: false` («las canciones nuevas nacen privadas», `catalog.py`). Guarda la licencia, el origen (`internet-archive:<identificador>` o `direct-url:<host>/<fichero>`), la huella SHA-256, el códec, la duración, el tamaño y la fecha de alta. Sin licencia no entra (`test_song_without_license_is_refused` en `backend/tests/test_catalog.py`).
-5. **Publicación.** Editar la canción con `public: true` copia el audio a `frontend/web/audio/` y regenera `frontend/web/data/`. Con `public: false`, borra el audio público y regenera los datos (`publish.py`).
+5. **Publicación.** Editar la canción con `public: true` regenera `frontend/web/data/` (`publish.py`) y el job `publicar` sube su audio a R2 antes de subir a main (`scripts/sync_r2.py`). Con `public: false`, regenera los datos y `publicar` borra su audio del bucket (ADR-0020).
 
 Por el buzón (ADR-0014 y ADR-0017): desde la web o la APK, «Subir canciones» convierte el archivo a Opus en el dispositivo y lo envía en trozos de hasta 4 MiB a `/api/subir`, que los guarda en `audio-library/buzon/.partes/<id>/` con un commit cada uno (con `GITHUB_TOKEN` de Vercel) y, con el último, el manifiesto. `buzon.yml` une los trozos, convierte con el mismo perfil, da de alta la canción (título: el nombre del archivo sin extensión; pública con la licencia fija de la web) y borra los trozos del buzón. Quien tiene permiso de escritura puede subir también desde la página de GitHub, con «Licencia: …» en el commit.
 

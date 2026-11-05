@@ -178,7 +178,7 @@ def test_con_licencia_entra_publica_con_su_fuente_y_sale_del_buzon(repo):
     assert (repo / BUZON / "README.md").exists()
     publicas = json.loads((repo / "frontend/web/data/songs.json").read_text(encoding="utf-8"))
     assert song["id"] in {item["id"] for item in publicas}
-    assert (repo / "frontend/web/audio" / f"{song['id']}.opus").exists()
+    assert not (repo / "frontend/web/audio" / f"{song['id']}.opus").exists()  # el audio público lo sirve R2
 
 
 @pytest.mark.parametrize("extension", [".mp3", ".flac", ".ogg", ".m4a", ".WAV"])
@@ -360,7 +360,8 @@ def test_procesar_empaquetar_y_publicar_borra_del_buzon_y_publica(repo, tmp_path
 
     staged = _git(repo, "diff", "--cached", "--name-status", "--no-renames").splitlines()
     assert f"D\t{ruta}" in staged
-    assert f"A\tfrontend/web/audio/{song_id}.opus" in staged
+    assert f"A\taudio-library/audio/{song_id}.opus" in staged
+    assert not any(line.endswith(f"frontend/web/audio/{song_id}.opus") for line in staged)
     assert "M\tfrontend/web/data/songs.json" in staged
     assert summary["eliminados"] == 1
     assert SONG_ID in (repo / "frontend/web/data/songs.json").read_text(encoding="utf-8")
@@ -735,7 +736,7 @@ def test_procesar_empaquetar_y_publicar_una_subida_por_trozos(repo, tmp_path, op
 
     staged = _git(repo, "diff", "--cached", "--name-status", "--no-renames").splitlines()
     assert f"D\t{PARTES}/{UPLOAD_ID}/manifiesto.json" in staged
-    assert f"A\tfrontend/web/audio/{song_id}.opus" in staged
+    assert f"A\taudio-library/audio/{song_id}.opus" in staged
 
 
 # --- ZIP con canciones ---------------------------------------------------------------------------------------------
@@ -797,7 +798,7 @@ def test_un_zip_publica_cada_cancion_con_el_nombre_de_su_archivo_y_se_borra(repo
         assert song["public"] is True and song["license"] == "CC BY 4.0 (grabación propia)"
         assert song["source"] == "Subida por ana"
         assert (repo / "audio-library/audio" / f"{song['id']}.opus").stat().st_size > 0
-        assert (repo / "frontend/web/audio" / f"{song['id']}.opus").exists()
+        assert not (repo / "frontend/web/audio" / f"{song['id']}.opus").exists()
     assert result["zips"] == [{
         "archivo": "Álbum de 1960.zip", "canciones": 6,
         "ignorados": {"carpetas": 1, "macosx": 1, "ocultos": 2, "enlaces": 1, "no_audio": 2},
@@ -808,7 +809,6 @@ def test_un_zip_publica_cada_cancion_con_el_nombre_de_su_archivo_y_se_borra(repo
     ids = {item["song_id"] for item in result["publicas"]}
     permitidas = {
         ruta, CATALOG, *(f"audio-library/audio/{song_id}.opus" for song_id in ids),
-        *(f"frontend/web/audio/{song_id}.opus" for song_id in ids),
         *(f"frontend/web/data/{name}" for name in ("songs.json", "folders.json", "catalog.json")),
     }
     estado = set(_estado(repo))
@@ -955,7 +955,7 @@ def test_procesar_empaquetar_y_publicar_un_zip(repo, tmp_path):
 
     staged = _git(repo, "diff", "--cached", "--name-status", "--no-renames").splitlines()
     assert f"D\t{ruta}" in staged
-    assert f"A\tfrontend/web/audio/{song_id}.opus" in staged
+    assert f"A\taudio-library/audio/{song_id}.opus" in staged
 
 
 def test_subida_por_trozos_guarda_artista_y_asocia_la_cancion_al_album(repo, tmp_path):

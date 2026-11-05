@@ -23,14 +23,15 @@ def _catalog_with(tmp_path, public_flags):
     return path, audio
 
 
-def test_only_public_songs_are_copied_and_listed(tmp_path):
+def test_only_public_songs_are_listed_and_no_audio_is_copied_to_the_web(tmp_path):
     path, audio = _catalog_with(tmp_path, [True, False])
     web = tmp_path / "web"
 
     result = sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
 
     assert result["public"] == 1
-    assert len(list((web / "audio").glob("*.opus"))) == 1
+    # El audio público lo sirve R2 (ADR-0020, fase 3): la web solo lleva los datos.
+    assert not (web / "audio").exists()
     listed = json.loads((web / "data" / "songs.json").read_text(encoding="utf-8"))
     assert len(listed) == 1 and listed[0]["audio"].startswith("audio/") and listed[0]["tags"] == ["jazz"]
     folders = json.loads((web / "data" / "folders.json").read_text(encoding="utf-8"))
@@ -94,17 +95,25 @@ def test_public_flag_must_be_a_json_boolean(tmp_path):
     assert list((web / "audio").glob("*.opus")) == []
 
 
-def test_public_audio_with_the_same_size_but_other_content_is_copied_again(tmp_path):
+def test_audio_left_in_the_web_from_before_r2_is_removed(tmp_path):
     path, audio = _catalog_with(tmp_path, [True])
     web = tmp_path / "web"
-    sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
     song_id = catalog.load(path)["songs"][0]["id"]
-    real = (audio / f"{song_id}.opus").read_bytes()
-    (web / "audio" / f"{song_id}.opus").write_bytes(b"x" * len(real))  # mismo tamaño, otro contenido
+    (web / "audio").mkdir(parents=True)
+    (web / "audio" / f"{song_id}.opus").write_bytes((audio / f"{song_id}.opus").read_bytes())
 
     sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
 
-    assert (web / "audio" / f"{song_id}.opus").read_bytes() == real
+    assert list((web / "audio").glob("*.opus")) == []
+
+
+def test_a_public_song_without_its_audio_in_the_library_is_refused(tmp_path):
+    path, audio = _catalog_with(tmp_path, [True])
+    song_id = catalog.load(path)["songs"][0]["id"]
+    (audio / f"{song_id}.opus").unlink()
+
+    with pytest.raises(FileNotFoundError):
+        sync_public(catalog_path=path, audio_dir=audio, web_dir=tmp_path / "web")
 
 
 def test_public_song_id_that_is_not_a_library_id_is_refused(tmp_path):

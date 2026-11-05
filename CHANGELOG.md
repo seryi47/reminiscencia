@@ -1,3 +1,12 @@
+## Sin publicar: el audio público solo en R2 y reintento del streaming en la APK (2026-11-05, rama `feature/audio-solo-r2`)
+
+- Fase 3 de [ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md): la web ya no lleva audio. Se borra `frontend/web/audio/` (205 canciones, unos 347 MB, ya comprobadas en R2 con el mismo tamaño) y `publish.py` deja de copiarlo; cada canción ocupa ahora una sola copia en el repositorio (`audio-library/audio/`).
+- `buzon.yml` y `biblioteca.yml`: el job `publicar` ejecuta `sync_r2.py --aplicar --borrar-sobrantes` antes de subir a main, así una canción nunca aparece en la web sin su audio y una despublicada se borra del bucket. Si R2 falla, no se sube nada. Nunca vacía el bucket.
+- `sync_r2.py` toma las canciones públicas de `data/songs.json` y su audio de `audio-library/audio/`, y usa un cliente S3 propio con firma SigV4 (sin boto3): ningún paso con credenciales instala paquetes. Firma comprobada con el ejemplo oficial de AWS y, en local, idéntica a botocore.
+- `vercel.json`: redirección temporal de `/audio/:file` a R2 (primera visita sin service worker, respaldo del service worker y de la APK); se quita la cabecera del tipo del audio, que ya no sirve Vercel.
+- APK: si una canción en streaming falla desde R2, se reintenta una vez desde la web antes de pasar a la siguiente (`shouldRetryFromFallback`, `_retryFromFallback`).
+- Pruebas: backend 756, web 458 unitarias y 148 de extremo a extremo (los audios de prueba salen de `audio-library/audio/`), Flutter 260 y `flutter analyze` sin avisos.
+
 ## Sin publicar: «Escuchar» por Dart y apt con reintentos (2026-11-05)
 
 - APK: el audio de YouTube lo descarga Dart por rangos y se lo sirve al reproductor en local (`YoutubeAudioSource`).

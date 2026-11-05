@@ -5,6 +5,8 @@
 - Completa: ADR-0010. Su nota de 2026-11-02 queda sustituida por este documento.
 - Relacionadas: ADR-0006 (audio publicado en la web), ADR-0007 (catálogo como fuente de verdad) y ADR-0008 (entrada por incidencias).
 
+> **Nota (2026-11-05):** desde la fase 3 de [ADR-0020](ADR-0020-audio-en-r2.md), `frontend/web/audio/` ya no existe: el audio público lo sirve Cloudflare R2 y Vercel redirige `/audio/<id>.opus` al bucket.
+
 ## Contexto
 
 `procesar` generaba `frontend/web/data/*.json` y el audio publicado, los empaquetaba, y `publicar` los validaba por ruta y tipo de fichero y los aplicaba tal cual (ADR-0010). La validación no mira el contenido: un paquete con un `songs.json` forjado, por ejemplo con un título que lleve HTML, llegaba a `main` y, con él, a la web.

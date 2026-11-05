@@ -393,18 +393,18 @@ def test_publishing_reports_the_public_files_the_package_did_not_bring(main_publ
     assert result["parte_publica"]["sustituidos_del_paquete"] == []
 
 
-def test_publishing_replaces_a_forged_public_audio_of_the_same_size(main_publicado, tmp_path):
+def test_publishing_drops_public_audio_that_a_package_brings_to_the_web(main_publicado, tmp_path):
+    # La web ya no publica audio (lo sirve R2, ADR-0020): si un paquete forjado lo trae, la regeneración lo quita.
     repo = main_publicado
     head = paquete.head_commit(repo)
-    real = (repo / SONG_WEB_AUDIO).read_bytes()
-    forjado = b"X" * len(real)
     package = _package(
-        tmp_path, files={SONG_WEB_AUDIO: forjado}, changes=[{"ruta": SONG_WEB_AUDIO, "estado": "M"}], base=head,
+        tmp_path, files={SONG_WEB_AUDIO: b"X" * 64}, changes=[{"ruta": SONG_WEB_AUDIO, "estado": "A"}], base=head,
     )
 
     result = paquete.publish_package(package, repo, head=head)
 
-    assert _index_bytes(repo, SONG_WEB_AUDIO) == real
+    assert not (repo / SONG_WEB_AUDIO).exists()
+    assert SONG_WEB_AUDIO not in _git_output(repo, "diff", "--cached", "--name-only")
     assert result["parte_publica"]["sustituidos_del_paquete"] == [SONG_WEB_AUDIO]
 
 

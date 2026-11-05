@@ -107,6 +107,58 @@ void main() {
       },
     );
 
+    test(
+      'una canción transmitida que falla en R2 se reintenta una sola vez desde la web',
+      () {
+        expect(
+          shouldRetryFromFallback(song: _song(kA), cached: false, tried: {}),
+          isTrue,
+        );
+        // Ya reintentada en esta cola: se salta como antes.
+        expect(
+          shouldRetryFromFallback(song: _song(kA), cached: false, tried: {kA}),
+          isFalse,
+        );
+        expect(
+          shouldRetryFromFallback(song: _song(kB), cached: false, tried: {kA}),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'no se reintenta desde la web lo guardado, lo local ni lo que no tiene audio en la web',
+      () {
+        expect(
+          shouldRetryFromFallback(song: _song(kA), cached: true, tried: {}),
+          isFalse,
+        );
+        expect(
+          shouldRetryFromFallback(
+            song: _song(kLocal, local: true),
+            cached: false,
+            tried: {},
+          ),
+          isFalse,
+        );
+        final noWebAudio = Song(
+          id: 'yt-abc',
+          title: 'Sin audio en la web',
+          artist: '',
+          year: null,
+          tags: const [],
+          folderId: null,
+          durationS: 0,
+          license: '',
+          audio: '',
+        );
+        expect(
+          shouldRetryFromFallback(song: noWebAudio, cached: false, tried: {}),
+          isFalse,
+        );
+      },
+    );
+
     test('solo se borra lo cacheado que no está en el catálogo ni en uso', () {
       expect(
         prunableAudioIds(cached: {kA, kB, kC}, catalog: {kA}, inUse: {kB}),
