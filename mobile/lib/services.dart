@@ -22,7 +22,7 @@ class AppServices {
     required this.playback,
     required this.collections,
     required this.settings,
-    this.covers = const NoCoverImages(),
+    CoverImages covers = const NoCoverImages(),
     this.openUrl = openInBrowser,
     this.submitEdit = submitLibraryEdit,
     this.submitCover = submitCatalogCover,
@@ -32,20 +32,26 @@ class AppServices {
     this.youtube,
     this.streamResolver,
     this.clock = DateTime.now,
-  });
+    // El campo es privado: el getter [covers] lo envuelve con las vistas previas pendientes.
+    // ignore: prefer_initializing_formals
+  }) : _covers = covers;
 
   final LibraryController library;
   final PlaybackPort playback;
   final CollectionsController collections;
   final SettingsController settings;
 
-  /// Portadas de la web guardadas en el teléfono.
-  final CoverImages covers;
+  final CoverImages _covers;
+
+  /// Portadas de la web guardadas en el teléfono. Las portadas enviadas que aún no han llegado al catálogo se ven ya
+  /// con su vista previa (ADR-0027).
+  CoverImages get covers => library.edits.coverImages(_covers);
 
   /// Abre direcciones en el navegador (peticiones a la biblioteca común).
   final UrlOpener openUrl;
 
-  /// Guarda cambios de la biblioteca común por /api/editar (ADR-0022).
+  /// Guarda cambios de la biblioteca común por /api/editar (ADR-0022). La interfaz los envía por
+  /// `library.edits` (ADR-0027), que evita duplicados y los deja pendientes.
   final EditSubmitter submitEdit;
 
   /// Guarda la portada de una canción o un álbum del catálogo.

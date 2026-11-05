@@ -10,6 +10,7 @@ import 'collection_ref.dart';
 import 'common.dart';
 import 'duplicate_review.dart';
 import 'homeostasia.dart';
+import 'pending_edits_panel.dart';
 import 'playlist_flows.dart';
 import 'uploads_panel.dart';
 
@@ -114,6 +115,7 @@ class _LibraryPageState extends State<LibraryPage> {
               ),
             ),
             SliverToBoxAdapter(child: UploadsPanel(services: services)),
+            SliverToBoxAdapter(child: PendingEditsButton(services: services)),
             SliverToBoxAdapter(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,

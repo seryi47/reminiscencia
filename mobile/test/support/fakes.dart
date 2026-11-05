@@ -11,10 +11,12 @@ import 'package:reminiscencia/collections.dart';
 import 'package:reminiscencia/collections_controller.dart';
 import 'package:reminiscencia/collections_store.dart';
 import 'package:reminiscencia/covers.dart';
+import 'package:reminiscencia/edit_remote.dart';
 import 'package:reminiscencia/image_picker.dart';
 import 'package:reminiscencia/library_controller.dart';
 import 'package:reminiscencia/library_requests.dart';
 import 'package:reminiscencia/library_store.dart';
+import 'package:reminiscencia/pending_edits.dart';
 import 'package:reminiscencia/playback.dart';
 import 'package:reminiscencia/playlist_covers.dart';
 import 'package:reminiscencia/services.dart';
@@ -326,7 +328,7 @@ class MemoryCollectionsRepository implements CollectionsRepository {
 }
 
 /// Servicios de la app con todos los fakes, y acceso directo a ellos para las aserciones.
-({
+typedef TestServices = ({
   AppServices services,
   FakeLibrarySource source,
   FakePlaybackPort playback,
@@ -337,8 +339,13 @@ class MemoryCollectionsRepository implements CollectionsRepository {
   FakeCoverImages covers,
   FakeCoverStore coverStore,
   MemoryPlaylistCoverStore playlistCovers,
-})
-buildTestServices({
+  FakeEditStatus editStatus,
+  FakePollTimer editTimers,
+  MemoryPendingEditsStore editsStore,
+});
+
+/// Monta [TestServices].
+TestServices buildTestServices({
   List<Song> songs = const [],
   List<Folder> folders = const [],
   Object? libraryError,
@@ -359,6 +366,9 @@ buildTestServices({
   YoutubeImporter? youtube,
   YoutubeStreamResolver? streamResolver,
   AudioDurationProbe? probeDuration,
+  FakeEditStatus? editStatus,
+  FakePollTimer? editTimers,
+  MemoryPendingEditsStore? editsStore,
 }) {
   final source = FakeLibrarySource(
     songs: songs,
@@ -374,6 +384,10 @@ buildTestServices({
   final covers = FakeCoverImages(availableCovers);
   final coverStore = FakeCoverStore();
   final playlistCovers = MemoryPlaylistCoverStore();
+  final status = editStatus ?? FakeEditStatus();
+  final editTimer = editTimers ?? FakePollTimer();
+  final edits = editsStore ?? MemoryPendingEditsStore();
+  var issues = 0;
   final services = AppServices(
     library: LibraryController(
       source: source,
@@ -384,6 +398,9 @@ buildTestServices({
       uploadsStore: uploadsStore,
       pollTimer: pollTimer ?? FakePollTimer().call,
       clock: clock,
+      editStatus: status.call,
+      editsStore: edits,
+      editTimer: editTimer.call,
     ),
     playback: playback,
     collections: CollectionsController(
@@ -400,12 +417,12 @@ buildTestServices({
     submitEdit: (request) async {
       if (submitError != null) throw submitError;
       submitted.add(request);
-      return 'Guardado.';
+      return EditReceipt(message: 'Guardado.', issue: ++issues);
     },
     submitCover: (id, jpeg) async {
       if (submitError != null) throw submitError;
       submittedCovers.add((id: id, jpeg: jpeg));
-      return 'Guardado.';
+      return const EditReceipt(message: 'Guardado.');
     },
     pickImage: pickImage ?? () async => null,
     pickAudio: pickAudio ?? () async => const [],
@@ -425,7 +442,25 @@ buildTestServices({
     covers: covers,
     coverStore: coverStore,
     playlistCovers: playlistCovers,
+    editStatus: status,
+    editTimers: editTimer,
+    editsStore: edits,
   );
+}
+
+/// Estado falso de las ediciones (GET /api/editar?incidencia=N): [states] por número (por defecto 'abierta') o
+/// [error] si «no hay conexión». Cuenta las consultas.
+class FakeEditStatus {
+  final Map<int, String> states = {};
+  Object? error;
+  int fetches = 0;
+
+  Future<String> call(int issue) async {
+    fetches++;
+    final failure = error;
+    if (failure != null) throw failure;
+    return states[issue] ?? 'abierta';
+  }
 }
 
 /// Fija el tamaño lógico de la ventana de prueba (dp, con densidad 1).

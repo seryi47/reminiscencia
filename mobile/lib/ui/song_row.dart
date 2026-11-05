@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../upload_tracker.dart';
 import 'common.dart';
 import 'library_edit.dart';
+import 'pending_edits_panel.dart';
 import 'playlist_flows.dart';
 
 /// Fila de una canción: portada de 40 px, título, artista y menú. La que suena va en verde.
@@ -48,6 +49,7 @@ class SongRow extends StatelessWidget {
           selected: current,
           label: [
             song.title,
+            if (song.pendingEdit) 'cambio pendiente',
             if (details.isNotEmpty) details,
             formatDuration(song.durationS),
             if (current) now.playing ? 'sonando' : 'en pausa',
@@ -84,6 +86,10 @@ class SongRow extends StatelessWidget {
                             ),
                             Row(
                               children: [
+                                if (song.pendingEdit) ...[
+                                  const PendingEditBadge(),
+                                  const SizedBox(width: 6),
+                                ],
                                 if (song.local) ...[
                                   Icon(
                                     song.provisional

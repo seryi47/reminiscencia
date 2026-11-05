@@ -17,12 +17,16 @@ import 'common.dart';
 /// True si la canción es del catálogo común (las subidas a este teléfono no se editan).
 bool isEditableSong(Song song) => !song.local && isCatalogSongId(song.id);
 
-/// Guarda el cambio de [request] y avisa del resultado.
+/// Guarda el cambio de [request] y avisa del resultado. Queda pendiente (se ve ya con la marca «Pendiente») hasta que
+/// llega al catálogo; si ya hay uno igual pendiente, no se reenvía (ADR-0027).
 Future<void> openLibraryRequest(
   BuildContext context,
   AppServices services,
   LibraryRequest request,
-) => _save(context, () => services.submitEdit(request));
+) => _save(
+  context,
+  () => services.library.edits.submit(request, services.submitEdit),
+);
 
 Future<void> _save(
   BuildContext context,
@@ -854,7 +858,14 @@ Future<void> changeCatalogCoverFlow(
   }
   if (picked == null || !context.mounted) return;
   final Uint8List image = picked;
-  await _save(context, () => services.submitCover(id, resizeCoverImage(image)));
+  await _save(
+    context,
+    () => services.library.edits.submitCover(
+      id,
+      resizeCoverImage(image),
+      services.submitCover,
+    ),
+  );
 }
 
 /// Menú de un álbum: editar, añadir canciones, crear otro álbum, cambiar la portada y ordenar las canciones.

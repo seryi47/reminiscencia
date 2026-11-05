@@ -35,7 +35,7 @@
   - en `create_folder`, `knownFolderIds` (los álbumes que había al crearlo).
 - **Persistencia:**
   - web: `localStorage`, clave `reminiscencia.ediciones`, `{ version: 1, items }`, con try/catch (si el navegador no deja guardar, vale durante la visita). La vista previa de una portada solo se guarda si cabe (si no, se guarda la edición sin vista previa);
-  - APK: `ediciones_pendientes.json` en la carpeta de documentos de la app, con la misma forma (la portada en base64).
+  - APK: `biblioteca-local/ediciones_pendientes.json` (la carpeta que Android deja fuera de las copias de seguridad, como `subidas/`), con la misma forma (la portada en base64).
 - Sobreviven a recargar la web o reabrir la APK, y sin conexión siguen pendientes.
 
 ### 3. Vista inmediata (optimista)
