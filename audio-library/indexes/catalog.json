@@ -3254,6 +3254,22 @@
       "size_bytes": 1393765,
       "added_at": "2026-11-05T12:06:34+00:00",
       "public": true
+    },
+    {
+      "id": "Se033664c18695ff1",
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+      "artist": "Rick Astley",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "e033664c18695ff1b09c2705a951dcc0d162fe5a56d1b00edeecab1ec8586dd8",
+      "duration_s": 213.05,
+      "codec": "opus",
+      "size_bytes": 1172714,
+      "added_at": "2026-11-05T13:46:53+00:00",
+      "public": true
     }
   ]
 }
