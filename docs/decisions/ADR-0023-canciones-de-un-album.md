@@ -4,6 +4,8 @@
 - Fecha: 2026-11-05.
 - Relacionadas: ADR-0008 (peticiones por incidencias), ADR-0016 (álbumes), ADR-0022 (editar sin GitHub, `/api/editar`).
 
+> **Nota (2026-11-05):** la causa de los fallos del contexto la resuelven [ADR-0025](ADR-0025-publicar-robusto.md) (`publicar` ya no rechaza el paquete si `main` cambió sin tocar la biblioteca, y reintenta el push con rebase) y [ADR-0024](ADR-0024-audio-privado-en-r2.md) (`/api/subir` ya no escribe en `main`). `move_songs` sigue teniendo sentido: una petición en lugar de N.
+
 ## Contexto
 
 - La APK tenía «Añadir canciones a este álbum», pero sin buscador y con una petición por canción. La web no lo tenía.

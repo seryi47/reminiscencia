@@ -5,10 +5,12 @@ on:
     paths:
       - "frontend/web/**"
       - "tests/web-e2e/**"
+      - "tests/fixtures/**"
   pull_request:
     paths:
       - "frontend/web/**"
       - "tests/web-e2e/**"
+      - "tests/fixtures/**"
 
 permissions:
   contents: read

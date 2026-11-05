@@ -1,0 +1,52 @@
+name: migrar-audio-privado
+
+# Migración del audio al bucket privado de R2 (ADR-0024, parte 1). A mano y solo desde main: sube todo
+# audio-library/audio/ (público y privado) al bucket privado (R2_PRIVATE_BUCKET), vuelve a listarlo y comprueba que cada
+# fichero está con el mismo tamaño y que cada canción del catálogo tiene su audio. Nunca borra nada, ni del bucket ni
+# del repositorio. Es el paso previo a sacar el audio de Git (parte 2): hay que lanzarlo, y que termine en verde,
+# después de fusionar la parte 1 y antes de fusionar la parte 2. Se puede lanzar varias veces: solo sube lo que falta.
+# Sin permiso de escritura en el repositorio ni token de GitHub; las credenciales de R2 solo llegan al paso que sube,
+# que ejecuta código de main con la biblioteca estándar de Python (no instala nada).
+
+on:
+  workflow_dispatch:
+
+# Cola propia: no entra en la de las escrituras al catálogo (library-catalog), para no desplazar una subida en espera.
+# Un 'publicar' simultáneo no estorba: los dos solo suben al bucket privado y ninguno borra de él.
+concurrency:
+  group: migrar-audio-privado
+  cancel-in-progress: false
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Obtener main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Preparar Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Subir el audio al bucket privado y comprobarlo
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "La migración solo se lanza desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+          python scripts/migrar_audio_privado.py --aplicar

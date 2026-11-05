@@ -7,6 +7,8 @@
 
 > **Nota (2026-11-05):** desde la fase 3 de [ADR-0020](ADR-0020-audio-en-r2.md), `frontend/web/audio/` ya no existe: el audio público lo sirve Cloudflare R2 y Vercel redirige `/audio/<id>.opus` al bucket.
 
+> **Nota (2026-11-05, ADR-0024):** la decisión 6 cambia en un punto: `sync_public` ya no comprueba que una canción pública tenga su audio en `audio-library/audio/` (el audio está en el bucket privado de R2). Esa parada la hace ahora `scripts/sync_r2.py` en `publicar`, antes de subir a `main`: si una canción pública no tiene audio ni en la copia local ni en ningún bucket, no se escribe nada en R2 ni en `main`. Ver [ADR-0024](ADR-0024-audio-privado-en-r2.md).
+
 ## Contexto
 
 `procesar` generaba `frontend/web/data/*.json` y el audio publicado, los empaquetaba, y `publicar` los validaba por ruta y tipo de fichero y los aplicaba tal cual (ADR-0010). La validación no mira el contenido: un paquete con un `songs.json` forjado, por ejemplo con un título que lleve HTML, llegaba a `main` y, con él, a la web.

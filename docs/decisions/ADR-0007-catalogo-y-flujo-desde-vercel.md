@@ -8,6 +8,8 @@
 
 > **Nota (2026-11-05):** desde la fase 3 de [ADR-0020](ADR-0020-audio-en-r2.md), `frontend/web/audio/` ya no existe: el audio público lo sirve Cloudflare R2 y Vercel redirige `/audio/<id>.opus` al bucket.
 
+> **Nota (2026-11-05, ADR-0024):** el catálogo sigue siendo la fuente de verdad en Git, pero el audio ya no: está en un bucket privado de Cloudflare R2. Ver [ADR-0024](ADR-0024-audio-privado-en-r2.md).
+
 ## Contexto
 
 Quieres que todo funcione desde la web de Vercel y desde la APK, sin depender de tu equipo. Vercel no puede descargar ni convertir audio (límites de tiempo, memoria y ausencia de ffmpeg, y tu regla de no meter procesado pesado allí). GitHub Actions sí puede.

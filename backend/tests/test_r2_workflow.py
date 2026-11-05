@@ -55,14 +55,39 @@ def test_publishing_uploads_to_r2_and_deletes_unpublished_audio_before_pushing_t
         assert job.index("scripts/aplicar_paquete.py") < sync < job.index("git push"), path.name
 
 
-def test_only_the_r2_step_receives_the_r2_credentials_and_never_the_github_token():
+def test_only_the_r2_steps_receive_the_r2_credentials_and_never_the_github_token():
+    # El paso que sincroniza los dos buckets y, en el buzón, el que borra de entrada/ lo ya publicado (ADR-0024).
+    expected = {"biblioteca.yml": ["sync_r2.py"], "buzon.yml": ["sync_r2.py", "entrada_r2.py limpiar"]}
     for path in PUBLISHERS:
         with_secrets = [step for step in _steps(_publicar(path)) if "secrets.R2_" in step]
-        assert len(with_secrets) == 1, path.name
-        step = with_secrets[0]
-        assert "sync_r2.py" in step and "GH_TOKEN" not in step and "git push" not in step
-        for name in SECRETS:
-            assert f"{name}: ${{{{ secrets.{name} }}}}" in step
+        assert [next(tool for tool in expected[path.name] if tool in step) for step in with_secrets] == \
+            expected[path.name], path.name
+        for step in with_secrets:
+            assert "GH_TOKEN" not in step and "git push" not in step and "github.token" not in step
+        sync = with_secrets[0]
+        for name in (*SECRETS, "R2_PRIVATE_BUCKET"):
+            assert f"{name}: ${{{{ secrets.{name} }}}}" in sync
+
+
+def test_the_review_workflow_and_the_migration_know_the_private_bucket():
+    assert "R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}" in _text()
+    migration = (WORKFLOW.parent / "migrar-audio-privado.yml").read_text(encoding="utf-8")
+    assert "R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}" in migration
+
+
+def test_the_migration_is_manual_from_main_read_only_on_the_repository_and_never_deletes():
+    text = (WORKFLOW.parent / "migrar-audio-privado.yml").read_text(encoding="utf-8")
+    trigger = text.split("\non:\n", 1)[1].split("\nconcurrency:", 1)[0]
+    assert [line for line in trigger.splitlines() if line.strip() and not line.startswith("#")] == ["  workflow_dispatch:"]
+    assert "contents: read" in text and "contents: write" not in text
+    assert "GH_TOKEN" not in text and "git push" not in text and "pip install" not in text
+    assert "ref: main" in text and "persist-credentials: false" in text
+    step = next(step for step in _steps(text) if "secrets.R2_" in step)
+    assert step.index('"$GITHUB_REF_NAME" != "main"') < step.index("python scripts/migrar_audio_privado.py --aplicar")
+    assert "R2_BUCKET:" not in step  # solo el bucket privado
+    assert "--borrar" not in text and "group: library-catalog" not in text
+    uses = [line.split("uses:")[1].split()[0] for line in text.splitlines() if "uses:" in line]
+    assert uses and all("@" in item and len(item.split("@")[1]) == 40 for item in uses)
 
 
 def test_the_r2_step_only_runs_from_main_and_skips_when_there_is_nothing_to_publish():
@@ -73,7 +98,7 @@ def test_the_r2_step_only_runs_from_main_and_skips_when_there_is_nothing_to_publ
 
 
 def test_no_workflow_with_r2_credentials_installs_packages():
-    for path in [WORKFLOW, *PUBLISHERS]:
+    for path in [WORKFLOW, *PUBLISHERS, WORKFLOW.parent / "migrar-audio-privado.yml"]:
         for step in _steps(path.read_text(encoding="utf-8")):
             if "secrets.R2_" in step:
                 assert "pip install" not in step, path.name

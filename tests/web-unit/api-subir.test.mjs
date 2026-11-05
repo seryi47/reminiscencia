@@ -1,134 +1,97 @@
-// Pruebas de la función de Vercel POST /api/subir (frontend/web/api/subir.js; ADR-0017) con la API de git de GitHub
-// simulada en memoria: validación (Ogg Opus, tamaño del trozo, cabeceras, nombre y ruta), trozos en orden, manifiesto y
-// licencia en el último, nunca sobrescribir (trozo repetido, sufijo del nombre), reintento si main cambia, y el token
-// fuera de las respuestas y de los registros. Sin red. Ejecución: node --test tests/web-unit/api-subir.test.mjs
+// Pruebas de la función de Vercel POST /api/subir (frontend/web/api/subir.js; ADR-0017 y ADR-0024) con el bucket
+// privado de R2 (API S3) y la API de GitHub simulados en memoria: validación (Ogg Opus, tamaño del trozo, cabeceras,
+// nombre), trozos en orden en entrada/<id>/ sin sobrescribir nunca, manifiesto con el último, aviso al workflow buzon
+// (repository_dispatch) y reintento seguro si el aviso falla, firma SigV4 (los mismos vectores que la de Python) y
+// las claves fuera de las respuestas y de los registros. Sin red. Ejecución: node --test tests/web-unit/api-subir.test.mjs
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import {
-  BUZON_DIRECTORY,
+  canonicalQuery,
   cleanStem,
-  commitMessage,
+  DISPATCH_EVENT,
   DONE_MESSAGE,
-  gitBlobSha,
   handleUpload,
   isOggOpus,
-  LICENSE_TEXT,
+  manifestText,
   MAX_CHUNK_BYTES,
-  PARTS_DIRECTORY,
   parseUploadHeaders,
-  uniqueName,
+  readConfig,
+  rfc3986,
+  signV4,
 } from '../../frontend/web/api/subir.js';
 import { buildOggOpus } from '../../frontend/web/js/cuidador/subida-local.js';
 
 const TOKEN = 'github_pat_PRUEBA_que_no_debe_salir_nunca';
-const ENV = { GITHUB_TOKEN: TOKEN };
+const SECRET = 'r2_secreto_PRUEBA_que_no_debe_salir_nunca';
+const ACCOUNT = '0123456789abcdef0123456789abcdef';
+const BUCKET = 'reminiscencia-audio-privado';
+const ENV = {
+  GITHUB_TOKEN: TOKEN,
+  R2_ACCOUNT_ID: ACCOUNT,
+  R2_ACCESS_KEY_ID: 'AKPRUEBA',
+  R2_SECRET_ACCESS_KEY: SECRET,
+  R2_PRIVATE_BUCKET: BUCKET,
+};
 const ID = '0f8fad5b-d9cb-469f-a165-70867728950e';
 const OPUS = buildOggOpus({ packets: [{ data: new Uint8Array([0xf8, 0xff, 0xfe]), samples: 960 }], channels: 1 });
+const NOW = () => new Date('2026-11-05T21:38:16Z');
+const VECTORS = JSON.parse(readFileSync(new URL('../fixtures/sigv4-vectores.json', import.meta.url), 'utf8')).casos;
 
 // ---------------------------------------------------------------------------------------------
-// GitHub simulado: commits, árboles (ruta → sha de blob) y la referencia de main
+// R2 y GitHub simulados: objetos del bucket privado (clave → bytes) y los repository_dispatch recibidos
 // ---------------------------------------------------------------------------------------------
 
-function fakeGitHub({ files = {}, failWith = null, raceOnce = false, alwaysRace = false } = {}) {
-  const blobs = new Map();
-  const trees = new Map();
-  const commits = new Map();
-  let counter = 0;
-  const newSha = () => (counter += 1).toString(16).padStart(40, '0');
-  const rootTree = newSha();
-  trees.set(rootTree, new Map(Object.entries(files).map(([path, content]) => {
-    const bytes = new TextEncoder().encode(content);
-    const sha = gitBlobSha(bytes);
-    blobs.set(sha, bytes);
-    return [path, sha];
-  })));
-  const root = newSha();
-  commits.set(root, { tree: rootTree, parents: [], message: 'inicial' });
-  const state = { head: root, calls: [], blobs, trees, commits, racesLeft: raceOnce ? 1 : 0 };
+function fakeServices({ objects = {}, r2FailWith = null, dispatchStatus = 204, raceOnPut = null } = {}) {
+  const state = { objects: new Map(Object.entries(objects)), calls: [], dispatches: [], dispatchStatus };
+  const reply = (status, body = null, type = 'application/xml') => new Response(body, { status, headers: { 'Content-Type': type } });
+  const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
-  const commitOnTop = (message, extra) => {
-    const tree = new Map(trees.get(commits.get(state.head).tree));
-    for (const [path, sha] of Object.entries(extra)) tree.set(path, sha);
-    const treeSha = newSha();
-    trees.set(treeSha, tree);
-    const sha = newSha();
-    commits.set(sha, { tree: treeSha, parents: [state.head], message });
-    state.head = sha;
-  };
-  state.otherCommit = () => commitOnTop('otro commit', { 'README.md': gitBlobSha(new Uint8Array([1])) });
-
-  const reply = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status });
   state.fetch = async (url, init = {}) => {
-    const { pathname, searchParams } = new URL(url);
+    const { host, pathname, search, searchParams } = new URL(url);
     const method = init.method ?? 'GET';
-    state.calls.push({ url, method, headers: init.headers, body: init.body });
-    if (failWith) return reply(failWith, { message: 'fallo simulado' });
-    const prefix = '/repos/seryi47/reminiscencia';
-    assert.ok(pathname.startsWith(prefix), pathname);
-    const path = pathname.slice(prefix.length);
-    const body = init.body ? JSON.parse(init.body) : null;
-    if (method === 'GET' && path === '/git/ref/heads/main') return reply(200, { object: { sha: state.head } });
-    if (method === 'GET' && path.startsWith('/git/commits/')) {
-      const sha = path.split('/').pop();
-      const commit = commits.get(sha);
-      return commit ? reply(200, { sha, tree: { sha: commit.tree } }) : reply(404, {});
+    const body = init.body === undefined ? undefined
+      : typeof init.body === 'string' ? new TextEncoder().encode(init.body) : new Uint8Array(init.body);
+    state.calls.push({ url, method, headers: init.headers ?? {}, body });
+
+    if (host === 'api.github.com') {
+      assert.equal(method, 'POST');
+      assert.equal(pathname, '/repos/seryi47/reminiscencia/dispatches');
+      state.dispatches.push(JSON.parse(new TextDecoder().decode(body)));
+      return new Response(null, { status: state.dispatchStatus });
     }
-    if (method === 'GET' && path.startsWith('/contents/')) {
-      const dir = decodeURIComponent(path.slice('/contents/'.length));
-      const tree = trees.get(commits.get(searchParams.get('ref')).tree);
-      const names = new Map();
-      for (const [file, sha] of tree) {
-        if (!file.startsWith(`${dir}/`)) continue;
-        const rest = file.slice(dir.length + 1);
-        const [name, ...more] = rest.split('/');
-        names.set(name, more.length ? { name, type: 'dir', sha: 'd'.repeat(40) } : { name, type: 'file', sha });
-      }
-      return names.size ? reply(200, [...names.values()]) : reply(404, { message: 'Not Found' });
+
+    assert.equal(host, `${ACCOUNT}.r2.cloudflarestorage.com`);
+    // La firma debe corresponder a lo que se envía: método, ruta, query, cuerpo y If-None-Match.
+    const headers = init.headers;
+    const extra = headers['If-None-Match'] ? { 'if-none-match': headers['If-None-Match'] } : {};
+    const expected = signV4({
+      method, host, path: pathname, query: search.slice(1), payload: body ?? new Uint8Array(0),
+      accessKeyId: 'AKPRUEBA', secretAccessKey: SECRET, region: 'auto', service: 's3', when: NOW(), extraHeaders: extra,
+    });
+    assert.equal(headers.Authorization, expected.Authorization, `firma de ${method} ${pathname}`);
+    if (r2FailWith) return reply(r2FailWith, `<Error>${SECRET}</Error>`);
+    assert.ok(pathname.startsWith(`/${BUCKET}`), pathname);
+    const key = decodeURIComponent(pathname.slice(BUCKET.length + 2));
+    if (method === 'GET' && key === '') {
+      assert.equal(searchParams.get('list-type'), '2');
+      const prefix = searchParams.get('prefix') ?? '';
+      const contents = [...state.objects.entries()].filter(([name]) => name.startsWith(prefix))
+        .map(([name, data]) => `<Contents><Key>${escape(name)}</Key><Size>${data.length}</Size></Contents>`).join('');
+      return reply(200, `<?xml version="1.0"?><ListBucketResult><IsTruncated>false</IsTruncated>${contents}</ListBucketResult>`);
     }
-    if (method === 'POST' && path === '/git/blobs') {
-      assert.equal(body.encoding, 'base64');
-      const bytes = new Uint8Array(Buffer.from(body.content, 'base64'));
-      const sha = gitBlobSha(bytes);
-      blobs.set(sha, bytes);
-      return reply(201, { sha });
+    if (method === 'GET') return state.objects.has(key) ? reply(200, state.objects.get(key), 'application/octet-stream') : reply(404);
+    if (method === 'PUT') {
+      assert.equal(headers['If-None-Match'], '*', 'nunca sobrescribe');
+      if (raceOnPut && raceOnPut.key === key && !state.objects.has(key)) state.objects.set(key, raceOnPut.data);
+      if (state.objects.has(key)) return reply(412);
+      state.objects.set(key, body);
+      return reply(200);
     }
-    if (method === 'POST' && path === '/git/trees') {
-      const tree = new Map(trees.get(body.base_tree));
-      for (const entry of body.tree) {
-        let sha = entry.sha;
-        if (entry.content !== undefined) {
-          const bytes = new TextEncoder().encode(entry.content);
-          sha = gitBlobSha(bytes);
-          blobs.set(sha, bytes);
-        }
-        assert.ok(blobs.has(sha), `blob ${sha}`);
-        tree.set(entry.path, sha);
-      }
-      const sha = newSha();
-      trees.set(sha, tree);
-      return reply(201, { sha });
-    }
-    if (method === 'POST' && path === '/git/commits') {
-      const sha = newSha();
-      commits.set(sha, { tree: body.tree, parents: body.parents, message: body.message });
-      return reply(201, { sha });
-    }
-    if (method === 'PATCH' && path === '/git/refs/heads/main') {
-      assert.equal(body.force, false);
-      if (alwaysRace || state.racesLeft > 0) {
-        state.racesLeft -= 1;
-        state.otherCommit();
-      }
-      if (commits.get(body.sha).parents[0] !== state.head) return reply(422, { message: 'Update is not a fast forward' });
-      state.head = body.sha;
-      return reply(200, { object: { sha: body.sha } });
-    }
-    throw new Error(`llamada no simulada: ${method} ${path}`);
+    throw new Error(`llamada no simulada: ${method} ${pathname}`);
   };
-  state.headTree = () => trees.get(commits.get(state.head).tree);
-  state.headCommit = () => commits.get(state.head);
-  state.fileText = (path) => new TextDecoder().decode(blobs.get(state.headTree().get(path)));
+  state.text = (key) => new TextDecoder().decode(state.objects.get(key));
   return state;
 }
 
@@ -147,10 +110,13 @@ function request({ name = 'Mi canción.mp3', id = ID, index = 0, total = 1, body
   });
 }
 
-async function send(github, options, env = ENV) {
-  const response = await handleUpload(request(options), { env, fetchImpl: github.fetch });
+async function send(services, options, env = ENV) {
+  const response = await handleUpload(request(options), { env, fetchImpl: services.fetch, now: NOW });
   return { status: response.status, body: await response.json(), headers: response.headers };
 }
+
+const part = (index, id = ID) => `entrada/${id}/${index}.part`;
+const manifest = (id = ID) => `entrada/${id}/manifiesto.json`;
 
 let logged;
 let originalError;
@@ -185,7 +151,6 @@ describe('cabecera Ogg Opus', () => {
 describe('nombre limpio', () => {
   test('el nombre original pierde su extensión: «Mi canción.mp3» se guarda como «Mi canción.opus»', () => {
     assert.equal(cleanStem('Mi canción.mp3'), 'Mi canción');
-    assert.equal(uniqueName(cleanStem('Mi canción.mp3')), 'Mi canción.opus');
     assert.equal(cleanStem('Copla (versión 2).FLAC'), 'Copla (versión 2)');
     assert.equal(cleanStem('a.b.c.wav'), 'a.b.c');
     assert.equal(cleanStem('sin extension'), 'sin extension');
@@ -207,12 +172,6 @@ describe('nombre limpio', () => {
     const wide = cleanStem(`${'ñ'.repeat(400)}.mp3`);
     assert.ok(Buffer.byteLength(wide) <= 180);
     assert.ok(Buffer.byteLength(`${wide} (99).opus`) <= 255);
-  });
-
-  test('nunca repite un nombre del buzón: añade un sufijo', () => {
-    assert.equal(uniqueName('Vals', ['README.md']), 'Vals.opus');
-    assert.equal(uniqueName('Vals', ['vals.OPUS']), 'Vals (2).opus');
-    assert.equal(uniqueName('Vals', ['Vals.opus', 'Vals (2).opus']), 'Vals (3).opus');
   });
 });
 
@@ -270,210 +229,260 @@ describe('cabeceras del contrato', () => {
   });
 });
 
-test('el mensaje del último commit lleva la línea de licencia que lee el workflow buzon', () => {
-  assert.equal(commitMessage({ name: 'Vals.opus', index: 0, total: 1 }), `Subida desde la web: Vals.opus\n\nLicencia: ${LICENSE_TEXT}\n`);
-  assert.equal(commitMessage({ name: 'Vals.opus', index: 0, total: 3 }), 'Subida desde la web: Vals.opus (trozo 1 de 3)\n');
-  assert.doesNotMatch(commitMessage({ name: 'Vals.opus', index: 1, total: 3 }), /Licencia/);
+test('el manifiesto tiene solo las claves que lee el buzón', () => {
+  assert.deepEqual(JSON.parse(manifestText({ name: 'Vals.opus', total: 3 })), { nombre: 'Vals.opus', partes: 3 });
+  assert.deepEqual(JSON.parse(manifestText({ name: 'Vals.opus', total: 1, album: { id: 'PL1', name: 'Disco' }, artist: 'Ana' })), {
+    nombre: 'Vals.opus', partes: 1, album: { id: 'PL1', name: 'Disco' }, artist: 'Ana',
+  });
+});
+
+describe('configuración', () => {
+  test('exige el token, las claves de R2 y el bucket privado, con formatos que no cambian el host', () => {
+    assert.ok(readConfig(ENV));
+    for (const name of Object.keys(ENV)) {
+      assert.equal(readConfig({ ...ENV, [name]: '  ' }), null, name);
+    }
+    assert.equal(readConfig({ ...ENV, R2_ACCOUNT_ID: 'evil.example.com/x' }), null);
+    assert.equal(readConfig({ ...ENV, R2_PRIVATE_BUCKET: '../otro' }), null);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
-// Petición completa con GitHub simulado
+// Firma SigV4: la misma que backend/sonidos/r2.py (sign_v4)
 // ---------------------------------------------------------------------------------------------
 
-describe('subida a GitHub', () => {
-  test('un archivo de un trozo: parte, manifiesto y licencia en un solo commit en main', async () => {
-    const github = fakeGitHub();
-    const { status, body } = await send(github, { name: 'Mi canción.mp3' });
-    assert.equal(status, 200);
-    assert.deepEqual(body, { ok: true, parte: 0, partes: 1, completa: true, repetido: false, nombre: 'Mi canción.opus', mensaje: DONE_MESSAGE });
-    const tree = github.headTree();
-    assert.equal(tree.get(`${PARTS_DIRECTORY}/${ID}/0.part`), gitBlobSha(OPUS));
-    assert.deepEqual(JSON.parse(github.fileText(`${PARTS_DIRECTORY}/${ID}/manifiesto.json`)), { nombre: 'Mi canción.opus', partes: 1 });
-    assert.match(github.headCommit().message, /^Subida desde la web: Mi canción\.opus\n\nLicencia: Subida desde la web pública; quien la sube declara tener derecho a publicarla\n$/);
+describe('firma SigV4', () => {
+  for (const vector of VECTORS) {
+    test(`coincide con Python: ${vector.nombre}`, () => {
+      const headers = signV4({
+        method: vector.method, host: vector.host, path: vector.path, query: vector.query,
+        payload: Buffer.from(vector.payload_b64, 'base64'), accessKeyId: vector.access_key_id,
+        secretAccessKey: vector.secret_access_key, region: vector.region, service: vector.service,
+        when: new Date(vector.when), extraHeaders: vector.extra_headers,
+      });
+      assert.deepEqual(headers, {
+        'x-amz-date': vector.esperado['x-amz-date'],
+        'x-amz-content-sha256': vector.esperado['x-amz-content-sha256'],
+        Authorization: vector.esperado.Authorization,
+      });
+    });
+  }
+
+  test('el primer vector es el ejemplo oficial de AWS (GET Object)', () => {
+    assert.match(VECTORS[0].esperado.Authorization, /Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41$/);
   });
 
-  test('incluye el álbum de YouTube en el manifiesto sin alterar los mensajes de licencia', async () => {
-    const github = fakeGitHub();
-    const { status } = await send(github, {
-      album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
+  test('codifica rutas y queries como urllib.parse.quote de Python', () => {
+    assert.equal(`/${BUCKET}/${rfc3986('entrada/canción (2).opus', { keepSlash: true })}`, VECTORS[3].path);
+    assert.equal(canonicalQuery({ prefix: 'audio/', 'list-type': '2', 'continuation-token': 'a b+c/=' }),
+      'continuation-token=a%20b%2Bc%2F%3D&list-type=2&prefix=audio%2F');
+    assert.equal(canonicalQuery({ 'list-type': '2', prefix: `entrada/${ID}/` }), VECTORS[1].query);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Petición completa con R2 y GitHub simulados
+// ---------------------------------------------------------------------------------------------
+
+describe('subida al bucket privado', () => {
+  test('un archivo de un trozo: parte y manifiesto en entrada/<id>/ y aviso al workflow buzon', async () => {
+    const services = fakeServices();
+    const { status, body } = await send(services, { name: 'Mi canción.mp3' });
+    assert.equal(status, 200);
+    assert.deepEqual(body, { ok: true, parte: 0, partes: 1, completa: true, repetido: false, nombre: 'Mi canción.opus', mensaje: DONE_MESSAGE });
+    assert.deepEqual([...services.objects.keys()].sort(), [part(0), manifest()].sort());
+    assert.deepEqual(services.objects.get(part(0)), OPUS);
+    assert.deepEqual(JSON.parse(services.text(manifest())), { nombre: 'Mi canción.opus', partes: 1 });
+    assert.deepEqual(services.dispatches, [{ event_type: DISPATCH_EVENT, client_payload: { id: ID } }]);
+    assert.equal(DISPATCH_EVENT, 'subida-web');
+  });
+
+  test('incluye el álbum de YouTube y el artista en el manifiesto', async () => {
+    const services = fakeServices();
+    const { status } = await send(services, {
       headers: {
         'X-Album-Id': 'PLVU-jIOit29A',
         'X-Album-Name': encodeURIComponent('Nuestro desacato'),
+        'X-Artista-Cancion': encodeURIComponent('Desakato'),
       },
     });
     assert.equal(status, 200);
-    assert.deepEqual(JSON.parse(github.fileText(`${PARTS_DIRECTORY}/${ID}/manifiesto.json`)), {
+    assert.deepEqual(JSON.parse(services.text(manifest())), {
       nombre: 'Mi canción.opus',
       partes: 1,
       album: { id: 'PLVU-jIOit29A', name: 'Nuestro desacato' },
-    });
-  });
-
-  test('incluye el artista de la canción en el manifiesto de subida', async () => {
-    const github = fakeGitHub();
-    const { status } = await send(github, {
-      headers: { 'X-Artista-Cancion': encodeURIComponent('Desakato') },
-    });
-    assert.equal(status, 200);
-    assert.deepEqual(JSON.parse(github.fileText(`${PARTS_DIRECTORY}/${ID}/manifiesto.json`)), {
-      nombre: 'Mi canción.opus',
-      partes: 1,
       artist: 'Desakato',
     });
   });
 
-  test('varios trozos en orden: el manifiesto y la licencia solo con el último; nada fuera de .partes', async () => {
-    const github = fakeGitHub({ files: { [`${BUZON_DIRECTORY}/README.md`]: 'buzón' } });
+  test('varios trozos en orden: el manifiesto y el aviso solo con el último; nada fuera de entrada/<id>/', async () => {
+    const services = fakeServices({ objects: { 'audio/S0123456789abcdef.opus': new Uint8Array([9]) } });
     const parts = [OPUS.subarray(0, 50), OPUS.subarray(50, 100), OPUS.subarray(100)];
-    const messages = [];
     for (let index = 0; index < parts.length; index += 1) {
-      const { status, body } = await send(github, { name: 'Vals largo.wav', index, total: 3, body: parts[index] });
+      const { status, body } = await send(services, { name: 'Vals largo.wav', index, total: 3, body: parts[index] });
       assert.equal(status, 200, JSON.stringify(body));
       assert.equal(body.completa, index === 2);
-      messages.push(github.headCommit().message);
-      assert.equal(github.headTree().has(`${PARTS_DIRECTORY}/${ID}/manifiesto.json`), index === 2);
+      assert.equal(services.objects.has(manifest()), index === 2);
+      assert.equal(services.dispatches.length, index === 2 ? 1 : 0);
     }
-    assert.match(messages[0], /trozo 1 de 3/);
-    assert.doesNotMatch(messages[1], /Licencia/);
-    assert.match(messages[2], /Licencia: /);
-    const joined = Buffer.concat([0, 1, 2].map((index) => Buffer.from(github.blobs.get(github.headTree().get(`${PARTS_DIRECTORY}/${ID}/${index}.part`)))));
+    const joined = Buffer.concat([0, 1, 2].map((index) => Buffer.from(services.objects.get(part(index)))));
     assert.deepEqual(new Uint8Array(joined), OPUS);
-    for (const path of github.headTree().keys()) {
-      assert.ok(path === `${BUZON_DIRECTORY}/README.md` || path.startsWith(`${PARTS_DIRECTORY}/${ID}/`), path);
+    for (const key of services.objects.keys()) {
+      assert.ok(key === 'audio/S0123456789abcdef.opus' || key.startsWith(`entrada/${ID}/`), key);
+    }
+    for (const call of services.calls.filter((item) => item.method === 'PUT')) {
+      assert.ok(new URL(call.url).pathname.startsWith(`/${BUCKET}/entrada/${ID}/`), call.url);
     }
   });
 
   test('un trozo sin los anteriores se rechaza', async () => {
-    const github = fakeGitHub();
-    const { status, body } = await send(github, { index: 1, total: 3, body: new Uint8Array([1, 2, 3]) });
+    const services = fakeServices();
+    const { status, body } = await send(services, { index: 1, total: 3, body: new Uint8Array([1, 2, 3]) });
     assert.equal(status, 409);
     assert.match(body.error, /Faltan trozos anteriores/);
+    assert.equal(services.objects.size, 0);
   });
 
-  test('nunca sobrescribe: un trozo repetido igual se da por bueno sin commit; distinto, se rechaza', async () => {
-    const github = fakeGitHub();
-    await send(github, { index: 0, total: 2 });
-    const head = github.head;
-    const again = await send(github, { index: 0, total: 2 });
+  test('nunca sobrescribe: un trozo repetido igual se da por bueno; distinto, se rechaza', async () => {
+    const services = fakeServices();
+    await send(services, { index: 0, total: 2 });
+    const puts = services.calls.filter((call) => call.method === 'PUT').length;
+    const again = await send(services, { index: 0, total: 2 });
     assert.equal(again.status, 200);
     assert.equal(again.body.repetido, true);
-    assert.equal(github.head, head, 'sin commit nuevo');
+    assert.equal(services.calls.filter((call) => call.method === 'PUT').length, puts, 'sin escribir de nuevo');
     const other = OPUS.slice();
     other[other.length - 1] ^= 0xff;
-    const changed = await send(github, { index: 0, total: 2, body: other });
+    const changed = await send(services, { index: 0, total: 2, body: other });
     assert.equal(changed.status, 409);
+    assert.deepEqual(services.objects.get(part(0)), OPUS);
+  });
+
+  test('si otra petición escribe el trozo entre la lista y la escritura, vale solo si es igual', async () => {
+    const same = fakeServices({ raceOnPut: { key: part(0), data: OPUS } });
+    assert.equal((await send(same, { index: 0, total: 2 })).body.repetido, true);
+    const other = fakeServices({ raceOnPut: { key: part(0), data: new Uint8Array([1]) } });
+    assert.equal((await send(other, { index: 0, total: 2 })).status, 409);
   });
 
   test('una subida ya completa no admite más trozos', async () => {
-    const github = fakeGitHub();
-    await send(github, {});
-    const { status, body } = await send(github, {});
-    assert.equal(status, 409);
-    assert.match(body.error, /ya está completa/);
+    const services = fakeServices();
+    await send(services, { index: 0, total: 2 });
+    await send(services, { index: 1, total: 2, body: new Uint8Array([7, 7]) });
+    const first = await send(services, { index: 0, total: 2 });
+    assert.equal(first.status, 409);
+    assert.match(first.body.error, /ya está completa/);
+    const different = await send(services, { index: 1, total: 2, body: new Uint8Array([8]) });
+    assert.equal(different.status, 409);
   });
 
-  test('si el nombre ya está en el buzón, el manifiesto lleva un sufijo', async () => {
-    const github = fakeGitHub({ files: { [`${BUZON_DIRECTORY}/Mi canción.opus`]: 'otro' } });
-    const { body } = await send(github, { name: 'Mi canción.mp3' });
-    assert.equal(body.nombre, 'Mi canción (2).opus');
-    assert.deepEqual(JSON.parse(github.fileText(`${PARTS_DIRECTORY}/${ID}/manifiesto.json`)), { nombre: 'Mi canción (2).opus', partes: 1 });
-    assert.equal(github.fileText(`${BUZON_DIRECTORY}/Mi canción.opus`), 'otro');
+  test('si el aviso a GitHub falla, el cliente reintenta el último trozo y solo se repite el aviso', async () => {
+    const services = fakeServices({ dispatchStatus: 502 });
+    const failed = await send(services, {});
+    assert.equal(failed.status, 502);
+    assert.match(failed.body.error, /GitHub/);
+    assert.ok(services.objects.has(manifest()), 'la subida ya está guardada');
+    services.dispatchStatus = 204;
+    const retried = await send(services, {});
+    assert.equal(retried.status, 200);
+    assert.equal(retried.body.repetido, true);
+    assert.equal(retried.body.nombre, 'Mi canción.opus');
+    assert.equal(services.dispatches.length, 2);
   });
 
-  test('si main cambia entre medias, rehace el commit encima sin perder el otro', async () => {
-    const github = fakeGitHub({ raceOnce: true });
-    const { status } = await send(github, {});
-    assert.equal(status, 200);
-    assert.ok(github.headTree().has('README.md'), 'el commit concurrente sigue en main');
-    assert.ok(github.headTree().has(`${PARTS_DIRECTORY}/${ID}/0.part`));
-    assert.equal(github.calls.filter((call) => call.method === 'POST' && call.url.endsWith('/git/blobs')).length, 1, 'el blob se crea una vez');
-  });
-
-  test('si main no deja de cambiar, responde 503 tras varios intentos', async () => {
-    const github = fakeGitHub({ alwaysRace: true });
-    const { status, body } = await send(github, {});
-    assert.equal(status, 503);
-    assert.match(body.error, /Inténtalo de nuevo/);
+  test('sin permiso para avisar a GitHub, 500 con un mensaje claro', async () => {
+    for (const status of [401, 403, 404]) {
+      const services = fakeServices({ dispatchStatus: status });
+      const { status: code, body } = await send(services, {});
+      assert.equal(code, 500);
+      assert.match(body.error, /permiso para avisar a GitHub/);
+    }
   });
 
   test('el primer trozo debe ser Ogg Opus; los siguientes no se miran', async () => {
-    const github = fakeGitHub();
+    const services = fakeServices();
     const wav = new TextEncoder().encode('RIFF\u0000\u0000\u0000\u0000WAVEfmt de prueba que no es Opus en absoluto');
-    const first = await send(github, { body: wav });
+    const first = await send(services, { body: wav });
     assert.equal(first.status, 415);
     assert.match(first.body.error, /no es Ogg Opus/);
-    assert.equal(github.calls.length, 0, 'no se llama a GitHub');
-    await send(github, { index: 0, total: 2 });
-    assert.equal((await send(github, { index: 1, total: 2, body: wav })).status, 200);
+    assert.equal(services.calls.length, 0, 'no se llama a R2 ni a GitHub');
+    await send(services, { index: 0, total: 2 });
+    assert.equal((await send(services, { index: 1, total: 2, body: wav })).status, 200);
   });
 
   test('un trozo de más de 4 MB o vacío se rechaza con un mensaje claro', async () => {
-    const github = fakeGitHub();
+    const services = fakeServices();
     const big = new Uint8Array(MAX_CHUNK_BYTES + 1);
     big.set(OPUS);
-    const tooBig = await send(github, { body: big });
+    const tooBig = await send(services, { body: big });
     assert.equal(tooBig.status, 413);
     assert.match(tooBig.body.error, /4 MB/);
-    const empty = await send(github, { body: new Uint8Array(0) });
+    const empty = await send(services, { body: new Uint8Array(0) });
     assert.equal(empty.status, 400);
     assert.match(empty.body.error, /vacío/);
     const exact = new Uint8Array(MAX_CHUNK_BYTES);
     exact.set(OPUS);
-    assert.equal((await send(github, { body: exact })).status, 200, 'justo 4 MB vale');
+    assert.equal((await send(services, { body: exact })).status, 200, 'justo 4 MB vale');
   });
 
-  test('cabeceras mal formadas: 400 en JSON y en español, sin llamar a GitHub', async () => {
-    const github = fakeGitHub();
-    const { status, body, headers } = await send(github, { id: 'abc' });
+  test('cabeceras mal formadas: 400 en JSON y en español, sin llamar a nadie', async () => {
+    const services = fakeServices();
+    const { status, body, headers } = await send(services, { id: 'abc' });
     assert.equal(status, 400);
     assert.equal(headers.get('content-type'), 'application/json; charset=utf-8');
     assert.equal(body.ok, false);
     assert.match(body.error, /UUID/);
-    assert.equal(github.calls.length, 0);
+    assert.equal(services.calls.length, 0);
   });
 
   test('solo admite POST', async () => {
-    const response = await handleUpload(request({ method: 'GET' }), { env: ENV, fetchImpl: fakeGitHub().fetch });
+    const response = await handleUpload(request({ method: 'GET' }), { env: ENV, fetchImpl: fakeServices().fetch, now: NOW });
     assert.equal(response.status, 405);
   });
 });
 
-describe('token', () => {
-  test('sin GITHUB_TOKEN responde 500 con un mensaje claro y no llama a GitHub', async () => {
-    for (const env of [{}, { GITHUB_TOKEN: '' }, { GITHUB_TOKEN: '   ' }]) {
-      const github = fakeGitHub();
-      const { status, body } = await send(github, {}, env);
+describe('claves y token', () => {
+  test('sin configuración responde 500 con un mensaje claro y no llama a nadie', async () => {
+    for (const env of [{}, { ...ENV, GITHUB_TOKEN: '' }, { ...ENV, R2_SECRET_ACCESS_KEY: '   ' }, { ...ENV, R2_PRIVATE_BUCKET: '' }]) {
+      const services = fakeServices();
+      const { status, body } = await send(services, {}, env);
       assert.equal(status, 500);
-      assert.match(body.error, /falta GITHUB_TOKEN/);
-      assert.equal(github.calls.length, 0);
+      assert.match(body.error, /no está configurada/);
+      assert.equal(services.calls.length, 0);
     }
   });
 
-  test('el token solo va a api.github.com en la cabecera Authorization', async () => {
-    const github = fakeGitHub();
-    await send(github, {});
-    assert.ok(github.calls.length > 0);
-    for (const call of github.calls) {
-      assert.ok(call.url.startsWith('https://api.github.com/repos/seryi47/reminiscencia/'), call.url);
-      assert.equal(call.headers.Authorization, `Bearer ${TOKEN}`);
-      assert.equal(String(call.body ?? '').includes(TOKEN), false);
+  test('el token solo va a api.github.com y la clave secreta de R2 nunca sale en ninguna petición', async () => {
+    const services = fakeServices();
+    await send(services, {});
+    assert.ok(services.calls.length > 0);
+    for (const call of services.calls) {
+      const sent = JSON.stringify(call.headers) + call.url + Buffer.from(call.body ?? []).toString('latin1');
+      assert.equal(sent.includes(SECRET), false, call.url);
+      if (call.url.startsWith('https://api.github.com/')) {
+        assert.equal(call.headers.Authorization, `Bearer ${TOKEN}`);
+      } else {
+        assert.equal(sent.includes(TOKEN), false, call.url);
+        assert.ok(call.url.startsWith(`https://${ACCOUNT}.r2.cloudflarestorage.com/${BUCKET}`), call.url);
+      }
     }
   });
 
-  test('el token no sale en las respuestas ni en los registros, tampoco cuando GitHub falla', async () => {
-    for (const failWith of [401, 403, 500, 404]) {
-      const github = fakeGitHub({ failWith });
-      const response = await handleUpload(request({}), { env: ENV, fetchImpl: github.fetch });
+  test('las claves no salen en las respuestas ni en los registros, tampoco cuando R2 o GitHub fallan', async () => {
+    for (const r2FailWith of [401, 403, 500, 404]) {
+      const services = fakeServices({ r2FailWith });
+      const response = await handleUpload(request({}), { env: ENV, fetchImpl: services.fetch, now: NOW });
       const text = await response.text();
       assert.ok(response.status >= 500, String(response.status));
-      assert.equal(text.includes(TOKEN), false);
+      assert.equal(text.includes(TOKEN) || text.includes(SECRET), false);
       assert.match(JSON.parse(text).error, /[a-záéíóú]/);
     }
-    const thrower = async () => { throw new Error(`fallo de red con ${TOKEN}`); };
-    const network = await handleUpload(request({}), { env: ENV, fetchImpl: thrower });
+    const thrower = async () => { throw new Error(`fallo de red con ${TOKEN} y ${SECRET}`); };
+    const network = await handleUpload(request({}), { env: ENV, fetchImpl: thrower, now: NOW });
     assert.equal(network.status, 502);
-    assert.equal((await network.text()).includes(TOKEN), false);
+    const text = await network.text();
+    assert.equal(text.includes(TOKEN) || text.includes(SECRET), false);
     assert.ok(logged.length > 0);
-    for (const line of logged) assert.equal(line.includes(TOKEN), false, line);
+    for (const line of logged) assert.equal(line.includes(TOKEN) || line.includes(SECRET), false, line);
   });
 });

@@ -4,6 +4,8 @@
 - Fecha: 2026-11-02
 - Completa: ADR-0008 (decisiones 4 y 5, y el control de ejecución y de salida).
 
+> **Nota (2026-11-05):** [ADR-0025](ADR-0025-publicar-robusto.md) relaja la comprobación de la base: si `main` avanzó entre el procesado y la publicación, el paquete se aplica igual cuando su base es un antecesor de `main` y lo nuevo no toca ninguna ruta del paquete ni el catálogo, el audio, las portadas o la parte pública; y el paso que sube a `main` rebasa y reintenta con la misma regla. Desde [ADR-0024](ADR-0024-audio-privado-en-r2.md), `buzon.yml` tiene además un job `recoger` (credenciales de R2, sin token) antes de `procesar`, que sigue sin secretos.
+
 ## Contexto
 
 En la primera versión de ADR-0008, un único job de `biblioteca.yml` descargaba ficheros de Internet Archive, los convertía con ffmpeg y, en el mismo job, ejecutaba código del árbol de trabajo y hacía el push a `main` con el `GITHUB_TOKEN`. La revisión de seguridad de 2026-11-02 lo señaló: un procesado comprometido (un fallo de ffmpeg con un fichero manipulado, por ejemplo) podía alterar código que luego se ejecutaba con el token, y nada comprobaba qué rutas se publicaban. La web se despliega desde `main` (ADR-0006), así que lo que entra en `main` se publica.

@@ -7,6 +7,8 @@
 
 > **Nota (2026-11-05):** desde la fase 3 de [ADR-0020](ADR-0020-audio-en-r2.md), `frontend/web/audio/` ya no existe: el audio público lo sirve Cloudflare R2 y Vercel redirige `/audio/<id>.opus` al bucket.
 
+> **Nota (2026-11-05, ADR-0024):** la decisión 4 cambia: `api/subir.js` ya no hace commits en `main`. Guarda cada trozo en `entrada/<UUID>/` del bucket privado de R2 (sin sobrescribir, `If-None-Match: *`), con el último escribe el manifiesto y lanza `buzon.yml` con un `repository_dispatch` (`subida-web`). El contrato de la petición y de la respuesta no cambia (la web y la APK no se han tocado), salvo que ya no hay 503 por «main no deja de cambiar» y que el nombre que devuelve es el limpio, sin sufijo: el sufijo « (2)» lo pone el buzón. La licencia es la misma (`WEB_LICENSE` en `sonidos.buzon`). Ver [ADR-0024](ADR-0024-audio-privado-en-r2.md).
+
 ## Contexto
 
 Hasta ahora, «Subir canciones» ofrecía dos caminos: guardar el audio solo en el navegador (ADR-0012) o abrir la página de subida de GitHub, que exige una cuenta con permiso de escritura y una línea «Licencia: …» escrita a mano (ADR-0014). Para casi todas las personas que usan la web, ninguno de los dos sirve para que una canción llegue a los demás.
