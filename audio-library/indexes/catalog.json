@@ -3318,6 +3318,38 @@
       "size_bytes": 1496237,
       "added_at": "2026-11-05T14:54:55+00:00",
       "public": true
+    },
+    {
+      "id": "Sa828477772cd3e27",
+      "title": "Bad Bunny - DtMF (Letra)",
+      "artist": "iPerol",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "a828477772cd3e27a84a40bdd10db73eb276a2e920c4a1ca5b2dba3b4e38bdd2",
+      "duration_s": 240.287,
+      "codec": "opus",
+      "size_bytes": 1543672,
+      "added_at": "2026-11-05T16:26:36+00:00",
+      "public": true
+    },
+    {
+      "id": "S2386f99bdbcfbecc",
+      "title": "Nicki Nicole - Wapo Traketero (Video Oficial)",
+      "artist": "nicki nicole",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "2386f99bdbcfbecce6cd050464957d53dee6c8f21f3387342efe3ae215049a99",
+      "duration_s": 175.526,
+      "codec": "opus",
+      "size_bytes": 1167713,
+      "added_at": "2026-11-05T16:26:38+00:00",
+      "public": true
     }
   ]
 }
