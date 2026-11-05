@@ -9,6 +9,8 @@
 
 `publicar` rechazaba el paquete si su `base` (el HEAD de `main` cuando empezó `procesar`) no era el HEAD de `main` al publicar. Era correcto pero demasiado estricto: cualquier commit ajeno entre el procesado y la publicación tiraba la petición, aunque no tuviera nada que ver con la biblioteca. El caso real: `/api/subir` hacía un commit en `main` por cada trozo de una subida (`audio-library/buzon/.partes/<UUID>/`), así que con dos subidas seguidas desde la web la publicación de la primera fallaba casi siempre («main cambió mientras se procesaba la petición»), y había que relanzar el run. Lo mismo pasaba en el `git push` final si `main` avanzaba entre la validación y la subida (rechazo por no ser *fast-forward*).
 
+Evidencia recogida en GitHub Actions hasta el 2026-11-05 (revisión de CI del mismo día): 21 ejecuciones de `buzon` (por ejemplo, la 42092655183) y 7 de `biblioteca` fallaron con «main cambió mientras se procesaba la petición», y 2 con el `git push` rechazado (41835170335 y 41834957251). La cola `library-catalog` llegó a tener 74 ejecuciones en espera (`queue: max` admite 100), así que cada ejecución tirada y relanzada alargaba la cola de todas las demás.
+
 ## Decisión
 
 1. **Base antecesora compatible** (`sonidos.paquete.check_base`, llamada desde `read_manifest` con el repositorio). Si la `base` del paquete no es el HEAD de `main`, el paquete sigue valiendo y se aplica sobre el HEAD cuando:
