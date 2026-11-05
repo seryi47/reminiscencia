@@ -264,7 +264,9 @@ function fakeStorage(initial = {}) {
 }
 
 const settle = async () => {
+  // Pasos de reloj real además de microtareas: en un ejecutor lento (CI) 30 setImmediate no bastaban.
   for (let i = 0; i < 30; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 };
 
 class FakeUploadError extends Error {
