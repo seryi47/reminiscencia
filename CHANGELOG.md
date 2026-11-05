@@ -1,3 +1,8 @@
+## Sin publicar: «Escuchar» por Dart y apt con reintentos (2026-11-05)
+
+- APK: el audio de YouTube lo descarga Dart por rangos y se lo sirve al reproductor en local (`YoutubeAudioSource`), para evitar el «Source error» por desajuste de IP en la URL firmada.
+- Workflows `buzon` y `biblioteca`: «Instalar ffmpeg» con tres intentos y límite de tiempo; un `apt` colgado ya no bloquea la cola de publicación.
+
 # CHANGELOG
 
 ## Sin publicar: buscar en YouTube desde el buscador (2026-11-05)

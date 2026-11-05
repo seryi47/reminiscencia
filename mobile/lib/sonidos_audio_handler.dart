@@ -12,6 +12,7 @@ import 'library_store.dart';
 import 'playback.dart';
 import 'playback_plan.dart';
 import 'song.dart';
+import 'youtube_audio_source.dart';
 
 /// Reproductor en segundo plano con controles del sistema y el contrato [PlaybackPort] para la interfaz.
 /// Si la canción está guardada se reproduce desde el fichero local; si no, se transmite
@@ -252,7 +253,9 @@ class SonidosAudioHandler extends BaseAudioHandler
     );
     queue.add([item]);
     try {
-      await _player.setAudioSources([AudioSource.uri(uri, headers: headers, tag: queueId)]);
+      await _player.setAudioSources([
+        YoutubeAudioSource(uri: uri, headers: headers, tag: queueId),
+      ]);
     } catch (error) {
       queue.add(const []);
       mediaItem.add(null);
