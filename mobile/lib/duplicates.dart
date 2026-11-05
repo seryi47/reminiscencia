@@ -52,7 +52,9 @@ final RegExp _group = RegExp(r'[(\[]([^()\[\]]*)[)\]]');
 final Set<String> _tags = kDuplicateTags.toSet();
 final Set<String> _featuring = kFeaturingMarks.toSet();
 
-String _fold(String text) {
+/// Minúsculas, sin marcas combinantes (U+0300 a U+036F) y con las letras de [kFoldFrom] plegadas a [kFoldTo]. Lo usan
+/// también la búsqueda (lib/fuzzy_search.dart, ADR-0028) y la web (foldText de js/catalog.js).
+String foldText(String text) {
   final lower = text.toLowerCase().replaceAll(_combining, '');
   final buffer = StringBuffer();
   for (final rune in lower.runes) {
@@ -71,7 +73,7 @@ List<String> _words(String text) => text
 
 /// Título comparable: sin mayúsculas, acentos, signos, etiquetas como «(Official Video)» ni featuring.
 String normalizeDuplicateTitle(String title) {
-  final grouped = _fold(title).replaceAllMapped(_group, (match) {
+  final grouped = foldText(title).replaceAllMapped(_group, (match) {
     final inner = match.group(1)!;
     final words = _words(inner);
     if (words.isNotEmpty &&
@@ -92,7 +94,7 @@ String normalizeDuplicateTitle(String title) {
 
 /// Artista comparable: sin mayúsculas, acentos ni signos, con espacios simples.
 String normalizeDuplicateArtist(String artist) =>
-    _words(_fold(artist)).join(' ');
+    _words(foldText(artist)).join(' ');
 
 /// Lo que se compara de una canción: título, artista y duración (null si no se conoce).
 @immutable

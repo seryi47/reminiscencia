@@ -132,7 +132,7 @@ void main() {
       );
     });
 
-    test('artista de 0 a 80 caracteres', () {
+    test('artista del álbum de 0 a 80 caracteres; de la canción, de 0 a 200', () {
       expect(
         LibraryRequest.createAlbum(
           name: 'x',
@@ -148,9 +148,18 @@ void main() {
         () => LibraryRequest.editSong(
           songId: songId,
           title: 't',
-          artist: 'z' * 81,
+          artist: 'z' * 201,
         ),
         throwsA(isA<AppException>()),
+      );
+      // Como en el backend (catalog.SONG_ARTIST_MAX_CHARS): antes la APK cortaba el de la canción en 80.
+      expect(
+        LibraryRequest.editSong(
+          songId: songId,
+          title: 't',
+          artist: 'z' * 200,
+        ).payload['artist'],
+        'z' * 200,
       );
     });
 
@@ -162,31 +171,34 @@ void main() {
       );
     });
 
-    test(
-      'una sola línea: sin saltos, separadores ni caracteres de control',
-      () {
-        for (final bad in [
-          'dos\nlíneas',
-          'retorno\r',
-          'tab\tulador',
-          'sep ',
-          'par ',
-          'ancho​cero',
-          'nulo\u0000',
-        ]) {
-          expect(
-            () => LibraryRequest.createAlbum(name: bad, artist: ''),
-            throwsA(isA<AppException>()),
-            reason: jsonEncode(bad),
-          );
-          expect(
-            () => LibraryRequest.createAlbum(name: 'x', artist: bad),
-            throwsA(isA<AppException>()),
-            reason: jsonEncode(bad),
-          );
-        }
-      },
-    );
+    test('una sola línea: sin saltos, separadores ni caracteres de control', () {
+      for (final bad in [
+        'dos\nlíneas',
+        'retorno\rde carro',
+        'tab\tulador',
+        'sep arador',
+        'par rafo',
+        'ancho​cero',
+        'nulo\u0000',
+      ]) {
+        expect(
+          () => LibraryRequest.createAlbum(name: bad, artist: ''),
+          throwsA(isA<AppException>()),
+          reason: jsonEncode(bad),
+        );
+        expect(
+          () => LibraryRequest.createAlbum(name: 'x', artist: bad),
+          throwsA(isA<AppException>()),
+          reason: jsonEncode(bad),
+        );
+      }
+      // Como en el backend, los espacios de los lados (también un salto de línea o un tabulador) se quitan antes de
+      // mirar los caracteres de control.
+      expect(
+        LibraryRequest.createAlbum(name: 'Valses\t', artist: ' x\r\n').payload,
+        {'op': 'create_folder', 'name': 'Valses', 'artist': 'x'},
+      );
+    });
 
     test('el título de la canción no puede quedar vacío', () {
       expect(

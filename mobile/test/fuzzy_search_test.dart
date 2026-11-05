@@ -26,11 +26,11 @@ void main() {
   });
 
   test('«kid keo» encuentra «Kidd Keo» y las erratas se perdonan', () {
-    expect(fuzzyMatches('SUPERSTARS Kidd Keo', 'kid keo'), isTrue);
-    expect(fuzzyMatches('Charleston Orquesta', 'charlston'), isTrue);
-    expect(fuzzyMatches('Charleston Orquesta', 'xyz'), isFalse);
-    expect(fuzzyMatches('Kidd Keo', 'kxo'), isFalse);
-    expect(fuzzyMatches('Kidd Keo', 'kid pepe'), isFalse);
+    expect(searchScore(['SUPERSTARS Kidd Keo'], 'kid keo') > 0, isTrue);
+    expect(searchScore(['Charleston Orquesta'], 'charlston') > 0, isTrue);
+    expect(searchScore(['Charleston Orquesta'], 'xyz'), 0);
+    expect(searchScore(['Kidd Keo'], 'kxo'), 0);
+    expect(searchScore(['Kidd Keo'], 'kid pepe'), 0);
   });
 
   test('filterSongsByText conserva el orden y filtra por artista', () {
