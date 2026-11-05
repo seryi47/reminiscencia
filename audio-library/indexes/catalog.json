@@ -3458,6 +3458,22 @@
       "size_bytes": 1126334,
       "added_at": "2026-11-05T17:53:47+00:00",
       "public": true
+    },
+    {
+      "id": "S0f7b8d99f0ae5c38",
+      "title": "SAIKO, JC Reyes, Dei V - BADGYAL (Visualizer) SAKURA",
+      "artist": "SAIKO",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "0f7b8d99f0ae5c381efd9be65940e0a83c91fd1c70d975f193717f96be7bea09",
+      "duration_s": 251.804,
+      "codec": "opus",
+      "size_bytes": 1717607,
+      "added_at": "2026-11-05T18:01:33+00:00",
+      "public": true
     }
   ]
 }
