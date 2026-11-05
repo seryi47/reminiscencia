@@ -103,7 +103,8 @@ async function createIssue(github, request) {
   const title = buildIssueTitle(request);
   const body = buildIssueBody(request);
   const data = expect(await github('POST', '/issues', { title, body, labels: [ISSUE_LABEL] }), [201], 'crear la incidencia');
-  return { number: data?.number ?? null };
+  const labeled = Array.isArray(data?.labels) && data.labels.some((label) => (label?.name ?? label) === ISSUE_LABEL);
+  return { number: data?.number ?? null, labeled };
 }
 
 async function storeCover(github, id, bytes) {
@@ -161,7 +162,7 @@ export async function handleEdit(request, { env = {}, fetchImpl = globalThis.fet
     const problem = organizeProblem(body);
     if (problem) throw new EditError(400, problem);
     const issue = await createIssue(github, body);
-    return json(200, { ok: true, incidencia: issue.number, mensaje: DONE_MESSAGE });
+    return json(200, { ok: true, incidencia: issue.number, etiquetada: issue.labeled, mensaje: DONE_MESSAGE });
   } catch (error) {
     if (error instanceof EditError) return json(error.status, { ok: false, error: error.message });
     console.error('editar: fallo inesperado', error?.name ?? 'Error');
