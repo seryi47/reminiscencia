@@ -4,7 +4,7 @@
 
 - Causa de las subidas atascadas: GitHub Actions dejó de arrancar jobs por el límite de minutos de un repositorio privado; el repositorio pasó a público y se relanzó `buzon` (188 canciones).
 - `buzon.yml`: el job `autorizar` mira si queda algo en el buzón de `main` (archivos y manifiestos de partes). Los runs que llegan con el buzón ya vacío (cada subida lanza uno, pero el primero procesa todo) omiten `procesar` y `publicar`. Si no puede leer `main`, procesa.
-- R2 preparado, sin activar y sin tocar Vercel: `scripts/sync_r2.py` (simulación por defecto), `sonidos/r2.py` y [ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md).
+- R2 activo en parte ([ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md)): bucket público con CORS y las 188 canciones subidas con `scripts/sync_r2.py`; el workflow `r2.yml` copia el audio nuevo cuando terminan `buzon` o `biblioteca`; la APK descarga el audio de R2 con Vercel de respaldo (pruebas Flutter: 232). La web sigue leyendo de Vercel. Vercel no se ha tocado.
 
 ## Sin publicar: descarga automática en Wi-Fi (2026-11-05)
 

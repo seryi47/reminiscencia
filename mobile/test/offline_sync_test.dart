@@ -230,6 +230,25 @@ void main() {
       },
     );
 
+    test('el audio se pide a R2 y, si falla, a la web', () async {
+      final hosts = <String>[];
+      final store2 = LibraryStore(
+        root: () async => Directory('${tmp.path}/biblioteca'),
+        client: MockClient.streaming((request, _) async {
+          hosts.add(request.url.host);
+          if (request.url.host.endsWith('r2.dev')) {
+            return http.StreamedResponse(const Stream.empty(), 404);
+          }
+          return http.StreamedResponse(Stream.value([1, 2, 3]), 200);
+        }),
+      );
+      final song = Song.fromJson(FakeWeb._json('Sr2'));
+      expect(store2.audioUri(song).host, endsWith('r2.dev'));
+      expect(await store2.downloadAll([song], (_, _) {}), 1);
+      expect(hosts, [Uri.parse(kAudioBase).host, Uri.parse(kLibraryBase).host]);
+      expect(await hasCachedAudio('Sr2'), isTrue);
+    });
+
     test('un catálogo que cambia actualiza la biblioteca', () async {
       web.catalogIds = [kA, kB];
       final controller = controllerWith();

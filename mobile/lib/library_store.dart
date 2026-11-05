@@ -11,6 +11,10 @@ import 'song.dart';
 /// Origen de la biblioteca. La web de Vercel es la fuente; la app guarda copias para usarla sin conexión.
 const String kLibraryBase = 'https://reminiscencia.vercel.app/';
 
+/// Dónde está el audio (ADR-0020): Cloudflare R2, que no cobra la salida de datos. Si falla, se usa kLibraryBase.
+const String kAudioBase =
+    'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/';
+
 class LibraryData {
   const LibraryData({
     required this.songs,
@@ -119,7 +123,10 @@ class LibraryStore implements LibrarySource {
     return response.body;
   }
 
-  Uri audioUri(Song song) => Uri.parse('$kLibraryBase${song.audio}');
+  Uri audioUri(Song song) => Uri.parse('$kAudioBase${song.audio}');
+
+  /// El mismo audio en la web (Vercel), de respaldo si R2 falla o aún no tiene la canción.
+  Uri fallbackAudioUri(Song song) => Uri.parse('$kLibraryBase${song.audio}');
 
   /// Fichero local de una canción de la web (puede no existir todavía).
   Future<File> audioFile(Song song) async {
@@ -189,8 +196,10 @@ class LibraryStore implements LibrarySource {
     final part = File('${file.path}.part');
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
+        // Intentos 1 y 3 en R2; el 2 en la web, por si R2 falla o aún no tiene la canción.
+        final uri = attempt == 2 ? fallbackAudioUri(song) : audioUri(song);
         final response = await _client
-            .send(http.Request('GET', audioUri(song)))
+            .send(http.Request('GET', uri))
             .timeout(const Duration(seconds: 30));
         if (response.statusCode != 200) {
           throw HttpException('HTTP ${response.statusCode}');
