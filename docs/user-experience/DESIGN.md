@@ -159,6 +159,8 @@ Una sola regla para todos los buscadores de la web y de la APK ([ADR-0028](../de
 
 «Cambiar portada» muestra el ID que hay que usar como nombre del archivo (con «Copiar el ID») y las reglas: JPG, PNG o WebP de hasta 10 MB; se recorta al centro a 640 × 640.
 
+**Ediciones pendientes (ADR-0027).** Al guardar, el cambio se ve al momento con la etiqueta «Pendiente» (texto gris, `badge-edit`) en la fila (`track-edit-pending`; el nombre accesible añade «(cambio pendiente de guardar)») y en la cabecera del álbum (`collection-edit-pending`). Una portada nueva se ve con su vista previa (`data:`). En Tu biblioteca, el botón `sidebar-edits` / `library-page-edits` («1 cambio pendiente», «No se ha podido guardar 1 cambio», con borde rojo si algo falló) abre «Cambios pendientes» (`edits-sheet`, `edits-list`, `edits-item` con `data-state`, `edits-state`, `edits-retry`, `edits-discard`, `edits-status`, `edits-empty`); el foco empieza en el primer «Reintentar». Avisos: «Ya está guardado: «X».», «No se ha podido guardar «X». Inténtalo de nuevo.» y «Ya está pendiente: «X».».
+
 **Listas propias** (solo en este navegador): «Editar detalles» desde la portada o «···»: «Elegir foto» (JPG, PNG o WebP del dispositivo, hasta 20 MB; se recorta en cuadrado y se reduce a 640 px en el navegador, `js/cover-image.js`, y se guarda en la lista como JPEG en `data:`, porque la CSP admite imágenes de `'self'` y `data:`, no `blob:`), «Quitar foto», nombre (hasta 100 caracteres) y descripción opcional (una línea, hasta 300). «Guardar» en blanco.
 
 ## 12. Subir canciones
@@ -211,6 +213,7 @@ Antes de la cola, cada archivo se compara con la biblioteca y con los de la mism
 | Álbumes (ADR-0023) | Quitar: `menu-remove-from-album`, `remove-from-album`, `remove-from-album-text`, `remove-from-album-cancel`, `remove-from-album-save`, `remove-from-album-save-status`, `remove-from-album-close`. Añadir: `album-add-songs`, `menu-album-add-songs`, `album-add`, `album-add-search`, `album-add-count`, `album-add-results`, `album-add-option` y `album-add-check` (con `data-song-id`), `album-add-empty`, `album-add-save`, `album-add-save-status`, `album-add-close` |
 | Álbumes, selección y orden (ADR-0026) | `album-select`, `album-select-panel`, `album-select-count`, `album-select-all`, `album-select-none`, `album-select-remove`, `album-select-move`, `album-select-cancel`, `album-select-list`, `album-select-option`, `album-select-check`, `menu-album-select`, `menu-album-order`, `album-remove-many(-text/-save/-cancel)`, `album-move-many(-option/-save)`, `album-order`, `album-order-list`, `album-order-row`, `album-order-up`, `album-order-down`, `album-order-live`, `album-order-save(-status)`, `album-order-too-many` |
 | Duplicados (ADR-0026) | `duplicate-dialog`, `duplicate-file`, `duplicate-message`, `duplicate-keep`, `duplicate-drop` |
+| Ediciones pendientes (ADR-0027) | `badge-edit`, `track-edit-pending`, `collection-edit-pending`, `sidebar-edits`, `library-page-edits`, `edits-sheet`, `edits-list`, `edits-item`, `edits-state`, `edits-retry`, `edits-discard`, `edits-status`, `edits-empty` |
 | Diálogos | `confirm`, `confirm-ok`, `confirm-cancel`, `prompt`, `prompt-input`, `prompt-ok`, `<diálogo>-close` |
 
 ## 16. Medidas comprobadas

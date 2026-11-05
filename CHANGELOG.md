@@ -19,11 +19,20 @@
   - `tests/contrato/peticiones.json`: 111 casos de organize, 18 incidencias completas, límites, espacios e ids; lo ejecutan pytest, `node --test` y `flutter test`, y pytest comprueba que el backend acepta el cuerpo exacto que generan la web y la APK;
   - corregido hacia el backend: la web aceptaba `edit_folder` sin `name`; la APK limitaba el artista de una canción a 80 caracteres (son 200); la web y la APK rechazaban textos con un tabulador o un salto al final que el backend acepta; la web envía ahora el payload normalizado;
   - una sola regla de búsqueda en la web y la APK (DESIGN §9.1, `tests/contrato/busqueda.json`): todas las palabras, sin mayúsculas, tildes ni signos, por el principio de la palabra; una errata en palabras de 4 letras o más, nunca en números; orden por relevancia. «Añadir canciones» deja de ser estricto, y el buscador de la APK busca también por álbum. `fuzzyScore` se sustituye por `searchRank` y `searchScore`.
+- **Ediciones pendientes** ([ADR-0027](docs/decisions/ADR-0027-ediciones-pendientes.md)), igual en la web y la APK:
+  - cada cambio enviado a `/api/editar` queda **pendiente**, con su número de incidencia. Se guarda en el localStorage `reminiscencia.ediciones` de la web y en `biblioteca-local/ediciones_pendientes.json` de la APK;
+  - **se ve al momento** encima del catálogo real, con la marca «Pendiente» en texto: títulos, artistas, canciones que entran o salen de un álbum, orden nuevo, nombre y artista del álbum y portada nueva. Crear un álbum aparece en la lista de cambios pendientes;
+  - **se confirma** cuando el catálogo lo refleja («Ya está guardado: «X».»);
+  - **se deshace con aviso** si la incidencia acaba con la etiqueta `error`, o si pasan 30 minutos sin confirmarse teniendo conexión («No se ha podido guardar «X». Inténtalo de nuevo.»). La lista de Tu biblioteca ofrece «Reintentar» y «Descartar». Sin conexión no caduca;
+  - lo que ya está pendiente no se reenvía («Ya está pendiente»);
+  - `GET /api/editar?incidencia=N` devuelve el estado (`abierta`, `cerrada` o `error`), con el token del servidor, el número validado estrictamente y solo para incidencias de edición;
+  - reglas comunes en `tests/contrato/ediciones-pendientes.json`.
 - **CI fiable:**
   - `android.yml` analiza, prueba y compila el APK de depuración con cada push a `main` y cada pull request que toque `mobile/`, `scripts/android/` o el workflow; antes solo se lanzaba a mano o con etiqueta. `backend.yml` ya no ejecuta Flutter, que repetía en cada subida;
   - pruebas estables: los gestores de subidas de la APK y de la web tienen `idle()` para esperar el trabajo en segundo plano, en vez de dormir un tiempo fijo (con carga, 22 fallos de 40 antes y 0 de 40 después);
   - `.github/actionlint.yaml` ignora solo el aviso de `concurrency.queue`, que es válido en GitHub desde 2026-05-07; además se quita una variable sin usar (SC2034).
 - `SHELL_VERSION = 27`.
+- Pruebas sobre la rama integrada: backend 1097; web 754 unitarias y 194 de extremo a extremo; Flutter 495; `flutter analyze` y `actionlint` sin avisos.
 
 ## Sin publicar: el audio público solo en R2 y reintento del streaming en la APK (2026-11-05, rama `feature/audio-solo-r2`)
 
