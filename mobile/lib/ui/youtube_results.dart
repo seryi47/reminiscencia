@@ -19,6 +19,21 @@ class YoutubeDownload {
   final String message;
 }
 
+/// Estado de la tarjeta tras enviar la canción: «En cola» solo si algo llegó a la web; si no, el motivo real.
+YoutubeDownload downloadAfterUpload(SharedUploadResult sent) {
+  if (sent.uploaded == 0 && sent.items.isNotEmpty) {
+    final failed = sent.items.first;
+    return YoutubeDownload(
+      YoutubeDownloadState.error,
+      'No se pudo subir la canción: ${failed.message}',
+    );
+  }
+  return YoutubeDownload(
+    YoutubeDownloadState.queued,
+    describeUploadResult(sent),
+  );
+}
+
 /// Descargas iniciadas desde el buscador. Viven fuera de la pantalla para seguir si se repinta o se cambia de pestaña.
 class YoutubeDownloads extends ChangeNotifier {
   final Map<String, YoutubeDownload> _byId = {};
@@ -85,13 +100,7 @@ class YoutubeDownloads extends ChangeNotifier {
             youtubePlaylistName: audio.track.playlistTitle,
           ),
       ]);
-      _set(
-        result.id,
-        YoutubeDownload(
-          YoutubeDownloadState.queued,
-          describeUploadResult(sent),
-        ),
-      );
+      _set(result.id, downloadAfterUpload(sent));
     } catch (error) {
       _set(
         result.id,
