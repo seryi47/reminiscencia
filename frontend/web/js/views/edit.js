@@ -1,19 +1,18 @@
 // Hojas de edición, con el aspecto del «Editar detalles» de Spotify (portada a la izquierda, campos a la derecha).
-// La biblioteca pública no se escribe desde la web (ADR-0008): cada hoja prepara una incidencia de GitHub con la
-// etiqueta «biblioteca» y la petición ya escrita, validada con las reglas del backend (js/cuidador/incidencias.js).
+// Cada hoja valida la petición con las reglas del backend (js/cuidador/incidencias.js) y la guarda con «Guardar»:
+// POST /api/editar abre la incidencia «biblioteca» o guarda la portada con el token del servidor, sin pasar por GitHub
+// (ADR-0022; ADR-0008 sigue valiendo para el procesado).
 // - «Editar detalles» de una canción: {"op":"edit_song","song_id","title","artist"}.
 // - «Editar detalles» de un álbum: {"op":"edit_folder","folder_id","name","artist"}.
 // - «Añadir a un álbum»: {"op":"edit_song","song_id","folder_id"} (null: sin álbum).
 // - «Crear álbum»: {"op":"create_folder","name","artist"} (artist solo si se escribe).
-// - «Cambiar portada»: la subida de GitHub al buzón de portadas, con el ID como nombre del archivo.
+// - «Cambiar portada»: se elige una imagen, se recorta a 640 px y se guarda en el buzón de portadas.
 // Las listas propias se editan aquí mismo (nombre, descripción y portada), solo en este navegador.
 
-import { COVER_INPUT_ACCEPT, resizeCoverFile } from '../cover-image.js';
+import { COVER_INPUT_ACCEPT, coverFileProblem, resizeCoverFile } from '../cover-image.js';
+import { dataUrlToBytes, saveCover, saveOrganize } from '../edit-remote.js';
 import {
-  buildOrganizeIssueUrl,
   COVER_RULES,
-  COVER_UPLOAD_URL,
-  EDIT_NOTE,
   folderArtistProblem,
   folderNameProblem,
   isCoverFolderId,
@@ -66,30 +65,47 @@ function field({ key, label, value = '', maxLength, multiline = false, placehold
   };
 }
 
-/** Enlace «Abrir en GitHub» (botón blanco), desactivado hasta que la petición vale, y su región de estado. */
-function issueLink(testid) {
-  const link = el('a', {
+/**
+ * Botón «Guardar» (blanco), desactivado hasta que la petición vale, y su región de estado. save(payload) guarda; con
+ * éxito se avisa y se cierra la hoja, y si falla el motivo queda a la vista y se puede reintentar.
+ */
+function saveAction(testid, close, save = saveOrganize) {
+  const button = el('button', {
+    type: 'button',
     class: 'button button-light edit-submit',
-    target: '_blank',
-    rel: 'noopener noreferrer',
     'aria-disabled': 'true',
     'data-testid': testid,
-  }, 'Abrir en GitHub', el('span', { class: 'sr-only' }, ' (se abre en otra pestaña)'), icon('external', { size: 16 }));
+  }, 'Guardar');
   const status = el('p', { class: 'edit-status', role: 'status', 'data-testid': `${testid}-status` });
-  link.addEventListener('click', (event) => {
-    if (link.getAttribute('aria-disabled') === 'true') event.preventDefault();
+  let payload = null;
+  let saving = false;
+  button.addEventListener('click', async () => {
+    if (saving || button.getAttribute('aria-disabled') === 'true') return;
+    saving = true;
+    button.setAttribute('aria-disabled', 'true');
+    status.textContent = 'Guardando…';
+    try {
+      const message = await save(payload);
+      toast(message);
+      close();
+    } catch (error) {
+      saving = false;
+      button.setAttribute('aria-disabled', 'false');
+      status.textContent = error instanceof Error ? error.message : 'No se ha podido guardar.';
+    }
   });
   return {
-    link,
+    button,
     status,
-    ready(url) {
-      link.setAttribute('href', url);
-      link.setAttribute('aria-disabled', 'false');
-      status.textContent = 'Lista. Pulsa «Abrir en GitHub» y confirma allí la incidencia.';
+    ready(next) {
+      payload = next;
+      if (saving) return;
+      button.setAttribute('aria-disabled', 'false');
+      status.textContent = 'Listo para guardar.';
     },
     blocked(message) {
-      link.removeAttribute('href');
-      link.setAttribute('aria-disabled', 'true');
+      payload = null;
+      button.setAttribute('aria-disabled', 'true');
       status.textContent = message;
     },
   };
@@ -97,7 +113,7 @@ function issueLink(testid) {
 
 function editNote() {
   return el('p', { class: 'edit-note', 'data-testid': 'edit-note' },
-    'Se abrirá GitHub con la petición ya escrita para que la confirmes. ', EDIT_NOTE);
+    'El cambio se guarda desde aquí, sin pasar por GitHub, y llega a todos en un par de minutos.');
 }
 
 /**
@@ -111,7 +127,7 @@ function textIssueSheet(ctx, { title, testid, coverNode = null, coverAction = nu
     className: 'dialog-edit',
     render: (body, close) => {
       const items = fields.map((spec) => ({ spec, ...field({ ...spec, testid: `${testid}-${spec.key}` }) }));
-      const submit = issueLink(`${testid}-link`);
+      const submit = saveAction(`${testid}-save`, close);
       const values = () => Object.fromEntries(items.map((item) => [item.spec.key, item.input.value.trim()]));
       const refresh = () => {
         const current = values();
@@ -127,7 +143,7 @@ function textIssueSheet(ctx, { title, testid, coverNode = null, coverAction = nu
         const problem = validateOperation(payload);
         if (problem) return submit.blocked(problem);
         try {
-          return submit.ready(buildOrganizeIssueUrl(payload));
+          return submit.ready(payload);
         } catch (error) {
           return submit.blocked(error instanceof Error ? error.message : 'La petición no es válida.');
         }
@@ -149,7 +165,7 @@ function textIssueSheet(ctx, { title, testid, coverNode = null, coverAction = nu
       body.append(
         el('div', { class: `edit-grid${coverColumn ? '' : ' no-cover'}` }, coverColumn, el('div', { class: 'edit-fields' }, items.map((item) => item.wrapper))),
         editNote(),
-        el('div', { class: 'dialog-actions' }, submit.status, submit.link));
+        el('div', { class: 'dialog-actions' }, submit.status, submit.button));
     },
     initialFocus: (dialog) => dialog.querySelector('.text-field'),
   });
@@ -216,8 +232,8 @@ export function openMoveToAlbumSheet(ctx, song) {
     title: 'Añadir a un álbum',
     testid: 'move-album',
     className: 'dialog-edit',
-    render: (body) => {
-      const submit = issueLink('move-album-link');
+    render: (body, close) => {
+      const submit = saveAction('move-album-save', close);
       const name = uid('album');
       const option = (value, label, detail) => el('label', { class: 'radio-row', 'data-testid': 'move-album-option' },
         el('input', { type: 'radio', name, value, checked: (song.folderId ?? '') === value ? true : null }),
@@ -233,7 +249,7 @@ export function openMoveToAlbumSheet(ctx, song) {
         if (folderId === (song.folderId ?? null)) return submit.blocked('La canción ya está en ese álbum. Elige otro.');
         const payload = { op: 'edit_song', song_id: song.id, folder_id: folderId };
         const problem = validateOperation(payload);
-        return problem ? submit.blocked(problem) : submit.ready(buildOrganizeIssueUrl(payload));
+        return problem ? submit.blocked(problem) : submit.ready(payload);
       };
       group.addEventListener('change', refresh);
       refresh();
@@ -243,57 +259,55 @@ export function openMoveToAlbumSheet(ctx, song) {
           el('div', { class: 'edit-fields' }, group,
             el('p', { class: 'field-help' }, 'Para un álbum nuevo, usa «Crear» › «Álbum» en Tu biblioteca.'))),
         editNote(),
-        el('div', { class: 'dialog-actions' }, submit.status, submit.link));
+        el('div', { class: 'dialog-actions' }, submit.status, submit.button));
     },
     initialFocus: (dialog) => dialog.querySelector('input:checked') ?? dialog.querySelector('input'),
   });
 }
 
-/** «Cambiar portada»: el buzón de portadas de GitHub, con el ID que hay que usar como nombre del archivo. */
+/** «Cambiar portada»: se elige una imagen, se ve recortada y se guarda en el buzón de portadas. */
 export function openCoverSheet(ctx, { kind, id, name }) {
   return openDialog({
     title: 'Cambiar portada',
     testid: 'cover-sheet',
     className: 'dialog-edit',
-    render: (body) => {
-      const idField = el('input', { class: 'text-field code-field', type: 'text', readonly: true, value: id, 'aria-label': 'ID para el nombre del archivo', 'data-testid': 'cover-id' });
-      const copy = el('button', {
+    render: (body, close) => {
+      let jpeg = null;
+      const submit = saveAction('cover-save', close, () => saveCover(id, jpeg));
+      submit.blocked('Elige una imagen.');
+      const preview = el('div', { class: 'edit-cover-slot', 'data-testid': 'cover-preview' });
+      const fileInput = el('input', { type: 'file', accept: COVER_INPUT_ACCEPT, hidden: true, 'data-testid': 'cover-file' });
+      const choose = el('button', {
         type: 'button',
         class: 'button button-outline',
-        'data-testid': 'cover-copy',
-        on: {
-          click: async () => {
-            try {
-              await navigator.clipboard.writeText(id);
-              toast('Se ha copiado el ID.');
-            } catch {
-              // Sin permiso para el portapapeles: se selecciona para copiarlo a mano.
-              idField.focus();
-              idField.select();
-              toast('Selecciona el ID y cópialo.');
-            }
-          },
-        },
-      }, icon('copy', { size: 16 }), 'Copiar el ID');
+        'data-testid': 'cover-choose',
+        on: { click: () => fileInput.click() },
+      }, icon('image', { size: 16 }), 'Elegir imagen');
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        const problem = coverFileProblem(file);
+        if (problem) return submit.blocked(problem);
+        try {
+          const dataUrl = await resizeCoverFile(file);
+          jpeg = dataUrlToBytes(dataUrl);
+          preview.replaceChildren(el('img', { class: 'cover edit-cover-image', src: dataUrl, alt: 'Vista previa de la portada' }));
+          submit.ready(jpeg);
+        } catch (error) {
+          jpeg = null;
+          submit.blocked(error instanceof Error ? error.message : 'No se ha podido leer la imagen.');
+        }
+      });
       body.append(
-        el('p', { class: 'dialog-text' }, `Portada de ${kind === 'album' ? 'el álbum' : 'la canción'} «${name}». Sube la imagen al buzón de portadas en GitHub y ponle de nombre este ID:`),
-        el('div', { class: 'copy-row' }, idField, copy),
-        el('ul', { class: 'upload-rules', 'data-testid': 'cover-rules' },
-          el('li', {}, `${COVER_RULES.formats}, de hasta ${COVER_RULES.maxMb} MB.`),
-          el('li', {}, `El nombre del archivo es el ID y la extensión: por ejemplo, ${id}.jpg.`),
-          el('li', {}, `Se recorta al centro y se reduce a ${COVER_RULES.size} × ${COVER_RULES.size} px.`),
-          el('li', {}, 'Hace falta permiso de escritura en el repositorio.'),
-          el('li', {}, 'El cambio llega a todos en un par de minutos.')),
-        el('div', { class: 'dialog-actions' },
-          el('a', {
-            class: 'button button-light',
-            href: COVER_UPLOAD_URL,
-            target: '_blank',
-            rel: 'noopener noreferrer',
-            'data-testid': 'cover-github-link',
-          }, 'Abrir el buzón de portadas', el('span', { class: 'sr-only' }, ' (se abre en otra pestaña)'), icon('external', { size: 16 }))));
+        el('p', { class: 'dialog-text' }, `Portada de ${kind === 'album' ? 'el álbum' : 'la canción'} «${name}».`),
+        el('div', { class: 'edit-grid' }, el('div', { class: 'edit-cover' }, preview, choose, fileInput),
+          el('ul', { class: 'upload-rules', 'data-testid': 'cover-rules' },
+            el('li', {}, `${COVER_RULES.formats}.`),
+            el('li', {}, `Se recorta al centro y se reduce a ${COVER_RULES.size} × ${COVER_RULES.size} px.`),
+            el('li', {}, 'El cambio llega a todos en un par de minutos.'))),
+        el('div', { class: 'dialog-actions' }, submit.status, submit.button));
     },
-    initialFocus: (dialog) => dialog.querySelector('[data-testid="cover-copy"]'),
+    initialFocus: (dialog) => dialog.querySelector('[data-testid="cover-choose"]'),
   });
 }
 

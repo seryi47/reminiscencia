@@ -1,4 +1,5 @@
 import 'collections_controller.dart';
+import 'edit_remote.dart';
 import 'covers.dart';
 import 'image_picker.dart';
 import 'library_controller.dart';
@@ -18,6 +19,8 @@ class AppServices {
     required this.settings,
     this.covers = const NoCoverImages(),
     this.openUrl = openInBrowser,
+    this.submitEdit = submitLibraryEdit,
+    this.submitCover = submitCatalogCover,
     this.pickImage = pickImageFromDevice,
     this.pickAudio = pickAudioFromDevice,
     this.youtube,
@@ -35,6 +38,12 @@ class AppServices {
 
   /// Abre direcciones en el navegador (peticiones a la biblioteca común).
   final UrlOpener openUrl;
+
+  /// Guarda cambios de la biblioteca común por /api/editar (ADR-0022).
+  final EditSubmitter submitEdit;
+
+  /// Guarda la portada de una canción o un álbum del catálogo.
+  final CoverSubmitter submitCover;
 
   /// Elige una imagen del teléfono (portada propia de una lista).
   final ImagePicker pickImage;

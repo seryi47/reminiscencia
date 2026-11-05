@@ -1,37 +1,45 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../app_error.dart';
 import '../library_requests.dart';
+import '../playlist_covers.dart';
 import '../services.dart';
 import '../song.dart';
 import '../theme.dart';
 import 'collection_ref.dart';
 import 'common.dart';
 
-// Edición de la biblioteca común desde la app, igual que en la web: no hay usuarios ni API, así que cada cambio
-// se pide con una incidencia de GitHub (o, las portadas, con la página de subida) que se abre en el navegador.
+// Edición de la biblioteca común desde la app, igual que en la web: no hay usuarios, así que cada cambio se envía
+// a /api/editar (ADR-0022), que lo valida y lo guarda con el token del servidor. Sin pasar por GitHub.
 
-/// True si la canción es del catálogo común (las subidas a este teléfono no se editan por GitHub).
+/// True si la canción es del catálogo común (las subidas a este teléfono no se editan).
 bool isEditableSong(Song song) => !song.local && isCatalogSongId(song.id);
 
-/// Abre en el navegador la incidencia de [request]. Si no se puede, dice la dirección en un aviso.
+/// Guarda el cambio de [request] y avisa del resultado.
 Future<void> openLibraryRequest(
   BuildContext context,
   AppServices services,
   LibraryRequest request,
-) => _open(context, services, request.issueUri);
+) => _save(context, () => services.submitEdit(request));
 
-Future<void> _open(BuildContext context, AppServices services, Uri uri) async {
+Future<void> _save(
+  BuildContext context,
+  Future<String> Function() action,
+) async {
   final messenger = ScaffoldMessenger.of(context);
-  final opened = await services.openUrl(uri);
-  if (!opened) {
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('No se pudo abrir el navegador. Abre a mano: $uri'),
-      ),
-    );
+  messenger.showSnackBar(const SnackBar(content: Text('Guardando…')));
+  String text;
+  try {
+    text = await action();
+  } on AppException catch (error) {
+    text = error.message;
+  } catch (_) {
+    text = 'No se pudo guardar. Inténtalo de nuevo.';
   }
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text)));
 }
 
 /// «Editar detalles» de una canción: título y artista.
@@ -271,113 +279,37 @@ Future<void> addSongsToAlbumFlow(
   await openLibraryRequest(context, services, request);
 }
 
-/// «Cambiar portada»: la imagen se sube al buzón de portadas desde la página de GitHub, con el ID como nombre.
+/// «Cambiar portada»: se elige la imagen, se recorta a cuadrado (640 px) y se envía a /api/editar.
 Future<void> changeCatalogCoverFlow(
   BuildContext context,
   AppServices services, {
   required String id,
   required String what,
 }) async {
+  final messenger = ScaffoldMessenger.of(context);
   if (!canChangeCatalogCover(id)) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       const SnackBar(
-        content: Text(
-          'Este elemento no admite cambiar la portada desde el buzón.',
-        ),
+        content: Text('Este elemento no admite cambiar la portada.'),
       ),
     );
     return;
   }
-  final open = await showDialog<bool>(
-    context: context,
-    builder: (_) => ChangeCoverDialog(id: id, what: what),
-  );
-  if (open != true || !context.mounted) return;
-  await _open(context, services, kCoverUploadUri);
-}
-
-/// Diálogo de «Cambiar portada»: instrucciones, el ID con un botón para copiarlo y «Abrir GitHub».
-class ChangeCoverDialog extends StatelessWidget {
-  const ChangeCoverDialog({super.key, required this.id, required this.what});
-
-  /// Identificador que debe llevar el archivo.
-  final String id;
-
-  /// «la canción» o «el álbum».
-  final String what;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final palette = paletteOf(context);
-    return AlertDialog(
-      title: const Text('Cambiar portada'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Se abrirá en el navegador la página de GitHub para subir la imagen a '
-              'audio-library/buzon/portadas. Ponle al archivo como nombre el ID de $what, '
-              'con su extensión (por ejemplo, $id.jpg):',
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: palette.elevated,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SelectableText(
-                      id,
-                      key: const Key('cover-id'),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    key: const Key('copy-cover-id'),
-                    tooltip: 'Copiar el ID',
-                    icon: const Icon(Icons.copy_rounded),
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      await Clipboard.setData(ClipboardData(text: id));
-                      messenger.showSnackBar(
-                        SnackBar(content: Text('ID copiado: $id')),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Hace falta una cuenta de GitHub con permiso de escritura en el repositorio de la biblioteca. '
-              'La portada nueva se verá en la app después de que se procese; si ya tenías la anterior '
-              'guardada, desliza hacia abajo en Inicio para actualizarla.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Abrir GitHub'),
-        ),
-      ],
+  final Uint8List? picked;
+  try {
+    picked = await services.pickImage();
+  } catch (_) {
+    messenger.showSnackBar(
+      const SnackBar(content: Text('No se pudo leer la imagen elegida.')),
     );
+    return;
   }
+  if (picked == null || !context.mounted) return;
+  final Uint8List image = picked;
+  await _save(
+    context,
+    () => services.submitCover(id, resizeCoverImage(image)),
+  );
 }
 
 /// Menú de un álbum: editar, añadir canciones, crear otro álbum y cambiar la portada.
@@ -517,7 +449,7 @@ class _EditHeading extends StatelessWidget {
       child: Semantics(
         header: true,
         child: Text(
-          'Biblioteca común (se pide en GitHub)',
+          'Biblioteca común (se guarda para todos)',
           style: theme.textTheme.labelLarge?.copyWith(
             color: paletteOf(context).inkMuted,
           ),
@@ -555,7 +487,7 @@ class RequestField {
   final String initial;
 }
 
-/// Formulario de una petición: campos de una línea, el aviso de permisos y «Abrir GitHub».
+/// Formulario de una petición: campos de una línea, el aviso y «Guardar».
 /// Valida con [build] (las mismas reglas que se envían) y devuelve la petición, o null si se cancela.
 class RequestFormDialog extends StatefulWidget {
   const RequestFormDialog({
@@ -643,7 +575,7 @@ class _RequestFormDialogState extends State<RequestFormDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Abrir GitHub')),
+        FilledButton(onPressed: _submit, child: const Text('Guardar')),
       ],
     );
   }

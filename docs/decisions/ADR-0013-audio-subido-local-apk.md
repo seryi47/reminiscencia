@@ -12,7 +12,7 @@ El cuidador quiere escuchar con el paciente canciones que tiene en el teléfono 
 
 ## Decisión
 
-1. **Origen.** El cuidador elige archivos (WAV, MP3, M4A, FLAC u OGG) con el selector del sistema. Cada archivo se convierte a Ogg Opus con FFmpeg (`ffmpeg_kit_flutter_new_min`, que incluye libopus). Tasas como en la web: mono 32 kbps y estéreo 48 kbps, 48 kHz; más de dos canales se mezclan a estéreo. La conversión la hace FFmpeg del propio dispositivo: no hay red.
+1. **Origen.** El cuidador elige archivos (WAV, MP3, M4A, FLAC u OGG) con el selector del sistema. Cada archivo se convierte a Ogg Opus con FFmpeg (`ffmpeg_kit_flutter_new_audio`, que incluye libopus; el paquete `_min` no lo trae y falla con «Unknown encoder libopus»). Tasas como en la web: mono 32 kbps y estéreo 48 kbps, 48 kHz; más de dos canales se mezclan a estéreo. La conversión la hace FFmpeg del propio dispositivo: no hay red.
 2. **Título.** El nombre del archivo sin la última extensión. Sin nombre útil, «Sin título». Máximo 200 caracteres.
 3. **Almacenamiento.** `biblioteca-local/` dentro del almacenamiento privado de la app: `audio/<id>.opus` para el audio y `pistas.json` para los metadatos. Los ids empiezan por `L`, así no chocan con el catálogo (`S`). Nada de esto se sube a GitHub, a Vercel ni a ningún servidor.
 4. **Límites.** 60 MB por archivo y 20 minutos de duración. Sin comprobación de espacio libre: Flutter no tiene una API equivalente a `navigator.storage.estimate()` sin un plugin adicional. Es una diferencia respecto a la web.

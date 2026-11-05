@@ -13,6 +13,7 @@ import 'package:reminiscencia/collections_store.dart';
 import 'package:reminiscencia/covers.dart';
 import 'package:reminiscencia/image_picker.dart';
 import 'package:reminiscencia/library_controller.dart';
+import 'package:reminiscencia/library_requests.dart';
 import 'package:reminiscencia/library_store.dart';
 import 'package:reminiscencia/playback.dart';
 import 'package:reminiscencia/playlist_covers.dart';
@@ -331,6 +332,8 @@ class MemoryCollectionsRepository implements CollectionsRepository {
   FakePlaybackPort playback,
   MemoryCollectionsRepository repository,
   List<Uri> openedUrls,
+  List<LibraryRequest> submitted,
+  List<({String id, Uint8List jpeg})> submittedCovers,
   FakeCoverImages covers,
   FakeCoverStore coverStore,
   MemoryPlaylistCoverStore playlistCovers,
@@ -344,6 +347,7 @@ buildTestServices({
   Collections? collections,
   DateTime? now,
   bool canOpenUrls = true,
+  Object? submitError,
   Iterable<String> availableCovers = const [],
   ImagePicker? pickImage,
   SharedUploader? uploader,
@@ -364,6 +368,8 @@ buildTestServices({
   final repository = MemoryCollectionsRepository(collections);
   var ids = 0;
   final opened = <Uri>[];
+  final submitted = <LibraryRequest>[];
+  final submittedCovers = <({String id, Uint8List jpeg})>[];
   final covers = FakeCoverImages(availableCovers);
   final coverStore = FakeCoverStore();
   final playlistCovers = MemoryPlaylistCoverStore();
@@ -390,6 +396,16 @@ buildTestServices({
       opened.add(uri);
       return canOpenUrls;
     },
+    submitEdit: (request) async {
+      if (submitError != null) throw submitError;
+      submitted.add(request);
+      return 'Guardado.';
+    },
+    submitCover: (id, jpeg) async {
+      if (submitError != null) throw submitError;
+      submittedCovers.add((id: id, jpeg: jpeg));
+      return 'Guardado.';
+    },
     pickImage: pickImage ?? () async => null,
     pickAudio: pickAudio ?? () async => const [],
     youtube: youtube,
@@ -402,6 +418,8 @@ buildTestServices({
     playback: playback,
     repository: repository,
     openedUrls: opened,
+    submitted: submitted,
+    submittedCovers: submittedCovers,
     covers: covers,
     coverStore: coverStore,
     playlistCovers: playlistCovers,

@@ -116,20 +116,11 @@ export async function openRowMenu(page, songId) {
   return page.$$eval('[role="menu"] [role="menuitem"]', (items) => items.map((item) => item.querySelector(".menu-label").textContent.trim()));
 }
 
-/** Payload JSON de la incidencia de un enlace de GitHub (línea «payload:» del cuerpo). */
-export async function issuePayload(page, testid) {
+/** Espera a que el botón «Guardar» esté activo, lo pulsa y espera a que la hoja se cierre (la petición ya se guardó). */
+export async function saveEdit(page, testid) {
   await page.waitForFunction((id) => document.querySelector(`[data-testid="${id}"]`)?.getAttribute("aria-disabled") === "false", { timeout: 5000 }, testid);
-  const href = await page.$eval(`[data-testid="${testid}"]`, (a) => a.href);
-  const url = new URL(href);
-  const body = url.searchParams.get("body");
-  const line = body.split("\n").find((item) => item.startsWith("payload: "));
-  return {
-    origin: url.origin + url.pathname,
-    labels: url.searchParams.get("labels"),
-    title: url.searchParams.get("title"),
-    body,
-    payload: JSON.parse(line.slice("payload: ".length)),
-  };
+  await page.$eval(`[data-testid="${testid}"]`, (button) => button.click());
+  await page.waitForFunction((id) => !document.querySelector(`[data-testid="${id}"]`), { timeout: 5000 }, testid);
 }
 
 /** Siembra una canción en la base de audio local (la misma que usa subida-local.js). */

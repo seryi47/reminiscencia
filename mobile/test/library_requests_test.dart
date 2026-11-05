@@ -228,41 +228,13 @@ void main() {
     });
   });
 
-  group('enlaces', () {
-    test(
-      'incidencia nueva con la etiqueta biblioteca, título y cuerpo codificados como la web',
-      () {
-        final request = LibraryRequest.createAlbum(
-          name: 'Jazz & blues',
-          artist: 'Varios',
-        );
-        final uri = request.issueUri;
-        expect(uri.scheme, 'https');
-        expect(uri.host, 'github.com');
-        expect(uri.path, '/seryi47/reminiscencia/issues/new');
-        expect(uri.queryParameters['labels'], 'biblioteca');
-        expect(uri.queryParameters['title'], 'Crear el álbum «Jazz & blues»');
-        expect(uri.queryParameters['body'], request.body);
-        // Espacios como %20 (encodeURIComponent), no como «+».
-        expect(uri.toString(), contains('title=Crear%20el%20%C3%A1lbum'));
-        expect(uri.toString(), isNot(contains('+')));
-        expect(uri.toString(), contains('%26%20blues'));
-      },
-    );
-
+  group('título', () {
     test('el título de la incidencia se corta a 120 caracteres', () {
       final title = cleanIssueTitle('x' * 200);
       expect(title.runes.length, 120);
       expect(title, endsWith('…'));
       expect(cleanIssueTitle('  a\nb  '), 'a b');
       expect(cleanIssueTitle(''), 'Petición de la biblioteca');
-    });
-
-    test('la subida de portadas va al buzón de portadas', () {
-      expect(
-        kCoverUploadUri.toString(),
-        'https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas',
-      );
     });
   });
 }

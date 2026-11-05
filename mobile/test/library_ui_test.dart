@@ -1,8 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reminiscencia/app_error.dart';
 import 'package:reminiscencia/collections.dart';
 import 'package:reminiscencia/song.dart';
 import 'package:reminiscencia/ui/cards.dart';
@@ -16,18 +14,6 @@ const songId = 'S5aac103b6eb2ecf4';
 const otherId = 'S0000000000000001';
 const albumId = 'F0123456789abcdef';
 const oldAlbumId = '0123456789';
-
-/// Cuerpo de la incidencia abierta: payload ya decodificado.
-Map<String, Object?> openedPayload(Uri uri) {
-  expect(uri.host, 'github.com');
-  expect(uri.path, '/seryi47/reminiscencia/issues/new');
-  expect(uri.queryParameters['labels'], 'biblioteca');
-  final body = uri.queryParameters['body']!;
-  final lines = body.split('\n');
-  expect(lines.first, 'action: organize');
-  return (jsonDecode(lines.last.substring('payload: '.length)) as Map)
-      .cast<String, Object?>();
-}
 
 /// Imagen mostrada por la portada que contiene [finder] (null si es solo el degradado).
 ImageProvider? coverImageIn(WidgetTester tester, Finder finder) {
@@ -184,7 +170,7 @@ void main() {
     });
   });
 
-  group('edición por GitHub', () {
+  group('edición sin GitHub', () {
     Future<void> openSongMenu(WidgetTester tester) async {
       await tester.tap(find.text('Tu biblioteca'));
       await settle(tester);
@@ -231,12 +217,12 @@ void main() {
       await tester.tap(find.text('Editar detalles'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('permiso de escritura'), findsOneWidget);
+      expect(find.textContaining('sin pasar por GitHub'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('request-field-0')), '   ');
-      await tester.tap(find.text('Abrir GitHub'));
+      await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('request-error')), findsOneWidget);
-      expect(t.openedUrls, isEmpty, reason: 'no se abre nada que no valga');
+      expect(t.submitted, isEmpty, reason: 'no se envía nada que no valga');
 
       await tester.enterText(
         find.byKey(const Key('request-field-0')),
@@ -246,16 +232,16 @@ void main() {
         find.byKey(const Key('request-field-1')),
         'The Golden Gate Orchestra',
       );
-      await tester.tap(find.text('Abrir GitHub'));
+      await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
-      expect(openedPayload(t.openedUrls.single), {
+      expect(t.submitted.single.payload, {
         'op': 'edit_song',
         'song_id': songId,
         'title': 'Charleston (Fox Trot)',
         'artist': 'The Golden Gate Orchestra',
       });
       expect(
-        t.openedUrls.single.queryParameters['title'],
+        t.submitted.single.title,
         'Editar la canción $songId',
       );
     });
@@ -271,7 +257,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Coplas'));
       await tester.pumpAndSettle();
-      expect(openedPayload(t.openedUrls.single), {
+      expect(t.submitted.single.payload, {
         'op': 'edit_song',
         'song_id': songId,
         'folder_id': oldAlbumId,
@@ -295,9 +281,9 @@ void main() {
         find.byKey(const Key('request-field-1')),
         'Antonio Machín',
       );
-      await tester.tap(find.text('Abrir GitHub'));
+      await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
-      expect(openedPayload(t.openedUrls.single), {
+      expect(t.submitted.single.payload, {
         'op': 'create_folder',
         'name': 'Boleros',
         'artist': 'Antonio Machín',
@@ -305,46 +291,41 @@ void main() {
     });
 
     testWidgets(
-      '«Cambiar portada» muestra el ID, lo copia y abre el buzón de portadas',
+      '«Cambiar portada» recorta la imagen elegida y la envía con el ID',
       (tester) async {
         setWindow(tester, const Size(400, 1000));
-        final copied = <String>[];
-        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform,
-          (call) async {
-            if (call.method == 'Clipboard.setData') {
-              copied.add((call.arguments as Map)['text'] as String);
-            }
-            return null;
-          },
+        final t = buildTestServices(
+          songs: songs,
+          folders: folders,
+          pickImage: () async => kTinyPng,
         );
-        addTearDown(
-          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-            SystemChannels.platform,
-            null,
-          ),
-        );
-        final t = buildTestServices(songs: songs, folders: folders);
         await pumpApp(tester, t.services);
         await openSongMenu(tester);
         await tester.tap(find.text('Cambiar portada'));
         await tester.pumpAndSettle();
 
-        expect(find.byKey(const Key('cover-id')), findsOneWidget);
-        expect(find.text(songId), findsOneWidget);
-        expect(find.textContaining('permiso de escritura'), findsOneWidget);
-        await tester.tap(find.byKey(const Key('copy-cover-id')));
-        await tester.pumpAndSettle();
-        expect(copied, [songId]);
-
-        await tester.tap(find.text('Abrir GitHub'));
-        await tester.pumpAndSettle();
-        expect(
-          t.openedUrls.single.toString(),
-          'https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas',
-        );
+        expect(t.submittedCovers.single.id, songId);
+        expect(t.submittedCovers.single.jpeg.sublist(0, 2), [0xff, 0xd8]);
+        expect(find.text('Guardado.'), findsOneWidget);
       },
     );
+
+    testWidgets('un error al guardar se ve en un aviso', (tester) async {
+      setWindow(tester, const Size(400, 1000));
+      final t = buildTestServices(
+        songs: songs,
+        folders: folders,
+        submitError: const AppException('El token no vale.'),
+      );
+      await pumpApp(tester, t.services);
+      await openSongMenu(tester);
+      await tester.tap(find.text('Crear álbum'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('request-field-0')), 'X');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(find.text('El token no vale.'), findsOneWidget);
+    });
 
     testWidgets(
       'el menú del álbum edita con edit_folder; «Cambiar portada» solo en álbumes F',
@@ -372,9 +353,9 @@ void main() {
           find.byKey(const Key('request-field-1')),
           'Orquestas de baile',
         );
-        await tester.tap(find.text('Abrir GitHub'));
+        await tester.tap(find.text('Guardar'));
         await tester.pumpAndSettle();
-        expect(openedPayload(t.openedUrls.single), {
+        expect(t.submitted.single.payload, {
           'op': 'edit_folder',
           'folder_id': albumId,
           'name': 'Jazz de los años 20',
@@ -417,7 +398,7 @@ void main() {
           find.descendant(of: sheet, matching: find.text('Canción $otherId')),
         );
         await tester.pumpAndSettle();
-        expect(openedPayload(t.openedUrls.single), {
+        expect(t.submitted.single.payload, {
           'op': 'edit_song',
           'song_id': otherId,
           'folder_id': albumId,
@@ -485,7 +466,7 @@ void main() {
       expect(t.playlistCovers.deleted, [saved]);
     });
 
-    testWidgets('las listas propias no ofrecen acciones de GitHub', (
+    testWidgets('las listas propias no ofrecen acciones de edición', (
       tester,
     ) async {
       setWindow(tester, const Size(400, 1000));
@@ -497,7 +478,7 @@ void main() {
       await settle(tester);
       await tester.tap(find.text('Tardes'));
       await tester.pumpAndSettle();
-      expect(find.text('Abrir GitHub'), findsNothing);
+      expect(find.text('Guardar'), findsNothing);
       expect(find.byTooltip('Más opciones de «Tardes»'), findsNothing);
     });
   });

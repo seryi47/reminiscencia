@@ -1,13 +1,13 @@
 import 'dart:io';
 
-import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_audio/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_audio/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_audio/return_code.dart';
 
 import 'app_error.dart';
 import 'local_audio.dart';
 
-/// Conversión real a Ogg Opus con FFmpeg (paquete ffmpeg_kit_flutter_new_min, con libopus).
+/// Conversión real a Ogg Opus con FFmpeg (paquete ffmpeg_kit_flutter_new_audio, con libopus).
 /// Mismas tasas que la web (ADR-0012): mono 32 kbps y estéreo 48 kbps, a 48 kHz.
 /// Las pruebas unitarias no lo ejecutan (necesita el binario nativo); los argumentos se comprobaron con ffmpeg de escritorio.
 /// [enforceLimits] aplica los límites de la subida local (60 MB y 20 minutos); la subida para todos no tiene

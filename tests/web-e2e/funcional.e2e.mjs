@@ -18,7 +18,7 @@ import {
   createPlaylist,
   fillField,
   goSection,
-  issuePayload,
+  saveEdit,
   openApp,
   openCollection,
   openCollectionMenu,
@@ -63,6 +63,18 @@ async function fakeUploadFunction({ headers, body }) {
   };
 }
 
+// Función /api/editar simulada (frontend/web/api/editar.js): guarda lo que recibe la web, sin tocar GitHub.
+const ediciones = [];
+async function fakeEditFunction({ headers, body }) {
+  const type = headers["content-type"] ?? "";
+  if (type.startsWith("image/")) {
+    ediciones.push({ kind: "portada", id: headers["x-portada-id"], type, bytes: body.length, jpeg: body[0] === 0xff && body[1] === 0xd8 });
+  } else {
+    ediciones.push({ kind: "organizar", ...JSON.parse(body.toString("utf8")) });
+  }
+  return { json: { ok: true, mensaje: "Guardado: llegará a todos en un par de minutos." } };
+}
+
 // El catálogo de prueba se puede cambiar durante una prueba: así se simula que el workflow publica una subida.
 let catalogo;
 let cancionesBase;
@@ -78,7 +90,7 @@ before(async () => {
       { id: "aaaaaaaaaaa", url: "https://www.youtube.com/watch?v=aaaaaaaaaaa", title: "Tema de YouTube dos", artist: "Artista Dos", durationS: 95 },
     ] }),
   });
-  server = await startStaticServer({ overrides: catalogo, functions: new Map([["/api/subir", fakeUploadFunction]]) });
+  server = await startStaticServer({ overrides: catalogo, functions: new Map([["/api/subir", fakeUploadFunction], ["/api/editar", fakeEditFunction]]) });
   browser = await launchBrowser();
 });
 
@@ -615,49 +627,81 @@ describe("Listas locales y «Me gusta»", () => {
   );
 });
 
-describe("Editar canciones y álbumes (incidencias de GitHub)", () => {
-  prueba("«Editar detalles» de una canción prepara edit_song con el título y el artista", () =>
+describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)", () => {
+  prueba("«Editar detalles» de una canción guarda edit_song con el título y el artista, sin abrir GitHub", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
       await openApp(page, server.url);
       await openCollection(page, FOLDER_A);
       const opciones = await openRowMenu(page, "S0000000000000003");
       for (const opcion of ["Editar detalles", "Añadir a un álbum", "Cambiar portada", "Ir al álbum"]) assert.ok(opciones.includes(opcion), opciones.join(", "));
       await pickMenu(page, "menu-edit-song");
       await waitVisible(page, "edit-song");
-      assert.match(await textOf(page, "edit-note"), /permiso de escritura en el repositorio.*llega a todos en un par de minutos/);
-      assert.equal(await page.$eval('[data-testid="edit-song-link"]', (a) => a.getAttribute("aria-disabled")), "true", "Sin cambios no hay petición.");
+      assert.match(await textOf(page, "edit-note"), /sin pasar por GitHub.*par de minutos/);
+      assert.equal(await page.$eval('[data-testid="edit-song-save"]', (b) => b.getAttribute("aria-disabled")), "true", "Sin cambios no hay petición.");
       await fillField(await waitVisible(page, "edit-song-title"), "Charleston nuevo");
       await fillField(await waitVisible(page, "edit-song-artist"), "Orquesta ficticia");
-      const issue = await issuePayload(page, "edit-song-link");
-      assert.equal(issue.origin, "https://github.com/seryi47/reminiscencia/issues/new");
-      assert.equal(issue.labels, "biblioteca");
-      assert.deepEqual(issue.payload, { op: "edit_song", song_id: "S0000000000000003", title: "Charleston nuevo", artist: "Orquesta ficticia" });
-      assert.equal(await page.$eval('[data-testid="edit-song-link"]', (a) => [a.target, a.rel].join()), "_blank,noopener noreferrer");
-      // Un título vacío marca el campo y desactiva el enlace.
+      // Un título vacío marca el campo y desactiva el botón.
       await fillField(await waitVisible(page, "edit-song-title"), " ");
-      await page.waitForFunction(() => document.querySelector('[data-testid="edit-song-link"]').getAttribute("aria-disabled") === "true");
+      await page.waitForFunction(() => document.querySelector('[data-testid="edit-song-save"]').getAttribute("aria-disabled") === "true");
       assert.match(await page.$eval('[data-testid="edit-song"] .field-error:not([hidden])', (el) => el.textContent), /no puede quedar en blanco/);
-      await page.keyboard.press("Escape");
+      await fillField(await waitVisible(page, "edit-song-title"), "Charleston nuevo");
+      await saveEdit(page, "edit-song-save");
+      assert.deepEqual(ediciones, [{ kind: "organizar", action: "organize", payload: { op: "edit_song", song_id: "S0000000000000003", title: "Charleston nuevo", artist: "Orquesta ficticia" } }]);
       assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "row-more", "El foco vuelve a «Más opciones».");
     }),
   );
 
-  prueba("«Añadir a un álbum» prepara edit_song con folder_id (o null para sacarla del álbum)", () =>
+  prueba("Si /api/editar rechaza el cambio, la hoja sigue abierta con el motivo y se puede reintentar", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_A);
+      await openRowMenu(page, "S0000000000000003");
+      await pickMenu(page, "menu-edit-song");
+      await waitVisible(page, "edit-song");
+      await page.setRequestInterception(true);
+      const handler = (request) => {
+        if (request.url().endsWith("/api/editar")) {
+          page.off("request", handler);
+          return request.respond({ status: 500, contentType: "application/json", body: JSON.stringify({ ok: false, error: "El servidor no tiene permiso." }) });
+        }
+        return request.continue();
+      };
+      page.on("request", handler);
+      await fillField(await waitVisible(page, "edit-song-title"), "Otro título");
+      await page.waitForFunction(() => document.querySelector('[data-testid="edit-song-save"]').getAttribute("aria-disabled") === "false");
+      await page.$eval('[data-testid="edit-song-save"]', (b) => b.click());
+      await page.waitForFunction(() => /no tiene permiso/.test(document.querySelector('[data-testid="edit-song-save-status"]').textContent), { timeout: 5000 });
+      assert.equal(await page.$eval('[data-testid="edit-song-save"]', (b) => b.getAttribute("aria-disabled")), "false");
+      await page.setRequestInterception(false);
+    }),
+  );
+
+  prueba("«Añadir a un álbum» guarda edit_song con folder_id (o null para sacarla del álbum)", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
       await openApp(page, server.url);
       await openCollection(page, FOLDER_A);
       await openRowMenu(page, "S0000000000000004");
       await pickMenu(page, "menu-move-album");
       await waitVisible(page, "move-album");
       await page.$$eval('[data-testid="move-album-option"]', (labels) => labels.find((label) => /Álbum de prueba B/.test(label.textContent)).click());
-      assert.deepEqual((await issuePayload(page, "move-album-link")).payload, { op: "edit_song", song_id: "S0000000000000004", folder_id: "F0000000000000002" });
+      await saveEdit(page, "move-album-save");
+      await openRowMenu(page, "S0000000000000004");
+      await pickMenu(page, "menu-move-album");
+      await waitVisible(page, "move-album");
       await page.$$eval('[data-testid="move-album-option"]', (labels) => labels.find((label) => /Sin álbum/.test(label.textContent)).click());
-      assert.deepEqual((await issuePayload(page, "move-album-link")).payload, { op: "edit_song", song_id: "S0000000000000004", folder_id: null });
+      await saveEdit(page, "move-album-save");
+      assert.deepEqual(ediciones.map((e) => e.payload), [
+        { op: "edit_song", song_id: "S0000000000000004", folder_id: "F0000000000000002" },
+        { op: "edit_song", song_id: "S0000000000000004", folder_id: null },
+      ]);
     }),
   );
 
-  prueba("«Editar detalles» y «Cambiar portada» de un álbum; «Crear» › «Álbum» prepara create_folder", () =>
+  prueba("«Editar detalles» y «Cambiar portada» de un álbum; «Crear» › «Álbum» guarda create_folder", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
       await openApp(page, server.url);
       await openCollection(page, FOLDER_A);
       const opciones = await openCollectionMenu(page);
@@ -667,30 +711,30 @@ describe("Editar canciones y álbumes (incidencias de GitHub)", () => {
       await waitVisible(page, "edit-album");
       assert.equal(await page.$eval('[data-testid="edit-album-artist"]', (el) => el.value), "Artista de prueba A");
       await fillField(await waitVisible(page, "edit-album-name"), "Álbum renombrado");
-      assert.deepEqual((await issuePayload(page, "edit-album-link")).payload, { op: "edit_folder", folder_id: ALBUM_A_ID, name: "Álbum renombrado", artist: "Artista de prueba A" });
-      // Sin nombre no hay petición (el campo admite como mucho 80 caracteres, como el backend).
+      // El campo admite como mucho 80 caracteres, como el backend.
       assert.equal(await page.$eval('[data-testid="edit-album-artist"]', (el) => el.maxLength), 80);
       await fillField(await waitVisible(page, "edit-album-name"), " ");
-      await page.waitForFunction(() => document.querySelector('[data-testid="edit-album-link"]').getAttribute("aria-disabled") === "true");
-      // Desde la hoja se pasa a «Cambiar portada».
+      await page.waitForFunction(() => document.querySelector('[data-testid="edit-album-save"]').getAttribute("aria-disabled") === "true");
+      await fillField(await waitVisible(page, "edit-album-name"), "Álbum renombrado");
+      // Desde la hoja se pasa a «Cambiar portada»: se elige una imagen y se guarda como JPEG.
       await clickTestid(page, "edit-album-cover", "Cambiar portada");
       await waitVisible(page, "cover-sheet");
-      assert.equal(await page.$eval('[data-testid="cover-id"]', (el) => el.value), ALBUM_A_ID);
-      assert.equal(await page.$eval('[data-testid="cover-github-link"]', (a) => a.href), "https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas");
+      assert.equal(await page.$eval('[data-testid="cover-save"]', (b) => b.getAttribute("aria-disabled")), "true", "Sin imagen no se guarda.");
       const reglas = await textOf(page, "cover-rules");
-      for (const regla of [/JPG, PNG o WebP, de hasta 10 MB/, /F0000000000000001\.jpg/, /640 × 640/, /permiso de escritura/, /par de minutos/]) assert.match(reglas, regla);
-      await clickTestid(page, "cover-copy", "Copiar el ID");
-      await page.waitForFunction(() => /ID/.test(document.querySelector('[data-testid="toast"]').textContent), { timeout: 3000 });
-      await page.keyboard.press("Escape");
+      for (const regla of [/JPG, PNG o WebP/, /640 × 640/, /par de minutos/]) assert.match(reglas, regla);
+      const dir = await mkdtemp(join(tmpdir(), "reminiscencia-e2e-"));
+      const foto = join(dir, "portada-prueba.png");
+      await writeFile(foto, pngImage(900, 600));
+      await (await page.$('[data-testid="cover-file"]')).uploadFile(foto);
+      await saveEdit(page, "cover-save");
+      assert.deepEqual(ediciones.map(({ kind, id, type, jpeg }) => ({ kind, id, type, jpeg })), [{ kind: "portada", id: ALBUM_A_ID, type: "image/jpeg", jpeg: true }]);
       // Crear un álbum.
       await createMenu(page, VIEWPORTS.escritorio, "album");
       await waitVisible(page, "create-album");
       await fillField(await waitVisible(page, "create-album-name"), "Valses de prueba");
-      assert.deepEqual((await issuePayload(page, "create-album-link")).payload, { op: "create_folder", name: "Valses de prueba" });
       await fillField(await waitVisible(page, "create-album-artist"), "Orquesta ficticia");
-      const issue = await issuePayload(page, "create-album-link");
-      assert.deepEqual(issue.payload, { op: "create_folder", name: "Valses de prueba", artist: "Orquesta ficticia" });
-      assert.equal(issue.title, "Crear el álbum «Valses de prueba»");
+      await saveEdit(page, "create-album-save");
+      assert.deepEqual(ediciones.at(-1).payload, { op: "create_folder", name: "Valses de prueba", artist: "Orquesta ficticia" });
     }),
   );
 

@@ -10,22 +10,15 @@ import 'app_error.dart';
 const String kLibraryRepo = 'seryi47/reminiscencia';
 const String kLibraryIssueLabel = 'biblioteca';
 
-/// Página de subida de GitHub para cambiar portadas (buzón de portadas).
-final Uri kCoverUploadUri = Uri.parse(
-  'https://github.com/$kLibraryRepo/upload/main/audio-library/buzon/portadas',
-);
-
-/// Límites (en caracteres) que la app valida antes de abrir GitHub.
+/// Límites (en caracteres) que la app valida antes de enviar el cambio.
 const int kMaxAlbumNameLength = 80;
 const int kMaxArtistLength = 80;
 const int kMaxSongTitleLength = 200;
 const int kMaxIssueTitleLength = 120;
 
-/// Aviso común: quién procesa las peticiones.
+/// Aviso común: los cambios se guardan desde la app.
 const String kWriteAccessNote =
-    'Se abrirá GitHub en el navegador con la petición ya escrita. Hace falta una cuenta con permiso de '
-    'escritura en el repositorio de la biblioteca: las peticiones de otras cuentas no se procesan. '
-    'El cambio se verá en la app después de que se procese y la biblioteca se sincronice.';
+    'El cambio se guarda desde aquí, sin pasar por GitHub, y llega a todos en un par de minutos.';
 
 final RegExp _songId = RegExp(r'^S[0-9a-f]{16}$');
 // Álbumes: los nuevos llevan «F» y 16 hexadecimales; los antiguos, 10 hexadecimales. Se aceptan los dos.
@@ -173,8 +166,6 @@ class LibraryRequest {
   /// Cuerpo de la incidencia con el formato de las peticiones.
   String get body => 'action: organize\npayload: ${jsonEncode(payload)}';
 
-  /// Enlace de GitHub para abrir la incidencia nueva con la etiqueta «biblioteca», el título y el cuerpo.
-  Uri get issueUri => buildIssueUri(title: title, body: body);
 }
 
 /// Título de incidencia en una línea y con 120 caracteres como mucho.
@@ -187,14 +178,4 @@ String cleanIssueTitle(String text) {
   final runes = clean.runes.toList();
   if (runes.length <= kMaxIssueTitleLength) return clean;
   return '${String.fromCharCodes(runes.take(kMaxIssueTitleLength - 1))}…';
-}
-
-/// https://github.com/seryi47/reminiscencia/issues/new?labels=biblioteca&title=…&body=… (codificado como la web).
-Uri buildIssueUri({required String title, required String body}) {
-  final query = [
-    'labels=${Uri.encodeComponent(kLibraryIssueLabel)}',
-    'title=${Uri.encodeComponent(cleanIssueTitle(title))}',
-    'body=${Uri.encodeComponent(body)}',
-  ].join('&');
-  return Uri.parse('https://github.com/$kLibraryRepo/issues/new?$query');
 }
