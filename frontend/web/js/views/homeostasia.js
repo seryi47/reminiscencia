@@ -658,9 +658,13 @@ async function convertirPlaylist(items, onProgress, signal) {
 export async function importYoutubeVideo(ctx, url, { signal, onStatus, fallbackArtist = '' } = {}) {
   if (!validateYoutubeImportUrl(url)) throw new Error('La URL de YouTube no es válida.');
   const videoId = getVideoId(url);
-  if (!videoId || completedVideos.has(videoId) || activeVideos.has(videoId) || cachedRecord(videoId)?.state === 'queued') {
+  // Un registro «en cola» de otra sesión no prueba que la canción esté en la biblioteca (la subida pudo no terminar):
+  // desde el buscador se vuelve a descargar; el servidor reconoce por contenido lo que ya está publicado.
+  if (!videoId || activeVideos.has(videoId)) {
     return 'already';
   }
+  completedVideos.delete(videoId);
+  if (cachedRecord(videoId)?.state === 'queued') saveImportRecord(videoId, { state: 'retry' });
   onStatus?.('Leyendo YouTube…');
   const { items, album } = await listarPlaylist(url, signal);
   if (items.length === 0) throw new Error('No se han encontrado canciones en YouTube.');

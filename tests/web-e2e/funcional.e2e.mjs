@@ -333,6 +333,18 @@ describe("Buscar en YouTube", () => {
       await page.waitForFunction(() => /Reintentar/.test(document.querySelector('[data-testid="youtube-download"]')?.textContent ?? ""), { timeout: 8000 });
     }));
 
+  prueba("Un registro «en cola» antiguo no impide volver a descargar: no dice «ya se había descargado»", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await page.evaluate(() => localStorage.setItem("reminiscencia.youtube-imports", JSON.stringify({ version: 1, records: { dQw4w9WgXcQ: { state: "queued", updatedAt: 1 } } })));
+      await search(page, "cancion inexistente zzqx");
+      await waitVisible(page, "youtube-results", { context: "resultados de YouTube" });
+      await page.$eval('[data-testid="youtube-download"]', (el) => el.click());
+      // Sin proxy de playlists acaba en error (se intentó de verdad); antes salía «ya se había descargado».
+      await page.waitForFunction(() => /Reintentar/.test(document.querySelector('[data-testid="youtube-download"]')?.textContent ?? ""), { timeout: 8000 });
+      assert.doesNotMatch(await textOf(page, "youtube-results"), /ya se había descargado/);
+    }));
+
   prueba("Si la biblioteca sí la tiene, solo ofrece el botón «Buscar en YouTube»", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       await openApp(page, server.url);
