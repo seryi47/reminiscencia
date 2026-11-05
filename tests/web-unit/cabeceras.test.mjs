@@ -2,7 +2,7 @@
 // Ejecución: node --test "tests/web-unit/*.test.mjs" (desde la raíz del repositorio).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { AUDIO_ORIGIN } from "../../frontend/web/js/offline-core.js";
 
 const WEB = new URL("../../frontend/web/", import.meta.url);
@@ -45,12 +45,20 @@ describe("vercel.json: Content-Security-Policy", () => {
   });
 });
 
-describe("vercel.json: tipo de los ficheros de audio", () => {
-  it("sirve los .opus como audio/ogg con codecs=opus, el tipo que reproduce el navegador", () => {
+describe("vercel.json: audio en R2", () => {
+  it("redirige /audio/<id>.opus al bucket de R2, de forma temporal (ADR-0020, fase 3)", () => {
     const config = JSON.parse(read("vercel.json"));
-    const rule = config.headers.find((item) => item.source === "/audio/(.*)\\.opus");
-    const header = rule?.headers.find((item) => item.key === "Content-Type");
-    assert.equal(header?.value, "audio/ogg; codecs=opus");
+    const rule = config.redirects?.find((item) => item.source === "/audio/:file");
+    assert.ok(rule, "falta la redirección del audio");
+    assert.equal(rule.destination, `${AUDIO_ORIGIN}/audio/:file`);
+    // Temporal (307): si R2 cambia de dominio, los navegadores no se quedan con la dirección vieja.
+    assert.equal(rule.permanent, false);
+  });
+
+  it("la web ya no publica ficheros de audio: solo los sirve R2", () => {
+    const folder = new URL("audio/", WEB);
+    const opus = existsSync(folder) ? readdirSync(folder).filter((name) => name.endsWith(".opus")) : [];
+    assert.deepEqual(opus, []);
   });
 });
 

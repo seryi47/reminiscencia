@@ -213,6 +213,27 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -q -m "buzón: canciones y portadas subidas por $ACTOR"
 
+      # El audio público solo lo sirve R2 (ADR-0020, fase 3): se sube antes de que main (y con él la web y la APK)
+      # anuncie las canciones, y se borra el de las despublicadas. Si este paso falla, no se sube nada a main. Las
+      # credenciales de R2 solo llegan a este paso, que no tiene el token de GitHub ni instala nada (sync_r2 usa solo la
+      # biblioteca estándar de Python).
+      - name: Subir el audio público a R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "R2 solo se actualiza desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" = "$BASE" ]; then
+            echo "Sin cambios: R2 no se toca."
+            exit 0
+          fi
+          python scripts/sync_r2.py --aplicar --borrar-sobrantes
+
       # El token solo llega a este paso, y solo para subir. Solo main escribe en el catálogo.
       - name: Subir a main
         id: guardar

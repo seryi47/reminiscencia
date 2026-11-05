@@ -24,11 +24,14 @@ function folderFor(index) {
   return null;
 }
 
-// Audios reales de frontend/web/audio, reutilizados como fichero de cada canción ficticia
-// para que la reproducción funcione de verdad en Chrome. Si no hay ninguno, no se sustituye el audio.
+// Audios reales de la biblioteca (audio-library/audio; la web ya no tiene audio propio, lo sirve R2), reutilizados como
+// fichero de cada canción ficticia para que la reproducción funcione de verdad en Chrome. Si no hay ninguno, no se
+// sustituye el audio.
+const AUDIO_DIR = join(WEB_ROOT, "..", "..", "audio-library", "audio");
+
 function listRealAudioFiles() {
   try {
-    return readdirSync(join(WEB_ROOT, "audio"))
+    return readdirSync(AUDIO_DIR)
       .filter((name) => name.endsWith(".opus"))
       .sort();
   } catch {
@@ -67,7 +70,7 @@ export function createTestCatalogOverrides() {
   if (realAudio.length > 0) {
     songs.forEach((song, index) => {
       overrides.set(`/${song.audio}`, {
-        file: join(WEB_ROOT, "audio", realAudio[index % realAudio.length]),
+        file: join(AUDIO_DIR, realAudio[index % realAudio.length]),
         type: "audio/ogg; codecs=opus",
       });
     });

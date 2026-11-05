@@ -42,14 +42,14 @@ def _organize(module, payload: dict) -> dict:
     return module.run({"ACTION": "organize", "PAYLOAD": json.dumps(payload)})
 
 
-def test_organize_edit_song_public_publishes_audio_and_both_web_files(ci):
+def test_organize_edit_song_public_publishes_both_web_files_and_leaves_the_audio_to_r2(ci):
     song_id = _seed_private_song(ci)
 
     result = _organize(ci, {"op": "edit_song", "song_id": song_id, "public": True, "tags": ["Jazz"]})
 
     assert result["song"]["public"] is True
     assert result["web"]["public"] == 1
-    assert (ci.WEB / "audio" / f"{song_id}.opus").read_bytes() == b"opus-bytes"
+    assert not (ci.WEB / "audio" / f"{song_id}.opus").exists()  # el audio público lo sirve R2 (ADR-0020)
     songs = json.loads((ci.WEB / "data" / "songs.json").read_text(encoding="utf-8"))
     assert [song["id"] for song in songs] == [song_id]
     view = json.loads((ci.WEB / "data" / "catalog.json").read_text(encoding="utf-8"))

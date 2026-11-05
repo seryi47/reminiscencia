@@ -13,7 +13,7 @@ Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la 
 
 ## Cómo se usa la web
 
-https://reminiscencia.vercel.app abre directamente en **Inicio** con la música. No hay cuentas ni hay que elegir nada: todos ven la misma biblioteca pública. Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/` y `audio/`).
+https://reminiscencia.vercel.app abre directamente en **Inicio** con la música. No hay cuentas ni hay que elegir nada: todos ven la misma biblioteca pública. Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/`). El audio lo sirve Cloudflare R2: Vercel redirige `/audio/<id>.opus` al bucket ([ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md)).
 
 - **Inicio**: saludo, accesos rápidos y estantes con las carpetas, lo añadido y tus listas.
 - **Buscar**: por título o artista, con «Explorar todo»; si la canción no está, también en YouTube con «Escuchar» y «Descargar» (ADR-0021).

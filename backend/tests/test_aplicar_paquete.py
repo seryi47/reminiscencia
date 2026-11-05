@@ -86,11 +86,11 @@ def test_publicar_avisa_de_lo_que_regenera_aunque_el_paquete_no_lo_traiga(main_p
 
     salida = capsys.readouterr().out
     assert "::notice" in salida and "::warning" not in salida
-    web_audio = f"frontend/web/audio/{nueva['id']}.opus"
+    # El audio público ya no se copia a la web: lo sirve R2 (ADR-0020, fase 3).
     assert set(_ultima_linea(salida)["parte_publica"]["regenerados"]) == {
-        SONGS_JSON, "frontend/web/data/catalog.json", web_audio,
+        SONGS_JSON, "frontend/web/data/catalog.json",
     }
-    assert _indice(repo, web_audio) == audio_nuevo
+    assert not (repo / "frontend/web/audio" / f"{nueva['id']}.opus").exists()
     assert b"Tema nuevo" in _indice(repo, SONGS_JSON)
 
 

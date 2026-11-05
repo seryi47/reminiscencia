@@ -8,7 +8,7 @@ Revisado con el código el 2026-11-02. Las constantes se toman del código. Lo q
 
 Este documento cubre dos piezas:
 
-1. **Procesado en GitHub Actions** (`main`): de una URL con licencia a `audio-library/audio/<id>.opus`, y la publicación de las canciones públicas en `frontend/web/audio/`.
+1. **Procesado en GitHub Actions** (`main`): de una URL con licencia a `audio-library/audio/<id>.opus`, y la publicación de las canciones públicas en Cloudflare R2 (ADR-0020).
 2. **Motor de reproducción en la web** (feat/ui-publica): cola, volumen con GainNode, temporizador de apagado, Media Session y Screen Wake Lock.
 
 Las reglas de producto están en [DESIGN.md](../user-experience/DESIGN.md), secciones 8.1 y 8.2. La elección del perfil de compresión está en [COMPRESSION.md](COMPRESSION.md). Las decisiones de arquitectura están en `docs/decisions/` (ADR-0002, ADR-0003, ADR-0005, ADR-0006 y ADR-0007). ADR-0008 solo existe en feat/gestion-backend. El contrato del reproductor, caso por caso, está en `docs/user-experience/PLAYER.md`, y el modelo de datos en `docs/datos/DATABASE.md`. Este documento describe el código.
@@ -132,8 +132,8 @@ Los valores son los que declara `limits.py`, que indica haberlos verificado en d
 
 `sync_public` se ejecuta al final de cada acción de `ci_library.py`, también cuando el catálogo no cambia.
 
-- Copia a `frontend/web/audio/<id>.opus` solo las canciones con `public: true`. Copia si el destino no existe o si su tamaño es distinto (compara tamaños, no contenido).
-- Borra de `frontend/web/audio/` los `.opus` que ya no son públicos.
+- Comprueba que existe el audio de cada canción con `public: true`; ya no lo copia a la web (ADR-0020, fase 3). Lo sube a R2 `scripts/sync_r2.py` en el job `publicar`, que también borra del bucket el de las despublicadas.
+- Borra de `frontend/web/audio/` cualquier `.opus` que quede de antes.
 - Si falta el `.opus` de una canción pública en `audio-library/audio/`, lanza `FileNotFoundError`.
 - `frontend/web/data/songs.json`: solo las públicas, ordenadas por título sin distinguir mayúsculas. Campos: `id`, `title`, `artist`, `year`, `tags`, `folder_id`, `duration_s`, `license` y `audio` (`audio/<id>.opus`).
 - `frontend/web/data/folders.json`: todas las carpetas (`id`, `name`, `parent_id`).

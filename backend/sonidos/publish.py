@@ -1,13 +1,15 @@
 """Sincroniza lo que se publica en la web pública (frontend/web) con el catálogo (ADR-0007, ADR-0008).
 
-- Copia el audio de las canciones con public=true a frontend/web/audio/.
-- Borra de frontend/web/audio/ lo que ya no está publicado.
+- Comprueba que existe el audio de cada canción con public=true. El audio público ya no se copia a la web: lo sirve
+  Cloudflare R2 (ADR-0020, fase 3), y scripts/sync_r2.py lo sube desde audio-library/audio/ antes de publicar.
+- Borra de frontend/web/audio/ cualquier audio que quede de antes (la carpeta ya no se usa).
 - Regenera frontend/web/data/songs.json (solo públicas), folders.json (todas las carpetas)
   y catalog.json (solo las canciones públicas y todas las carpetas, sin rutas de audio ni huellas SHA-256).
 - Copia a frontend/web/covers/ las portadas de las canciones públicas y de todas las carpetas (ADR-0016), desde
   audio-library/covers/, y borra las que sobran. Las canciones y carpetas con portada llevan "cover": "covers/<id>.jpg";
   las carpetas con artista, "artist". Los dos campos solo aparecen cuando tienen valor.
-Vercel sirve solo frontend/web; el audio privado de audio-library/ nunca llega al público.
+Vercel sirve solo frontend/web (y redirige /audio/<id>.opus a R2); el audio privado de audio-library/ nunca llega al
+público, porque sync_r2 solo sube las canciones de data/songs.json.
 Los metadatos de las canciones no publicadas (título, artista, origen...) tampoco salen de audio-library/:
 la web es pública y catalog.json forma parte de ella (ADR-0008).
 """
@@ -54,7 +56,6 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
     web_audio = web_dir / "audio"
     web_data = web_dir / "data"
     web_covers = web_dir / "covers"
-    web_audio.mkdir(parents=True, exist_ok=True)
     web_data.mkdir(parents=True, exist_ok=True)
 
     public = [song for song in data["songs"] if song.get("public") is True]
@@ -63,16 +64,13 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
             raise ValueError(f"identificador de canción no válido en la parte pública: {song.get('id')!r}")
     public_names = {f"{song['id']}.opus" for song in public}
 
-    for name in public_names:
+    for name in sorted(public_names):
         source = audio_dir / name
-        if not source.exists():
+        if source.is_symlink() or not source.is_file():
             raise FileNotFoundError(f"falta el audio de {name} en {audio_dir}")
-        target = web_audio / name
-        # Se compara el contenido y no solo el tamaño: un audio de otro contenido y mismo tamaño se vuelve a copiar.
-        if not target.exists() or not filecmp.cmp(source, target, shallow=False):
-            shutil.copyfile(source, target)
-    for stale in web_audio.glob("*.opus"):
-        if stale.name not in public_names:
+    # El audio público lo sirve R2: lo que quede en frontend/web/audio/ es de antes de la fase 3 y se borra.
+    if web_audio.is_dir() and not web_audio.is_symlink():
+        for stale in web_audio.glob("*.opus"):
             stale.unlink()
 
     song_covers = {song["id"]: _cover_of(song) for song in public}

@@ -137,8 +137,9 @@ async function audioResponse(request) {
   return sliceResponse(await cached.blob(), cached.headers.get('content-type') || 'audio/ogg', range);
 }
 
-/** Audio fuera de la caché: primero R2 (no cobra la salida de datos; ADR-0020) y, si falla o no tiene la canción, el
- *  propio origen (Vercel). Se reenvía el Range para poder buscar dentro del tema. */
+/** Audio fuera de la caché: se pide a R2 (no cobra la salida de datos; ADR-0020). Si falla, se repite por el propio
+ *  origen, que lo redirige a R2 (vercel.json; la web ya no lleva audio). Se reenvía el Range para poder buscar dentro
+ *  del tema. */
 async function fetchAudio(request, range) {
   const r2 = r2AudioUrl(request.url);
   if (r2) {

@@ -1,10 +1,9 @@
 name: r2
 
-# Copia a Cloudflare R2 el audio público que hay en main (ADR-0020). Se lanza cuando termina buzon o biblioteca (que
-# son quienes añaden audio), con un push que toque el audio, o a mano. Sin permiso de escritura en el repositorio: las
-# credenciales de R2 solo llegan a este workflow, que ejecuta código de main y no el de ninguna subida. Si falla, la
-# publicación ya está hecha y Vercel sigue sirviendo el audio; la próxima ejecución completa lo que falte.
-# Solo sube lo que falta y nunca borra nada del bucket.
+# Repaso del audio público en Cloudflare R2 (ADR-0020). El audio lo suben a R2 los jobs 'publicar' de buzon.yml y
+# biblioteca.yml antes de subir a main (fase 3); este workflow vuelve a comprobarlo cuando terminan, o a mano, y sube
+# lo que falte. Sin permiso de escritura en el repositorio: las credenciales de R2 solo llegan a este workflow, que
+# ejecuta código de main y no el de ninguna subida. Nunca borra nada del bucket (eso solo lo hace 'publicar').
 
 on:
   workflow_run:
@@ -13,7 +12,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "frontend/web/audio/**"
+      - "audio-library/audio/**"
+      - "frontend/web/data/songs.json"
   workflow_dispatch:
 
 concurrency:
@@ -53,5 +53,4 @@ jobs:
             echo "R2 no está configurado: se omite."
             exit 0
           fi
-          pip install -q boto3
           python scripts/sync_r2.py --aplicar
