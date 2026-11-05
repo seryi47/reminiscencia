@@ -27,8 +27,8 @@ describe("vercel.json: Content-Security-Policy", () => {
     assert.deepEqual(directives.get("default-src"), ["'self'"]);
     assert.deepEqual(directives.get("script-src"), ["'self'"]);
     assert.deepEqual(directives.get("object-src"), ["'none'"]);
-    assert.deepEqual(directives.get("media-src"), ["'self'"]);
-    // Además de la propia web, solo el bucket de audio de R2 (lo lee el service worker; ADR-0020).
+    assert.deepEqual(directives.get("media-src"), ["'self'", AUDIO_ORIGIN]);
+    // Además de la propia web, solo el bucket de audio de R2 (lo pide el service worker y lo reproduce el elemento audio; ADR-0020).
     assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN]);
     assert.deepEqual(directives.get("frame-ancestors"), ["'none'"]);
   });
