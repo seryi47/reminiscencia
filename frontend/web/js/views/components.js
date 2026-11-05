@@ -277,7 +277,7 @@ export function trackTable(ctx, songs, {
         el('button', {
           type: 'button',
           class: 'track-text track-play',
-          'aria-label': `Reproducir ${song.title}`,
+          'aria-label': song.pendingEdit ? `Reproducir ${song.title} (cambio pendiente de guardar)` : `Reproducir ${song.title}`,
           'data-testid': 'track-title',
           'data-key': `title:${contextId}:${position}`,
           on: { click: (event) => { event.stopPropagation(); play(); } },
@@ -288,6 +288,8 @@ export function trackTable(ctx, songs, {
           song.pending
             ? el('span', { class: 'badge badge-pending', 'data-testid': 'track-pending' }, ctx.uploadLabel(song))
             : (song.local ? el('span', { class: 'badge' }, 'En este navegador') : null),
+          // Un cambio enviado que aún no ha llegado al catálogo (ADR-0027): se ve ya, con la marca «Pendiente».
+          song.pendingEdit && !song.pending ? el('span', { class: 'badge badge-edit', 'data-testid': 'track-edit-pending' }, 'Pendiente') : null,
           song.pending ? '' : (song.artist || (song.local ? '' : 'Artista desconocido')),
           playable ? null : el('span', { class: 'track-offline' }, ' · No disponible sin conexión'))))),
     showAlbum ? el('td', { class: 'col-album' },

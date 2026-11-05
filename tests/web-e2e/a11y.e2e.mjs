@@ -68,6 +68,22 @@ async function silentWavs(names, seconds = 1) {
   return paths;
 }
 
+// Ediciones pendientes (ADR-0027) guardadas en este navegador: una pendiente (título de una canción y nombre del
+// álbum A) y otra fallida, para pintar la marca «Pendiente» y la lista de cambios pendientes.
+async function seedPendingEdits(page) {
+  await page.evaluate(() => {
+    const now = Date.now();
+    const items = [
+      { key: "e1", kind: "organize", payload: { op: "edit_song", song_id: "S0000000000000002", title: "Canción de prueba 02 bis", artist: "Artista" }, issue: 901, label: "Canción de prueba 02 bis", action: "Detalles de la canción", createdAt: now, closedAt: null, state: "pendiente", error: null },
+      { key: "e2", kind: "organize", payload: { op: "edit_folder", folder_id: "F0000000000000001", name: "Álbum de prueba A", artist: "Otro artista" }, issue: 902, label: "Álbum de prueba A", action: "Detalles del álbum", createdAt: now, closedAt: null, state: "pendiente", error: null },
+      { key: "e3", kind: "organize", payload: { op: "create_folder", name: "Valses" }, issue: 903, label: "Valses", action: "Álbum nuevo", createdAt: now, closedAt: null, state: "error", error: "El servidor no ha podido aplicar el cambio." },
+    ];
+    localStorage.setItem("reminiscencia.ediciones", JSON.stringify({ version: 1, items }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector('html[data-ready="true"]');
+}
+
 // Cada pantalla: cómo prepararla (page, viewport) y, si solo aplica a algunos anchos, en cuáles.
 const PANTALLAS = [
   { nombre: "Inicio", preparar: async () => {} },
@@ -253,6 +269,29 @@ const PANTALLAS = [
       await openUpload(page, vp, "archive");
       await fillField(await page.$('[data-testid="archive-url"]'), "https://youtu.be/abc");
       await page.waitForSelector('[data-testid="upload-panel-archive"] .field-error:not([hidden])');
+    },
+  },
+  {
+    nombre: "Álbum con cambios pendientes (marca «Pendiente»)",
+    preparar: async (page) => {
+      await seedPendingEdits(page);
+      await openCollection(page, FOLDER_A);
+      await waitVisible(page, "track-edit-pending");
+      await waitVisible(page, "collection-edit-pending");
+    },
+  },
+  {
+    nombre: "Lista de cambios pendientes, con uno fallido",
+    preparar: async (page, vp) => {
+      await seedPendingEdits(page);
+      if (isPhone(vp)) {
+        await goSection(page, "biblioteca", vp);
+        await clickTestid(page, "library-page-edits", "cambios pendientes");
+      } else {
+        await clickTestid(page, "sidebar-edits", "cambios pendientes");
+      }
+      await waitVisible(page, "edits-sheet");
+      await waitVisible(page, "edits-retry");
     },
   },
   {

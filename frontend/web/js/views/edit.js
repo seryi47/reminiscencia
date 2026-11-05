@@ -1,7 +1,8 @@
 // Hojas de edición, con el aspecto del «Editar detalles» de Spotify (portada a la izquierda, campos a la derecha).
 // Cada hoja valida la petición con las reglas del backend (js/cuidador/incidencias.js) y la guarda con «Guardar»:
 // POST /api/editar abre la incidencia «biblioteca» o guarda la portada con el token del servidor, sin pasar por GitHub
-// (ADR-0022; ADR-0008 sigue valiendo para el procesado).
+// (ADR-0022; ADR-0008 sigue valiendo para el procesado). Lo guardado queda pendiente y se ve al momento con la marca
+// «Pendiente» hasta que llega al catálogo (ADR-0027; ctx.saveEdit y ctx.saveCoverEdit, en js/edit-pending.js).
 // - «Editar detalles» de una canción: {"op":"edit_song","song_id","title","artist"}.
 // - «Editar detalles» de un álbum: {"op":"edit_folder","folder_id","name","artist"}.
 // - «Añadir a un álbum»: {"op":"edit_song","song_id","folder_id"} (null: sin álbum).
@@ -19,7 +20,7 @@
 
 import { COVER_INPUT_ACCEPT, coverFileProblem, resizeCoverFile } from '../cover-image.js';
 import { songsInFolder, songsToAddToAlbum } from '../catalog.js';
-import { dataUrlToBytes, saveCover, saveOrganize } from '../edit-remote.js';
+import { dataUrlToBytes } from '../edit-remote.js';
 import {
   COVER_RULES,
   folderArtistProblem,
@@ -75,11 +76,17 @@ function field({ key, label, value = '', maxLength, multiline = false, placehold
 }
 
 /**
+ * Guarda una operación de organizar por la app (ADR-0027): se envía a /api/editar, queda pendiente y se ve al momento.
+ * Si ya hay una igual pendiente, no se reenvía (el mensaje lo dice).
+ */
+const organizeSaver = (ctx) => (payload) => ctx.saveEdit(payload);
+
+/**
  * Botón «Guardar» (blanco), desactivado hasta que la petición vale, y su región de estado. save(payload) guarda; con
  * éxito se avisa y se cierra la hoja, y si falla el motivo queda a la vista y se puede reintentar. Mientras guarda, el
  * botón está desactivado (sin dobles envíos). label: texto del botón.
  */
-function saveAction(testid, close, save = saveOrganize, label = 'Guardar') {
+function saveAction(testid, close, save, label = 'Guardar') {
   const button = el('button', {
     type: 'button',
     class: 'button button-light edit-submit',
@@ -138,7 +145,7 @@ function textIssueSheet(ctx, { title, testid, coverNode = null, coverAction = nu
     className: 'dialog-edit',
     render: (body, close) => {
       const items = fields.map((spec) => ({ spec, ...field({ ...spec, testid: `${testid}-${spec.key}` }) }));
-      const submit = saveAction(`${testid}-save`, close);
+      const submit = saveAction(`${testid}-save`, close, organizeSaver(ctx));
       const values = () => Object.fromEntries(items.map((item) => [item.spec.key, item.input.value.trim()]));
       const refresh = () => {
         const current = values();
@@ -244,7 +251,7 @@ export function openMoveToAlbumSheet(ctx, song) {
     testid: 'move-album',
     className: 'dialog-edit',
     render: (body, close) => {
-      const submit = saveAction('move-album-save', close);
+      const submit = saveAction('move-album-save', close, organizeSaver(ctx));
       const name = uid('album');
       const option = (value, label, detail) => el('label', { class: 'radio-row', 'data-testid': 'move-album-option' },
         el('input', { type: 'radio', name, value, checked: (song.folderId ?? '') === value ? true : null }),
@@ -286,7 +293,7 @@ export function openRemoveFromAlbumSheet(ctx, song, folder) {
     testid: 'remove-from-album',
     className: 'dialog-edit',
     render: (body, close) => {
-      const submit = saveAction('remove-from-album-save', close, saveOrganize, 'Quitar');
+      const submit = saveAction('remove-from-album-save', close, organizeSaver(ctx), 'Quitar');
       const payload = { op: 'edit_song', song_id: song.id, folder_id: null };
       const problem = song.folderId === folder.id ? validateOperation(payload) : 'La canción ya no está en este álbum.';
       if (problem) {
@@ -331,7 +338,7 @@ export function openAddSongsToAlbumSheet(ctx, folder) {
     className: 'dialog-edit',
     render: (body, close) => {
       const selected = new Set();
-      const submit = saveAction('album-add-save', close, saveOrganize, 'Añadir (0)');
+      const submit = saveAction('album-add-save', close, organizeSaver(ctx), 'Añadir (0)');
       const inputId = uid('anadir-al-album');
       const input = el('input', {
         id: inputId,
@@ -425,7 +432,7 @@ export function openRemoveSongsFromAlbumSheet(ctx, folder, songIds, { onDone = (
     testid: 'album-remove-many',
     className: 'dialog-edit',
     render: (body, close) => {
-      const submit = saveAction('album-remove-many-save', () => { onDone(); close(); }, saveOrganize, 'Quitar');
+      const submit = saveAction('album-remove-many-save', () => { onDone(); close(); }, organizeSaver(ctx), 'Quitar');
       const payload = { op: 'move_songs', song_ids: ids, folder_id: null };
       const problem = ids.length > REQUEST_LIMITS.moveSongs
         ? `Como mucho ${REQUEST_LIMITS.moveSongs} canciones de una vez: quita ${ids.length - REQUEST_LIMITS.moveSongs} de la selección.`
@@ -467,7 +474,7 @@ export function openMoveSongsToAlbumSheet(ctx, folder, songIds, { onDone = () =>
     testid: 'album-move-many',
     className: 'dialog-edit',
     render: (body, close) => {
-      const submit = saveAction('album-move-many-save', () => { onDone(); close(); }, saveOrganize, 'Mover');
+      const submit = saveAction('album-move-many-save', () => { onDone(); close(); }, organizeSaver(ctx), 'Mover');
       const name = uid('destino');
       const group = el('fieldset', { class: 'radio-group' },
         el('legend', { class: 'field-label' }, `Álbum para ${songsText(ids.length)} de «${folder.name}»`),
@@ -512,7 +519,7 @@ export function openOrderAlbumSheet(ctx, folder) {
     className: 'dialog-edit',
     render: (body, close) => {
       const order = [...original];
-      const submit = saveAction('album-order-save', close, saveOrganize, 'Guardar orden');
+      const submit = saveAction('album-order-save', close, organizeSaver(ctx), 'Guardar orden');
       const live = el('p', { class: 'sr-only', 'aria-live': 'polite', 'data-testid': 'album-order-live' });
       const list = el('ol', { class: 'order-list', 'aria-label': `Orden de ${folder.name}`, 'data-testid': 'album-order-list' });
 
@@ -591,7 +598,8 @@ export function openCoverSheet(ctx, { kind, id, name }) {
     className: 'dialog-edit',
     render: (body, close) => {
       let jpeg = null;
-      const submit = saveAction('cover-save', close, () => saveCover(id, jpeg));
+      let previewUrl = null;
+      const submit = saveAction('cover-save', close, () => ctx.saveCoverEdit({ id, bytes: jpeg, dataUrl: previewUrl }));
       submit.blocked('Elige una imagen.');
       const preview = el('div', { class: 'edit-cover-slot', 'data-testid': 'cover-preview' });
       const fileInput = el('input', { type: 'file', accept: COVER_INPUT_ACCEPT, hidden: true, 'data-testid': 'cover-file' });
@@ -609,10 +617,12 @@ export function openCoverSheet(ctx, { kind, id, name }) {
         try {
           const dataUrl = await resizeCoverFile(file);
           jpeg = dataUrlToBytes(dataUrl);
+          previewUrl = dataUrl;
           preview.replaceChildren(el('img', { class: 'cover edit-cover-image', src: dataUrl, alt: 'Vista previa de la portada' }));
           submit.ready(jpeg);
         } catch (error) {
           jpeg = null;
+          previewUrl = null;
           submit.blocked(error instanceof Error ? error.message : 'No se ha podido leer la imagen.');
         }
       });
