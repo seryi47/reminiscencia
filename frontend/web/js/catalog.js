@@ -55,6 +55,8 @@ export function normalizeSong(raw, index = 0) {
     // Subida para todos que todavía se está publicando (su copia local suena mientras tanto).
     pending: raw.local === true && raw.pending === true,
     addedAt,
+    // Número de pista en su álbum (ADR-0026): entero desde 1, o null si no lo tiene.
+    track: raw.local !== true && Number.isInteger(raw.track) && raw.track >= 1 ? raw.track : null,
     order: index,
   };
 }
@@ -120,9 +122,24 @@ export function albumYear(songs) {
   return best ? best.year : null;
 }
 
-/** Canciones de una carpeta (solo las que están directamente en ella), en el orden del catálogo. */
+/**
+ * Canciones de una carpeta (solo las que están directamente en ella), en el orden del álbum (ADR-0026): primero las que
+ * tienen número de pista, de menor a mayor; después las que no lo tienen, en el orden del catálogo (el de antes).
+ */
 export function songsInFolder(catalog, folderId) {
-  return catalog.songs.filter((song) => song.folderId === folderId);
+  return sortByTrack(catalog.songs.filter((song) => song.folderId === folderId));
+}
+
+/** Copia de [songs] ordenada por número de pista (las que no tienen, al final); a igualdad, por su orden. */
+export function sortByTrack(songs) {
+  return [...songs].sort((a, b) => {
+    const ta = a.track ?? null;
+    const tb = b.track ?? null;
+    if (ta !== null && tb !== null && ta !== tb) return ta - tb;
+    if (ta !== null && tb === null) return -1;
+    if (ta === null && tb !== null) return 1;
+    return a.order - b.order;
+  });
 }
 
 /** Subcarpetas directas de una carpeta (null: las de la raíz). */

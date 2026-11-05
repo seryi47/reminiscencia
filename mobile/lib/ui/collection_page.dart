@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../fuzzy_search.dart';
+import '../library_requests.dart';
 import '../playback.dart';
 import '../services.dart';
+import '../song.dart';
 import '../theme.dart';
 import 'collection_ref.dart';
 import 'common.dart';
@@ -41,6 +43,20 @@ class _CollectionPageState extends State<CollectionPage> {
   final TextEditingController _filter = TextEditingController();
   String _filterText = '';
 
+  /// Modo «Seleccionar» de un álbum: casillas por canción y acciones para todas las elegidas (una sola petición).
+  bool _selecting = false;
+  final Set<String> _selected = {};
+
+  void _startSelecting() => setState(() {
+    _selecting = true;
+    _selected.clear();
+  });
+
+  void _stopSelecting() => setState(() {
+    _selecting = false;
+    _selected.clear();
+  });
+
   AppServices get services => widget.services;
   CollectionRef get ref => widget.ref;
 
@@ -70,6 +86,14 @@ class _CollectionPageState extends State<CollectionPage> {
           _ => null,
         };
         final allSongs = view.songs;
+        final folder = albumId == null ? null : library.folderOrNull(albumId);
+        final editable = allSongs.where(isEditableSong).toList();
+        final selecting = _selecting && folder != null && editable.isNotEmpty;
+        // Las elegidas que siguen en el álbum, en su orden.
+        final chosen = [
+          for (final song in editable)
+            if (_selected.contains(song.id)) song.id,
+        ];
         final showFilter = allSongs.length >= kCollectionFilterMinSongs;
         final songs = showFilter
             ? filterSongsByText(
@@ -82,6 +106,36 @@ class _CollectionPageState extends State<CollectionPage> {
             : allSongs;
         return Scaffold(
           backgroundColor: palette.background,
+          bottomNavigationBar: selecting
+              ? _SelectionBar(
+                  chosen: chosen,
+                  onSelectAll: () => setState(
+                    () => _selected.addAll(
+                      songs.where(isEditableSong).map((song) => song.id),
+                    ),
+                  ),
+                  onSelectNone: () => setState(_selected.clear),
+                  onCancel: _stopSelecting,
+                  onRemove: () async {
+                    final sent = await removeSongsFromAlbumFlow(
+                      context,
+                      services,
+                      folder,
+                      chosen,
+                    );
+                    if (sent && mounted) _stopSelecting();
+                  },
+                  onMove: () async {
+                    final sent = await moveSongsToAlbumFlow(
+                      context,
+                      services,
+                      folder,
+                      chosen,
+                    );
+                    if (sent && mounted) _stopSelecting();
+                  },
+                )
+              : null,
           body: CustomScrollView(
             slivers: [
               SliverAppBar(
@@ -104,6 +158,9 @@ class _CollectionPageState extends State<CollectionPage> {
                   color: color,
                   services: services,
                   playlistId: playlistId,
+                  onSelect: folder != null && editable.isNotEmpty && !selecting
+                      ? _startSelecting
+                      : null,
                 ),
               ),
               if (collections.loadError != null &&
@@ -176,6 +233,21 @@ class _CollectionPageState extends State<CollectionPage> {
                   itemCount: songs.length,
                   itemBuilder: (context, i) {
                     final song = songs[i];
+                    if (selecting) {
+                      return _SelectableSongRow(
+                        song: song,
+                        selected: _selected.contains(song.id),
+                        onChanged: isEditableSong(song)
+                            ? (value) => setState(() {
+                                if (value) {
+                                  _selected.add(song.id);
+                                } else {
+                                  _selected.remove(song.id);
+                                }
+                              })
+                            : null,
+                      );
+                    }
                     return SongRow(
                       song: song,
                       services: services,
@@ -204,12 +276,16 @@ class _Header extends StatelessWidget {
     required this.color,
     required this.services,
     required this.playlistId,
+    this.onSelect,
   });
 
   final CollectionView view;
   final Color color;
   final AppServices services;
   final String? playlistId;
+
+  /// Entra en el modo «Seleccionar» (solo en un álbum con canciones de la biblioteca común).
+  final VoidCallback? onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +387,13 @@ class _Header extends StatelessWidget {
                     icon: const Icon(Icons.more_vert_rounded),
                     onPressed: () => showAlbumMenu(context, services, folder),
                   ),
+                if (onSelect != null)
+                  TextButton.icon(
+                    key: const ValueKey('album-select'),
+                    onPressed: onSelect,
+                    icon: const Icon(Icons.checklist_rounded),
+                    label: const Text('Seleccionar'),
+                  ),
                 const Spacer(),
                 ValueListenableBuilder<NowPlaying>(
                   valueListenable: services.playback.nowPlaying,
@@ -350,5 +433,135 @@ class _Header extends StatelessWidget {
   static bool _sameQueue(AppServices services, Set<String> ids) {
     final queue = services.playback.queueSongIds;
     return queue.length == ids.length && queue.containsAll(ids);
+  }
+}
+
+/// Fila de una canción en el modo «Seleccionar»: casilla, título y artista. Las que no son de la biblioteca común
+/// (subidas a este teléfono) se ven sin casilla activa.
+class _SelectableSongRow extends StatelessWidget {
+  const _SelectableSongRow({
+    required this.song,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final Song song;
+  final bool selected;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final change = onChanged;
+    return CheckboxListTile(
+      key: ValueKey('album-select-song-${song.id}'),
+      value: selected,
+      onChanged: change == null ? null : (value) => change(value ?? false),
+      controlAffinity: ListTileControlAffinity.leading,
+      title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: song.artist.isEmpty
+          ? null
+          : Text(song.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+    );
+  }
+}
+
+/// Texto del contador del modo «Seleccionar».
+String selectionCountText(int count) {
+  if (count == 0) return 'Ninguna canción elegida';
+  if (count > kMaxMoveSongs) {
+    return '$count seleccionadas: como mucho $kMaxMoveSongs de una vez';
+  }
+  return count == 1 ? '1 seleccionada' : '$count seleccionadas';
+}
+
+/// Barra del modo «Seleccionar»: contador, «Seleccionar todo», «Ninguna», «Quitar del álbum», «Mover a otro álbum» y
+/// «Cancelar». Las acciones envían una sola petición con todas las elegidas (de 1 a [kMaxMoveSongs]).
+class _SelectionBar extends StatelessWidget {
+  const _SelectionBar({
+    required this.chosen,
+    required this.onSelectAll,
+    required this.onSelectNone,
+    required this.onCancel,
+    required this.onRemove,
+    required this.onMove,
+  });
+
+  final List<String> chosen;
+  final VoidCallback onSelectAll;
+  final VoidCallback onSelectNone;
+  final VoidCallback onCancel;
+  final VoidCallback onRemove;
+  final VoidCallback onMove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final count = chosen.length;
+    final canAct = count > 0 && count <= kMaxMoveSongs;
+    return Material(
+      key: const ValueKey('album-select-bar'),
+      elevation: 8,
+      color: theme.colorScheme.surfaceContainerHigh,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        selectionCountText(count),
+                        key: const ValueKey('album-select-count'),
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    key: const ValueKey('album-select-all'),
+                    onPressed: onSelectAll,
+                    child: const Text('Seleccionar todo'),
+                  ),
+                  TextButton(
+                    key: const ValueKey('album-select-none'),
+                    onPressed: count == 0 ? null : onSelectNone,
+                    child: const Text('Ninguna'),
+                  ),
+                ],
+              ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                alignment: WrapAlignment.end,
+                children: [
+                  TextButton(
+                    key: const ValueKey('album-select-cancel'),
+                    onPressed: onCancel,
+                    child: const Text('Cancelar'),
+                  ),
+                  OutlinedButton.icon(
+                    key: const ValueKey('album-select-move'),
+                    onPressed: canAct ? onMove : null,
+                    icon: const Icon(Icons.drive_file_move_outline),
+                    label: const Text('Mover a otro álbum'),
+                  ),
+                  FilledButton.icon(
+                    key: const ValueKey('album-select-remove'),
+                    onPressed: canAct ? onRemove : null,
+                    icon: const Icon(Icons.remove_circle_outline_rounded),
+                    label: const Text('Quitar del álbum'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -128,9 +128,10 @@ class LibraryController extends ChangeNotifier {
   /// Canciones subidas desde este teléfono, en el orden en que se añadieron.
   List<Song> get localSongs => _localSongs;
 
-  /// Canciones de un álbum del catálogo, en el orden del catálogo.
+  /// Canciones de un álbum del catálogo, por su número de pista (ADR-0026); las que no lo tienen, al final y en el
+  /// orden del catálogo.
   List<Song> songsInFolder(String folderId) =>
-      _songs.where((song) => song.folderId == folderId).toList();
+      sortByTrack(_songs.where((song) => song.folderId == folderId));
 
   /// Canción por id (también las locales), o null si ya no está. Una subida ya publicada da la canción pública.
   Song? songOrNull(String? id) {
@@ -426,8 +427,11 @@ class LibraryController extends ChangeNotifier {
 
   /// Convierte y sube a la biblioteca común los archivos elegidos, de uno en uno y en trozos, y sigue cada uno
   /// hasta que se publica ([uploads]). Sin red lanza AppException sin intentar nada.
-  Future<SharedUploadResult> uploadShared(List<PickedAudioFile> files) =>
-      uploads.start(files);
+  /// [review] puede quitar canciones de la tanda antes de que entren en la cola (aviso de duplicados, ADR-0026).
+  Future<SharedUploadResult> uploadShared(
+    List<PickedAudioFile> files, {
+    UploadReview? review,
+  }) => uploads.start(files, review: review);
 
   /// Vuelve a subir un archivo con error.
   Future<void> retryUpload(String key) => uploads.retry(key);

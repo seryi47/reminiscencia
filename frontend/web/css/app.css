@@ -1618,6 +1618,86 @@ button:disabled {
   accent-color: var(--accent);
 }
 
+/* Modo «Seleccionar» de un álbum (ADR-0026): barra con el contador y las acciones, y una casilla por canción. */
+.album-select-button {
+  margin-left: auto;
+}
+
+.select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 0;
+}
+
+.select-bar .select-count {
+  margin-top: 0;
+}
+
+.select-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.select-list {
+  margin-top: 8px;
+}
+
+/* «Ordenar canciones»: lista numerada con Subir y Bajar en cada fila. */
+.order-list {
+  max-height: min(420px, 50vh);
+  max-height: min(420px, 50dvh);
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-h);
+  padding: 4px 8px;
+  border-radius: var(--radius-small);
+}
+
+.order-row:hover {
+  background: var(--row-hover);
+}
+
+.order-row .track-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.order-num {
+  flex: none;
+  min-width: 2ch;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.order-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.order-move {
+  width: 44px;
+  height: 44px;
+}
+
+.order-move[aria-disabled='true'] {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Buscar                                                                     */
 /* ------------------------------------------------------------------------- */

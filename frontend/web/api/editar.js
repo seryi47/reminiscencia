@@ -4,8 +4,8 @@
 //   Contenido JSON  { "action": "organize", "payload": { "op": … } }  →  abre en GitHub una incidencia con la etiqueta
 //     «biblioteca» (la misma que habría abierto la persona a mano, ADR-0008). El workflow biblioteca la valida y la aplica.
 //     Se valida aquí con las reglas de js/cuidador/incidencias.js. Operaciones admitidas: create_folder, edit_folder,
-//     rename_folder, edit_song sin «public» y move_songs (varias canciones a un álbum, o fuera de su álbum, en una sola
-//     petición). Borrar álbumes y publicar o despublicar canciones siguen siendo solo
+//     rename_folder, edit_song sin «public», move_songs (varias canciones a un álbum, o fuera de su álbum, en una sola
+//     petición) y order_album (el orden nuevo de un álbum, ADR-0026). Borrar álbumes y publicar o despublicar canciones siguen siendo solo
 //     para quien tiene permiso de escritura.
 //   Contenido image/jpeg, cabecera X-Portada-Id (S o F + 16 hexadecimales)  →  guarda el JPEG (hasta 1 MB) en
 //     audio-library/buzon/portadas/<ID>.jpg con un commit en main; el workflow buzon lo recorta y lo publica.
@@ -26,7 +26,7 @@ export const REPOSITORY = 'seryi47/reminiscencia';
 export const BRANCH = 'main';
 export const COVERS_DIRECTORY = 'audio-library/buzon/portadas';
 export const MAX_COVER_BYTES = 1024 * 1024;
-export const ALLOWED_OPS = Object.freeze(['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs']);
+export const ALLOWED_OPS = Object.freeze(['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs', 'order_album']);
 export const DONE_MESSAGE = 'Guardado: llegará a todos en un par de minutos.';
 const API = 'https://api.github.com';
 

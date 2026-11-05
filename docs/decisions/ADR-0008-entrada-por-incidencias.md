@@ -111,3 +111,11 @@ Por ADR-0016 (portadas y álbumes con artista), el contrato de `organize` cambia
 - **Ids de carpeta:** las carpetas nuevas tienen id `F` seguida de 16 caracteres hexadecimales en minúscula. Las anteriores, de 10 hexadecimales, siguen siendo válidas. Sustituye a «los ids de carpeta son de 10 caracteres hexadecimales en minúscula» de «Formato de la petición».
 - **`edit_song`** ya admitía cambiar `title` y `artist`; ahora hay una prueba que lo confirma de extremo a extremo (`test_ci_library.py`).
 - Las portadas no se piden por incidencia: entran por el buzón (ADR-0016).
+
+## Actualización (2026-11-05): orden de los álbumes
+
+Por ADR-0023 y ADR-0026, `organize` admite dos operaciones más; lo demás sigue vigente.
+
+- **`move_songs`** (ADR-0023): `{"op":"move_songs","song_ids":[…],"folder_id":"F…"|null}`, de 1 a 100 canciones sin repetir, atómica.
+- **`order_album`** (ADR-0026): `{"op":"order_album","folder_id":"F…","song_ids":[…]}`, de 1 a 190 canciones sin repetir. La lista tiene que ser exactamente la de las canciones del álbum, en el orden nuevo; si no, se rechaza sin cambiar nada. Asigna el campo `track` (1..n) de cada canción.
+- `edit_song` no admite `track`: el número de pista solo cambia con `order_album` o al entrar y salir de un álbum.

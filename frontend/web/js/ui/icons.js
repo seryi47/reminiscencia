@@ -43,6 +43,7 @@ const ICONS = Object.freeze({
   archive: [['path', { d: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4' }]],
   people: [['circle', { cx: 9, cy: 8, r: 3.5 }], ['path', { d: 'M2.5 20c.5-3.6 3.1-6 6.5-6s6 2.4 6.5 6M15.5 4.8a3.5 3.5 0 0 1 0 6.4M18 14.4c2 .8 3.2 2.8 3.5 5.6' }]],
   'chevron-down': [['path', { d: 'm6 9 6 6 6-6' }]],
+  'chevron-up': [['path', { d: 'm6 15 6-6 6 6' }]],
   'chevron-left': [['path', { d: 'm15 5-7 7 7 7' }]],
   close: [['path', { d: 'M6 6l12 12M18 6 6 18' }]],
   external: [['path', { d: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5' }]],

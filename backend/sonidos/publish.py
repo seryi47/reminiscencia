@@ -8,6 +8,8 @@
 - Copia a frontend/web/covers/ las portadas de las canciones públicas y de todas las carpetas (ADR-0016), desde
   audio-library/covers/, y borra las que sobran. Las canciones y carpetas con portada llevan "cover": "covers/<id>.jpg";
   las carpetas con artista, "artist". Los dos campos solo aparecen cuando tienen valor.
+- Las canciones con número de pista en su álbum llevan "track" (entero desde 1) en songs.json y catalog.json; las que
+  no lo tienen, no llevan el campo (ADR-0026). La web y la APK ordenan cada álbum por "track".
 Vercel sirve solo frontend/web (y redirige /audio/<id>.opus a R2); el audio privado de audio-library/ nunca llega al
 público, porque sync_r2 solo sube las canciones de data/songs.json.
 Los metadatos de las canciones no publicadas (título, artista, origen...) tampoco salen de audio-library/:
@@ -46,6 +48,14 @@ def _cover_of(item: dict) -> str | None:
     if cover != expected:
         raise ValueError(f"portada no válida en {item.get('id')!r}: {cover!r}")
     return cover
+
+
+def _track_of(song: dict) -> int | None:
+    """El número de pista de una canción con álbum, o None (sin álbum, o un valor que no es un entero desde 1)."""
+    track = song.get("track")
+    if song.get("folder_id") is None or isinstance(track, bool) or not isinstance(track, int) or track < 1:
+        return None
+    return track
 
 
 def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_dir: Path | None = None) -> dict:
@@ -99,6 +109,8 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         entry["audio"] = f"audio/{song['id']}.opus"
         if song_covers[song["id"]]:
             entry["cover"] = song_covers[song["id"]]
+        if _track_of(song) is not None:
+            entry["track"] = _track_of(song)
         songs.append(entry)
     songs.sort(key=lambda item: item["title"].lower())
 
@@ -120,6 +132,8 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         entry["tags"] = list(song.get("tags") or [])
         if song_covers[song["id"]]:
             entry["cover"] = song_covers[song["id"]]
+        if _track_of(song) is not None:
+            entry["track"] = _track_of(song)
         catalog_songs.append(entry)
     catalog_songs.sort(key=lambda item: ((item["title"] or "").lower(), item["id"]))
     catalog_view = {"songs": catalog_songs, "folders": folders}

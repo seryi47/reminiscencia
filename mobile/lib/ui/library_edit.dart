@@ -229,6 +229,318 @@ Future<void> removeSongFromAlbumFlow(
   );
 }
 
+/// Selección de un álbum › «Quitar del álbum»: pide confirmación y deja sin álbum todas las elegidas con UNA petición
+/// «move_songs» (folder_id null). Devuelve true si se envió. Las canciones siguen en la biblioteca.
+Future<bool> removeSongsFromAlbumFlow(
+  BuildContext context,
+  AppServices services,
+  Folder folder,
+  List<String> songIds,
+) async {
+  final LibraryRequest request;
+  try {
+    request = LibraryRequest.moveSongs(songIds: songIds, folderId: null);
+  } on AppException catch (error) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(error.message)));
+    return false;
+  }
+  final count = songIds.length;
+  final what = count == 1 ? '1 canción' : '$count canciones';
+  final confirmed = await showConfirmDialog(
+    context,
+    title: 'Quitar del álbum',
+    message:
+        '¿Quitar $what de «${folder.name}»? Siguen en la biblioteca; solo dejan de estar en este álbum.',
+    confirmLabel: 'Quitar',
+  );
+  if (!confirmed || !context.mounted) return false;
+  await openLibraryRequest(context, services, request);
+  return true;
+}
+
+/// Selección de un álbum › «Mover a otro álbum»: elige el álbum de destino y pasa todas las elegidas con UNA petición
+/// «move_songs». Devuelve true si se envió.
+Future<bool> moveSongsToAlbumFlow(
+  BuildContext context,
+  AppServices services,
+  Folder folder,
+  List<String> songIds,
+) async {
+  final targets = services.library.folders
+      .where((item) => item.id != folder.id && isCatalogFolderId(item.id))
+      .toList();
+  final count = songIds.length;
+  final what = count == 1 ? '1 canción' : '$count canciones';
+  final picked = await showDialog<Folder>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('Mover $what a otro álbum'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const _WriteAccessNote(),
+            if (targets.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'No hay otros álbumes. Crea uno con «Crear álbum».',
+                ),
+              ),
+            for (final target in targets)
+              ListTile(
+                key: ValueKey('album-move-target-${target.id}'),
+                leading: CoverArt(
+                  seed: FolderRef(target.id).key,
+                  size: 40,
+                  icon: Icons.album_rounded,
+                  image: services.covers.imageFor(target.cover),
+                ),
+                title: Text(
+                  target.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: target.artist.isEmpty ? null : Text(target.artist),
+                onTap: () => Navigator.of(dialogContext).pop(target),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Cancelar'),
+        ),
+      ],
+    ),
+  );
+  if (picked == null || !context.mounted) return false;
+  final LibraryRequest request;
+  try {
+    request = LibraryRequest.moveSongs(
+      songIds: songIds,
+      folderId: picked.id,
+      albumName: picked.name,
+    );
+  } on AppException catch (error) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(error.message)));
+    return false;
+  }
+  await openLibraryRequest(context, services, request);
+  return true;
+}
+
+/// «Ordenar canciones» de un álbum (ADR-0026): lista que se reordena arrastrando o con «Subir» y «Bajar»; «Guardar
+/// orden» envía UNA petición «order_album» con la lista completa de las canciones del álbum en el orden nuevo.
+Future<void> orderAlbumFlow(
+  BuildContext context,
+  AppServices services,
+  Folder folder,
+) async {
+  final songs = services.library
+      .songsInFolder(folder.id)
+      .where(isEditableSong)
+      .toList();
+  final request = await Navigator.of(context).push<LibraryRequest>(
+    MaterialPageRoute(
+      builder: (_) =>
+          OrderAlbumPage(services: services, folder: folder, songs: songs),
+    ),
+  );
+  if (request == null || !context.mounted) return;
+  await openLibraryRequest(context, services, request);
+}
+
+/// Mensaje de un álbum con más canciones de las que caben en una petición «order_album».
+const String kOrderAlbumTooLong =
+    'Este álbum tiene más de $kMaxOrderSongs canciones: no se puede ordenar desde aquí.';
+
+/// Pantalla «Ordenar canciones». Devuelve la petición «order_album» al guardar, o null si se vuelve atrás.
+class OrderAlbumPage extends StatefulWidget {
+  const OrderAlbumPage({
+    super.key,
+    required this.services,
+    required this.folder,
+    required this.songs,
+  });
+
+  final AppServices services;
+  final Folder folder;
+
+  /// Canciones del álbum en su orden actual.
+  final List<Song> songs;
+
+  @override
+  State<OrderAlbumPage> createState() => _OrderAlbumPageState();
+}
+
+class _OrderAlbumPageState extends State<OrderAlbumPage> {
+  late List<Song> _order = List.of(widget.songs);
+  String _announcement = '';
+  String? _error;
+
+  bool get _tooLong => widget.songs.length > kMaxOrderSongs;
+
+  bool get _changed {
+    for (var i = 0; i < _order.length; i++) {
+      if (_order[i].id != widget.songs[i].id) return true;
+    }
+    return false;
+  }
+
+  void _move(int from, int to) {
+    if (from == to || to < 0 || to >= _order.length) return;
+    setState(() {
+      final next = List.of(_order);
+      final song = next.removeAt(from);
+      next.insert(to, song);
+      _order = next;
+      _error = null;
+      _announcement =
+          '«${song.title}» ahora es la ${to + 1} de ${_order.length}.';
+    });
+  }
+
+  void _save() {
+    try {
+      Navigator.of(context).pop(
+        LibraryRequest.orderAlbum(
+          folderId: widget.folder.id,
+          songIds: [for (final song in _order) song.id],
+          albumName: widget.folder.name,
+        ),
+      );
+    } on AppException catch (error) {
+      setState(() => _error = error.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = paletteOf(context);
+    final canSave = !_tooLong && _changed;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ordenar canciones'),
+        leading: IconButton(
+          tooltip: 'Volver sin guardar',
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              _tooLong
+                  ? kOrderAlbumTooLong
+                  : 'Mantén pulsada una canción y arrástrala, o usa las flechas. El orden se guarda para todos.',
+              key: const ValueKey('order-album-help'),
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+          Semantics(
+            liveRegion: true,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Text(
+                _error ?? _announcement,
+                key: const ValueKey('order-album-status'),
+                style: _error == null
+                    ? theme.textTheme.bodySmall
+                    : TextStyle(color: palette.error),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _tooLong
+                ? const SizedBox.shrink()
+                : ReorderableListView.builder(
+                    key: const ValueKey('order-album-list'),
+                    buildDefaultDragHandles: false,
+                    itemCount: _order.length,
+                    onReorderItem: _move,
+                    itemBuilder: (context, i) {
+                      final song = _order[i];
+                      return ReorderableDelayedDragStartListener(
+                        key: ValueKey('order-song-${song.id}'),
+                        index: i,
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.drag_handle_rounded,
+                            semanticLabel: 'Mantén pulsado para arrastrar',
+                          ),
+                          title: Text(
+                            '${i + 1}. ${song.title}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: song.artist.isEmpty
+                              ? null
+                              : Text(
+                                  song.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                key: ValueKey('order-up-${song.id}'),
+                                tooltip: 'Subir «${song.title}»',
+                                icon: const Icon(Icons.arrow_upward_rounded),
+                                onPressed: i == 0
+                                    ? null
+                                    : () => _move(i, i - 1),
+                              ),
+                              IconButton(
+                                key: ValueKey('order-down-${song.id}'),
+                                tooltip: 'Bajar «${song.title}»',
+                                icon: const Icon(Icons.arrow_downward_rounded),
+                                onPressed: i == _order.length - 1
+                                    ? null
+                                    : () => _move(i, i + 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          const Divider(height: 1),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  const Expanded(child: _WriteAccessNote()),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    key: const ValueKey('order-album-save'),
+                    onPressed: canSave ? _save : null,
+                    child: const Text('Guardar orden'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Filtro del buscador de «Añadir canciones a este álbum»: sin tildes ni mayúsculas, por título, artista y
 /// nombre del álbum en el que está ahora la canción ([albumName]). Cada palabra de [query] debe aparecer.
 /// Conserva el orden; sin texto devuelve todas.
@@ -545,7 +857,7 @@ Future<void> changeCatalogCoverFlow(
   await _save(context, () => services.submitCover(id, resizeCoverImage(image)));
 }
 
-/// Menú de un álbum: editar, añadir canciones, crear otro álbum y cambiar la portada.
+/// Menú de un álbum: editar, añadir canciones, crear otro álbum, cambiar la portada y ordenar las canciones.
 Future<void> showAlbumMenu(
   BuildContext context,
   AppServices services,
@@ -609,6 +921,20 @@ Future<void> showAlbumMenu(
                 coverId: folder.id,
                 coverWhat: 'el álbum',
               ),
+              if (services.library
+                      .songsInFolder(folder.id)
+                      .where(isEditableSong)
+                      .length >=
+                  2)
+                ListTile(
+                  key: const ValueKey('album-menu-order'),
+                  leading: const Icon(Icons.swap_vert_rounded),
+                  title: const Text('Ordenar canciones'),
+                  onTap: () {
+                    close();
+                    orderAlbumFlow(context, services, folder);
+                  },
+                ),
             ],
           ),
         ),

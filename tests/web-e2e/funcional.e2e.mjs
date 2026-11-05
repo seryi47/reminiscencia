@@ -705,7 +705,7 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await openApp(page, server.url);
       await openCollection(page, FOLDER_A);
       const opciones = await openCollectionMenu(page);
-      assert.deepEqual(opciones, ["Añadir a la cola", "Añadir canciones", "Editar detalles", "Cambiar portada"]);
+      assert.deepEqual(opciones, ["Añadir a la cola", "Añadir canciones", "Seleccionar canciones", "Ordenar canciones", "Editar detalles", "Cambiar portada"]);
       await page.keyboard.press("Escape");
       await clickTestid(page, "collection-edit", "Editar detalles desde la portada");
       await waitVisible(page, "edit-album");
@@ -842,6 +842,161 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       const opciones = await openRowMenu(page, "L0011223344556677");
       for (const opcion of ["Editar detalles", "Añadir a un álbum", "Cambiar portada"]) assert.equal(opciones.includes(opcion), false, opcion);
       assert.ok(opciones.includes("Borrar de este navegador"));
+    }),
+  );
+});
+
+describe("Álbumes: seleccionar varias y ordenar (ADR-0026)", () => {
+  const casillas = (page) => page.$$eval('[data-testid="album-select-check"]', (boxes) => boxes.map((box) => [box.dataset.songId, box.checked]));
+  const marcar = (page, songId) => page.click(`[data-testid="album-select-option"][data-song-id="${songId}"]`);
+  const estado = (page, testid) => page.$eval(`[data-testid="${testid}"]`, (b) => b.getAttribute("aria-disabled"));
+
+  prueba("Seleccionar: casillas, contador, todo o ninguna y «Quitar del álbum» con confirmación en UNA petición", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_B);
+      await clickTestid(page, "album-select", "Seleccionar");
+      await waitVisible(page, "album-select-panel");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "album-select-all", "El foco va a «Seleccionar todo».");
+      assert.equal(await page.$('[data-testid="track-table"]'), null, "La tabla se cambia por la lista con casillas.");
+      assert.equal(await textOf(page, "album-select-count"), "Ninguna canción elegida.");
+      assert.equal(await estado(page, "album-select-remove"), "true");
+      assert.equal(await estado(page, "album-select-move"), "true");
+      const ids = (await casillas(page)).map(([id]) => id);
+      assert.deepEqual(ids, Array.from({ length: 8 }, (_, i) => `S${String(i + 9).padStart(16, "0")}`));
+      // Se marcan en desorden: la petición va en el orden del álbum.
+      await marcar(page, "S0000000000000012");
+      await marcar(page, "S0000000000000010");
+      assert.equal(await textOf(page, "album-select-count"), "2 canciones elegidas.");
+      assert.equal(await estado(page, "album-select-remove"), "false");
+      await clickTestid(page, "album-select-all", "Seleccionar todo");
+      assert.equal(await textOf(page, "album-select-count"), "8 canciones elegidas.");
+      assert.ok((await casillas(page)).every(([, on]) => on));
+      assert.equal(await estado(page, "album-select-all"), "true");
+      await clickTestid(page, "album-select-none", "Ninguna");
+      assert.equal(await textOf(page, "album-select-count"), "Ninguna canción elegida.");
+      assert.ok((await casillas(page)).every(([, on]) => !on));
+      await marcar(page, "S0000000000000012");
+      await marcar(page, "S0000000000000010");
+      // Cancelar en la confirmación no envía nada y la selección sigue.
+      await clickTestid(page, "album-select-remove", "Quitar del álbum");
+      await waitVisible(page, "album-remove-many");
+      assert.equal(await textOf(page, "album-remove-many-text"),
+        "¿Quitar 2 canciones de «Álbum de prueba B»? Siguen en la biblioteca; solo dejan de estar en este álbum.");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "album-remove-many-cancel");
+      await clickTestid(page, "album-remove-many-cancel", "Cancelar");
+      await page.waitForFunction(() => !document.querySelector('[data-testid="album-remove-many"]'));
+      assert.equal(ediciones.length, 0);
+      assert.equal(await textOf(page, "album-select-count"), "2 canciones elegidas.");
+      // Confirmar: una sola petición move_songs con folder_id null y se sale del modo.
+      await clickTestid(page, "album-select-remove", "Quitar del álbum");
+      await waitVisible(page, "album-remove-many");
+      await saveEdit(page, "album-remove-many-save");
+      assert.deepEqual(ediciones, [{
+        kind: "organizar", action: "organize",
+        payload: { op: "move_songs", song_ids: ["S0000000000000010", "S0000000000000012"], folder_id: null },
+      }]);
+      await waitVisible(page, "album-select");
+      assert.equal(await page.$('[data-testid="album-select-panel"]'), null);
+    }),
+  );
+
+  prueba("Seleccionar: «Mover a otro álbum» elige el álbum y envía UNA petición; «Cancelar» sale sin enviar", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_B);
+      // También desde «···».
+      await openCollectionMenu(page);
+      await pickMenu(page, "menu-album-select");
+      await waitVisible(page, "album-select-panel");
+      await clickTestid(page, "album-select-cancel", "Cancelar");
+      await waitVisible(page, "album-select");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "album-select", "El foco vuelve a «Seleccionar».");
+      await clickTestid(page, "album-select", "Seleccionar");
+      await marcar(page, "S0000000000000015");
+      await marcar(page, "S0000000000000009");
+      await clickTestid(page, "album-select-move", "Mover a otro álbum");
+      await waitVisible(page, "album-move-many");
+      // El álbum actual no se ofrece.
+      const destinos = await page.$$eval('[data-testid="album-move-many-option"]', (rows) => rows.map((row) => row.dataset.folderId));
+      assert.deepEqual(destinos.sort(), ["F0000000000000001", "F0000000000000003"]);
+      assert.equal(await estado(page, "album-move-many-save"), "true", "Sin álbum elegido no se puede mover.");
+      await page.click('[data-testid="album-move-many-option"][data-folder-id="F0000000000000001"]');
+      await saveEdit(page, "album-move-many-save");
+      assert.deepEqual(ediciones, [{
+        kind: "organizar", action: "organize",
+        payload: { op: "move_songs", song_ids: ["S0000000000000009", "S0000000000000015"], folder_id: "F0000000000000001" },
+      }]);
+      assert.equal(await page.$('[data-testid="album-select-panel"]'), null);
+      // Al cambiar de página no se queda en modo Seleccionar.
+      await clickTestid(page, "album-select", "Seleccionar");
+      await openCollection(page, FOLDER_A);
+      await openCollection(page, FOLDER_B);
+      assert.equal(await page.$('[data-testid="album-select-panel"]'), null);
+    }),
+  );
+
+  prueba("Ordenar canciones: subir y bajar con el teclado, se anuncia y «Guardar orden» envía UNA petición order_album completa", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_A);
+      const opciones = await openCollectionMenu(page);
+      assert.ok(opciones.includes("Ordenar canciones"), opciones.join(", "));
+      await pickMenu(page, "menu-album-order");
+      await waitVisible(page, "album-order");
+      const orden = () => page.$$eval('[data-testid="album-order-row"]', (rows) => rows.map((row) => row.dataset.songId));
+      const ids = Array.from({ length: 8 }, (_, i) => `S${String(i + 1).padStart(16, "0")}`);
+      assert.deepEqual(await orden(), ids);
+      assert.equal(await estado(page, "album-order-save"), "true", "Sin cambios no se guarda.");
+      assert.equal(await textOf(page, "album-order-save-status"), "Sube o baja alguna canción para cambiar el orden.");
+      // El primer «Subir» está desactivado; el foco empieza en «Bajar» de la primera.
+      assert.equal(await page.$eval('[data-testid="album-order-up"]', (b) => b.getAttribute("aria-disabled")), "true");
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Bajar «Canción de prueba 01»");
+      await page.keyboard.press("Enter");
+      assert.deepEqual((await orden()).slice(0, 2), [ids[1], ids[0]]);
+      assert.equal(await textOf(page, "album-order-live"), "«Canción de prueba 01» ahora es la 2 de 8.");
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Bajar «Canción de prueba 01»", "El foco sigue en el mismo botón.");
+      // La séptima baja al final; en el borde, el foco pasa al otro botón.
+      await page.click(`[data-testid="album-order-down"][data-song-id="${ids[6]}"]`);
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Subir «Canción de prueba 07»");
+      // Un botón desactivado no mueve nada.
+      await page.click(`[data-testid="album-order-down"][data-song-id="${ids[6]}"]`);
+      const nuevo = [ids[1], ids[0], ids[2], ids[3], ids[4], ids[5], ids[7], ids[6]];
+      assert.deepEqual(await orden(), nuevo);
+      await saveEdit(page, "album-order-save");
+      assert.deepEqual(ediciones, [{ kind: "organizar", action: "organize", payload: { op: "order_album", folder_id: ALBUM_A_ID, song_ids: nuevo } }]);
+      // En el álbum vacío no hay «Seleccionar».
+      await openCollection(page, "#/album/F0000000000000003");
+      assert.equal(await page.$('[data-testid="album-select"]'), null);
+    }),
+  );
+
+  prueba("Un álbum con números de pista se ve en ese orden, también en «Ordenar canciones»", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      const base = catalogo.get("/data/songs.json");
+      const songs = JSON.parse(base.body).map((song) => {
+        const index = Number(song.id.slice(1));
+        // Álbum A al revés (8 → 1); la 3, sin número (catálogo a medias): va al final.
+        if (song.folder_id === ALBUM_A_ID && index !== 3) return { ...song, track: 9 - index };
+        return song;
+      });
+      catalogo.set("/data/songs.json", { body: JSON.stringify(songs), type: "application/json; charset=utf-8" });
+      try {
+        await openApp(page, server.url);
+        await openCollection(page, FOLDER_A);
+        const filas = await page.$$eval('[data-testid="track-row"]', (rows) => rows.map((row) => row.dataset.songId.slice(-2)));
+        assert.deepEqual(filas, ["08", "07", "06", "05", "04", "02", "01", "03"]);
+        await openCollectionMenu(page);
+        await pickMenu(page, "menu-album-order");
+        await waitVisible(page, "album-order");
+        const orden = await page.$$eval('[data-testid="album-order-row"]', (rows) => rows.map((row) => row.dataset.songId.slice(-2)));
+        assert.deepEqual(orden, filas, "«Ordenar canciones» parte del orden que se ve.");
+      } finally {
+        catalogo.set("/data/songs.json", base);
+      }
     }),
   );
 });
@@ -1518,6 +1673,37 @@ describe("Subir canciones", () => {
       // Vuelve a la subida.
       await clickTestid(page, "upload-back", "Volver a Subir canciones");
       await waitVisible(page, "upload-panel", { context: "panel de subida" });
+    }),
+  );
+
+  prueba("Posible duplicado (ADR-0026): antes de la cola avisa de lo que parece estar ya en la biblioteca o repetido en la tanda", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      subidas.length = 0;
+      // En la biblioteca hay «Tema repetido» de 1,5 s (como los WAV de prueba).
+      publicar({ id: "S00000000000000aa", title: "Tema repetido" });
+      try {
+        await prepararPagina(page);
+        await openApp(page, server.url);
+        await openUpload(page, VIEWPORTS.escritorio);
+        await uploadWavs(page, ["Tema repetido (Letra).wav", "Otra nueva.wav", "Otra nueva [HD].wav"], { wait: false });
+        // Primero, el que se parece a la biblioteca: el foco va a «Subir igualmente».
+        await waitVisible(page, "duplicate-dialog");
+        assert.equal(await textOf(page, "duplicate-file"), "Tema repetido (Letra).wav");
+        assert.equal(await textOf(page, "duplicate-message"), "Parece que ya está en la biblioteca: «Tema repetido» (0:01). ¿Subirla igualmente?");
+        assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "duplicate-keep");
+        assert.equal(subidas.length, 0, "Nada se envía mientras se pregunta.");
+        await clickTestid(page, "duplicate-drop", "Quitar de la cola");
+        // Después, el repetido dentro de la misma tanda.
+        await page.waitForFunction(() => document.querySelector('[data-testid="duplicate-file"]')?.textContent === "Otra nueva [HD].wav", { timeout: 10000 });
+        assert.equal(await textOf(page, "duplicate-message"), "Parece repetida en esta subida: «Otra nueva» (0:01). ¿Subirla igualmente?");
+        await clickTestid(page, "duplicate-keep", "Subir igualmente");
+        await waitRows(page, 2);
+        assert.deepEqual((await filas(page)).map(([, name]) => name), ["Otra nueva.wav", "Otra nueva [HD].wav"]);
+        assert.deepEqual(subidas.map((item) => item.name), ["Otra nueva.wav", "Otra nueva [HD].wav"]);
+        assert.equal(await page.$('[data-testid="duplicate-dialog"]'), null);
+      } finally {
+        restaurarCatalogo();
+      }
     }),
   );
 });

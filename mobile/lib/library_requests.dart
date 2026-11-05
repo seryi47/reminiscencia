@@ -19,6 +19,9 @@ const int kMaxIssueTitleLength = 120;
 /// Canciones que se pueden mover de una vez con «move_songs».
 const int kMaxMoveSongs = 100;
 
+/// Canciones que se pueden ordenar de una vez con «order_album» (ADR-0026): caben en los 4000 caracteres del payload.
+const int kMaxOrderSongs = 190;
+
 /// Aviso común: los cambios se guardan desde la app.
 const String kWriteAccessNote =
     'El cambio se guarda desde aquí, sin pasar por GitHub, y llega a todos en un par de minutos.';
@@ -171,6 +174,37 @@ class LibraryRequest {
       'song_ids': List<String>.unmodifiable(songIds),
       'folder_id': folderId,
     });
+  }
+
+  /// «Ordenar canciones» de un álbum: una sola petición «order_album» con la lista COMPLETA de sus canciones en el
+  /// orden nuevo (ADR-0026). El backend la rechaza si no es exactamente la del álbum; asigna las pistas 1..n.
+  factory LibraryRequest.orderAlbum({
+    required String folderId,
+    required List<String> songIds,
+    String albumName = '',
+  }) {
+    _checkFolder(folderId);
+    if (songIds.isEmpty) {
+      throw const AppException('El álbum no tiene canciones que ordenar.');
+    }
+    if (songIds.length > kMaxOrderSongs) {
+      throw const AppException(
+        'Se pueden ordenar $kMaxOrderSongs canciones como mucho.',
+      );
+    }
+    if (songIds.toSet().length != songIds.length) {
+      throw const AppException('Hay canciones repetidas en el orden.');
+    }
+    songIds.forEach(_checkSong);
+    final name = albumName.trim();
+    return LibraryRequest._(
+      name.isEmpty ? 'Ordenar el álbum $folderId' : 'Ordenar el álbum «$name»',
+      {
+        'op': 'order_album',
+        'folder_id': folderId,
+        'song_ids': List<String>.unmodifiable(songIds),
+      },
+    );
   }
 
   /// «Crear álbum»: nombre y artista.

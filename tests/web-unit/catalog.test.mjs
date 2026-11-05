@@ -63,6 +63,7 @@ describe('lectura del catálogo', () => {
       local: false,
       pending: false,
       addedAt: null,
+      track: null,
       order: 0,
     });
   });
