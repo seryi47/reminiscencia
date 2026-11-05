@@ -241,36 +241,47 @@ export function coverColor(id) {
 }
 
 // ---------------------------------------------------------------------------
-// Búsqueda
+// Búsqueda (ADR-0028). Una sola regla para todos los buscadores: el de Buscar, «Buscar en esta colección», «Añadir
+// canciones» de un álbum, «Busquemos algo para tu lista» y el filtro de Tu biblioteca. La APK tiene la misma
+// (lib/fuzzy_search.dart) y las dos pasan los casos de tests/contrato/busqueda.json.
+//
+// - Texto comparable (normalizeText): minúsculas, sin tildes ni diéresis (se quitan las marcas combinantes U+0300 a
+//   U+036F y se pliegan las letras de FOLD_FROM a FOLD_TO), todo lo que no es letra ni número pasa a espacio, y
+//   espacios simples.
+// - Cada palabra de la consulta tiene que coincidir con alguna palabra de algún campo: igual (3 puntos), como principio
+//   de la palabra (2) o, si tiene 4 o más caracteres y alguna letra, con una errata (1): una letra de más, de menos,
+//   cambiada o dos contiguas intercambiadas, frente al principio de la palabra o frente a la palabra entera.
+// - Los puntos de cada palabra se multiplican por el peso del campo en el que mejor coincide (3 el primero, 2 el
+//   segundo y 1 los demás) y se suman. Si el primer campo entero es igual a la consulta, +100; si empieza por ella, +50.
+// - Resultados de más a menos puntos; con los mismos puntos, en el orden de entrada.
 // ---------------------------------------------------------------------------
 
-/** Texto comparable: minúsculas, sin tildes ni diéresis y con espacios simples. */
+// Letras que se pliegan (posición a posición). Son las mismas que las de la regla de duplicados (tests/contrato/
+// duplicados.json); js/duplicates.js las importa de aquí.
+export const FOLD_FROM = 'áàäâãåāéèëêēíìïîīóòöôõøōúùüûūñçýÿ';
+export const FOLD_TO = 'aaaaaaaeeeeeiiiiiooooooouuuuuncyy';
+const FOLD = new Map([...FOLD_FROM].map((char, index) => [char, FOLD_TO[index]]));
+const COMBINING = /[̀-ͯ]/g;
+const NOT_LETTER_OR_NUMBER = /[^\p{L}\p{N}]+/gu;
+const HAS_LETTER = /\p{L}/u;
+
+/** Minúsculas, sin tildes, diéresis ni marcas combinantes, con las letras de FOLD_FROM plegadas. */
+export function foldText(text) {
+  const lower = String(text ?? '').toLowerCase().replace(COMBINING, '');
+  let out = '';
+  for (const char of lower) out += FOLD.get(char) ?? char;
+  return out;
+}
+
+/** Texto comparable de la búsqueda: plegado, sin signos y con espacios simples. «¡Corazón, de MIMBRE!» → «corazon de mimbre». */
 export function normalizeText(text) {
-  return String(text ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  return foldText(text).replace(NOT_LETTER_OR_NUMBER, ' ').trim();
 }
 
-// Puntuación de un texto frente a la consulta: igual, empieza por, alguna palabra empieza por, contiene.
-function scoreText(text, query) {
-  const value = normalizeText(text);
-  if (value === '' || query === '') return 0;
-  if (value === query) return 100;
-  if (value.startsWith(query)) return 80;
-  if (value.split(' ').some((word) => word.startsWith(query))) return 60;
-  if (value.includes(query)) return 40;
-  return 0;
-}
-
-// Búsqueda tolerante: cada palabra de la consulta debe coincidir con alguna palabra del texto, por el principio o con
-// una errata (una letra de más, de menos, cambiada o dos intercambiadas). «kid keo» encuentra «Kidd Keo».
-function maxEdits(length) {
-  if (length < 4) return 0;
-  return length < 7 ? 1 : 2;
-}
+export const SEARCH_POINTS = Object.freeze({ exact: 3, prefix: 2, typo: 1 });
+export const SEARCH_FIELD_WEIGHTS = Object.freeze([3, 2, 1]);
+export const SEARCH_BONUS = Object.freeze({ equal: 100, startsWith: 50 });
+export const SEARCH_TYPO_MIN_LENGTH = 4;
 
 // Distancia de edición (Damerau, con intercambio de letras contiguas) entre dos textos cortos.
 export function editDistance(a, b) {
@@ -288,69 +299,92 @@ export function editDistance(a, b) {
   return rows[a.length][b.length];
 }
 
-// 2 si la palabra de la consulta es el principio de una palabra del texto, 1 si lo es con erratas, 0 si no.
-function wordMatch(token, words) {
-  let best = 0;
-  const allowed = maxEdits(token.length);
-  for (const word of words) {
-    if (word.startsWith(token)) return 2;
-    if (allowed > 0 && editDistance(token, word.slice(0, token.length)) <= allowed) best = 1;
-    else if (allowed > 0 && editDistance(token, word) <= allowed) best = 1;
+/** Puntos de una palabra de la consulta frente a una palabra del texto (las dos ya normalizadas): 3, 2, 1 o 0. */
+export function wordPoints(token, word) {
+  if (word === token) return SEARCH_POINTS.exact;
+  if (word.startsWith(token)) return SEARCH_POINTS.prefix;
+  if (token.length >= SEARCH_TYPO_MIN_LENGTH && HAS_LETTER.test(token)
+    && (editDistance(token, word.slice(0, token.length)) <= 1 || editDistance(token, word) <= 1)) {
+    return SEARCH_POINTS.typo;
   }
-  return best;
+  return 0;
 }
 
-/** Puntuación (0, 15 o 25) de que todas las palabras de [query] aparezcan, enteras o con erratas, en [text]. */
-export function fuzzyScore(text, query) {
-  const words = normalizeText(text).split(' ').filter(Boolean);
-  const tokens = query.split(' ').filter(Boolean);
-  if (words.length === 0 || tokens.length === 0) return 0;
-  let fuzzy = false;
-  for (const token of tokens) {
-    const match = wordMatch(token, words);
-    if (match === 0) return 0;
-    if (match === 1) fuzzy = true;
+const fieldText = (field) => (Array.isArray(field) ? field.join(' ') : String(field ?? ''));
+const wordsOf = (text) => text.split(' ').filter(Boolean);
+
+function prepareQuery(rawQuery) {
+  const text = normalizeText(rawQuery);
+  return { text, tokens: wordsOf(text) };
+}
+
+function scoreFields(fields, query) {
+  if (query.tokens.length === 0) return 0;
+  const prepared = fields.map((field, index) => ({
+    weight: SEARCH_FIELD_WEIGHTS[Math.min(index, SEARCH_FIELD_WEIGHTS.length - 1)],
+    words: wordsOf(normalizeText(fieldText(field))),
+  }));
+  let total = 0;
+  for (const token of query.tokens) {
+    let best = 0;
+    for (const { weight, words } of prepared) {
+      for (const word of words) best = Math.max(best, wordPoints(token, word) * weight);
+    }
+    if (best === 0) return 0;
+    total += best;
   }
-  return fuzzy ? 15 : 25;
+  const main = normalizeText(fieldText(fields[0]));
+  if (main === query.text) total += SEARCH_BONUS.equal;
+  else if (main.startsWith(query.text)) total += SEARCH_BONUS.startsWith;
+  return total;
 }
 
-function scoreSong(song, query, catalog) {
-  const folderName = song.folderId ? catalog.folderById.get(song.folderId)?.name : '';
-  const exact = Math.max(
-    scoreText(song.title, query),
-    scoreText(song.artist, query) * 0.75,
-    scoreText(folderName, query) * 0.5,
-    ...song.tags.map((tag) => scoreText(tag, query) * 0.5),
-    song.year !== null && String(song.year) === query ? 50 : 0,
-  );
-  if (exact > 0) return exact;
-  return fuzzyScore(`${song.title} ${song.artist}`, query);
+/**
+ * Puntos de un elemento para [rawQuery] (0 si no coincide). [fields]: sus campos en orden de importancia; cada uno es
+ * un texto o una lista de textos (las etiquetas).
+ */
+export function searchScore(fields, rawQuery) {
+  return scoreFields(fields, prepareQuery(rawQuery));
 }
 
-/** Canciones de [songs] que coinciden con [rawQuery] por título, artista o álbum (con erratas); conserva su orden. */
+function rankWithScores(items, query, fieldsOf) {
+  return items
+    .map((item, index) => ({ item, index, score: scoreFields(fieldsOf(item), query) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+}
+
+/**
+ * La regla de búsqueda: los elementos de [items] que coinciden con [rawQuery], de más a menos relevantes (a igualdad,
+ * en su orden). [fieldsOf](item) da sus campos en orden de importancia. Sin texto que buscar, devuelve [items] tal cual.
+ */
+export function searchRank(items, rawQuery, fieldsOf) {
+  const query = prepareQuery(rawQuery);
+  if (query.tokens.length === 0) return items;
+  return rankWithScores(items, query, fieldsOf).map((entry) => entry.item);
+}
+
+/** Campos de búsqueda de una canción: título, artista, álbum, año y etiquetas. */
+export function songSearchFields(song, albumName = '') {
+  return [song.title ?? '', song.artist ?? '', albumName ?? '', song.year == null ? '' : String(song.year), song.tags ?? []];
+}
+
+/** Campos de búsqueda de un álbum: nombre y artista. */
+export const folderSearchFields = (folder) => [folder.name ?? '', folder.artist ?? ''];
+
+/** Canciones de [songs] que coinciden con [rawQuery] («Buscar en esta colección»), de más a menos relevantes. */
 export function filterSongs(songs, rawQuery, albumNameOf = () => '') {
-  const query = normalizeText(rawQuery);
-  if (query === '') return songs;
-  return songs.filter((song) => {
-    const album = albumNameOf(song) ?? '';
-    return scoreText(song.title, query) > 0 || scoreText(song.artist, query) > 0 || scoreText(album, query) > 0
-      || fuzzyScore(`${song.title} ${song.artist} ${album}`, query) > 0;
-  });
+  return searchRank(songs, rawQuery, (song) => songSearchFields(song, albumNameOf(song)));
 }
 
 /**
  * Canciones que se pueden añadir al álbum [folderId] («Añadir canciones» de un álbum): las de [songs] que [isEditable]
- * admite y que no están ya en ese álbum, filtradas por [rawQuery] sin acentos ni mayúsculas. Cada palabra de la
- * consulta tiene que aparecer en el título, el artista o el nombre de su álbum actual (albumNameOf). Conserva el orden.
+ * admite y que no están ya en ese álbum, que coinciden con [rawQuery] (álbum = el nombre de su álbum actual, albumNameOf).
+ * Sin texto, todas en su orden.
  */
 export function songsToAddToAlbum(songs, folderId, rawQuery, { isEditable = () => true, albumNameOf = () => '' } = {}) {
-  const words = normalizeText(rawQuery).split(' ').filter(Boolean);
-  return songs.filter((song) => {
-    if (song.folderId === folderId || !isEditable(song)) return false;
-    if (words.length === 0) return true;
-    const text = normalizeText(`${song.title ?? ''} ${song.artist ?? ''} ${albumNameOf(song) ?? ''}`);
-    return words.every((word) => text.includes(word));
-  });
+  const candidates = songs.filter((song) => song.folderId !== folderId && isEditable(song));
+  return searchRank(candidates, rawQuery, (song) => songSearchFields(song, albumNameOf(song) ?? ''));
 }
 
 /**
@@ -359,19 +393,12 @@ export function songsToAddToAlbum(songs, folderId, rawQuery, { isEditable = () =
  * una lista sobre una canción. Sin texto, todo vacío.
  */
 export function searchCatalog(catalog, rawQuery, playlists = []) {
-  const query = normalizeText(rawQuery);
-  if (query === '') return { query, top: null, songs: [], folders: [], playlists: [] };
-  const rank = (items, score) => items
-    .map((item) => ({ item, score: score(item) }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score);
-  const songs = rank(catalog.songs, (song) => scoreSong(song, query, catalog));
-  const folders = rank(catalog.folders, (folder) => Math.max(
-    scoreText(folder.name, query),
-    scoreText(folder.artist, query) * 0.75,
-    scoreText(`${folder.name} ${folder.artist}`, query) > 0 ? 0 : fuzzyScore(`${folder.name} ${folder.artist}`, query),
-  ));
-  const lists = rank(playlists, (list) => scoreText(list.name, query) || fuzzyScore(list.name, query));
+  const query = prepareQuery(rawQuery);
+  if (query.tokens.length === 0) return { query: query.text, top: null, songs: [], folders: [], playlists: [] };
+  const albumName = (song) => (song.folderId ? catalog.folderById.get(song.folderId)?.name ?? '' : '');
+  const songs = rankWithScores(catalog.songs, query, (song) => songSearchFields(song, albumName(song)));
+  const folders = rankWithScores(catalog.folders, query, folderSearchFields);
+  const lists = rankWithScores(playlists, query, (list) => [list.name ?? '']);
   const candidates = [
     folders[0] && { kind: 'folder', ...folders[0] },
     lists[0] && { kind: 'playlist', ...lists[0] },
@@ -381,7 +408,7 @@ export function searchCatalog(catalog, rawQuery, playlists = []) {
   candidates.sort((a, b) => b.score - a.score);
   const top = candidates[0] ? { kind: candidates[0].kind, item: candidates[0].item } : null;
   return {
-    query,
+    query: query.text,
     top,
     songs: songs.map((entry) => entry.item),
     folders: folders.map((entry) => entry.item),

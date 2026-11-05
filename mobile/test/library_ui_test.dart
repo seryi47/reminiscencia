@@ -574,10 +574,16 @@ void main() {
       expect(ids('orquesta jazz'), [songId], reason: 'cada palabra');
     });
 
-    test('no mira año ni etiquetas y no acepta erratas', () {
-      expect(ids('1925'), isEmpty);
-      expect(ids('charlestom'), isEmpty);
-    });
+    test(
+      'la regla común de búsqueda: año, etiquetas y una errata (ADR-0028)',
+      () {
+        expect(ids('1925'), [songId]);
+        expect(ids('jazz'), [songId, otherId], reason: 'etiqueta de las dos');
+        expect(ids('charlestom'), [songId]);
+        expect(ids('1926'), isEmpty, reason: 'los números no admiten erratas');
+        expect(ids('ton'), isEmpty, reason: 'no busca en mitad de una palabra');
+      },
+    );
   });
 
   group('listas propias', () {

@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../app_error.dart';
-import '../library_controller.dart' show foldForSearch;
+import '../fuzzy_search.dart' show searchRank, songSearchFields;
 import '../library_requests.dart';
 import '../playlist_covers.dart';
 import '../services.dart';
@@ -541,25 +541,15 @@ class _OrderAlbumPageState extends State<OrderAlbumPage> {
   }
 }
 
-/// Filtro del buscador de «Añadir canciones a este álbum»: sin tildes ni mayúsculas, por título, artista y
-/// nombre del álbum en el que está ahora la canción ([albumName]). Cada palabra de [query] debe aparecer.
-/// Conserva el orden; sin texto devuelve todas.
+/// Filtro del buscador de «Añadir canciones a este álbum»: la regla común de búsqueda (ADR-0028, lib/fuzzy_search.dart)
+/// por título, artista, nombre del álbum en el que está ahora la canción ([albumName]), año y etiquetas, de más a
+/// menos relevantes. Sin texto devuelve todas, en su orden.
 List<Song> filterSongsForAlbumPicker(
   List<Song> songs,
   String query, {
   required String Function(Song song) albumName,
-}) {
-  final tokens = foldForSearch(
-    query,
-  ).split(' ').where((token) => token.isNotEmpty).toList();
-  if (tokens.isEmpty) return songs;
-  return songs.where((song) {
-    final text = foldForSearch(
-      [song.title, song.artist, albumName(song)].join(' '),
-    );
-    return tokens.every(text.contains);
-  }).toList();
-}
+}) =>
+    searchRank(songs, query, (song) => songSearchFields(song, albumName(song)));
 
 /// Desde un álbum: busca y marca varias canciones del catálogo y las pasa a este álbum con una sola petición.
 Future<void> addSongsToAlbumFlow(

@@ -7,11 +7,11 @@
 // duración (un número mayor que 0), se diferencian como mucho en DUPLICATE_TOLERANCE_S segundos; si a alguna le falta,
 // su artista normalizado es igual. Solo avisa: nunca impide subir.
 
-import { formatDuration } from './catalog.js';
+import { foldText, FOLD_FROM, FOLD_TO, formatDuration } from './catalog.js';
 
 export const DUPLICATE_TOLERANCE_S = 2;
-export const FOLD_FROM = 'áàäâãåāéèëêēíìïîīóòöôõøōúùüûūñçýÿ';
-export const FOLD_TO = 'aaaaaaaeeeeeiiiiiooooooouuuuuncyy';
+// El pliegue de letras es el mismo que el de la búsqueda (js/catalog.js, ADR-0028).
+export { FOLD_FROM, FOLD_TO };
 /** Contenido de un paréntesis o corchete que se quita del título («(Official Video)», «[HD]», «(Letra)»…). */
 export const DUPLICATE_TAGS = Object.freeze([
   'official video',
@@ -42,17 +42,9 @@ export const FEATURING_MARKS = Object.freeze(['ft', 'feat', 'featuring']);
 
 const TAGS = new Set(DUPLICATE_TAGS);
 const FEATURING = new Set(FEATURING_MARKS);
-const COMBINING = /[̀-ͯ]/g;
 const SIGNS = /[^\p{L}\p{N}]+/gu;
 const GROUP = /[([]([^()[\]]*)[)\]]/g;
-const FOLD = new Map([...FOLD_FROM].map((char, index) => [char, FOLD_TO[index]]));
-
-function fold(text) {
-  const lower = (typeof text === 'string' ? text : '').toLowerCase().replace(COMBINING, '');
-  let out = '';
-  for (const char of lower) out += FOLD.get(char) ?? char;
-  return out;
-}
+const fold = (text) => foldText(typeof text === 'string' ? text : '');
 
 const words = (text) => text.replace(SIGNS, ' ').split(' ').filter(Boolean);
 

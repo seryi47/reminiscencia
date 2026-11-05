@@ -1,4 +1,6 @@
 import 'fuzzy_search.dart';
+
+export 'fuzzy_search.dart' show foldForSearch;
 import 'dart:async';
 import 'dart:io';
 
@@ -178,31 +180,26 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Canciones cuyo título, artista, año o etiquetas contienen [query] (sin distinguir mayúsculas ni tildes).
+  /// Canciones que coinciden con [query] por título, artista, álbum, año o etiquetas, de más a menos relevantes (la
+  /// regla común de búsqueda, ADR-0028). Sin texto, ninguna.
   List<Song> searchSongs(String query) {
-    final needle = foldForSearch(query);
-    if (needle.isEmpty) return const [];
-    return _songs.where((song) {
-      final haystack = foldForSearch(
-        [
-          song.title,
-          song.artist,
-          if (song.year != null) '${song.year}',
-          ...song.tags,
-        ].join(' '),
-      );
-      return haystack.contains(needle) || fuzzyMatches(haystack, needle);
-    }).toList();
+    if (foldForSearch(query).isEmpty) return const [];
+    return searchRank(
+      _songs,
+      query,
+      (song) => songSearchFields(song, _albumNameOf(song)),
+    );
   }
 
-  /// Álbumes cuyo nombre o artista contiene [query].
+  /// Álbumes que coinciden con [query] por nombre o artista, de más a menos relevantes. Sin texto, ninguno.
   List<Folder> searchFolders(String query) {
-    final needle = foldForSearch(query);
-    if (needle.isEmpty) return const [];
-    return _folders.where((folder) {
-      final text = '${folder.name} ${folder.artist}';
-      return foldForSearch(text).contains(needle) || fuzzyMatches(text, needle);
-    }).toList();
+    if (foldForSearch(query).isEmpty) return const [];
+    return searchRank(_folders, query, folderSearchFields);
+  }
+
+  String _albumNameOf(Song song) {
+    final id = song.folderId;
+    return id == null ? '' : folderOrNull(id)?.name ?? '';
   }
 
   /// Álbum por id, o null si ya no existe.
@@ -537,16 +534,3 @@ bool _isConnectionError(Object error) =>
     error is SocketException ||
     error is TimeoutException ||
     error is http.ClientException;
-
-/// Texto normalizado para buscar: minúsculas, sin tildes ni diéresis y sin espacios repetidos.
-String foldForSearch(String text) {
-  const from = 'áàäâãéèëêíìïîóòöôõúùüûñç';
-  const to = 'aaaaaeeeeiiiiooooouuuunc';
-  final lower = text.toLowerCase();
-  final buffer = StringBuffer();
-  for (final char in lower.split('')) {
-    final index = from.indexOf(char);
-    buffer.write(index < 0 ? char : to[index]);
-  }
-  return buffer.toString().trim().replaceAll(RegExp(r'\s+'), ' ');
-}

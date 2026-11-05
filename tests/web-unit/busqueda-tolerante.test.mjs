@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { editDistance, filterSongs, fuzzyScore } from '../../frontend/web/js/catalog.js';
+import { editDistance, filterSongs, searchScore } from '../../frontend/web/js/catalog.js';
 
 const songs = [
   { id: 'a', title: 'SUPERSTARS', artist: 'Kidd Keo' },
@@ -17,18 +17,18 @@ describe('búsqueda tolerante', () => {
   });
 
   test('«kid keo» encuentra «Kidd Keo»', () => {
-    assert.ok(fuzzyScore('SUPERSTARS Kidd Keo', 'kid keo') > 0);
+    assert.ok(searchScore(['SUPERSTARS Kidd Keo'], 'kid keo') > 0);
   });
 
   test('perdona una errata en palabras de 4 o más letras y no en las cortas', () => {
-    assert.ok(fuzzyScore('Charleston Orquesta', 'charlston') > 0);
-    assert.ok(fuzzyScore('Charleston Orquesta', 'orqeusta') > 0);
-    assert.equal(fuzzyScore('Charleston Orquesta', 'xyz'), 0);
-    assert.equal(fuzzyScore('Kidd Keo', 'kxo'), 0);
+    assert.ok(searchScore(['Charleston Orquesta'], 'charlston') > 0);
+    assert.ok(searchScore(['Charleston Orquesta'], 'orqeusta') > 0);
+    assert.equal(searchScore(['Charleston Orquesta'], 'xyz'), 0);
+    assert.equal(searchScore(['Kidd Keo'], 'kxo'), 0);
   });
 
   test('todas las palabras deben coincidir', () => {
-    assert.equal(fuzzyScore('Kidd Keo', 'kid pepe'), 0);
+    assert.equal(searchScore(['Kidd Keo'], 'kid pepe'), 0);
   });
 
   test('filterSongs filtra por título, artista y álbum y conserva el orden', () => {
