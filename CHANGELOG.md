@@ -1,6 +1,7 @@
 ## Sin publicar: «Escuchar» por Dart y apt con reintentos (2026-11-05)
 
-- APK: el audio de YouTube lo descarga Dart por rangos y se lo sirve al reproductor en local (`YoutubeAudioSource`), para evitar el «Source error» por desajuste de IP en la URL firmada.
+- APK: el audio de YouTube lo descarga Dart por rangos y se lo sirve al reproductor en local (`YoutubeAudioSource`).
+- APK, causa real del «Source error» al pulsar «Escuchar»: para algunos vídeos (p. ej. con `gcr` en la URL) YouTube solo sirve el primer ~1 MiB sin PO token y responde 403 después; no era la IP. Ahora el resolvedor comprueba que el audio se pueda leer hasta el final y, si no, «Escuchar» abre el reproductor incrustado de YouTube en un `WebView` (`youtube_embed.dart`, `ui/youtube_embed_dock.dart`), igual que la web. La descarga empieza a la vez y no bloquea la escucha. Probado en emulador Android 15: suena y sigue sonando al cambiar de pestaña.
 - Workflows `buzon` y `biblioteca`: «Instalar ffmpeg» con tres intentos y límite de tiempo; un `apt` colgado ya no bloquea la cola de publicación.
 
 # CHANGELOG

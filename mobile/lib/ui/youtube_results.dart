@@ -7,6 +7,7 @@ import '../local_audio.dart';
 import '../services.dart';
 import '../shared_upload.dart';
 import '../theme.dart';
+import '../youtube_embed.dart';
 import '../youtube_importer.dart';
 import 'common.dart';
 
@@ -155,6 +156,7 @@ class _YoutubeSearchSectionState extends State<YoutubeSearchSection> {
   void initState() {
     super.initState();
     youtubeDownloads.addListener(_onDownloads);
+    youtubeEmbed.addListener(_onDownloads);
     _plan();
   }
 
@@ -169,6 +171,7 @@ class _YoutubeSearchSectionState extends State<YoutubeSearchSection> {
   @override
   void dispose() {
     youtubeDownloads.removeListener(_onDownloads);
+    youtubeEmbed.removeListener(_onDownloads);
     _timer?.cancel();
     _cancellation?.cancel();
     super.dispose();
@@ -225,24 +228,39 @@ class _YoutubeSearchSectionState extends State<YoutubeSearchSection> {
 
   Future<void> _listen(YoutubeSearchResult result) async {
     final services = widget.services;
-    final resolver = services.streamResolver;
-    if (resolver == null) {
-      _notify('Escuchar no está disponible en esta versión.');
+    if (youtubeEmbed.current?.id == result.id) {
+      youtubeEmbed.close();
       return;
     }
     setState(() => _listeningId = result.id);
     try {
-      final stream = await resolver.resolve(result.id);
-      await services.playback.playStream(
-        id: result.id,
-        title: result.title,
-        artist: result.artist,
-        uri: stream.uri,
-        headers: stream.headers,
-        duration: result.durationS > 0
-            ? Duration(seconds: result.durationS)
-            : stream.duration,
-      );
+      var streamed = false;
+      final resolver = services.streamResolver;
+      if (resolver != null) {
+        try {
+          final stream = await resolver.resolve(result.id);
+          youtubeEmbed.close();
+          await services.playback.playStream(
+            id: result.id,
+            title: result.title,
+            artist: result.artist,
+            uri: stream.uri,
+            headers: stream.headers,
+            duration: result.durationS > 0
+                ? Duration(seconds: result.durationS)
+                : stream.duration,
+          );
+          streamed = true;
+        } catch (_) {
+          // YouTube no deja sacar el audio de algunos vídeos: se usa su reproductor incrustado, como la web.
+        }
+      }
+      if (!streamed) {
+        if (services.playback.nowPlaying.value.playing) {
+          await services.playback.togglePlayPause();
+        }
+        youtubeEmbed.open(result.id, result.title);
+      }
       // La descarga empieza a la vez que suena, como pidió el diseño del buscador.
       unawaited(youtubeDownloads.start(services, result));
     } catch (error) {
@@ -400,7 +418,13 @@ class _YoutubeResultTile extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.play_arrow_rounded),
-                  label: Text(listening ? 'Abriendo…' : 'Escuchar'),
+                  label: Text(
+                    listening
+                        ? 'Abriendo…'
+                        : (youtubeEmbed.current?.id == result.id
+                              ? 'Cerrar'
+                              : 'Escuchar'),
+                  ),
                 ),
                 OutlinedButton.icon(
                   key: Key('youtube-download-${result.id}'),

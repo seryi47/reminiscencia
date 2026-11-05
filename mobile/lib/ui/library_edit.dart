@@ -306,10 +306,7 @@ Future<void> changeCatalogCoverFlow(
   }
   if (picked == null || !context.mounted) return;
   final Uint8List image = picked;
-  await _save(
-    context,
-    () => services.submitCover(id, resizeCoverImage(image)),
-  );
+  await _save(context, () => services.submitCover(id, resizeCoverImage(image)));
 }
 
 /// Menú de un álbum: editar, añadir canciones, crear otro álbum y cambiar la portada.

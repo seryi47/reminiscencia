@@ -16,28 +16,22 @@ typedef CoverSubmitter = Future<String> Function(String id, Uint8List jpeg);
 /// Función de la web que valida y guarda los cambios (`/api/editar`, ADR-0022). La app no guarda ningún token.
 final Uri kEditEndpoint = Uri.parse('${kLibraryBase}api/editar');
 
-const String kEditSavedText =
-    'Guardado. Llegará a todos en un par de minutos.';
+const String kEditSavedText = 'Guardado. Llegará a todos en un par de minutos.';
 
 /// Implementación real de [EditSubmitter].
 Future<String> submitLibraryEdit(
   LibraryRequest request, {
   http.Client? client,
-}) => _post(
-  client,
-  {'Content-Type': 'application/json'},
-  jsonEncode({'action': 'organize', 'payload': request.payload}),
-);
+}) => _post(client, {
+  'Content-Type': 'application/json',
+}, jsonEncode({'action': 'organize', 'payload': request.payload}));
 
 /// Implementación real de [CoverSubmitter].
 Future<String> submitCatalogCover(
   String id,
   Uint8List jpeg, {
   http.Client? client,
-}) => _post(client, {
-  'Content-Type': 'image/jpeg',
-  'X-Portada-Id': id,
-}, jpeg);
+}) => _post(client, {'Content-Type': 'image/jpeg', 'X-Portada-Id': id}, jpeg);
 
 Future<String> _post(
   http.Client? client,

@@ -1,16 +1,20 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../layout.dart';
 import '../services.dart';
 import '../theme.dart';
+import '../playback.dart';
 import '../upload_tracker.dart';
+import '../youtube_embed.dart';
 import 'common.dart';
 import 'home_page.dart';
 import 'library_page.dart';
 import 'player.dart';
 import 'search_page.dart';
+import 'youtube_embed_dock.dart';
 
 /// Pestañas de la app. No hay perfiles, cuentas ni modos: la app abre siempre en Inicio.
 enum AppTab { home, search, library }
@@ -34,6 +38,12 @@ class _HomeShellState extends State<HomeShell> {
   };
   late final AppLifecycleListener _lifecycle;
   StreamSubscription<UploadNotice>? _notices;
+  late final ValueListenable<NowPlaying> _nowPlaying;
+
+  // La música y el vídeo incrustado no suenan a la vez.
+  void _closeEmbedWhenMusicPlays() {
+    if (_nowPlaying.value.playing) youtubeEmbed.close();
+  }
 
   @override
   void initState() {
@@ -55,6 +65,8 @@ class _HomeShellState extends State<HomeShell> {
       },
       onPause: () => library.pauseImport(),
     );
+    _nowPlaying = widget.services.playback.nowPlaying;
+    _nowPlaying.addListener(_closeEmbedWhenMusicPlays);
     // Aviso en cualquier pestaña cuando se publica una subida.
     _notices = library.uploads.notices.listen(_showNotice);
   }
@@ -80,6 +92,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void dispose() {
     _notices?.cancel();
+    _nowPlaying.removeListener(_closeEmbedWhenMusicPlays);
     _lifecycle.dispose();
     super.dispose();
   }
@@ -170,6 +183,7 @@ class _HomeShellState extends State<HomeShell> {
                           ),
                         ),
                         const SizedBox(height: 8),
+                        const YoutubeEmbedDock(),
                         miniPlayer,
                       ],
                     ),
@@ -193,6 +207,7 @@ class _HomeShellState extends State<HomeShell> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const YoutubeEmbedDock(),
                 miniPlayer,
                 NavigationBar(
                   selectedIndex: _tab.index,

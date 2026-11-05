@@ -240,10 +240,7 @@ void main() {
         'title': 'Charleston (Fox Trot)',
         'artist': 'The Golden Gate Orchestra',
       });
-      expect(
-        t.submitted.single.title,
-        'Editar la canción $songId',
-      );
+      expect(t.submitted.single.title, 'Editar la canción $songId');
     });
 
     testWidgets('«Añadir a un álbum» abre edit_song con folder_id', (

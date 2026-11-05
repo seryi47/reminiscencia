@@ -165,7 +165,6 @@ class LibraryRequest {
 
   /// Cuerpo de la incidencia con el formato de las peticiones.
   String get body => 'action: organize\npayload: ${jsonEncode(payload)}';
-
 }
 
 /// Título de incidencia en una línea y con 120 caracteres como mucho.

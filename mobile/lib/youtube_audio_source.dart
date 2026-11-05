@@ -4,15 +4,15 @@ import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 
 /// Audio de YouTube servido por Dart en vez de por el reproductor del sistema.
-/// La URL de YouTube va firmada con la IP desde la que se pidió; si el reproductor nativo sale por otra
-/// (IPv4 frente a IPv6, por ejemplo) YouTube responde 403 y se ve «Source error». Aquí el audio se descarga por
-/// la misma conexión de Dart que resolvió la URL y se entrega al reproductor en local.
+/// Para algunos vídeos YouTube rechaza con 403 las peticiones sin rango o con rangos de más de ~1 MB, que es lo
+/// que pide el reproductor nativo y se ve como «Source error». Aquí el audio se descarga en trozos pequeños y se
+/// entrega al reproductor en local.
 class YoutubeAudioSource extends StreamAudioSource {
   YoutubeAudioSource({
     required this.uri,
     this.headers,
     http.Client? client,
-    this.chunkBytes = 2 * 1024 * 1024,
+    this.chunkBytes = 512 * 1024,
     super.tag,
   }) : _client = client ?? http.Client();
 
@@ -26,7 +26,7 @@ class YoutubeAudioSource extends StreamAudioSource {
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
     final from = start ?? 0;
-    // YouTube frena las descargas sin límite de rango: se piden trozos acotados.
+    // YouTube responde 403 a rangos de más de ~1 MB en algunos vídeos (y a las peticiones sin rango): trozos pequeños.
     final to = end == null
         ? from + chunkBytes
         : (end - from > chunkBytes ? from + chunkBytes : end);
@@ -36,7 +36,7 @@ class YoutubeAudioSource extends StreamAudioSource {
     if (response.statusCode != 200 && response.statusCode != 206) {
       await response.stream.drain<void>();
       throw http.ClientException(
-        'YouTube respondió ${response.statusCode}',
+        'YouTube respondió ${response.statusCode} al rango ${request.headers['Range']}',
         uri,
       );
     }

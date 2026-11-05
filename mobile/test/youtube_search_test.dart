@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reminiscencia/app_error.dart';
+import 'package:reminiscencia/ui/youtube_embed_dock.dart';
+import 'package:reminiscencia/youtube_embed.dart';
 import 'package:reminiscencia/youtube_importer.dart';
 import 'package:reminiscencia/youtube_stream.dart';
 
@@ -18,6 +20,14 @@ class _FakeResolver implements YoutubeStreamResolver {
     asked.add(videoId);
     return YoutubeStream(uri: Uri.parse('https://example.com/$videoId.webm'));
   }
+}
+
+class _BlockedResolver implements YoutubeStreamResolver {
+  @override
+  Future<YoutubeStream> resolve(String videoId) async =>
+      throw const AppException(
+        'YouTube no permite sacar el audio de este vídeo directamente.',
+      );
 }
 
 const _searchJson = {
@@ -128,6 +138,47 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'si YouTube no deja sacar el audio, Escuchar abre el reproductor incrustado',
+      (tester) async {
+        setWindow(tester, const Size(400, 900));
+        youtubeEmbedViewBuilder = (context, id) =>
+            SizedBox(key: Key('fake-embed-$id'));
+        addTearDown(() {
+          youtubeEmbed.close();
+          youtubeEmbedViewBuilder = (context, id) => const SizedBox();
+        });
+        final calls = <Uri>[];
+        final t = buildTestServices(
+          youtube: _importer(calls),
+          streamResolver: _BlockedResolver(),
+        );
+        await pumpApp(tester, t.services);
+        await tester.tap(find.text('Buscar'));
+        await settle(tester);
+        await tester.enterText(
+          find.byKey(const Key('search-field')),
+          'cancion inexistente zzqx',
+        );
+        await tester.pump(const Duration(milliseconds: 800));
+        await settle(tester);
+        await tester.pump(const Duration(seconds: 2));
+
+        await tester.ensureVisible(
+          find.byKey(const Key('youtube-listen-dQw4w9WgXcQ')),
+        );
+        await tester.tap(find.byKey(const Key('youtube-listen-dQw4w9WgXcQ')));
+        await settle(tester);
+        expect(find.byKey(const Key('youtube-embed')), findsOneWidget);
+        expect(find.byKey(const Key('fake-embed-dQw4w9WgXcQ')), findsOneWidget);
+        expect(t.playback.log.any((e) => e.startsWith('stream:')), isFalse);
+
+        await tester.tap(find.byKey(const Key('youtube-embed-close')));
+        await settle(tester);
+        expect(find.byKey(const Key('youtube-embed')), findsNothing);
+      },
+    );
 
     testWidgets('con coincidencias en la biblioteca solo ofrece el botón', (
       tester,
