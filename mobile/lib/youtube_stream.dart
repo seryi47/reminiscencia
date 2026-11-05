@@ -23,23 +23,27 @@ class ExplodeStreamResolver implements YoutubeStreamResolver {
 
   @override
   Future<YoutubeStream> resolve(String videoId) async {
-    try {
-      final manifest = await _explode.videos.streamsClient
-          .getManifest(videoId, ytClients: [YoutubeApiClient.androidVr])
-          .timeout(const Duration(seconds: 20));
-      final audio = manifest.audioOnly;
-      if (audio.isEmpty) {
-        throw const AppException('YouTube no ofrece audio para este vídeo.');
+    // YouTube bloquea a ratos algún cliente («confirma que no eres un bot»), así que se prueban varios en orden.
+    const clients = [
+      YoutubeApiClient.android,
+      YoutubeApiClient.androidVr,
+      YoutubeApiClient.mweb,
+    ];
+    for (final client in clients) {
+      try {
+        final manifest = await _explode.videos.streamsClient
+            .getManifest(videoId, ytClients: [client])
+            .timeout(const Duration(seconds: 15));
+        final audio = manifest.audioOnly;
+        if (audio.isEmpty) continue;
+        return YoutubeStream(uri: audio.withHighestBitrate().url, duration: null);
+      } catch (_) {
+        continue;
       }
-      final best = audio.withHighestBitrate();
-      return YoutubeStream(uri: best.url, duration: null);
-    } on AppException {
-      rethrow;
-    } catch (_) {
-      throw const AppException(
-        'No se pudo abrir el audio de YouTube. Usa «Descargar» y escúchala cuando esté en la biblioteca.',
-      );
     }
+    throw const AppException(
+      'No se pudo abrir el audio de YouTube. Usa «Descargar» y escúchala cuando esté en la biblioteca.',
+    );
   }
 
   void close() => _explode.close();
