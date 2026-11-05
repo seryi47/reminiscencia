@@ -63,6 +63,7 @@ export const SHELL_ASSETS = Object.freeze([
   '/js/cover-color.js',
   '/js/cover-image.js',
   '/js/duplicates.js',
+  '/js/edit-pending.js',
   '/js/edit-remote.js',
   '/js/local-library.js',
   '/js/offline-core.js',

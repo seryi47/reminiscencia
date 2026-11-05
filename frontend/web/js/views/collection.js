@@ -102,6 +102,11 @@ export function renderCollection(main, ctx, contextId) {
     el('div', { class: 'collection-info' },
       el('p', { class: 'collection-type' }, context.typeLabel),
       el('h1', { class: 'collection-title', 'data-size': titleSize(context.title), tabindex: '-1', 'data-testid': 'collection-title' }, context.title),
+      // Álbum con un cambio enviado que aún no ha llegado al catálogo (ADR-0027).
+      context.folder?.pendingEdit
+        ? el('p', { class: 'collection-pending', 'data-testid': 'collection-edit-pending' },
+          el('span', { class: 'badge badge-edit' }, 'Pendiente'), 'Hay cambios de este álbum que aún se están guardando.')
+        : null,
       context.description ? el('p', { class: 'collection-description', 'data-testid': 'collection-description' }, context.description) : null,
       el('p', { class: 'collection-meta', 'data-testid': 'collection-meta' }, metaLine(context, songs))));
 

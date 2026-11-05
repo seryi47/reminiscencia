@@ -124,6 +124,8 @@ export function libraryPanel(ctx, prefix, { page = false } = {}) {
   renderLibraryList(list, ctx, prefix);
   return [
     header(ctx, prefix, { page }),
+    // Cambios enviados a la biblioteca común que aún no se han confirmado, o que han fallado (ADR-0027).
+    ctx.pendingEditsButton?.(prefix) ?? null,
     chips({
       label: 'Filtrar Tu biblioteca',
       options: FILTERS,
@@ -134,7 +136,7 @@ export function libraryPanel(ctx, prefix, { page = false } = {}) {
     }),
     tools(ctx, prefix),
     list,
-  ];
+  ].filter(Boolean);
 }
 
 /** Página «Tu biblioteca» (destino de la barra inferior del teléfono). */

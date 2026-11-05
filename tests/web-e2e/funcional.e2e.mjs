@@ -63,17 +63,29 @@ async function fakeUploadFunction({ headers, body }) {
   };
 }
 
-// Función /api/editar simulada (frontend/web/api/editar.js): guarda lo que recibe la web, sin tocar GitHub.
+// Función /api/editar simulada (frontend/web/api/editar.js): guarda lo que recibe la web, sin tocar GitHub. Cada
+// petición de organizar recibe un número de incidencia; GET /api/editar?incidencia=N responde su estado (ADR-0027):
+// 'abierta' salvo que la prueba ponga otro en estadosEdicion.
 const ediciones = [];
-async function fakeEditFunction({ headers, body }) {
+const estadosEdicion = new Map();
+const consultasEstado = [];
+let ultimaIncidencia = 500;
+async function fakeEditFunction({ method, headers, body, query }) {
+  if (method === "GET") {
+    const numero = Number(query.get("incidencia"));
+    consultasEstado.push(numero);
+    return { json: { ok: true, incidencia: numero, estado: estadosEdicion.get(numero) ?? "abierta" } };
+  }
   const type = headers["content-type"] ?? "";
   if (type.startsWith("image/")) {
     ediciones.push({ kind: "portada", id: headers["x-portada-id"], type, bytes: body.length, jpeg: body[0] === 0xff && body[1] === 0xd8 });
-  } else {
-    ediciones.push({ kind: "organizar", ...JSON.parse(body.toString("utf8")) });
+    return { json: { ok: true, mensaje: "Guardado: llegará a todos en un par de minutos." } };
   }
-  return { json: { ok: true, mensaje: "Guardado: llegará a todos en un par de minutos." } };
+  ediciones.push({ kind: "organizar", ...JSON.parse(body.toString("utf8")) });
+  ultimaIncidencia += 1;
+  return { json: { ok: true, incidencia: ultimaIncidencia, mensaje: "Guardado: llegará a todos en un par de minutos." } };
 }
+fakeEditFunction.acceptsGet = true;
 
 // El catálogo de prueba se puede cambiar durante una prueba: así se simula que el workflow publica una subida.
 let catalogo;
@@ -687,6 +699,10 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await waitVisible(page, "move-album");
       await page.$$eval('[data-testid="move-album-option"]', (labels) => labels.find((label) => /Álbum de prueba B/.test(label.textContent)).click());
       await saveEdit(page, "move-album-save");
+      // Se ve al momento (ADR-0027): la canción sale del álbum A y entra en el B, con la marca «Pendiente».
+      await page.waitForFunction(() => !document.querySelector('[data-testid="track-row"][data-song-id="S0000000000000004"]'));
+      await openCollection(page, FOLDER_B);
+      await page.waitForSelector('[data-testid="track-row"][data-song-id="S0000000000000004"] [data-testid="track-edit-pending"]');
       await openRowMenu(page, "S0000000000000004");
       await pickMenu(page, "menu-move-album");
       await waitVisible(page, "move-album");
@@ -728,6 +744,9 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await (await page.$('[data-testid="cover-file"]')).uploadFile(foto);
       await saveEdit(page, "cover-save");
       assert.deepEqual(ediciones.map(({ kind, id, type, jpeg }) => ({ kind, id, type, jpeg })), [{ kind: "portada", id: ALBUM_A_ID, type: "image/jpeg", jpeg: true }]);
+      // La portada nueva se ve al momento (vista previa en data:) y el álbum lleva la marca «Pendiente» (ADR-0027).
+      await page.waitForFunction(() => document.querySelector('[data-testid="collection-header"] .collection-cover img')?.src.startsWith("data:image/jpeg;base64,"));
+      await waitVisible(page, "collection-edit-pending");
       // Crear un álbum.
       await createMenu(page, VIEWPORTS.escritorio, "album");
       await waitVisible(page, "create-album");
@@ -842,6 +861,121 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       const opciones = await openRowMenu(page, "L0011223344556677");
       for (const opcion of ["Editar detalles", "Añadir a un álbum", "Cambiar portada"]) assert.equal(opciones.includes(opcion), false, opcion);
       assert.ok(opciones.includes("Borrar de este navegador"));
+    }),
+  );
+});
+
+describe("Ediciones pendientes (ADR-0027): se ven al momento, se confirman o se deshacen con aviso", () => {
+  const SONG_3 = "S0000000000000003";
+  const avisoEs = (page, text) => page.waitForFunction((t) => document.querySelector('[data-testid="toast"]')?.textContent === t, { timeout: 10000 }, text);
+  // Revisa ya (como al volver la conexión) en lugar de esperar los 20 s de la primera revisión.
+  const revisarAhora = (page) => page.evaluate(() => window.dispatchEvent(new Event("online")));
+  const filaDe = (id) => `[data-testid="track-row"][data-song-id="${id}"]`;
+  const tituloDe = (page, id) => page.$eval(`${filaDe(id)} .track-title`, (el) => el.textContent);
+
+  prueba("Pendiente → confirmada: el título nuevo se ve con «Pendiente», sigue tras recargar y se confirma al llegar al catálogo", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      consultasEstado.length = 0;
+      const base = catalogo.get("/data/songs.json");
+      try {
+        await openApp(page, server.url);
+        await openCollection(page, FOLDER_A);
+        await openRowMenu(page, SONG_3);
+        await pickMenu(page, "menu-edit-song");
+        await waitVisible(page, "edit-song");
+        await fillField(await waitVisible(page, "edit-song-title"), "Charleston pendiente");
+        await saveEdit(page, "edit-song-save");
+        const numero = ultimaIncidencia;
+        // Al momento: título nuevo con la marca «Pendiente» (texto) y el botón de Tu biblioteca.
+        await page.waitForSelector(`${filaDe(SONG_3)} [data-testid="track-edit-pending"]`);
+        assert.equal(await tituloDe(page, SONG_3), "Charleston pendiente");
+        assert.equal(await page.$eval(`${filaDe(SONG_3)} [data-testid="track-edit-pending"]`, (el) => el.textContent), "Pendiente");
+        assert.equal(await page.$eval(`${filaDe(SONG_3)} [data-testid="track-title"]`, (el) => el.getAttribute("aria-label")), "Reproducir Charleston pendiente (cambio pendiente de guardar)");
+        assert.equal(await textOf(page, "sidebar-edits"), "1 cambio pendiente");
+        // Tras recargar sigue pendiente (localStorage).
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.waitForSelector('html[data-ready="true"]');
+        await openCollection(page, FOLDER_A);
+        await page.waitForSelector(`${filaDe(SONG_3)} [data-testid="track-edit-pending"]`);
+        assert.equal(await tituloDe(page, SONG_3), "Charleston pendiente");
+        // Mientras el catálogo no lo refleja y el servidor dice «abierta», sigue pendiente.
+        await revisarAhora(page);
+        for (let espera = 0; espera < 50 && !consultasEstado.includes(numero); espera += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.ok(consultasEstado.includes(numero), `Se pregunta el estado de la incidencia ${numero}.`);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        assert.ok(await page.$(`${filaDe(SONG_3)} [data-testid="track-edit-pending"]`));
+        // El workflow lo publica: el catálogo nuevo lo refleja y la marca desaparece con un aviso.
+        const songs = JSON.parse(base.body).map((song) => (song.id === SONG_3 ? { ...song, title: "Charleston pendiente" } : song));
+        catalogo.set("/data/songs.json", { body: JSON.stringify(songs), type: "application/json; charset=utf-8" });
+        await revisarAhora(page);
+        await avisoEs(page, "Ya está guardado: «Charleston pendiente».");
+        await page.waitForFunction((sel) => document.querySelector(sel) && !document.querySelector(`${sel} [data-testid="track-edit-pending"]`), {}, filaDe(SONG_3));
+        assert.equal(await tituloDe(page, SONG_3), "Charleston pendiente");
+        assert.equal(await page.$('[data-testid="sidebar-edits"]'), null, "Sin pendientes no hay botón.");
+        assert.equal(await page.evaluate(() => localStorage.getItem("reminiscencia.ediciones")), null);
+        assert.equal(ediciones.length, 1);
+      } finally {
+        catalogo.set("/data/songs.json", base);
+      }
+    }),
+  );
+
+  prueba("Pendiente → error → deshecha: vuelve el nombre de antes, se avisa y «Reintentar» la reenvía", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_A);
+      await clickTestid(page, "collection-edit", "Editar detalles del álbum");
+      await waitVisible(page, "edit-album");
+      await fillField(await waitVisible(page, "edit-album-name"), "Álbum que falla");
+      await saveEdit(page, "edit-album-save");
+      const numero = ultimaIncidencia;
+      await page.waitForFunction(() => document.querySelector('[data-testid="collection-title"]')?.textContent === "Álbum que falla");
+      await waitVisible(page, "collection-edit-pending");
+      assert.match(await textOf(page, "collection-edit-pending"), /^Pendiente/);
+      // El workflow falla: la incidencia queda con la etiqueta «error».
+      estadosEdicion.set(numero, "error");
+      await revisarAhora(page);
+      await avisoEs(page, "No se ha podido guardar «Álbum que falla». Inténtalo de nuevo.");
+      await page.waitForFunction(() => document.querySelector('[data-testid="collection-title"]')?.textContent === "Álbum de prueba A");
+      assert.equal(await page.$('[data-testid="collection-edit-pending"]'), null, "Se quita la vista optimista.");
+      assert.equal(await textOf(page, "sidebar-edits"), "No se ha podido guardar 1 cambio");
+      // La lista dice qué falló y deja reintentar.
+      await clickTestid(page, "sidebar-edits", "cambios pendientes");
+      await waitVisible(page, "edits-sheet");
+      assert.equal(await page.$eval('[data-testid="edits-item"]', (el) => el.dataset.state), "error");
+      assert.match(await textOf(page, "edits-item"), /«Álbum que falla».*Detalles del álbum.*No se ha podido guardar/);
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "edits-retry", "El foco empieza en «Reintentar».");
+      await clickTestid(page, "edits-retry", "Reintentar");
+      await page.waitForFunction(() => document.querySelector('[data-testid="edits-item"]')?.dataset.state === "pendiente");
+      assert.equal(ediciones.length, 2);
+      assert.deepEqual(ediciones[1].payload, ediciones[0].payload, "Reintentar envía la misma operación.");
+      assert.notEqual(ultimaIncidencia, numero);
+      await clickTestid(page, "edits-sheet-close", "Cerrar");
+      await page.waitForFunction(() => document.querySelector('[data-testid="collection-title"]')?.textContent === "Álbum que falla");
+      assert.equal(await textOf(page, "sidebar-edits"), "1 cambio pendiente");
+    }),
+  );
+
+  prueba("Una edición igual a otra pendiente no se reenvía: «Ya está pendiente»", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      for (let vez = 0; vez < 2; vez += 1) {
+        await createMenu(page, VIEWPORTS.escritorio, "album");
+        await waitVisible(page, "create-album");
+        await fillField(await waitVisible(page, "create-album-name"), "Valses repetidos");
+        await saveEdit(page, "create-album-save");
+      }
+      await avisoEs(page, "Ya está pendiente: «Valses repetidos».");
+      assert.equal(ediciones.length, 1);
+      // Crear un álbum no se puede previsualizar: sale en la lista de cambios pendientes.
+      assert.equal(await textOf(page, "sidebar-edits"), "1 cambio pendiente");
+      await clickTestid(page, "sidebar-edits", "cambios pendientes");
+      await waitVisible(page, "edits-sheet");
+      assert.match(await textOf(page, "edits-item"), /«Valses repetidos».*Álbum nuevo.*Pendiente/);
+      assert.equal(await page.$('[data-testid="edits-retry"]'), null, "Una pendiente no se reintenta.");
     }),
   );
 });

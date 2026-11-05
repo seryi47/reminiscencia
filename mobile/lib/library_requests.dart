@@ -319,6 +319,14 @@ class LibraryRequest {
     });
   }
 
+  /// La misma operación que ya se envió una vez y quedó guardada como pendiente (ADR-0027, «Reintentar»). La
+  /// validación la repite el servidor.
+  factory LibraryRequest.resend(Map<String, Object?> payload) =>
+      LibraryRequest._(
+        'Reintentar ${payload['op'] ?? 'un cambio'}',
+        Map.unmodifiable(payload),
+      );
+
   final String title;
   final Map<String, Object?> payload;
 

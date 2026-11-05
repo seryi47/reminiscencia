@@ -16,6 +16,7 @@ class Song {
     this.local = false,
     this.uploadStatus,
     this.track,
+    this.pendingEdit = false,
   });
 
   final String id;
@@ -42,6 +43,9 @@ class Song {
 
   /// Número de pista dentro de su álbum (ADR-0026): entero desde 1. Null si no tiene álbum o el catálogo no lo trae.
   final int? track;
+
+  /// True si se ve con un cambio enviado que todavía no ha llegado al catálogo (ADR-0027, «Pendiente»).
+  final bool pendingEdit;
 
   /// True si es una subida que todavía no se ha publicado.
   bool get provisional => uploadStatus != null;
@@ -91,6 +95,7 @@ class Folder {
     required this.parentId,
     this.artist = '',
     this.cover,
+    this.pendingEdit = false,
   });
 
   final String id;
@@ -102,6 +107,9 @@ class Folder {
 
   /// Portada publicada, relativa a la web (`covers/<id>.jpg`). Null si no tiene.
   final String? cover;
+
+  /// True si se ve con un cambio enviado que todavía no ha llegado al catálogo (ADR-0027, «Pendiente»).
+  final bool pendingEdit;
 
   factory Folder.fromJson(Map<String, dynamic> json) => Folder(
     id: json['id'] as String,

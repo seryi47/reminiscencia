@@ -9,6 +9,7 @@ import '../theme.dart';
 import 'collection_ref.dart';
 import 'common.dart';
 import 'library_edit.dart';
+import 'pending_edits_panel.dart';
 import 'playlist_flows.dart';
 import 'song_row.dart';
 
@@ -327,6 +328,10 @@ class _Header extends StatelessWidget {
               header: true,
               child: Text(view.title, style: theme.textTheme.headlineMedium),
             ),
+            if (folder != null && folder.pendingEdit) ...[
+              const SizedBox(height: 6),
+              const PendingEditBadge(),
+            ],
             if (view.description.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(

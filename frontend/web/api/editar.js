@@ -1,4 +1,4 @@
-// Función de Vercel POST /api/editar (ADR-0022): cambia textos, álbumes y portadas de la biblioteca sin que quien edita
+// Función de Vercel POST y GET /api/editar (ADR-0022): cambia textos, álbumes y portadas de la biblioteca sin que quien edita
 // pase por GitHub. Node, sin dependencias. Lo usan la web y la APK; no cambiar el contrato sin cambiar los dos.
 //
 //   Contenido JSON  { "action": "organize", "payload": { "op": … } }  →  abre en GitHub una incidencia con la etiqueta
@@ -9,6 +9,12 @@
 //     para quien tiene permiso de escritura.
 //   Contenido image/jpeg, cabecera X-Portada-Id (S o F + 16 hexadecimales)  →  guarda el JPEG (hasta 1 MB) en
 //     audio-library/buzon/portadas/<ID>.jpg con un commit en main; el workflow buzon lo recorta y lo publica.
+//
+//   GET /api/editar?incidencia=N  →  { ok: true, incidencia: N, estado: 'abierta' | 'cerrada' | 'error' } (ADR-0027): el
+//     estado de una edición ya enviada, para que la web y la APK confirmen o deshagan su vista «Pendiente». Se consulta
+//     con el token del servidor (la API pública de GitHub admite solo 60 consultas por hora y por IP). Solo responde de
+//     incidencias creadas por esta función (cuerpo «action: organize»); el número se valida estrictamente.
+//     'error': la incidencia tiene la etiqueta «error» o se cerró sin completarse; 'cerrada': biblioteca.yml la aplicó.
 //
 // El token solo sale de process.env.GITHUB_TOKEN (permisos Contents e Issues en escritura) y nunca va a registros ni
 // respuestas.
@@ -28,6 +34,10 @@ export const COVERS_DIRECTORY = 'audio-library/buzon/portadas';
 export const MAX_COVER_BYTES = 1024 * 1024;
 export const ALLOWED_OPS = Object.freeze(['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs', 'order_album']);
 export const DONE_MESSAGE = 'Guardado: llegará a todos en un par de minutos.';
+export const ERROR_LABEL = 'error';
+export const EDIT_STATES = Object.freeze({ OPEN: 'abierta', CLOSED: 'cerrada', ERROR: 'error' });
+// Número de incidencia: entero positivo sin ceros a la izquierda, como mucho 9 cifras.
+const ISSUE_NUMBER = /^[1-9][0-9]{0,8}$/;
 const API = 'https://api.github.com';
 
 export class EditError extends Error {
@@ -125,6 +135,38 @@ async function storeCover(github, id, bytes) {
   throw new EditError(503, 'Hay muchos cambios a la vez. Inténtalo de nuevo en un momento.');
 }
 
+/** Número de incidencia de «?incidencia=N», o lanza EditError(400). Solo cifras: nada de signos, espacios ni decimales. */
+export function issueNumberFrom(url) {
+  let params;
+  try {
+    params = new URL(url).searchParams;
+  } catch {
+    throw new EditError(400, 'La dirección no es válida.');
+  }
+  const values = params.getAll('incidencia');
+  if (values.length !== 1 || !ISSUE_NUMBER.test(values[0])) throw new EditError(400, 'El número de incidencia no es válido.');
+  return Number(values[0]);
+}
+
+/** Estado de una edición a partir de la incidencia de GitHub. */
+export function editStateOf(issue) {
+  const labels = Array.isArray(issue?.labels) ? issue.labels.map((label) => label?.name ?? label) : [];
+  if (labels.includes(ERROR_LABEL)) return EDIT_STATES.ERROR;
+  if (issue?.state === 'closed') return issue.state_reason === 'not_planned' ? EDIT_STATES.ERROR : EDIT_STATES.CLOSED;
+  return EDIT_STATES.OPEN;
+}
+
+async function issueState(github, number) {
+  const result = await github('GET', `/issues/${number}`);
+  if (result.status === 404 || result.status === 410) throw new EditError(404, 'No existe esa edición.');
+  const issue = expect(result, [200], 'leer la incidencia');
+  // Solo las incidencias de edición (las que crea esta función): ni pull requests ni otras incidencias del repositorio.
+  if (!issue || issue.pull_request || typeof issue.body !== 'string' || !issue.body.startsWith('action: organize')) {
+    throw new EditError(404, 'No existe esa edición.');
+  }
+  return editStateOf(issue);
+}
+
 function json(status, body) {
   return new Response(JSON.stringify(body), {
     status,
@@ -135,13 +177,17 @@ function json(status, body) {
 /** Atiende una petición. env y fetchImpl se inyectan en las pruebas (tests/web-unit/api-editar.test.mjs). */
 export async function handleEdit(request, { env = {}, fetchImpl = globalThis.fetch } = {}) {
   try {
-    if (request.method !== 'POST') throw new EditError(405, 'Solo se admite POST.');
+    if (request.method !== 'POST' && request.method !== 'GET') throw new EditError(405, 'Solo se admiten POST y GET.');
+    const number = request.method === 'GET' ? issueNumberFrom(request.url) : null;
     const token = typeof env.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '';
     if (!token) {
       console.error('editar: falta la variable de entorno GITHUB_TOKEN');
       throw new EditError(500, 'La edición no está configurada en el servidor (falta GITHUB_TOKEN). Avisa a quien mantiene la web.');
     }
     const github = githubClient(token, fetchImpl);
+    if (request.method === 'GET') {
+      return json(200, { ok: true, incidencia: number, estado: await issueState(github, number) });
+    }
     const type = (request.headers.get('content-type') ?? '').toLowerCase();
     if (type.startsWith('image/')) {
       if (!type.startsWith('image/jpeg')) throw new EditError(415, 'La portada debe ser un JPEG.');
@@ -171,7 +217,11 @@ export async function handleEdit(request, { env = {}, fetchImpl = globalThis.fet
   }
 }
 
-/** Punto de entrada de Vercel (firma web: Request → Response). */
+/** Puntos de entrada de Vercel (firma web: Request → Response). */
 export function POST(request) {
+  return handleEdit(request, { env: process.env, fetchImpl: globalThis.fetch });
+}
+
+export function GET(request) {
   return handleEdit(request, { env: process.env, fetchImpl: globalThis.fetch });
 }

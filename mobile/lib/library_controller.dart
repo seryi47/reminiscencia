@@ -9,9 +9,11 @@ import 'package:http/http.dart' as http;
 
 import 'app_error.dart';
 import 'covers.dart';
+import 'edit_remote.dart' show EditStatusFetcher;
 import 'library_store.dart';
 import 'local_audio.dart';
 import 'offline_choice.dart';
+import 'pending_edits.dart';
 import 'playback.dart';
 import 'playback_plan.dart';
 import 'shared_upload.dart';
@@ -34,6 +36,9 @@ class LibraryController extends ChangeNotifier {
     UploadsStore? uploadsStore,
     PeriodicTimerFactory? pollTimer,
     DateTime Function()? clock,
+    EditStatusFetcher? editStatus,
+    PendingEditsStore? editsStore,
+    EditTimerFactory? editTimer,
   }) : _clock = clock ?? DateTime.now {
     _lastSongId = playback.nowPlaying.value.songId;
     playback.nowPlaying.addListener(_onNowPlayingChanged);
@@ -48,6 +53,28 @@ class LibraryController extends ChangeNotifier {
       onPublished: (_) => unawaited(load()),
     );
     uploads.addListener(_onUploadsChanged);
+    // Ediciones enviadas que aún no están en el catálogo (ADR-0027): se ven encima del catálogo real.
+    edits = PendingEditsController(
+      fetchStatus: editStatus,
+      store: editsStore,
+      clock: _clock,
+      timer: editTimer,
+    );
+    edits.currentCatalog = () =>
+        (songs: _catalog, folders: _catalogFolders, ok: _catalogKnown);
+    edits.loadCatalog = () async {
+      await load();
+      return (
+        songs: _catalog,
+        folders: _catalogFolders,
+        ok: _online && _loadError == null,
+      );
+    };
+    edits.onCoverConfirmed = (path) {
+      final store = covers;
+      if (store != null) unawaited(store.revalidate({path}).catchError((_) {}));
+    };
+    edits.addListener(_onUploadsChanged);
   }
 
   final LibrarySource source;
@@ -70,12 +97,17 @@ class LibraryController extends ChangeNotifier {
   /// Estado de cada subida hasta que se publica. Sus canciones provisionales están en [songs] y [recentSongs].
   late final UploadTracker uploads;
 
+  /// Ediciones de la biblioteca común enviadas desde este teléfono que aún no están en el catálogo (ADR-0027).
+  /// [songs] y [folders] ya las muestran; [catalogSongs] y [catalogFolders] son el catálogo real.
+  late final PendingEditsController edits;
+
   final DateTime Function() _clock;
 
   List<Song> _songs = const [];
   List<Song> _catalog = const [];
   List<Song> _localSongs = const [];
   List<Folder> _folders = const [];
+  List<Folder> _catalogFolders = const [];
   bool _started = false;
   bool _loading = false;
   bool _online = false;
@@ -124,8 +156,11 @@ class LibraryController extends ChangeNotifier {
     return '${_songs.length} canciones · $connection';
   }
 
-  /// Canciones del catálogo de la web (iguales para todos).
+  /// Canciones del catálogo de la web (iguales para todos), sin las ediciones pendientes.
   List<Song> get catalogSongs => _catalog;
+
+  /// Álbumes del catálogo de la web, sin las ediciones pendientes.
+  List<Folder> get catalogFolders => _catalogFolders;
 
   /// Canciones subidas desde este teléfono, en el orden en que se añadieron.
   List<Song> get localSongs => _localSongs;
@@ -150,7 +185,7 @@ class LibraryController extends ChangeNotifier {
   Set<String> get referencedCovers => {
     for (final song in _catalog)
       if (song.cover != null) song.cover!,
-    for (final folder in _folders)
+    for (final folder in _catalogFolders)
       if (folder.cover != null) folder.cover!,
   };
 
@@ -172,7 +207,9 @@ class LibraryController extends ChangeNotifier {
   );
 
   void _rebuildSongs() {
-    _songs = [..._catalog, ..._localSongs, ..._provisional()];
+    final view = edits.apply(_catalog, _catalogFolders);
+    _folders = view.folders;
+    _songs = [...view.songs, ..._localSongs, ..._provisional()];
   }
 
   void _onUploadsChanged() {
@@ -216,6 +253,7 @@ class LibraryController extends ChangeNotifier {
     _started = true;
     // Lo que quedó por publicar vuelve a la biblioteca y se sigue comprobando. No retrasa la carga.
     unawaited(uploads.restore());
+    unawaited(edits.restore());
     return load();
   }
 
@@ -274,7 +312,9 @@ class LibraryController extends ChangeNotifier {
     }
     _catalogKnown = true;
     _catalog = data.songs;
-    _folders = data.folders;
+    _catalogFolders = data.folders;
+    // Lo que ya está en el catálogo deja de verse como pendiente.
+    if (data.fromNetwork) edits.reconcile(data.songs, data.folders);
     _online = data.fromNetwork;
     if (data.fromNetwork) _lastSync = _clock();
     _rebuildSongs();
@@ -508,6 +548,8 @@ class LibraryController extends ChangeNotifier {
     playback.nowPlaying.removeListener(_onNowPlayingChanged);
     uploads.removeListener(_onUploadsChanged);
     uploads.dispose();
+    edits.removeListener(_onUploadsChanged);
+    edits.dispose();
     super.dispose();
   }
 }
