@@ -1,3 +1,4 @@
+import 'fuzzy_search.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -192,7 +193,7 @@ class LibraryController extends ChangeNotifier {
           ...song.tags,
         ].join(' '),
       );
-      return haystack.contains(needle);
+      return haystack.contains(needle) || fuzzyMatches(haystack, needle);
     }).toList();
   }
 
@@ -200,12 +201,10 @@ class LibraryController extends ChangeNotifier {
   List<Folder> searchFolders(String query) {
     final needle = foldForSearch(query);
     if (needle.isEmpty) return const [];
-    return _folders
-        .where(
-          (folder) =>
-              foldForSearch('${folder.name} ${folder.artist}').contains(needle),
-        )
-        .toList();
+    return _folders.where((folder) {
+      final text = '${folder.name} ${folder.artist}';
+      return foldForSearch(text).contains(needle) || fuzzyMatches(text, needle);
+    }).toList();
   }
 
   /// Álbum por id, o null si ya no existe.

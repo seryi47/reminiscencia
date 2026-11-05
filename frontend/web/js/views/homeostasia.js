@@ -655,7 +655,7 @@ async function convertirPlaylist(items, onProgress, signal) {
 /** Importa un vídeo de YouTube por el mismo camino que pegar su URL en Homeostasia: lee título y artista con el proxy,
  *  convierte a WAV y lo entrega a la cola de subidas, donde se pasa a Opus y se publica.
  *  Devuelve 'queued' si lo ha añadido a la cola o 'already' si ya estaba hecho o en marcha. Lanza Error si falla. */
-export async function importYoutubeVideo(ctx, url, { signal, onStatus } = {}) {
+export async function importYoutubeVideo(ctx, url, { signal, onStatus, fallbackArtist = '' } = {}) {
   if (!validateYoutubeImportUrl(url)) throw new Error('La URL de YouTube no es válida.');
   const videoId = getVideoId(url);
   if (!videoId || completedVideos.has(videoId) || activeVideos.has(videoId) || cachedRecord(videoId)?.state === 'queued') {
@@ -675,7 +675,9 @@ export async function importYoutubeVideo(ctx, url, { signal, onStatus } = {}) {
     if (result.errors.length > 0) throw result.errors[0].error ?? new Error('No se pudo convertir la canción.');
     return 'already';
   }
-  await ctx.addUploads(result.files, { album, trackArtists: result.trackArtists });
+  // Si el proxy no da artista, vale el canal del resultado de la búsqueda.
+  const trackArtists = result.trackArtists.map((artist) => artist || fallbackArtist);
+  await ctx.addUploads(result.files, { album, trackArtists });
   result.completedIds.forEach((id) => {
     completedVideos.add(id);
     saveImportRecord(id, { state: 'queued' });

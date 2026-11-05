@@ -176,6 +176,7 @@ function resultRow(ctx, item) {
     paint();
     try {
       const result = await importYoutubeVideo(ctx, item.url, {
+        fallbackArtist: item.artist ?? '',
         onStatus: (message) => {
           downloads.set(item.id, { state: 'running', message });
           if (row.isConnected) paint();

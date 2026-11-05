@@ -294,6 +294,30 @@ describe("Reproducir", () => {
   );
 });
 
+describe("Filtro de colección y búsqueda tolerante", () => {
+  prueba("«Todas las canciones» tiene un filtro que tolera erratas y se vacía con un texto sin coincidencias", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await openCollection(page, "#/canciones");
+      await waitVisible(page, "collection-filter", { context: "filtro de la colección" });
+      const before = (await page.$$('[data-testid="track-row"]')).length;
+      assert.ok(before >= 6);
+      await page.type('[data-testid="collection-filter"]', "cancon de prueba 15");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="track-row"]').length === 1);
+      assert.match(await textOf(page, "track-title"), /Canción de prueba 15/);
+      await page.$eval('[data-testid="collection-filter"]', (el) => { el.value = "zzzzzz"; el.dispatchEvent(new Event("input", { bubbles: true })); });
+      await waitVisible(page, "collection-filter-empty", { context: "sin coincidencias" });
+    }));
+
+  prueba("El buscador principal encuentra una canción aunque falte una letra", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await search(page, "cancon de prueba 15");
+      await waitVisible(page, "top-result", { context: "resultado principal" });
+      assert.match(await textOf(page, "top-result"), /Canción de prueba 15/);
+    }));
+});
+
 describe("Buscar en YouTube", () => {
   prueba("Si la biblioteca no tiene la canción, busca sola en YouTube y ofrece Escuchar y Descargar", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {

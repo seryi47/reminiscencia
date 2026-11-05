@@ -3,7 +3,7 @@
 // título enorme (hasta 96 px) y metadatos («Artista • 1928 • 8 canciones, 23 min 10 s»); barra de acciones
 // (reproducir de 56 px, aleatorio, «Me gusta», descargar y «···») y tabla con cabecera fija.
 
-import { formatTotalDuration, searchCatalog, songCountText, titleSize, totalDuration } from '../catalog.js';
+import { filterSongs, formatTotalDuration, searchCatalog, songCountText, titleSize, totalDuration } from '../catalog.js';
 import { paintCoverColor } from '../cover-color.js';
 import { isCoverFolderId } from '../cuidador/incidencias.js';
 import { el, iconButton, openMenu } from '../ui/dom.js';
@@ -11,6 +11,38 @@ import { icon } from '../ui/icons.js';
 import { collectionCard, contextCover, DOT, playButton, shelf, songCoverNode, trackTable, viaDialog } from './components.js';
 
 const ADD_RESULTS = 8;
+// Con pocas canciones el filtro sobra.
+const FILTER_MIN_SONGS = 6;
+
+/** Campo «Buscar en esta colección» y la tabla, que se vuelve a pintar con las canciones que coinciden. */
+function filterableTable(ctx, songs, options) {
+  const holder = el('div', { class: 'collection-table', 'data-testid': 'collection-table' });
+  const status = el('p', { class: 'sr-only', role: 'status', 'data-testid': 'collection-filter-status' });
+  const input = el('input', {
+    type: 'search',
+    class: 'collection-filter-input',
+    id: `filtro-${options.contextId}`,
+    placeholder: 'Buscar en esta colección',
+    autocomplete: 'off',
+    enterkeyhint: 'search',
+    'data-testid': 'collection-filter',
+  });
+  const paint = () => {
+    const found = filterSongs(songs, input.value, (song) => (song.folderId ? ctx.folderName(song.folderId) : ''));
+    status.textContent = input.value.trim() === '' ? '' : `${found.length} ${found.length === 1 ? 'canción' : 'canciones'}.`;
+    holder.replaceChildren(found.length > 0
+      ? trackTable(ctx, found, options)
+      : el('p', { class: 'empty-text', 'data-testid': 'collection-filter-empty' }, `Ninguna canción coincide con «${input.value.trim()}».`));
+  };
+  input.addEventListener('input', paint);
+  paint();
+  return el('div', { class: 'collection-filter' },
+    el('form', { class: 'collection-filter-form', role: 'search', on: { submit: (event) => event.preventDefault() } },
+      el('label', { for: input.id, class: 'sr-only' }, 'Buscar en esta colección'),
+      el('span', { class: 'search-icon', 'aria-hidden': 'true' }, icon('search', { size: 18 })),
+      input),
+    status, holder);
+}
 
 /** Botón «Atrás» del teléfono (en escritorio no se ve: la barra superior lleva a Inicio). */
 export function backButton(ctx) {
@@ -93,13 +125,18 @@ export function renderCollection(main, ctx, contextId) {
     body.push(shelf({ title: 'Álbumes', testid: 'subfolders', items: context.subfolders.map((item) => collectionCard(ctx, item)) }));
   }
   if (songs.length > 0) {
-    body.push(trackTable(ctx, songs, {
+    const tableOptions = {
       contextId,
       playlistId: context.kind === 'playlist' ? context.playlist.id : null,
       showAlbum: context.kind !== 'album',
       showCover: context.kind !== 'album',
       caption: `Canciones de ${context.title}`,
-    }));
+    };
+    if (songs.length >= FILTER_MIN_SONGS) {
+      body.push(filterableTable(ctx, songs, tableOptions));
+    } else {
+      body.push(trackTable(ctx, songs, tableOptions));
+    }
   } else if (!context.subfolders?.length) {
     body.push(el('div', { class: 'collection-empty', 'data-testid': 'collection-empty' },
       el('p', { class: 'empty-title' }, emptyText(context.kind))));

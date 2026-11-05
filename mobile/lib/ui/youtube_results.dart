@@ -78,7 +78,9 @@ class YoutubeDownloads extends ChangeNotifier {
           PickedAudioFile(
             name: audio.name,
             path: audio.path,
-            artist: audio.track.artist,
+            artist: audio.track.artist.isEmpty
+                ? result.artist
+                : audio.track.artist,
             youtubePlaylistId: audio.track.playlistId,
             youtubePlaylistName: audio.track.playlistTitle,
           ),

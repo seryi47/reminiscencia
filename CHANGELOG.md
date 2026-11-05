@@ -4,7 +4,9 @@
 
 - Si la canción no está en la biblioteca, Buscar la busca en YouTube y ofrece **Escuchar** (suena al momento y empieza la descarga) y **Descargar** (mismo flujo que pegar la URL en Homeostasia). Si hay coincidencias en la biblioteca, solo aparece el botón «Buscar en YouTube» ([ADR-0021](docs/decisions/ADR-0021-buscar-en-youtube.md)).
 - Servidor: `GET /api/youtube/search` (HTML de YouTube y, de respaldo, `yt-dlp`). Web: `js/youtube-search.js`, `js/views/youtube-search.js` y `importYoutubeVideo`; la CSP añade `frame-src` de `youtube-nocookie.com`; `SHELL_VERSION = 21`. APK: `YoutubeImporter.search`, `lib/youtube_stream.dart` (`youtube_explode_dart`), `PlaybackPort.playStream` y `lib/ui/youtube_results.dart`. Escuchar en la APK está pendiente de probar en un móvil real.
-- Pruebas: web unitarias 436, e2e 143, Flutter 239.
+- Búsqueda tolerante a erratas («kid keo» encuentra «Kidd Keo») y campo «Buscar en esta colección» en «Todas las canciones», álbumes y listas con 6 canciones o más, igual en web (`fuzzyScore`, `filterSongs` en `js/catalog.js`) y APK (`lib/fuzzy_search.dart`).
+- Las descargas de YouTube sin artista en los metadatos usan el canal del resultado (web `fallbackArtist`, APK `result.artist`).
+- Pruebas: web unitarias 441, e2e 145, Flutter 244.
 - Web: el reproductor de YouTube de «Escuchar» vive en un panel fijo (`.yt-dock`) fuera de los resultados; ya no se corta cuando se repinta el buscador (p. ej. al abrirse «Subir canciones» al empezar la descarga).
 - `buzon.yml` y `biblioteca.yml`: ffmpeg se instala sin `apt-get update` ni paquetes recomendados (con reintento si falla), unos 20 s menos por publicación.
 

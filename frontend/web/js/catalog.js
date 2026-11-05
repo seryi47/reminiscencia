@@ -248,15 +248,77 @@ function scoreText(text, query) {
   return 0;
 }
 
+// Búsqueda tolerante: cada palabra de la consulta debe coincidir con alguna palabra del texto, por el principio o con
+// una errata (una letra de más, de menos, cambiada o dos intercambiadas). «kid keo» encuentra «Kidd Keo».
+function maxEdits(length) {
+  if (length < 4) return 0;
+  return length < 7 ? 1 : 2;
+}
+
+// Distancia de edición (Damerau, con intercambio de letras contiguas) entre dos textos cortos.
+export function editDistance(a, b) {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j += 1) rows[0][j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return rows[a.length][b.length];
+}
+
+// 2 si la palabra de la consulta es el principio de una palabra del texto, 1 si lo es con erratas, 0 si no.
+function wordMatch(token, words) {
+  let best = 0;
+  const allowed = maxEdits(token.length);
+  for (const word of words) {
+    if (word.startsWith(token)) return 2;
+    if (allowed > 0 && editDistance(token, word.slice(0, token.length)) <= allowed) best = 1;
+    else if (allowed > 0 && editDistance(token, word) <= allowed) best = 1;
+  }
+  return best;
+}
+
+/** Puntuación (0, 15 o 25) de que todas las palabras de [query] aparezcan, enteras o con erratas, en [text]. */
+export function fuzzyScore(text, query) {
+  const words = normalizeText(text).split(' ').filter(Boolean);
+  const tokens = query.split(' ').filter(Boolean);
+  if (words.length === 0 || tokens.length === 0) return 0;
+  let fuzzy = false;
+  for (const token of tokens) {
+    const match = wordMatch(token, words);
+    if (match === 0) return 0;
+    if (match === 1) fuzzy = true;
+  }
+  return fuzzy ? 15 : 25;
+}
+
 function scoreSong(song, query, catalog) {
   const folderName = song.folderId ? catalog.folderById.get(song.folderId)?.name : '';
-  return Math.max(
+  const exact = Math.max(
     scoreText(song.title, query),
     scoreText(song.artist, query) * 0.75,
     scoreText(folderName, query) * 0.5,
     ...song.tags.map((tag) => scoreText(tag, query) * 0.5),
     song.year !== null && String(song.year) === query ? 50 : 0,
   );
+  if (exact > 0) return exact;
+  return fuzzyScore(`${song.title} ${song.artist}`, query);
+}
+
+/** Canciones de [songs] que coinciden con [rawQuery] por título, artista o álbum (con erratas); conserva su orden. */
+export function filterSongs(songs, rawQuery, albumNameOf = () => '') {
+  const query = normalizeText(rawQuery);
+  if (query === '') return songs;
+  return songs.filter((song) => {
+    const album = albumNameOf(song) ?? '';
+    return scoreText(song.title, query) > 0 || scoreText(song.artist, query) > 0 || scoreText(album, query) > 0
+      || fuzzyScore(`${song.title} ${song.artist} ${album}`, query) > 0;
+  });
 }
 
 /**
@@ -272,8 +334,12 @@ export function searchCatalog(catalog, rawQuery, playlists = []) {
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
   const songs = rank(catalog.songs, (song) => scoreSong(song, query, catalog));
-  const folders = rank(catalog.folders, (folder) => Math.max(scoreText(folder.name, query), scoreText(folder.artist, query) * 0.75));
-  const lists = rank(playlists, (list) => scoreText(list.name, query));
+  const folders = rank(catalog.folders, (folder) => Math.max(
+    scoreText(folder.name, query),
+    scoreText(folder.artist, query) * 0.75,
+    scoreText(`${folder.name} ${folder.artist}`, query) > 0 ? 0 : fuzzyScore(`${folder.name} ${folder.artist}`, query),
+  ));
+  const lists = rank(playlists, (list) => scoreText(list.name, query) || fuzzyScore(list.name, query));
   const candidates = [
     folders[0] && { kind: 'folder', ...folders[0] },
     lists[0] && { kind: 'playlist', ...lists[0] },

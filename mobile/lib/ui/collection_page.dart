@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../fuzzy_search.dart';
 import '../playback.dart';
 import '../services.dart';
 import '../theme.dart';
@@ -23,11 +24,31 @@ Future<void> openCollection(
 }
 
 /// Página de álbum o lista: cabecera en degradado, botón verde de reproducir y filas de canción.
-class CollectionPage extends StatelessWidget {
+class CollectionPage extends StatefulWidget {
   const CollectionPage({super.key, required this.services, required this.ref});
 
   final AppServices services;
   final CollectionRef ref;
+
+  @override
+  State<CollectionPage> createState() => _CollectionPageState();
+}
+
+/// Con pocas canciones el filtro sobra.
+const int kCollectionFilterMinSongs = 6;
+
+class _CollectionPageState extends State<CollectionPage> {
+  final TextEditingController _filter = TextEditingController();
+  String _filterText = '';
+
+  AppServices get services => widget.services;
+  CollectionRef get ref => widget.ref;
+
+  @override
+  void dispose() {
+    _filter.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +65,17 @@ class CollectionPage extends StatelessWidget {
           PlaylistRef(:final id) when view.exists => id,
           _ => null,
         };
-        final songs = view.songs;
+        final allSongs = view.songs;
+        final showFilter = allSongs.length >= kCollectionFilterMinSongs;
+        final songs = showFilter
+            ? filterSongsByText(
+                allSongs,
+                _filterText,
+                albumName: (song) => song.folderId == null
+                    ? ''
+                    : library.folderOrNull(song.folderId!)?.name ?? '',
+              )
+            : allSongs;
         return Scaffold(
           backgroundColor: palette.background,
           body: CustomScrollView(
@@ -89,12 +120,46 @@ class CollectionPage extends StatelessWidget {
                         : '${view.missing} canciones ya no están en la biblioteca y no se muestran.',
                   ),
                 ),
+              if (showFilter)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: TextField(
+                      key: const Key('collection-filter'),
+                      controller: _filter,
+                      onChanged: (value) => setState(() => _filterText = value),
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Buscar en esta colección',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _filterText.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Borrar el filtro',
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () {
+                                  _filter.clear();
+                                  setState(() => _filterText = '');
+                                },
+                              ),
+                        filled: true,
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (songs.isEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
                     child: Text(
-                      view.emptyMessage,
+                      showFilter && _filterText.trim().isNotEmpty
+                          ? 'Ninguna canción coincide con «${_filterText.trim()}».'
+                          : view.emptyMessage,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyLarge?.copyWith(
                         color: palette.inkMuted,
