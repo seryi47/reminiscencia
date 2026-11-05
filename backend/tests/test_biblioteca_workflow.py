@@ -187,6 +187,7 @@ def test_authorization_runs_only_for_issues_opened_with_the_label():
 
     assert "github.event_name == 'issues'" in autorizar
     assert LABEL_CONDITION in autorizar
+    assert "startsWith(github.event.issue.body, 'action: organize')" in autorizar
     assert "workflow_dispatch" not in autorizar
     assert "types: [opened]" in _workflow_text()
 

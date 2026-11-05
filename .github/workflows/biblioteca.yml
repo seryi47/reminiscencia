@@ -47,11 +47,13 @@ concurrency:
 
 jobs:
   autorizar:
-    # Solo incidencias nuevas con la etiqueta 'biblioteca'. El autor debe tener permiso de escritura en el repositorio
+    # Solo incidencias nuevas con la etiqueta 'biblioteca' o con el cuerpo «action: organize» (las crea /api/editar,
+    # cuyo token no puede poner etiquetas; ADR-0022). El autor debe tener permiso de escritura en el repositorio
     # (admin, maintain o write). Sin permiso, solo comenta la incidencia y no hace nada más.
     if: >-
       github.event_name == 'issues' &&
-      contains(github.event.issue.labels.*.name, 'biblioteca')
+      (contains(github.event.issue.labels.*.name, 'biblioteca') ||
+      startsWith(github.event.issue.body, 'action: organize'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
