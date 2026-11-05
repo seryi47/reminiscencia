@@ -151,6 +151,8 @@ Una sola regla para todos los buscadores de la web y de la APK ([ADR-0028](../de
 | Añadir a un álbum | «Más opciones» de la fila | `{"op":"edit_song","song_id":…,"folder_id":…}` (`null`: «Sin álbum») |
 | Quitar de este álbum | «Más opciones» de una fila, dentro de un álbum (pide confirmación) | `{"op":"edit_song","song_id":…,"folder_id":null}`: la canción sigue en la biblioteca (ADR-0023) |
 | Añadir canciones (álbum) | «···» del álbum | Buscador con casillas; varias canciones en una petición: `{"op":"move_songs","song_ids":[…],"folder_id":…}` (ADR-0023) |
+| Seleccionar (álbum) | Botón «Seleccionar» de la barra del álbum o «···» › «Seleccionar canciones» | Casillas, contador, «Seleccionar todo»/«Ninguna». «Quitar del álbum» (confirma): `{"op":"move_songs","song_ids":[…],"folder_id":null}`; «Mover a otro álbum»: `{"op":"move_songs",…,"folder_id":"F…"}` (ADR-0026) |
+| Ordenar canciones (álbum) | «···» del álbum (dos canciones o más) | Lista con «Subir»/«Bajar» (44 px; se anuncia «X ahora es la N de M»); «Guardar orden»: `{"op":"order_album","folder_id":…,"song_ids":[…lista completa…]}` (ADR-0026). Las canciones de un álbum se ordenan por su número de pista `track`. |
 | Editar detalles (álbum) | «···» del álbum o su portada | `{"op":"edit_folder","folder_id":…,"name":…,"artist":…}` |
 | Crear álbum | «+ Crear» › «Álbum» | `{"op":"create_folder","name":…,"artist":…}` (`artist` solo si se escribe) |
 | Cambiar portada | «Más opciones», «···» o la hoja de detalles | Abre `https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas` |
@@ -174,6 +176,8 @@ Una sola regla para todos los buscadores de la web y de la APK ([ADR-0028](../de
 - **Importar desde Internet Archive:** dirección, licencia (solo en un fichero directo) y título opcional, validados por `incidencias.js` e `intake.js` con la lista de bloqueo de 42 plataformas (ADR-0008); abre la incidencia en GitHub.
 
 Quien tiene permiso de escritura puede seguir subiendo desde la página de GitHub del buzón con una línea «Licencia: …» (ADR-0014); la hoja ya no la abre.
+
+Antes de la cola, cada archivo se compara con la biblioteca y con los de la misma tanda; si parece repetido (regla común de `tests/contrato/duplicados.json`), el diálogo «Posible duplicado» pregunta «Subir igualmente» / «Quitar de la cola» (ADR-0026).
 
 ## 13. Sin conexión
 
@@ -205,6 +209,8 @@ Quien tiene permiso de escritura puede seguir subiendo desde la página de GitHu
 | Edición | `edit-song`, `edit-song-title`, `edit-song-artist`, `edit-song-cover`, `edit-song-link`, `edit-album`, `edit-album-name`, `edit-album-artist`, `edit-album-cover`, `edit-album-link`, `create-album`, `create-album-name`, `create-album-artist`, `create-album-link`, `move-album`, `move-album-option`, `move-album-link`, `<hoja>-link-status`, `edit-note`, `cover-sheet`, `cover-id`, `cover-copy`, `cover-rules`, `cover-github-link`, `playlist-edit`, `playlist-edit-choose`, `playlist-edit-file`, `playlist-edit-remove-photo`, `playlist-edit-name`, `playlist-edit-description`, `playlist-edit-status`, `playlist-edit-save` |
 | Subir | `upload-sheet`, `upload-panel`, `upload-pick`, `upload-file-input`, `upload-rights`, `upload-support`, `upload-status`, `upload-summary`, `upload-items`, `upload-group`, `upload-group-title`, `upload-group-note`, `upload-item` (con `data-state`), `upload-item-name`, `upload-item-status`, `upload-item-progress`, `upload-item-play`, `upload-item-retry`, `upload-live`, `upload-indicator`, `track-pending`, `upload-local`, `upload-local-list`, `upload-delete`, `upload-open-archive`, `upload-back`, `upload-panel-archive`, `archive-url`, `archive-license`, `archive-title`, `archive-status`, `archive-issue-link` |
 | Álbumes (ADR-0023) | Quitar: `menu-remove-from-album`, `remove-from-album`, `remove-from-album-text`, `remove-from-album-cancel`, `remove-from-album-save`, `remove-from-album-save-status`, `remove-from-album-close`. Añadir: `album-add-songs`, `menu-album-add-songs`, `album-add`, `album-add-search`, `album-add-count`, `album-add-results`, `album-add-option` y `album-add-check` (con `data-song-id`), `album-add-empty`, `album-add-save`, `album-add-save-status`, `album-add-close` |
+| Álbumes, selección y orden (ADR-0026) | `album-select`, `album-select-panel`, `album-select-count`, `album-select-all`, `album-select-none`, `album-select-remove`, `album-select-move`, `album-select-cancel`, `album-select-list`, `album-select-option`, `album-select-check`, `menu-album-select`, `menu-album-order`, `album-remove-many(-text/-save/-cancel)`, `album-move-many(-option/-save)`, `album-order`, `album-order-list`, `album-order-row`, `album-order-up`, `album-order-down`, `album-order-live`, `album-order-save(-status)`, `album-order-too-many` |
+| Duplicados (ADR-0026) | `duplicate-dialog`, `duplicate-file`, `duplicate-message`, `duplicate-keep`, `duplicate-drop` |
 | Diálogos | `confirm`, `confirm-ok`, `confirm-cancel`, `prompt`, `prompt-input`, `prompt-ok`, `<diálogo>-close` |
 
 ## 16. Medidas comprobadas
