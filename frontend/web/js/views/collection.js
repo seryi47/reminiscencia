@@ -128,6 +128,7 @@ export function renderCollection(main, ctx, contextId) {
     const tableOptions = {
       contextId,
       playlistId: context.kind === 'playlist' ? context.playlist.id : null,
+      albumId: context.kind === 'album' ? context.folder.id : null,
       showAlbum: context.kind !== 'album',
       showCover: context.kind !== 'album',
       caption: `Canciones de ${context.title}`,
@@ -142,6 +143,18 @@ export function renderCollection(main, ctx, contextId) {
       el('p', { class: 'empty-title' }, emptyText(context.kind))));
   }
   if (context.kind === 'playlist') body.push(addSongsSection(ctx, context));
+  // En un álbum, «Añadir canciones» abre el buscador con casillas (también está en «···»).
+  if (context.kind === 'album') {
+    body.push(el('div', { class: 'album-add' },
+      el('button', {
+        type: 'button',
+        class: 'button button-outline',
+        'aria-label': `Añadir canciones a ${context.title}`,
+        'data-testid': 'album-add-songs',
+        'data-key': 'album-add-songs',
+        on: { click: () => ctx.addSongsToAlbum(context.folder) },
+      }, icon('plus', { size: 16 }), 'Añadir canciones')));
+  }
 
   const bodyNode = el('div', { class: 'collection-body' }, actions, body);
   paintCoverColor([header, bodyNode], context.cover ?? context.mosaic?.[0] ?? null, context.color);
@@ -152,6 +165,9 @@ function collectionMenuItems(ctx, context, editDetails) {
   const items = [];
   if (context.songs.length > 0) {
     items.push({ label: 'Añadir a la cola', icon: 'queue', testid: 'menu-queue-all', action: () => ctx.addManyToQueue(context.songs) });
+  }
+  if (context.kind === 'album') {
+    items.push({ label: 'Añadir canciones', icon: 'plus', testid: 'menu-album-add-songs', action: viaDialog(() => ctx.addSongsToAlbum(context.folder)) });
   }
   if (editDetails) items.push({ label: 'Editar detalles', icon: 'pencil', testid: 'menu-edit-details', action: viaDialog(editDetails) });
   // Solo los álbumes de la forma nueva (F + 16 hexadecimales) admiten portada.

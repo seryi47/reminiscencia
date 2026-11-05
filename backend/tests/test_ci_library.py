@@ -266,3 +266,47 @@ def test_deleting_an_album_removes_its_cover_and_its_public_copy(ci):
 
     assert not (ci.COVERS / f"{folder_id}.jpg").exists()
     assert not (ci.WEB / "covers" / f"{folder_id}.jpg").exists()
+
+
+# --- move_songs (ADR-0023) ------------------------------------------------------------------------------------------
+
+def _seed_songs_and_album(module, count: int) -> tuple[list[str], str]:
+    data = catalog.empty()
+    folder = catalog.create_folder(data, "Álbum de prueba")
+    ids = []
+    for index in range(count):
+        song, _ = catalog.add_song(
+            data, sha256=f"{index:02x}" * 32, title=f"Tema {index}", license="CC0 1.0",
+            source="direct-url:ejemplo.com/t.mp3", codec="opus", duration_s=5.0, size_bytes=10,
+        )
+        ids.append(song["id"])
+    catalog.save(module.CATALOG, data)
+    module.AUDIO.mkdir(parents=True, exist_ok=True)
+    for song_id in ids:
+        (module.AUDIO / f"{song_id}.opus").write_bytes(b"opus-bytes")
+    return ids, folder["id"]
+
+
+def test_move_songs_puts_several_songs_in_an_album_and_takes_one_out_without_deleting_it(ci):
+    ids, folder_id = _seed_songs_and_album(ci, 3)
+
+    result = _organize(ci, {"op": "move_songs", "song_ids": ids, "folder_id": folder_id})
+    assert [song["folder_id"] for song in result["songs"]] == [folder_id] * 3
+
+    _organize(ci, {"op": "move_songs", "song_ids": [ids[1]], "folder_id": None})
+    songs = {song["id"]: song for song in catalog.load(ci.CATALOG)["songs"]}
+    assert [songs[song_id]["folder_id"] for song_id in ids] == [folder_id, None, folder_id]
+    # Quitarla del álbum no la borra: sigue en el catálogo y su audio sigue en la biblioteca.
+    assert len(songs) == 3 and (ci.AUDIO / f"{ids[1]}.opus").exists()
+
+
+def test_move_songs_is_atomic_when_one_song_or_the_album_does_not_exist(ci):
+    ids, folder_id = _seed_songs_and_album(ci, 2)
+    before = ci.CATALOG.read_bytes()
+
+    with pytest.raises(catalog.CatalogError):
+        _organize(ci, {"op": "move_songs", "song_ids": [ids[0], "S" + "f" * 16], "folder_id": folder_id})
+    with pytest.raises(catalog.CatalogError):
+        _organize(ci, {"op": "move_songs", "song_ids": ids, "folder_id": "F" + "0" * 16})
+
+    assert ci.CATALOG.read_bytes() == before

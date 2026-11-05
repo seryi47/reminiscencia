@@ -65,6 +65,10 @@ class _CollectionPageState extends State<CollectionPage> {
           PlaylistRef(:final id) when view.exists => id,
           _ => null,
         };
+        final albumId = switch (ref) {
+          FolderRef(:final id) when view.exists => id,
+          _ => null,
+        };
         final allSongs = view.songs;
         final showFilter = allSongs.length >= kCollectionFilterMinSongs;
         final songs = showFilter
@@ -176,6 +180,7 @@ class _CollectionPageState extends State<CollectionPage> {
                       song: song,
                       services: services,
                       playlistId: playlistId,
+                      albumId: albumId,
                       onTap: () => runWithNotice(
                         context,
                         () => services.playback.playAt(songs, i),

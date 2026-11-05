@@ -16,6 +16,9 @@ const int kMaxArtistLength = 80;
 const int kMaxSongTitleLength = 200;
 const int kMaxIssueTitleLength = 120;
 
+/// Canciones que se pueden mover de una vez con «move_songs».
+const int kMaxMoveSongs = 100;
+
 /// Aviso común: los cambios se guardan desde la app.
 const String kWriteAccessNote =
     'El cambio se guarda desde aquí, sin pasar por GitHub, y llega a todos en un par de minutos.';
@@ -128,6 +131,44 @@ class LibraryRequest {
     return LibraryRequest._('Mover la canción $songId $where', {
       'op': 'edit_song',
       'song_id': songId,
+      'folder_id': folderId,
+    });
+  }
+
+  /// Mueve varias canciones de una vez al álbum [folderId] (null las deja sin álbum): una sola petición «move_songs».
+  /// Admite de 1 a [kMaxMoveSongs] IDs, todos distintos.
+  factory LibraryRequest.moveSongs({
+    required List<String> songIds,
+    required String? folderId,
+    String albumName = '',
+  }) {
+    if (songIds.isEmpty) {
+      throw const AppException('Elige al menos una canción.');
+    }
+    if (songIds.length > kMaxMoveSongs) {
+      throw const AppException(
+        'Se pueden mover $kMaxMoveSongs canciones como mucho de una vez.',
+      );
+    }
+    if (songIds.toSet().length != songIds.length) {
+      throw const AppException('Hay canciones repetidas en la selección.');
+    }
+    songIds.forEach(_checkSong);
+    if (folderId != null) _checkFolder(folderId);
+    final count = songIds.length;
+    final songs = count == 1 ? '1 canción' : '$count canciones';
+    final String title;
+    if (folderId == null) {
+      title = 'Quitar $songs de su álbum';
+    } else {
+      final name = albumName.trim();
+      title = name.isEmpty
+          ? 'Añadir $songs al álbum $folderId'
+          : 'Añadir $songs al álbum «$name»';
+    }
+    return LibraryRequest._(title, {
+      'op': 'move_songs',
+      'song_ids': List<String>.unmodifiable(songIds),
       'folder_id': folderId,
     });
   }

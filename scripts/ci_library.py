@@ -55,6 +55,13 @@ def organize(data: dict, payload: dict) -> dict:
     if operation == "edit_song":
         fields = {key: value for key, value in payload.items() if key not in ("op", "song_id")}
         return {"song": catalog.update_song(data, payload["song_id"], fields)}
+    if operation == "move_songs":
+        # Atómica: primero se comprueba que existen todas las canciones y el álbum; si falta algo, no cambia nada.
+        songs = [catalog.find_song(data, song_id) for song_id in payload["song_ids"]]
+        if payload["folder_id"] is not None:
+            catalog.find_folder(data, payload["folder_id"])
+        updated = [catalog.update_song(data, song["id"], {"folder_id": payload["folder_id"]}) for song in songs]
+        return {"songs": updated, "folder_id": payload["folder_id"]}
     if operation == "organize_youtube_playlist":
         tracks = payload["songs"]
         songs = [catalog.find_song(data, track["song_id"]) for track in tracks]

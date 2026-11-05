@@ -54,8 +54,10 @@ import {
   openCreateAlbumSheet,
   openEditAlbumSheet,
   openEditSongSheet,
+  openAddSongsToAlbumSheet,
   openMoveToAlbumSheet,
   openPlaylistEditor,
+  openRemoveFromAlbumSheet,
 } from './views/edit.js';
 import { renderHome } from './views/home.js';
 import { refreshSearchResults, renderSearch } from './views/search.js';
@@ -936,6 +938,11 @@ const ctx = {
   toggleDownload,
   editSong: (song) => openEditSongSheet(ctx, song),
   moveSongToAlbum: (song) => openMoveToAlbumSheet(ctx, song),
+  removeSongFromAlbum: (song, folderId) => {
+    const folder = state.catalog.folderById.get(folderId);
+    return folder ? openRemoveFromAlbumSheet(ctx, song, folder) : null;
+  },
+  addSongsToAlbum: (folder) => openAddSongsToAlbumSheet(ctx, folder),
   createAlbum: () => openCreateAlbumSheet(ctx),
   editAlbum: (folder) => openEditAlbumSheet(ctx, folder),
   changeCover: (target) => openCoverSheet(ctx, target),

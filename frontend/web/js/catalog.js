@@ -322,6 +322,21 @@ export function filterSongs(songs, rawQuery, albumNameOf = () => '') {
 }
 
 /**
+ * Canciones que se pueden añadir al álbum [folderId] («Añadir canciones» de un álbum): las de [songs] que [isEditable]
+ * admite y que no están ya en ese álbum, filtradas por [rawQuery] sin acentos ni mayúsculas. Cada palabra de la
+ * consulta tiene que aparecer en el título, el artista o el nombre de su álbum actual (albumNameOf). Conserva el orden.
+ */
+export function songsToAddToAlbum(songs, folderId, rawQuery, { isEditable = () => true, albumNameOf = () => '' } = {}) {
+  const words = normalizeText(rawQuery).split(' ').filter(Boolean);
+  return songs.filter((song) => {
+    if (song.folderId === folderId || !isEditable(song)) return false;
+    if (words.length === 0) return true;
+    const text = normalizeText(`${song.title ?? ''} ${song.artist ?? ''} ${albumNameOf(song) ?? ''}`);
+    return words.every((word) => text.includes(word));
+  });
+}
+
+/**
  * Busca en canciones, álbumes (por nombre y artista) y listas propias. Devuelve { top, songs, folders, playlists }: top es el resultado
  * principal ({ kind: 'song' | 'folder' | 'playlist', item }) o null; con la misma puntuación gana una carpeta o
  * una lista sobre una canción. Sin texto, todo vacío.

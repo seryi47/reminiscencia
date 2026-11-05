@@ -705,7 +705,7 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await openApp(page, server.url);
       await openCollection(page, FOLDER_A);
       const opciones = await openCollectionMenu(page);
-      assert.deepEqual(opciones, ["Añadir a la cola", "Editar detalles", "Cambiar portada"]);
+      assert.deepEqual(opciones, ["Añadir a la cola", "Añadir canciones", "Editar detalles", "Cambiar portada"]);
       await page.keyboard.press("Escape");
       await clickTestid(page, "collection-edit", "Editar detalles desde la portada");
       await waitVisible(page, "edit-album");
@@ -735,6 +735,100 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await fillField(await waitVisible(page, "create-album-artist"), "Orquesta ficticia");
       await saveEdit(page, "create-album-save");
       assert.deepEqual(ediciones.at(-1).payload, { op: "create_folder", name: "Valses de prueba", artist: "Orquesta ficticia" });
+    }),
+  );
+
+  prueba("«Quitar de este álbum» pide confirmación y guarda edit_song con folder_id null, sin borrar la canción", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      // Fuera de un álbum (todas las canciones) no se ofrece.
+      await openCollection(page, "#/canciones");
+      assert.equal((await openRowMenu(page, "S0000000000000005")).includes("Quitar de este álbum"), false);
+      await page.keyboard.press("Escape");
+      // En su álbum, sí: la canción 10 está en el álbum B.
+      await openCollection(page, FOLDER_B);
+      assert.equal((await openRowMenu(page, "S0000000000000010")).includes("Quitar de este álbum"), true);
+      await page.keyboard.press("Escape");
+      await openCollection(page, FOLDER_A);
+      const opciones = await openRowMenu(page, "S0000000000000005");
+      assert.ok(opciones.includes("Quitar de este álbum"), opciones.join(", "));
+      assert.ok(opciones.includes("Añadir a un álbum"), "Sigue estando «Añadir a un álbum».");
+      // Cancelar no envía nada.
+      await pickMenu(page, "menu-remove-from-album");
+      await waitVisible(page, "remove-from-album");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "remove-from-album-cancel", "El foco empieza en «Cancelar».");
+      await clickTestid(page, "remove-from-album-cancel", "Cancelar");
+      await page.waitForFunction(() => !document.querySelector('[data-testid="remove-from-album"]'));
+      assert.equal(ediciones.length, 0);
+      // Confirmar envía la operación de siempre, con folder_id null.
+      await openRowMenu(page, "S0000000000000005");
+      await pickMenu(page, "menu-remove-from-album");
+      await waitVisible(page, "remove-from-album");
+      assert.equal(
+        await textOf(page, "remove-from-album-text"),
+        "¿Quitar «Canción de prueba 05» de «Álbum de prueba A»? La canción sigue en la biblioteca; solo deja de estar en este álbum.",
+      );
+      assert.equal(await page.$eval('[data-testid="remove-from-album-save"]', (b) => b.textContent), "Quitar");
+      await saveEdit(page, "remove-from-album-save");
+      assert.deepEqual(ediciones, [{ kind: "organizar", action: "organize", payload: { op: "edit_song", song_id: "S0000000000000005", folder_id: null } }]);
+      // La canción no se borra: sigue en la biblioteca y no se ha pedido nada más.
+      await openCollection(page, "#/canciones");
+      await page.waitForSelector('[data-testid="track-row"][data-song-id="S0000000000000005"]', { timeout: 5000 });
+      assert.equal(ediciones.length, 1);
+    }),
+  );
+
+  prueba("«Añadir canciones» a un álbum: busca, marca varias en búsquedas distintas y envía UNA petición move_songs", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_B);
+      await clickTestid(page, "album-add-songs", "botón Añadir canciones");
+      await waitVisible(page, "album-add");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "album-add-search", "El foco empieza en el buscador.");
+      assert.equal(await page.$eval('[data-testid="album-add-search"]', (el) => el.type), "search");
+      const boton = () => page.$eval('[data-testid="album-add-save"]', (b) => ({ text: b.textContent, disabled: b.getAttribute("aria-disabled") }));
+      assert.deepEqual(await boton(), { text: "Añadir (0)", disabled: "true" }, "Sin canciones elegidas no se puede añadir.");
+      // Solo canciones que no están ya en el álbum B (9 a 16): las del álbum A (1 a 8) y las sin álbum (17 a 20).
+      const visibles = () => page.$$eval('[data-testid="album-add-option"]', (rows) => rows.map((row) => row.dataset.songId));
+      const todas = await visibles();
+      assert.equal(todas.length, 12, todas.join(", "));
+      assert.ok(todas.every((id) => Number(id.slice(1)) < 9 || Number(id.slice(1)) > 16), todas.join(", "));
+      // Busca sin acentos ni mayúsculas (por título) y marca una.
+      const buscador = await waitVisible(page, "album-add-search");
+      await fillField(buscador, "CANCION DE PRUEBA 03");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="album-add-option"]').length === 1);
+      assert.deepEqual(await visibles(), ["S0000000000000003"]);
+      await page.click('[data-testid="album-add-option"][data-song-id="S0000000000000003"]');
+      assert.deepEqual(await boton(), { text: "Añadir (1)", disabled: "false" });
+      // Otra búsqueda, por el nombre de su álbum actual: la selección anterior se mantiene.
+      await fillField(buscador, "album de prueba a");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="album-add-option"]').length === 8);
+      await fillField(buscador, "prueba 18");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="album-add-option"]').length === 1);
+      await page.click('[data-testid="album-add-option"][data-song-id="S0000000000000018"]');
+      assert.deepEqual(await boton(), { text: "Añadir (2)", disabled: "false" });
+      assert.equal(await textOf(page, "album-add-count"), "2 canciones elegidas.");
+      // Al volver a la primera búsqueda, sigue marcada.
+      await fillField(buscador, "prueba 03");
+      await page.waitForFunction(() => document.querySelector('[data-testid="album-add-check"][data-song-id="S0000000000000003"]')?.checked === true);
+      // Una búsqueda sin resultados lo dice.
+      await fillField(buscador, "zzz");
+      await waitVisible(page, "album-add-empty");
+      // Dos pulsaciones seguidas: una sola petición (el botón se desactiva mientras envía).
+      await page.$eval('[data-testid="album-add-save"]', (b) => { b.click(); b.click(); });
+      await page.waitForFunction(() => !document.querySelector('[data-testid="album-add"]'), { timeout: 5000 });
+      assert.deepEqual(ediciones, [{
+        kind: "organizar",
+        action: "organize",
+        payload: { op: "move_songs", song_ids: ["S0000000000000003", "S0000000000000018"], folder_id: "F0000000000000002" },
+      }]);
+      // También se abre desde «···» del álbum.
+      await openCollectionMenu(page);
+      await pickMenu(page, "menu-album-add-songs");
+      await waitVisible(page, "album-add");
+      assert.deepEqual(await boton(), { text: "Añadir (0)", disabled: "true" });
     }),
   );
 

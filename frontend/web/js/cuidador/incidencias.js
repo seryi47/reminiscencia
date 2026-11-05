@@ -7,7 +7,8 @@
 // interfaz: solo https, y en Internet Archive solo la forma archive.org/details/<identificador> (el backend
 // también acepta download/<identificador>). Este módulo no toca el DOM: la hoja «Subir canciones» (js/views/upload.js)
 // usa evaluateImportForm y buildIssueUrl, y las hojas de edición (js/views/edit.js) usan buildOrganizeIssueUrl para
-// «Editar detalles» de una canción o de un álbum, «Añadir a un álbum» y «Crear álbum». Las carpetas del catálogo se
+// «Editar detalles» de una canción o de un álbum, «Añadir a un álbum», «Quitar de este álbum», «Añadir canciones» a
+// un álbum (move_songs, varias canciones en una sola petición) y «Crear álbum». Las carpetas del catálogo se
 // llaman «Álbumes» en toda la interfaz; el contrato conserva sus nombres (create_folder, edit_folder, folder_id).
 // La carpeta js/cuidador/ conserva su nombre por las referencias de la documentación (CLAUDE.md, ADR-0005 y
 // ADR-0008); ya no hay modo cuidador (ADR-0015).
@@ -37,6 +38,8 @@ export const REQUEST_LIMITS = Object.freeze({
   yearMin: 1000,
   yearMax: 2100,
   issueTitle: 120,
+  // move_songs: canciones distintas por petición (de 1 a 100).
+  moveSongs: 100,
 });
 
 // Copia de BLOCKED_HOSTS en backend/sonidos/sources.py (ADR-0005), la misma lista que intake.js de main. Cada entrada
@@ -94,6 +97,8 @@ const OPERATIONS = Object.freeze({
     required: Object.freeze(['song_id']),
     optional: Object.freeze(['title', 'artist', 'year', 'tags', 'folder_id', 'public']),
   }),
+  // Varias canciones a un álbum (o fuera de su álbum, con folder_id null) en una sola incidencia.
+  move_songs: Object.freeze({ required: Object.freeze(['song_ids', 'folder_id']), optional: Object.freeze([]) }),
 });
 
 // Textos de validación. Van junto al campo que los produce; ninguno repite lo que escribió la persona.
@@ -353,6 +358,18 @@ export function validateOperation(payload) {
       return folderRefProblem(payload.folder_id) ?? folderNameProblem(payload.name);
     case 'delete_folder':
       return folderRefProblem(payload.folder_id);
+    case 'move_songs': {
+      const ids = payload.song_ids;
+      if (!Array.isArray(ids)) return 'Las canciones (song_ids) deben ser una lista.';
+      if (ids.length === 0) return 'Elige al menos una canción.';
+      if (ids.length > REQUEST_LIMITS.moveSongs) return `Como mucho ${REQUEST_LIMITS.moveSongs} canciones en cada petición.`;
+      for (const id of ids) {
+        const problem = songRefProblem(id);
+        if (problem) return problem;
+      }
+      if (new Set(ids).size !== ids.length) return 'Hay canciones repetidas en la lista.';
+      return folderRefProblem(payload.folder_id, { nullable: true });
+    }
     default: {
       const problem = songRefProblem(payload.song_id);
       if (problem) return problem;
@@ -452,6 +469,13 @@ export function buildIssueTitle(request) {
           : `Añadir la canción ${payload.song_id} al álbum ${payload.folder_id}`);
       }
       return cleanIssueTitle(`Editar la canción ${payload.song_id}`);
+    }
+    case 'move_songs': {
+      const count = Array.isArray(payload.song_ids) ? payload.song_ids.length : 0;
+      const songs = `${count} ${count === 1 ? 'canción' : 'canciones'}`;
+      return cleanIssueTitle(payload.folder_id === null
+        ? `Quitar ${songs} de su álbum`
+        : `Añadir ${songs} al álbum ${payload.folder_id}`);
     }
     default:
       return FALLBACK_TITLE;

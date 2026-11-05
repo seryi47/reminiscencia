@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { handleEdit, isJpeg, organizeProblem, DONE_MESSAGE, MAX_COVER_BYTES } from '../../frontend/web/api/editar.js';
+import { ALLOWED_OPS, handleEdit, isJpeg, organizeProblem, DONE_MESSAGE, MAX_COVER_BYTES } from '../../frontend/web/api/editar.js';
 
 const TOKEN = 'github_pat_PRUEBA_que_no_debe_salir_nunca';
 const ENV = { GITHUB_TOKEN: TOKEN };
@@ -83,6 +83,37 @@ describe('organizar', () => {
       const gh = fakeGitHub();
       const response = await handleEdit(jsonRequest(caso), { env: ENV, fetchImpl: gh.fetchImpl });
       assert.equal(response.status, 400, JSON.stringify(caso));
+      assert.equal(gh.calls.length, 0);
+    }
+  });
+
+  test('admite move_songs (varias canciones a un álbum en una sola incidencia)', async () => {
+    assert.deepEqual([...ALLOWED_OPS], ['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs']);
+    const gh = fakeGitHub();
+    const payload = { op: 'move_songs', song_ids: [SONG, 'S0000000000000005'], folder_id: FOLDER };
+    const response = await handleEdit(jsonRequest({ action: 'organize', payload }), { env: ENV, fetchImpl: gh.fetchImpl });
+    assert.equal(response.status, 200);
+    assert.equal(gh.calls.length, 1);
+    const [call] = gh.calls;
+    assert.equal(call.body.title, `Añadir 2 canciones al álbum ${FOLDER}`);
+    assert.deepEqual(call.body.labels, ['biblioteca']);
+    assert.equal(call.body.body, `action: organize\npayload: ${JSON.stringify(payload)}`);
+    // Sacar canciones de su álbum (folder_id null) también vale.
+    const out = await handleEdit(jsonRequest({ action: 'organize', payload: { op: 'move_songs', song_ids: [SONG], folder_id: null } }), { env: ENV, fetchImpl: fakeGitHub().fetchImpl });
+    assert.equal(out.status, 200);
+  });
+
+  test('rechaza move_songs mal formado sin llamar a GitHub', async () => {
+    for (const payload of [
+      { op: 'move_songs', song_ids: [], folder_id: FOLDER },
+      { op: 'move_songs', song_ids: [SONG, SONG], folder_id: FOLDER },
+      { op: 'move_songs', song_ids: Array.from({ length: 101 }, (_, i) => `S${String(i).padStart(16, '0')}`), folder_id: FOLDER },
+      { op: 'move_songs', song_ids: ['nope'], folder_id: FOLDER },
+      { op: 'move_songs', song_ids: [SONG] },
+    ]) {
+      const gh = fakeGitHub();
+      const response = await handleEdit(jsonRequest({ action: 'organize', payload }), { env: ENV, fetchImpl: gh.fetchImpl });
+      assert.equal(response.status, 400, JSON.stringify(payload).slice(0, 80));
       assert.equal(gh.calls.length, 0);
     }
   });
