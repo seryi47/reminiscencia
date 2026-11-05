@@ -1,6 +1,6 @@
 # ADR-0024: Todo el audio en un bucket privado de R2; Git solo guarda el catálogo
 
-- Estado: aceptada (2026-11-05), en dos partes que se despliegan por orden (ver «Despliegue»). Sin verificar todavía en vivo.
+- Estado: aceptada (2026-11-05), en dos partes que se despliegan por orden (ver «Despliegue»). Parte 2 en la rama `feature/audio-fuera-de-git`. Sin verificar todavía en vivo.
 - Fecha: 2026-11-05
 - Modifica: [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) (los trozos de `/api/subir` ya no van a `main`), [ADR-0020](ADR-0020-audio-en-r2.md) (el audio público ya no se toma de `audio-library/audio/`), [ADR-0011](ADR-0011-publicar-regenera-parte-publica.md), decisión 6 (la parada por falta de audio pasa a `sync_r2.py`), y [ADR-0003](ADR-0003-almacenamiento-audio-github.md) y [ADR-0007](ADR-0007-catalogo-y-flujo-desde-vercel.md) en lo que dicen de versionar el audio en Git.
 - Relacionadas: [ADR-0010](ADR-0010-procesado-y-publicacion-separados.md) (procesado sin secretos), [ADR-0014](ADR-0014-buzon-de-canciones.md) (buzón) y [ADR-0025](ADR-0025-publicar-robusto.md) (publicar aunque main avance).
@@ -30,7 +30,7 @@
 ## Despliegue (dos partes)
 
 - **Parte 1** (rama `feature/pipeline-audio-privado`): todo lo anterior, con el audio todavía en Git. Añade el workflow manual `migrar-audio-privado.yml` (solo `workflow_dispatch` desde `main`): sube todo `audio-library/audio/` al bucket privado (`scripts/migrar_audio_privado.py --aplicar`), vuelve a listarlo y comprueba que cada fichero está con el mismo tamaño y que cada canción del catálogo tiene su audio. No borra nada. Mientras el audio siga en Git, cada `publicar` también sube al privado lo que le falte, así que la migración es idempotente y se puede repetir.
-- **Parte 2** (rama `feature/audio-fuera-de-git`, encima de la parte 1): `git rm -r --cached audio-library/audio`, la carpeta en `.gitignore` y fuera lo que ya no hace falta. **El historial no encoge**: el audio sigue en los commits antiguos; no se reescribe la historia. Lo que se gana es que el repositorio deja de crecer con cada canción.
+- **Parte 2** (rama `feature/audio-fuera-de-git`, encima de la parte 1): `git rm -r audio-library/audio`, la carpeta en `.gitignore`, `r2.yml` deja de vigilar esa carpeta y se retiran `migrar-audio-privado.yml` y `scripts/migrar_audio_privado.py` (sin audio en Git no tienen qué copiar). Al traer la parte 2, git borra `audio-library/audio/` de cada copia local: si se quiere conservar en local, copiarla antes. **El historial no encoge**: el audio sigue en los commits antiguos; no se reescribe la historia. Lo que se gana es que el repositorio deja de crecer con cada canción.
 - Orden: crear el bucket privado y los secretos → fusionar la parte 1 → lanzar `migrar-audio-privado` y comprobar que termina en verde → fusionar la parte 2.
 
 ## Seguridad
@@ -55,7 +55,7 @@
 
 ## Cómo se prueba
 
-- `backend/tests/test_r2.py`: plan de publicación con los dos buckets (privado primero, público desde local o desde el privado, borrados, nunca vaciar, parada por audio que falta sin escribir nada), cliente S3 (`GetObject`, prefijo), firma con los vectores comunes, `sync_r2.py` y `migrar_audio_privado.py` con buckets en memoria.
+- `backend/tests/test_r2.py`: plan de publicación con los dos buckets (privado primero, público desde local o desde el privado, borrados, nunca vaciar, parada por audio que falta sin escribir nada), cliente S3 (`GetObject`, prefijo), firma con los vectores comunes, `sync_r2.py` con buckets en memoria (y, en la parte 1, `migrar_audio_privado.py`); en la parte 2, que el audio ya no esté versionado y que sin audio local todo lo público salga del bucket privado.
 - `backend/tests/test_entrada.py`: recoger (solo completas, límites, solo lee), limpiar (solo dentro de `entrada/<UUID>/`), el script con `GITHUB_OUTPUT`, y el buzón uniendo lo recogido con ffmpeg y git reales (pública con la licencia de la web, nada en Git, no toca el buzón de `main` en un `repository_dispatch`, rechazos).
 - `backend/tests/test_paquete.py`: el audio ignorado se empaqueta y se aplica sin entrar en el índice.
 - `backend/tests/test_buzon_workflow.py` y `test_r2_workflow.py`: estructura de `recoger`, credenciales solo en los pasos de R2, migración manual desde `main` y sin borrar.

@@ -8,7 +8,7 @@ Revisado con el código el 2026-11-02. Las constantes se toman del código. Lo q
 
 Este documento cubre dos piezas:
 
-1. **Procesado en GitHub Actions** (`main`): de una URL con licencia a `audio-library/audio/<id>.opus`, y la publicación de las canciones públicas en Cloudflare R2 (ADR-0020).
+1. **Procesado en GitHub Actions** (`main`): de una URL con licencia a `audio-library/audio/<id>.opus` de la copia de trabajo del job, y de ahí al bucket privado de Cloudflare R2 (ADR-0024; la carpeta ya no está en Git) y, las canciones públicas, al bucket público (ADR-0020).
 2. **Motor de reproducción en la web** (feat/ui-publica): cola, volumen con GainNode, temporizador de apagado, Media Session y Screen Wake Lock.
 
 Las reglas de producto están en [DESIGN.md](../user-experience/DESIGN.md), secciones 8.1 y 8.2. La elección del perfil de compresión está en [COMPRESSION.md](COMPRESSION.md). Las decisiones de arquitectura están en `docs/decisions/` (ADR-0002, ADR-0003, ADR-0005, ADR-0006 y ADR-0007). ADR-0008 solo existe en feat/gestion-backend. El contrato del reproductor, caso por caso, está en `docs/user-experience/PLAYER.md`, y el modelo de datos en `docs/datos/DATABASE.md`. Este documento describe el código.
@@ -137,7 +137,7 @@ Los valores son los que declara `limits.py`, que indica haberlos verificado en d
 - Si una canción pública no tiene audio ni en la copia local ni en ningún bucket, es `sync_r2.py` el que se detiene, antes de escribir nada y de subir a `main` (ADR-0024).
 - `frontend/web/data/songs.json`: solo las públicas, ordenadas por título sin distinguir mayúsculas. Campos: `id`, `title`, `artist`, `year`, `tags`, `folder_id`, `duration_s`, `license` y `audio` (`audio/<id>.opus`).
 - `frontend/web/data/folders.json`: todas las carpetas (`id`, `name`, `parent_id`).
-- Según el docstring, Vercel sirve solo `frontend/web`. Los `.opus` privados sí quedan versionados en `audio-library/audio/` (ver `.gitignore`), pero no se copian a la web.
+- Según el docstring, Vercel sirve solo `frontend/web`. Los `.opus` privados solo están en el bucket privado de R2 (`audio-library/audio/` está en `.gitignore` desde ADR-0024) y nunca llegan al bucket público.
 
 ### 1.9 Errores y estado del repositorio al fallar
 

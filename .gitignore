@@ -6,7 +6,10 @@ backend/*.egg-info/
 .pytest_cache/
 
 # Audio fuente sin licencia verificada o temporal: nunca se versiona (ADR-0007).
-# El audio de reproducción de la biblioteca sí se versiona en audio-library/audio/ (ADR-0007).
+# El audio de reproducción de la biblioteca tampoco (ADR-0024): su fuente de verdad es el bucket privado de R2. Los
+# jobs de los workflows lo generan en audio-library/audio/ de su copia de trabajo y 'publicar' lo sube al bucket. El
+# audio que estuvo versionado sigue en el historial de git.
+audio-library/audio/
 audio-library/**/*.m4a
 audio-library/**/*.mp3
 audio-library/**/*.wav
@@ -28,7 +31,7 @@ research-data/**/raw/
 # Sistema
 .DS_Store
 
-# Web: el audio publicado y el de la biblioteca se versionan (ADR-0006, ADR-0007)
+# Web: no lleva audio (lo sirve R2, ADR-0020); los datos públicos de frontend/web/data sí se versionan (ADR-0007)
 
 # Móvil: la app no lleva audio empaquetado; lee la biblioteca de la web (ADR-0004)
 mobile/assets/audio/*

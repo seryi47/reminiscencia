@@ -1,11 +1,11 @@
 name: r2
 
 # Repaso del audio en Cloudflare R2 (ADR-0020 y ADR-0024). El audio lo suben a R2 los jobs 'publicar' de buzon.yml y
-# biblioteca.yml antes de subir a main (fase 3); este workflow vuelve a comprobarlo cuando terminan, o a mano, y sube
-# lo que falte: al bucket privado, el audio de audio-library/audio/ de la copia de trabajo (mientras siga en Git); al
-# público, el de las canciones públicas, desde la copia local o desde el privado. Sin permiso de escritura en el
-# repositorio: las credenciales de R2 solo llegan a este workflow, que ejecuta código de main y no el de ninguna subida.
-# Nunca borra nada de ningún bucket (eso solo lo hace 'publicar', y solo en el público).
+# biblioteca.yml antes de subir a main (fase 3); este workflow vuelve a comprobarlo cuando terminan, o a mano, y copia
+# al bucket público lo que le falte de las canciones públicas, desde el bucket privado (el audio ya no está en Git,
+# ADR-0024). Avisa de las canciones del catálogo sin audio en el privado. Sin permiso de escritura en el repositorio:
+# las credenciales de R2 solo llegan a este workflow, que ejecuta código de main y no el de ninguna subida. Nunca borra
+# nada de ningún bucket (eso solo lo hace 'publicar', y solo en el público).
 
 on:
   workflow_run:
@@ -14,7 +14,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "audio-library/audio/**"
       - "frontend/web/data/songs.json"
   workflow_dispatch:
 
