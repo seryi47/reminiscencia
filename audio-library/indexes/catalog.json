@@ -3474,6 +3474,38 @@
       "size_bytes": 1717607,
       "added_at": "2026-11-05T18:01:33+00:00",
       "public": true
+    },
+    {
+      "id": "S553593e1db579588",
+      "title": "BAD BUNNY - BAILE INoLVIDABLE (Video Oficial) DeBÍ TiRAR MáS FOToS",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "553593e1db579588b3a62d234f71dab5c0477d3a7f2d6035359e9f819a0d7708",
+      "duration_s": 378.016,
+      "codec": "opus",
+      "size_bytes": 2523504,
+      "added_at": "2026-11-05T18:05:28+00:00",
+      "public": true
+    },
+    {
+      "id": "Sc1156642d1f99589",
+      "title": "BAD GYAL - FIEBRE PROD KING DOUDOU",
+      "artist": "Bad Gyal",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "c1156642d1f995892055d8251099d253a81f2c279d9d8bc351c29c6c45b572cb",
+      "duration_s": 248.054,
+      "codec": "opus",
+      "size_bytes": 1611593,
+      "added_at": "2026-11-05T18:05:32+00:00",
+      "public": true
     }
   ]
 }
