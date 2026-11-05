@@ -3206,6 +3206,38 @@
       "size_bytes": 921284,
       "added_at": "2026-11-05T09:17:13+00:00",
       "public": true
+    },
+    {
+      "id": "Seb7a0e77692d5c2b",
+      "title": "Cuando el Sol Se Va",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "eb7a0e77692d5c2bffa88e6989be270308c8a17ea389caeb9b255f569ba45b37",
+      "duration_s": 348.088,
+      "codec": "opus",
+      "size_bytes": 2137261,
+      "added_at": "2026-11-05T11:30:32+00:00",
+      "public": true
+    },
+    {
+      "id": "S91d37e166698c941",
+      "title": "Lágrimas de sangre Canción de Kimetsu No Yaiba CI Akaza Giyu",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "91d37e166698c941da9e51d269c660040687339a4623012169c5ea8269549d37",
+      "duration_s": 335.744,
+      "codec": "opus",
+      "size_bytes": 2049833,
+      "added_at": "2026-11-05T11:30:35+00:00",
+      "public": true
     }
   ]
 }
