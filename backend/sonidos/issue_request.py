@@ -13,8 +13,9 @@ Este módulo la valida antes de tocar la red o el catálogo:
   de casos. No admite payload.
 - action organize: payload obligatorio, un objeto JSON en una sola línea. No admite url, license ni title.
   Operaciones: create_folder (name, parent_id y artist opcionales), rename_folder, edit_folder (name obligatorio y
-  artist opcional, ADR-0016), delete_folder, edit_song y organize_youtube_playlist (reparar un álbum y los artistas
-  de todas sus canciones en una petición).
+  artist opcional, ADR-0016), delete_folder, edit_song, move_songs (pasar de 1 a 100 canciones a un álbum, o sacarlas
+  de su álbum con folder_id null, en una sola petición atómica; ADR-0023) y organize_youtube_playlist (reparar un álbum
+  y los artistas de todas sus canciones en una petición).
 
 Las URL se validan con sonidos.sources (classify, resolve_direct_file, ia_identifier): la misma
 lógica que usa la importación.
@@ -63,11 +64,14 @@ OPERATIONS = {
         frozenset({"song_id"}),
         frozenset({"title", "artist", "year", "tags", "folder_id", "public"}),
     ),
+    "move_songs": (frozenset({"song_ids", "folder_id"}), frozenset()),
     "organize_youtube_playlist": (
         frozenset({"playlist_id", "name", "songs"}),
         frozenset(),
     ),
 }
+# Canciones por petición de move_songs: 100 ids caben de sobra en los 4000 caracteres del payload.
+MAX_MOVE_SONGS = 100
 
 # Claves de la petición manual y la variable de entorno de la que se leen.
 _MANUAL_FIELDS = (
@@ -160,6 +164,18 @@ def validate_payload(data: object) -> dict:
         }
     if operation == "delete_folder":
         return {"op": operation, "folder_id": _folder_id(data["folder_id"], field="folder_id")}
+    if operation == "move_songs":
+        raw_ids = data["song_ids"]
+        if not isinstance(raw_ids, list) or not 1 <= len(raw_ids) <= MAX_MOVE_SONGS:
+            raise RequestError(f"song_ids debe contener entre 1 y {MAX_MOVE_SONGS} canciones")
+        song_ids = [_song_id(value) for value in raw_ids]
+        if len(set(song_ids)) != len(song_ids):
+            raise RequestError("song_ids tiene canciones repetidas")
+        return {
+            "op": operation,
+            "song_ids": song_ids,
+            "folder_id": _folder_id(data["folder_id"], field="folder_id", nullable=True),
+        }
     if operation == "organize_youtube_playlist":
         playlist_id = data["playlist_id"]
         if not isinstance(playlist_id, str) or not YOUTUBE_PLAYLIST_ID_RE.fullmatch(playlist_id):

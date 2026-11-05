@@ -1584,6 +1584,40 @@ button:disabled {
   color: var(--accent);
 }
 
+/* «Añadir canciones» de un álbum: botón bajo la tabla y hoja con buscador y casillas. */
+.album-add {
+  margin-top: 24px;
+}
+
+.pick-search {
+  max-width: none;
+}
+
+.pick-count {
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: var(--text-s);
+}
+
+.pick-list {
+  max-height: min(360px, 45vh);
+  max-height: min(360px, 45dvh);
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.pick-row {
+  cursor: pointer;
+}
+
+.pick-row input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 /* ------------------------------------------------------------------------- */
 /* Buscar                                                                     */
 /* ------------------------------------------------------------------------- */

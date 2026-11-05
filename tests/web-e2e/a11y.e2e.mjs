@@ -113,6 +113,28 @@ const PANTALLAS = [
     },
   },
   {
+    nombre: "Hoja Quitar de este álbum",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openRowMenu(page, "S0000000000000002");
+      await pickMenu(page, "menu-remove-from-album");
+      await waitVisible(page, "remove-from-album");
+    },
+  },
+  {
+    nombre: "Hoja Añadir canciones a un álbum, con dos elegidas",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openCollectionMenu(page);
+      await pickMenu(page, "menu-album-add-songs");
+      await waitVisible(page, "album-add");
+      const checks = await page.$$('[data-testid="album-add-check"]');
+      await checks[0].click();
+      await checks[1].click();
+      await page.waitForFunction(() => document.querySelector('[data-testid="album-add-save"]')?.textContent === "Añadir (2)");
+    },
+  },
+  {
     nombre: "Hoja Editar detalles de un álbum",
     preparar: async (page) => {
       await openCollection(page, FOLDER_A);

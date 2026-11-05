@@ -646,3 +646,38 @@ def test_summary_never_shows_the_query_of_the_url():
 
     assert summary["url"] == "https://files.example/a.mp3"
     assert "SECRETO123" not in json.dumps(summary)
+
+
+# --- move_songs: varias canciones a un álbum, o fuera de su álbum, en una sola petición (ADR-0023) ------------------
+
+SONG_B = "Sfedcba9876543210"
+NEW_FOLDER = "F0123456789abcdef"
+
+
+def test_move_songs_to_an_album_and_out_of_it():
+    request = parse_request(organize({"op": "move_songs", "song_ids": [SONG, SONG_B], "folder_id": NEW_FOLDER}))
+    assert request["payload"] == {"op": "move_songs", "song_ids": [SONG, SONG_B], "folder_id": NEW_FOLDER}
+    out = parse_request(organize({"op": "move_songs", "song_ids": [SONG], "folder_id": None}))
+    assert out["payload"]["folder_id"] is None
+
+
+@pytest.mark.parametrize("payload, message", [
+    ({"op": "move_songs", "song_ids": [], "folder_id": NEW_FOLDER}, "entre 1 y 100"),
+    ({"op": "move_songs", "song_ids": SONG, "folder_id": NEW_FOLDER}, "entre 1 y 100"),
+    ({"op": "move_songs", "song_ids": [f"S{index:016x}" for index in range(101)], "folder_id": NEW_FOLDER},
+     "entre 1 y 100"),
+    ({"op": "move_songs", "song_ids": [SONG, SONG], "folder_id": NEW_FOLDER}, "repetidas"),
+    ({"op": "move_songs", "song_ids": ["../x"], "folder_id": NEW_FOLDER}, "song_id"),
+    ({"op": "move_songs", "song_ids": [SONG], "folder_id": "../x"}, "folder_id no es un id"),
+    ({"op": "move_songs", "song_ids": [SONG]}, "falta el campo folder_id"),
+    ({"op": "move_songs", "song_ids": [SONG], "folder_id": NEW_FOLDER, "public": True}, "campo desconocido"),
+])
+def test_move_songs_refuses_bad_lists_ids_and_extra_fields(payload, message):
+    with pytest.raises(RequestError, match=message):
+        validate_payload(payload)
+
+
+def test_one_hundred_songs_fit_in_the_payload_limit():
+    ids = [f"S{index:016x}" for index in range(100)]
+    request = parse_request(organize({"op": "move_songs", "song_ids": ids, "folder_id": NEW_FOLDER}))
+    assert len(request["payload"]["song_ids"]) == 100

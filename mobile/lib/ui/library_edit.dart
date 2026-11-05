@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../app_error.dart';
+import '../library_controller.dart' show foldForSearch;
 import '../library_requests.dart';
 import '../playlist_covers.dart';
 import '../services.dart';
@@ -202,7 +203,53 @@ Future<void> addSongToAlbumFlow(
   await openLibraryRequest(context, services, request);
 }
 
-/// Desde un álbum: elige una canción del catálogo para pasarla a este álbum (una petición por canción).
+/// «Quitar de este álbum» (desde la página del álbum): pide confirmación y deja la canción sin álbum.
+/// Nunca la borra: sigue en la biblioteca común.
+Future<void> removeSongFromAlbumFlow(
+  BuildContext context,
+  AppServices services,
+  Song song, {
+  required String albumName,
+}) async {
+  final album = albumName.trim().isEmpty
+      ? 'este álbum'
+      : '«${albumName.trim()}»';
+  final confirmed = await showConfirmDialog(
+    context,
+    title: 'Quitar de este álbum',
+    message:
+        '¿Quitar «${song.title}» de $album? La canción sigue en la biblioteca; solo deja de estar en este álbum.',
+    confirmLabel: 'Quitar',
+  );
+  if (!confirmed || !context.mounted) return;
+  await openLibraryRequest(
+    context,
+    services,
+    LibraryRequest.moveSong(songId: song.id, folderId: null),
+  );
+}
+
+/// Filtro del buscador de «Añadir canciones a este álbum»: sin tildes ni mayúsculas, por título, artista y
+/// nombre del álbum en el que está ahora la canción ([albumName]). Cada palabra de [query] debe aparecer.
+/// Conserva el orden; sin texto devuelve todas.
+List<Song> filterSongsForAlbumPicker(
+  List<Song> songs,
+  String query, {
+  required String Function(Song song) albumName,
+}) {
+  final tokens = foldForSearch(
+    query,
+  ).split(' ').where((token) => token.isNotEmpty).toList();
+  if (tokens.isEmpty) return songs;
+  return songs.where((song) {
+    final text = foldForSearch(
+      [song.title, song.artist, albumName(song)].join(' '),
+    );
+    return tokens.every(text.contains);
+  }).toList();
+}
+
+/// Desde un álbum: busca y marca varias canciones del catálogo y las pasa a este álbum con una sola petición.
 Future<void> addSongsToAlbumFlow(
   BuildContext context,
   AppServices services,
@@ -215,68 +262,257 @@ Future<void> addSongsToAlbumFlow(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
-    builder: (sheetContext) => SizedBox(
-      height: MediaQuery.sizeOf(sheetContext).height * 0.8,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: Semantics(
-              header: true,
-              child: Text(
-                'Añadir a «${folder.name}»',
-                style: Theme.of(sheetContext).textTheme.titleLarge,
-              ),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: _WriteAccessNote(),
-          ),
-          Expanded(
-            child: songs.isEmpty
-                ? const MessagePanel(
-                    icon: Icons.library_music_outlined,
-                    message:
-                        'No quedan canciones de la biblioteca común fuera de este álbum.',
-                  )
-                : ListView.builder(
-                    itemCount: songs.length,
-                    itemBuilder: (context, i) {
-                      final song = songs[i];
-                      return ListTile(
-                        leading: CatalogCover(
-                          covers: services.covers,
-                          cover: song.cover,
-                          seed: song.id,
-                          size: 40,
-                        ),
-                        title: Text(
-                          song.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: song.artist.isEmpty
-                            ? null
-                            : Text(song.artist, maxLines: 1),
-                        onTap: () => Navigator.of(sheetContext).pop(
-                          LibraryRequest.moveSong(
-                            songId: song.id,
-                            folderId: folder.id,
-                            albumName: folder.name,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    ),
+    builder: (sheetContext) =>
+        _AddSongsSheet(services: services, folder: folder, songs: songs),
   );
   if (request == null || !context.mounted) return;
   await openLibraryRequest(context, services, request);
+}
+
+class _AddSongsSheet extends StatefulWidget {
+  const _AddSongsSheet({
+    required this.services,
+    required this.folder,
+    required this.songs,
+  });
+
+  final AppServices services;
+  final Folder folder;
+
+  /// Canciones editables que no están ya en el álbum.
+  final List<Song> songs;
+
+  @override
+  State<_AddSongsSheet> createState() => _AddSongsSheetState();
+}
+
+class _AddSongsSheetState extends State<_AddSongsSheet> {
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+
+  /// IDs marcados; se mantienen al cambiar la búsqueda.
+  final Set<String> _selected = {};
+  String? _error;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  String _albumOf(Song song) {
+    final id = song.folderId;
+    if (id == null) return '';
+    return widget.services.library.folderOrNull(id)?.name ?? '';
+  }
+
+  void _toggle(Song song, bool select) {
+    setState(() {
+      _error = null;
+      if (select) {
+        if (_selected.length < kMaxMoveSongs) _selected.add(song.id);
+      } else {
+        _selected.remove(song.id);
+      }
+    });
+  }
+
+  void _submit() {
+    // En el orden del catálogo, para que la petición no dependa del orden en que se marcaron.
+    final ids = [
+      for (final song in widget.songs)
+        if (_selected.contains(song.id)) song.id,
+    ];
+    try {
+      Navigator.of(context).pop(
+        LibraryRequest.moveSongs(
+          songIds: ids,
+          folderId: widget.folder.id,
+          albumName: widget.folder.name,
+        ),
+      );
+    } on AppException catch (error) {
+      setState(() => _error = error.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = paletteOf(context);
+    // Con el teclado abierto la hoja se encoge y sube, para que no tape la lista ni el botón.
+    final screen = MediaQuery.sizeOf(context).height;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final available = screen - keyboard;
+    final height = available < screen * 0.8 ? available * 0.95 : screen * 0.8;
+    final visible = filterSongsForAlbumPicker(
+      widget.songs,
+      _query,
+      albumName: _albumOf,
+    );
+    final count = _selected.length;
+    final full = count >= kMaxMoveSongs;
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: SizedBox(
+        height: height,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: Semantics(
+                header: true,
+                child: Text(
+                  'Añadir a «${widget.folder.name}»',
+                  style: theme.textTheme.titleLarge,
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: _WriteAccessNote(),
+            ),
+            if (widget.songs.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: TextField(
+                  key: const ValueKey('add-songs-search'),
+                  controller: _search,
+                  autofocus: true,
+                  onChanged: (value) => setState(() => _query = value),
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Buscar por título, artista o álbum',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            key: const ValueKey('add-songs-search-clear'),
+                            tooltip: 'Borrar la búsqueda',
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () {
+                              _search.clear();
+                              setState(() => _query = '');
+                            },
+                          ),
+                    filled: true,
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            Expanded(
+              child: widget.songs.isEmpty
+                  ? const MessagePanel(
+                      icon: Icons.library_music_outlined,
+                      message:
+                          'No quedan canciones de la biblioteca común fuera de este álbum.',
+                    )
+                  : visible.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Ninguna canción coincide con «${_query.trim()}».',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: palette.inkMuted,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      key: const ValueKey('add-songs-list'),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      itemCount: visible.length,
+                      itemBuilder: (context, i) {
+                        final song = visible[i];
+                        final checked = _selected.contains(song.id);
+                        final album = _albumOf(song);
+                        final details = [
+                          if (song.artist.isNotEmpty) song.artist,
+                          if (album.isNotEmpty) 'En «$album»',
+                        ].join(' · ');
+                        return CheckboxListTile(
+                          key: ValueKey('add-song-${song.id}'),
+                          value: checked,
+                          onChanged: !checked && full
+                              ? null
+                              : (value) => _toggle(song, value ?? false),
+                          controlAffinity: ListTileControlAffinity.trailing,
+                          secondary: CatalogCover(
+                            covers: widget.services.covers,
+                            cover: song.cover,
+                            seed: song.id,
+                            size: 40,
+                          ),
+                          title: Text(
+                            song.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: details.isEmpty
+                              ? null
+                              : Text(
+                                  details,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                        );
+                      },
+                    ),
+            ),
+            if (_error != null)
+              Semantics(
+                liveRegion: true,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(_error!, style: TextStyle(color: palette.error)),
+                ),
+              ),
+            const Divider(height: 1),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          full
+                              ? '$count seleccionadas (máximo $kMaxMoveSongs)'
+                              : count == 1
+                              ? '1 seleccionada'
+                              : '$count seleccionadas',
+                          key: const ValueKey('add-songs-count'),
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      key: const ValueKey('add-songs-submit'),
+                      onPressed: count == 0 ? null : _submit,
+                      child: Text('Añadir ($count)'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// «Cambiar portada»: se elige la imagen, se recorta a cuadrado (640 px) y se envía a /api/editar.

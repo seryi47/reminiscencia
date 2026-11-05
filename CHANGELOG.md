@@ -6,6 +6,26 @@
 - `vercel.json`: redirección temporal de `/audio/:file` a R2 (primera visita sin service worker, respaldo del service worker y de la APK); se quita la cabecera del tipo del audio, que ya no sirve Vercel.
 - APK: si una canción en streaming falla desde R2, se reintenta una vez desde la web antes de pasar a la siguiente (`shouldRetryFromFallback`, `_retryFromFallback`).
 - Pruebas: backend 756, web 458 unitarias y 148 de extremo a extremo (los audios de prueba salen de `audio-library/audio/`), Flutter 260 y `flutter analyze` sin avisos.
+## Sin publicar: quitar canciones de un álbum y añadir varias con buscador (2026-11-05, rama `feature/albumes-quitar-y-buscar`)
+
+- Web y APK, con el mismo comportamiento ([ADR-0023](docs/decisions/ADR-0023-canciones-de-un-album.md)):
+  - **«Quitar de este álbum»:** está en el menú de cada canción, solo dentro de su álbum. Pide confirmación y envía `edit_song` con `folder_id: null`. La canción y su audio siguen en la biblioteca.
+  - **«Añadir canciones» en un álbum:**
+    - buscador sin distinguir acentos ni mayúsculas, por título, artista y álbum actual;
+    - casillas para elegir varias, que se mantienen al cambiar la búsqueda;
+    - botón «Añadir (N)», hasta 100 canciones;
+    - se envía una sola petición.
+  - La web no tenía esta opción; la APK la tenía sin buscador y con una petición por canción.
+- **Operación nueva `move_songs`** (`{"op":"move_songs","song_ids":[…],"folder_id":…|null}`, de 1 a 100 canciones):
+  - es atómica: o se mueven todas o ninguna;
+  - una sola incidencia y un solo commit, en vez de una por canción, que fallaban si main cambiaba entre `procesar` y `publicar`;
+  - la validan con las mismas reglas el backend (`issue_request.py`, `ci_library.py`), la web (`incidencias.js`, `/api/editar`) y la APK (`LibraryRequest.moveSongs`);
+  - se ha comprobado que el backend acepta tal cual la petición que generan la web y la APK.
+- `SHELL_VERSION = 25`.
+- Pruebas:
+  - backend: 748;
+  - web: 465 unitarias y 158 de extremo a extremo, con dos pantallas nuevas de accesibilidad sin fallos;
+  - Flutter: 267, y `flutter analyze` sin avisos.
 
 ## Sin publicar: «Escuchar» por Dart y apt con reintentos (2026-11-05)
 

@@ -228,6 +228,105 @@ void main() {
     });
   });
 
+  group('move_songs (varias canciones de una vez)', () {
+    const otherId = 'S0000000000000001';
+
+    test('payload exacto y título al añadir a un álbum', () {
+      final request = LibraryRequest.moveSongs(
+        songIds: [songId, otherId],
+        folderId: albumId,
+        albumName: '  Jazz  ',
+      );
+      expect(payloadOf(request.body), {
+        'op': 'move_songs',
+        'song_ids': [songId, otherId],
+        'folder_id': albumId,
+      });
+      expect(
+        request.body,
+        'action: organize\npayload: {"op":"move_songs","song_ids":["$songId","$otherId"],"folder_id":"$albumId"}',
+      );
+      expect(request.title, 'Añadir 2 canciones al álbum «Jazz»');
+      expect(
+        LibraryRequest.moveSongs(
+          songIds: [songId],
+          folderId: albumId,
+          albumName: 'Jazz',
+        ).title,
+        'Añadir 1 canción al álbum «Jazz»',
+      );
+      expect(
+        LibraryRequest.moveSongs(songIds: [songId], folderId: oldAlbumId).title,
+        'Añadir 1 canción al álbum $oldAlbumId',
+      );
+    });
+
+    test('folder_id null las deja sin álbum', () {
+      final one = LibraryRequest.moveSongs(songIds: [songId], folderId: null);
+      expect(
+        one.body,
+        'action: organize\npayload: {"op":"move_songs","song_ids":["$songId"],"folder_id":null}',
+      );
+      expect(one.title, 'Quitar 1 canción de su álbum');
+      expect(
+        LibraryRequest.moveSongs(
+          songIds: [songId, otherId],
+          folderId: null,
+        ).title,
+        'Quitar 2 canciones de su álbum',
+      );
+    });
+
+    test('admite hasta 100 IDs', () {
+      final ids = [
+        for (var i = 0; i < kMaxMoveSongs; i++)
+          'S${i.toRadixString(16).padLeft(16, '0')}',
+      ];
+      final request = LibraryRequest.moveSongs(songIds: ids, folderId: albumId);
+      expect(payloadOf(request.body)['song_ids'], ids);
+      expect(request.title, 'Añadir 100 canciones al álbum $albumId');
+    });
+
+    test(
+      'rechaza lista vacía, más de 100, repetidas, IDs y álbum no válidos',
+      () {
+        Matcher fails(String text) => throwsA(
+          isA<AppException>().having((e) => e.message, 'message', text),
+        );
+        expect(
+          () => LibraryRequest.moveSongs(songIds: const [], folderId: albumId),
+          fails('Elige al menos una canción.'),
+        );
+        final tooMany = [
+          for (var i = 0; i <= kMaxMoveSongs; i++)
+            'S${i.toRadixString(16).padLeft(16, '0')}',
+        ];
+        expect(
+          () => LibraryRequest.moveSongs(songIds: tooMany, folderId: albumId),
+          fails('Se pueden mover 100 canciones como mucho de una vez.'),
+        );
+        expect(
+          () => LibraryRequest.moveSongs(
+            songIds: [songId, otherId, songId],
+            folderId: albumId,
+          ),
+          fails('Hay canciones repetidas en la selección.'),
+        );
+        expect(
+          () => LibraryRequest.moveSongs(
+            songIds: [songId, 'L0123456789abcdef'],
+            folderId: albumId,
+          ),
+          fails('Solo se pueden editar las canciones de la biblioteca común.'),
+        );
+        expect(
+          () => LibraryRequest.moveSongs(songIds: [songId], folderId: 'xyz'),
+          fails('El álbum no es un álbum de la biblioteca común.'),
+        );
+      },
+    );
+  });
+
   group('título', () {
     test('el título de la incidencia se corta a 120 caracteres', () {
       final title = cleanIssueTitle('x' * 200);
