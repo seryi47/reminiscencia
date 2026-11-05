@@ -63,7 +63,11 @@ def test_catalog_json_lists_only_public_songs_and_every_folder_without_audio_pat
     assert [song["title"] for song in view["songs"]] == ["Tema 0"]
     assert all(song["public"] is True for song in view["songs"])
     for song in view["songs"]:
-        assert set(song) == {"id", "title", "artist", "year", "tags", "folder_id", "license", "source", "duration_s", "public"}
+        # La canción está en el álbum «Jazz»: lleva su número de pista (ADR-0026).
+        assert set(song) == {
+            "id", "title", "artist", "year", "tags", "folder_id", "license", "source", "duration_s", "public", "track",
+        }
+        assert song["track"] == 1
     assert [folder["name"] for folder in view["folders"]] == ["Jazz"]
     assert view["folders"] == json.loads((web / "data" / "folders.json").read_text(encoding="utf-8"))
     text = (web / "data" / "catalog.json").read_text(encoding="utf-8")

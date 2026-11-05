@@ -83,6 +83,9 @@ def main(argv: list[str] | None = None, *, env: Mapping[str, str] | None = None,
         # Texto fijo: los nombres de archivo no van a los comandos de GitHub Actions, solo al resumen escapado.
         print(f"::warning title=Buzón::{len(result['privadas'])} canción(es) sin línea «Licencia:» entran como "
               "privadas; ver el resumen del job.")
+    if result.get("posibles_duplicados"):
+        print(f"::warning title=Buzón::{len(result['posibles_duplicados'])} canción(es) nueva(s) parecen estar ya en la "
+              "biblioteca (mismo título y duración parecida); se han añadido igualmente. Ver el resumen del job.")
     if result["revisar"]:
         print(f"::warning title=Buzón::{len(result['revisar'])} elemento(s) del buzón hay que revisarlos a mano; "
               "ver el resumen del job.")

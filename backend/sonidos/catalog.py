@@ -5,12 +5,17 @@ Estructura de audio-library/indexes/catalog.json:
   "version": 1,
   "folders": [{"id", "name", "parent_id", "artist"?, "cover"?}],
   "songs":   [{"id", "title", "artist", "year", "tags", "folder_id", "license",
-               "source", "sha256", "duration_s", "codec", "size_bytes", "added_at", "public", "cover"?}]
+               "source", "sha256", "duration_s", "codec", "size_bytes", "added_at", "public", "cover"?, "track"?}]
 }
 Una carpeta es también un álbum (ADR-0016): "artist" (opcional, una línea de hasta 80 caracteres) y "cover"
 (opcional, "covers/<id>.jpg"). Una canción puede tener "cover" igual. Los campos opcionales solo están cuando tienen
 valor. Los ids de carpeta nuevos son F seguida de 16 hexadecimales; los anteriores, de 10 hexadecimales, siguen siendo
 válidos (no tienen portada).
+Número de pista (ADR-0026): "track" (entero desde 1) da el orden de una canción dentro de su álbum. Solo lo tienen las
+canciones con álbum, y en cada álbum van de 1 a n sin huecos ni repetidos. Al entrar en un álbum, una canción recibe el
+siguiente número; al salir, lo pierde y las demás se renumeran. Un catálogo sin "track" (anterior a ADR-0026) se migra
+con normalize_tracks: las canciones sin número van al final, en el orden de hoy (título sin mayúsculas, y después su
+posición en el catálogo, que es el orden de data/songs.json).
 Las operaciones son puras sobre el fichero: cada cambio se guarda entero y de forma atómica.
 """
 
@@ -176,7 +181,11 @@ def update_song(data: dict, song_id: str, fields: dict) -> dict:
     previous_folder_id = song.get("folder_id")
     if "folder_id" in fields and not fields["folder_id"]:
         fields["folder_id"] = None
+    new_folder_id = fields.pop("folder_id", previous_folder_id)
     song.update(fields)
+    if new_folder_id != previous_folder_id:
+        _move_to_folder(data, song, new_folder_id)
+        fields["folder_id"] = new_folder_id
     if "artist" in fields or "folder_id" in fields:
         for folder_id in {previous_folder_id, song.get("folder_id")} - {None}:
             sync_youtube_album_artist(data, folder_id)
@@ -271,12 +280,12 @@ def set_cover(data: dict, item_id: str, cover: str) -> bool:
 
 
 def delete_folder(data: dict, folder_id: str) -> None:
-    """Borra la carpeta. Sus canciones y subcarpetas suben al nivel superior."""
+    """Borra la carpeta. Sus canciones y subcarpetas suben al nivel superior. Las canciones entran en la carpeta superior
+    al final y en su orden; si no hay carpeta superior, pierden el número de pista."""
     folder = find_folder(data, folder_id)
     parent = folder["parent_id"]
-    for song in data["songs"]:
-        if song["folder_id"] == folder_id:
-            song["folder_id"] = parent
+    for song in songs_in_folder(data, folder_id):
+        _move_to_folder(data, song, parent)
     for item in data["folders"]:
         if item["parent_id"] == folder_id:
             item["parent_id"] = parent
@@ -292,3 +301,104 @@ def normalize_tags(tags) -> list[str]:
             seen.add(value)
             clean.append(value)
     return clean
+
+
+# --- Números de pista (ADR-0026) -------------------------------------------------------------------------------------
+
+
+def _valid_track(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+
+
+def _current_order_key(song: dict, index: int) -> tuple:
+    """El orden de hoy de una canción sin número de pista: su título sin mayúsculas y, a igualdad, su posición en el
+    catálogo (es como ordena publish.sync_public data/songs.json, y la web y la APK conservan ese orden)."""
+    return (str(song.get("title") or "").lower(), index)
+
+
+def songs_in_folder(data: dict, folder_id: str | None) -> list[dict]:
+    """Canciones de una carpeta en su orden: primero las que tienen número de pista (de menor a mayor) y después las
+    que no lo tienen, en el orden de hoy. Sin carpeta (None), lista vacía."""
+    if folder_id is None:
+        return []
+    numbered, unnumbered = [], []
+    for index, song in enumerate(data["songs"]):
+        if song.get("folder_id") != folder_id:
+            continue
+        if _valid_track(song.get("track")):
+            numbered.append(((song["track"], index), song))
+        else:
+            unnumbered.append((_current_order_key(song, index), song))
+    numbered.sort(key=lambda item: item[0])
+    unnumbered.sort(key=lambda item: item[0])
+    return [song for _, song in numbered] + [song for _, song in unnumbered]
+
+
+def _renumber(data: dict, folder_id: str | None) -> bool:
+    """Deja las pistas de la carpeta de 1 a n, sin huecos, en su orden. Devuelve si cambió algo."""
+    changed = False
+    for position, song in enumerate(songs_in_folder(data, folder_id), start=1):
+        if song.get("track") != position or not _valid_track(song.get("track")):
+            song["track"] = position
+            changed = True
+    return changed
+
+
+def _move_to_folder(data: dict, song: dict, folder_id: str | None) -> None:
+    """Saca la canción de su carpeta (renumera las que quedan) y la pone al final de folder_id (o sin carpeta y sin
+    número de pista, si es None)."""
+    previous = song.get("folder_id")
+    song["folder_id"] = None
+    song.pop("track", None)
+    _renumber(data, previous)
+    if folder_id is None:
+        return
+    _renumber(data, folder_id)
+    song["folder_id"] = folder_id
+    song["track"] = len(songs_in_folder(data, folder_id))
+
+
+def normalize_tracks(data: dict) -> bool:
+    """Migra y repara los números de pista de todo el catálogo: en cada carpeta, de 1 a n en su orden (las canciones
+    sin número, al final y en el orden de hoy); las canciones sin carpeta no tienen número. Devuelve si cambió algo.
+    Es idempotente: sobre un catálogo ya normalizado no cambia nada."""
+    changed = False
+    folder_ids = []
+    for song in data["songs"]:
+        folder_id = song.get("folder_id")
+        if folder_id is None:
+            if "track" in song:
+                song.pop("track")
+                changed = True
+        elif folder_id not in folder_ids:
+            folder_ids.append(folder_id)
+    for folder_id in folder_ids:
+        changed = _renumber(data, folder_id) or changed
+    return changed
+
+
+def order_album(data: dict, folder_id: str, song_ids: list[str]) -> list[dict]:
+    """Ordena el álbum: song_ids tiene que ser exactamente la lista de sus canciones (sin repetidos, ni de menos, ni de
+    más), en el orden nuevo. Asigna track 1..n. Si la lista no coincide, no cambia nada."""
+    find_folder(data, folder_id)
+    if len(set(song_ids)) != len(song_ids):
+        raise CatalogError("la lista del orden tiene canciones repetidas")
+    current = {song["id"] for song in data["songs"] if song.get("folder_id") == folder_id}
+    wanted = set(song_ids)
+    missing = current - wanted
+    extra = wanted - current
+    if missing or extra:
+        parts = []
+        if missing:
+            parts.append(f"faltan {len(missing)} canción(es) del álbum")
+        if extra:
+            parts.append(f"sobran {len(extra)} canción(es) que no están en el álbum")
+        raise CatalogError(
+            "la lista del orden no coincide con las canciones del álbum (" + " y ".join(parts)
+            + "); vuelve a cargar la biblioteca y ordénalo de nuevo"
+        )
+    by_id = {song["id"]: song for song in data["songs"] if song.get("folder_id") == folder_id}
+    ordered = [by_id[song_id] for song_id in song_ids]
+    for position, song in enumerate(ordered, start=1):
+        song["track"] = position
+    return ordered

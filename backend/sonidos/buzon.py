@@ -61,7 +61,7 @@ import zlib
 from collections.abc import Mapping
 from pathlib import Path
 
-from sonidos import catalog
+from sonidos import catalog, duplicados
 from sonidos.compression import TranscodeError, transcode
 from sonidos.hashing import sha256_file
 from sonidos.limits import GIT_BLOCK_FILE_BYTES
@@ -279,10 +279,11 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     data = catalog.load(catalog_path)
     result: dict = {
         "accion": "buzon", "actor": actor,
-        "publicas": [], "privadas": [], "duplicadas": [], "portadas": [], "zips": [], "rechazados": [],
-        "revisar": [], "ya_no_estan": [],
+        "publicas": [], "privadas": [], "duplicadas": [], "posibles_duplicados": [], "portadas": [], "zips": [],
+        "rechazados": [], "revisar": [], "ya_no_estan": [],
     }
-    changed = False
+    # Migra el catálogo anterior a los números de pista (ADR-0026); si ya está migrado, no cambia nada.
+    changed = catalog.normalize_tracks(data)
     source = UPLOADED_BY + actor
     prefix = BUZON_DIRECTORY + "/"
     portadas_prefix = PORTADAS_DIRECTORY + "/"
@@ -560,8 +561,26 @@ def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: s
     if motivo is not None:
         result["rechazados"].append({"archivo": archivo, "motivo": motivo})
         return False
-    result[entry.pop("lista")].append(entry)
+    lista = entry.pop("lista")
+    result[lista].append(entry)
+    if lista == "privadas" or (lista == "publicas" and entry.get("nueva")):
+        _anotar_posible_duplicado(data, result, archivo=archivo, song_id=entry["song_id"])
     return song_changed
+
+
+def _anotar_posible_duplicado(data: dict, result: dict, *, archivo: str, song_id: str) -> None:
+    """Una canción nueva que parece otra que ya está (sonidos.duplicados, ADR-0026) se anota en el resultado. No se
+    bloquea: el aviso sale en el resumen del job. Las canciones anteriores de la misma subida ya están en data."""
+    song = catalog.find_song(data, song_id)
+    parecidas = duplicados.possible_duplicates(song, data["songs"])
+    if not parecidas:
+        return
+    otra = parecidas[0]
+    result["posibles_duplicados"].append({
+        "archivo": archivo, "song_id": song_id, "titulo": song.get("title"),
+        "parecida_a": otra.get("id"), "titulo_parecida": otra.get("title"),
+        "duracion_parecida": duplicados.format_duration(otra.get("duration_s")),
+    })
 
 
 def _nombre_de_entrada(info: zipfile.ZipInfo) -> str:
@@ -764,6 +783,11 @@ def resumen_markdown(result: Mapping) -> str:
         + ("" if not item.get("ignorados") else " · ignorados: " + ", ".join(
             f"{count} {ZIP_IGNORED.get(key, key)}" for key, count in item["ignorados"].items()))
         for item in result.get("zips", [])
+    ])
+    block("Posibles duplicados (se han añadido igualmente; revisa si sobran)", [
+        f"{_quoted(item['archivo'])} -> {item['song_id']} · parece {_quoted(str(item.get('titulo_parecida') or ''))} "
+        f"({item['parecida_a']}, {item.get('duracion_parecida', '—')})"
+        for item in result.get("posibles_duplicados", [])
     ])
     block("Ya estaban en el catálogo (sin cambios)", [
         f"{_quoted(item['archivo'])} -> {item['song_id']}" for item in result.get("duplicadas", [])

@@ -14,8 +14,9 @@ Este módulo la valida antes de tocar la red o el catálogo:
 - action organize: payload obligatorio, un objeto JSON en una sola línea. No admite url, license ni title.
   Operaciones: create_folder (name, parent_id y artist opcionales), rename_folder, edit_folder (name obligatorio y
   artist opcional, ADR-0016), delete_folder, edit_song, move_songs (pasar de 1 a 100 canciones a un álbum, o sacarlas
-  de su álbum con folder_id null, en una sola petición atómica; ADR-0023) y organize_youtube_playlist (reparar un álbum
-  y los artistas de todas sus canciones en una petición).
+  de su álbum con folder_id null, en una sola petición atómica; ADR-0023), order_album (el orden nuevo de las canciones
+  de un álbum: la lista completa y exacta de sus canciones, de 1 a 190; ADR-0026) y organize_youtube_playlist (reparar
+  un álbum y los artistas de todas sus canciones en una petición).
 
 Las URL se validan con sonidos.sources (classify, resolve_direct_file, ia_identifier): la misma
 lógica que usa la importación.
@@ -65,6 +66,7 @@ OPERATIONS = {
         frozenset({"title", "artist", "year", "tags", "folder_id", "public"}),
     ),
     "move_songs": (frozenset({"song_ids", "folder_id"}), frozenset()),
+    "order_album": (frozenset({"folder_id", "song_ids"}), frozenset()),
     "organize_youtube_playlist": (
         frozenset({"playlist_id", "name", "songs"}),
         frozenset(),
@@ -72,6 +74,9 @@ OPERATIONS = {
 }
 # Canciones por petición de move_songs: 100 ids caben de sobra en los 4000 caracteres del payload.
 MAX_MOVE_SONGS = 100
+# Canciones de un álbum que se pueden ordenar en una petición de order_album (ADR-0026): con ids de álbum F + 16
+# hexadecimales, el payload normalizado ocupa 65 + 20 × n caracteres; 190 dan 3865, dentro de los 4000.
+MAX_ORDER_SONGS = 190
 
 # Claves de la petición manual y la variable de entorno de la que se leen.
 _MANUAL_FIELDS = (
@@ -165,16 +170,18 @@ def validate_payload(data: object) -> dict:
     if operation == "delete_folder":
         return {"op": operation, "folder_id": _folder_id(data["folder_id"], field="folder_id")}
     if operation == "move_songs":
-        raw_ids = data["song_ids"]
-        if not isinstance(raw_ids, list) or not 1 <= len(raw_ids) <= MAX_MOVE_SONGS:
-            raise RequestError(f"song_ids debe contener entre 1 y {MAX_MOVE_SONGS} canciones")
-        song_ids = [_song_id(value) for value in raw_ids]
-        if len(set(song_ids)) != len(song_ids):
-            raise RequestError("song_ids tiene canciones repetidas")
         return {
             "op": operation,
-            "song_ids": song_ids,
+            "song_ids": _song_ids(data["song_ids"], MAX_MOVE_SONGS),
             "folder_id": _folder_id(data["folder_id"], field="folder_id", nullable=True),
+        }
+    if operation == "order_album":
+        # La lista tiene que ser exactamente la de las canciones del álbum; eso lo comprueba quien la aplica
+        # (catalog.order_album), porque aquí no se conoce el catálogo.
+        return {
+            "op": operation,
+            "folder_id": _folder_id(data["folder_id"], field="folder_id"),
+            "song_ids": _song_ids(data["song_ids"], MAX_ORDER_SONGS),
         }
     if operation == "organize_youtube_playlist":
         playlist_id = data["playlist_id"]
@@ -369,6 +376,16 @@ def _song_id(value: object) -> str:
     if not isinstance(value, str) or not SONG_ID_RE.fullmatch(value):
         raise RequestError("song_id no es un id de canción válido (S seguida de 16 caracteres hexadecimales en minúscula)")
     return value
+
+
+def _song_ids(value: object, maximum: int) -> list[str]:
+    """Lista de 1 a maximum ids de canción válidos y sin repetir (move_songs y order_album)."""
+    if not isinstance(value, list) or not 1 <= len(value) <= maximum:
+        raise RequestError(f"song_ids debe contener entre 1 y {maximum} canciones")
+    song_ids = [_song_id(item) for item in value]
+    if len(set(song_ids)) != len(song_ids):
+        raise RequestError("song_ids tiene canciones repetidas")
+    return song_ids
 
 
 def _year(value: object) -> int | None:
