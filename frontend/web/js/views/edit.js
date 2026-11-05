@@ -9,12 +9,16 @@
 //   La canción sigue en la biblioteca; solo deja de estar en el álbum.
 // - «Añadir canciones» a un álbum (buscador con casillas): {"op":"move_songs","song_ids":[…],"folder_id"}, una sola
 //   petición para todas las elegidas (de 1 a 100).
+// - Selección múltiple en un álbum: «Quitar del álbum» ({"op":"move_songs","song_ids":[…],"folder_id":null}, con
+//   confirmación) y «Mover a otro álbum» ({"op":"move_songs","song_ids":[…],"folder_id":"F…"}). Una petición por acción.
+// - «Ordenar canciones» de un álbum: {"op":"order_album","folder_id","song_ids":[…]} con la lista completa del álbum en
+//   el orden nuevo (de 1 a 190; ADR-0026). Subir y bajar con botones, accesibles con el teclado.
 // - «Crear álbum»: {"op":"create_folder","name","artist"} (artist solo si se escribe).
 // - «Cambiar portada»: se elige una imagen, se recorta a 640 px y se guarda en el buzón de portadas.
 // Las listas propias se editan aquí mismo (nombre, descripción y portada), solo en este navegador.
 
 import { COVER_INPUT_ACCEPT, coverFileProblem, resizeCoverFile } from '../cover-image.js';
-import { songsToAddToAlbum } from '../catalog.js';
+import { songsInFolder, songsToAddToAlbum } from '../catalog.js';
 import { dataUrlToBytes, saveCover, saveOrganize } from '../edit-remote.js';
 import {
   COVER_RULES,
@@ -405,6 +409,177 @@ export function openAddSongsToAlbumSheet(ctx, folder) {
         el('div', { class: 'dialog-actions' }, submit.status, submit.button));
     },
     initialFocus: (dialog) => dialog.querySelector('[data-testid="album-add-search"]'),
+  });
+}
+
+const songsText = (count) => (count === 1 ? '1 canción' : `${count} canciones`);
+
+/**
+ * «Quitar del álbum» de la selección múltiple: confirma y saca las canciones elegidas de su álbum con una sola petición
+ * move_songs (folder_id null). Nunca las borra. onDone: se llama al guardar (para salir del modo «Seleccionar»).
+ */
+export function openRemoveSongsFromAlbumSheet(ctx, folder, songIds, { onDone = () => {} } = {}) {
+  const ids = [...songIds];
+  return openDialog({
+    title: 'Quitar del álbum',
+    testid: 'album-remove-many',
+    className: 'dialog-edit',
+    render: (body, close) => {
+      const submit = saveAction('album-remove-many-save', () => { onDone(); close(); }, saveOrganize, 'Quitar');
+      const payload = { op: 'move_songs', song_ids: ids, folder_id: null };
+      const problem = ids.length > REQUEST_LIMITS.moveSongs
+        ? `Como mucho ${REQUEST_LIMITS.moveSongs} canciones de una vez: quita ${ids.length - REQUEST_LIMITS.moveSongs} de la selección.`
+        : validateOperation(payload);
+      if (problem) {
+        submit.blocked(problem);
+      } else {
+        submit.ready(payload);
+        submit.status.textContent = '';
+      }
+      body.append(
+        el('p', { class: 'dialog-text', 'data-testid': 'album-remove-many-text' },
+          `¿Quitar ${songsText(ids.length)} de «${folder.name}»? Siguen en la biblioteca; solo dejan de estar en este álbum.`),
+        editNote(),
+        el('div', { class: 'dialog-actions' }, submit.status,
+          el('button', {
+            type: 'button',
+            class: 'button button-secondary',
+            'data-testid': 'album-remove-many-cancel',
+            on: { click: () => close() },
+          }, 'Cancelar'),
+          submit.button));
+    },
+    initialFocus: (dialog) => dialog.querySelector('[data-testid="album-remove-many-cancel"]'),
+  });
+}
+
+/**
+ * «Mover a otro álbum» de la selección múltiple: se elige el álbum y se envía una sola petición move_songs con todas
+ * las canciones elegidas.
+ */
+export function openMoveSongsToAlbumSheet(ctx, folder, songIds, { onDone = () => {} } = {}) {
+  const ids = [...songIds];
+  const albums = ctx.state.catalog.folders
+    .filter((item) => item.id !== folder.id)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return openDialog({
+    title: 'Mover a otro álbum',
+    testid: 'album-move-many',
+    className: 'dialog-edit',
+    render: (body, close) => {
+      const submit = saveAction('album-move-many-save', () => { onDone(); close(); }, saveOrganize, 'Mover');
+      const name = uid('destino');
+      const group = el('fieldset', { class: 'radio-group' },
+        el('legend', { class: 'field-label' }, `Álbum para ${songsText(ids.length)} de «${folder.name}»`),
+        albums.map((album) => el('label', { class: 'radio-row', 'data-testid': 'album-move-many-option', 'data-folder-id': album.id },
+          el('input', { type: 'radio', name, value: album.id }),
+          el('span', { class: 'radio-text' },
+            el('span', { class: 'radio-label' }, album.name),
+            album.artist ? el('span', { class: 'radio-detail' }, album.artist) : null))));
+      const refresh = () => {
+        if (albums.length === 0) return submit.blocked('No hay otro álbum. Crea uno en Tu biblioteca › Crear › Álbum.');
+        if (ids.length > REQUEST_LIMITS.moveSongs) {
+          return submit.blocked(`Como mucho ${REQUEST_LIMITS.moveSongs} canciones de una vez: quita ${ids.length - REQUEST_LIMITS.moveSongs} de la selección.`);
+        }
+        const picked = group.querySelector('input:checked')?.value ?? null;
+        if (picked === null) return submit.blocked('Elige un álbum.');
+        const payload = { op: 'move_songs', song_ids: ids, folder_id: picked };
+        const problem = validateOperation(payload);
+        return problem ? submit.blocked(problem) : submit.ready(payload);
+      };
+      group.addEventListener('change', refresh);
+      refresh();
+      body.append(
+        albums.length > 0 ? group : el('p', { class: 'dialog-text' }, 'No hay otro álbum al que moverlas.'),
+        editNote(),
+        el('div', { class: 'dialog-actions' }, submit.status, submit.button));
+    },
+    initialFocus: (dialog) => dialog.querySelector('input') ?? dialog.querySelector('button'),
+  });
+}
+
+/**
+ * «Ordenar canciones» de un álbum: la lista de sus canciones con «Subir» y «Bajar» en cada fila (con el teclado o el
+ * ratón; cada cambio se anuncia). «Guardar orden» envía una sola petición order_album con la lista completa en el orden
+ * nuevo. Solo con las canciones de la biblioteca común; más de 190 no caben en una petición.
+ */
+export function openOrderAlbumSheet(ctx, folder) {
+  const max = REQUEST_LIMITS.orderSongs;
+  const original = songsInFolder(ctx.state.catalog, folder.id).filter((song) => ctx.isEditableSong(song));
+  return openDialog({
+    title: 'Ordenar canciones',
+    testid: 'album-order',
+    className: 'dialog-edit',
+    render: (body, close) => {
+      const order = [...original];
+      const submit = saveAction('album-order-save', close, saveOrganize, 'Guardar orden');
+      const live = el('p', { class: 'sr-only', 'aria-live': 'polite', 'data-testid': 'album-order-live' });
+      const list = el('ol', { class: 'order-list', 'aria-label': `Orden de ${folder.name}`, 'data-testid': 'album-order-list' });
+
+      const refresh = () => {
+        if (original.length > max) return submit.blocked(`Este álbum tiene más de ${max} canciones: no se puede ordenar desde aquí.`);
+        if (order.every((song, index) => song === original[index])) return submit.blocked('Sube o baja alguna canción para cambiar el orden.');
+        const payload = { op: 'order_album', folder_id: folder.id, song_ids: order.map((song) => song.id) };
+        const problem = validateOperation(payload);
+        return problem ? submit.blocked(problem) : submit.ready(payload);
+      };
+
+      const moveButton = (song, index, direction) => {
+        const up = direction < 0;
+        const edge = up ? index === 0 : index === order.length - 1;
+        return el('button', {
+          type: 'button',
+          class: 'icon-button order-move',
+          'aria-label': `${up ? 'Subir' : 'Bajar'} «${song.title}»`,
+          'aria-disabled': edge ? 'true' : 'false',
+          'data-testid': up ? 'album-order-up' : 'album-order-down',
+          'data-song-id': song.id,
+          on: { click: () => move(song, direction) },
+        }, icon(up ? 'chevron-up' : 'chevron-down', { size: 20 }));
+      };
+
+      const paint = () => {
+        list.replaceChildren(...order.map((song, index) => el('li', {
+          class: 'order-row',
+          'data-testid': 'album-order-row',
+          'data-song-id': song.id,
+        },
+        el('span', { class: 'order-num', 'aria-hidden': 'true' }, String(index + 1)),
+        songCoverNode(ctx, song, 'track-cover'),
+        el('span', { class: 'track-text' },
+          el('span', { class: 'add-title' }, song.title),
+          el('span', { class: 'track-artist' }, ctx.artistOf(song))),
+        el('span', { class: 'order-actions' }, moveButton(song, index, -1), moveButton(song, index, 1)))));
+      };
+
+      // Mueve la canción un puesto y deja el foco en el mismo botón (o en el otro, si llegó al borde).
+      function move(song, direction) {
+        const index = order.indexOf(song);
+        const target = index + direction;
+        if (index < 0 || target < 0 || target >= order.length) return;
+        [order[index], order[target]] = [order[target], order[index]];
+        paint();
+        refresh();
+        live.textContent = `«${song.title}» ahora es la ${target + 1} de ${order.length}.`;
+        const testid = direction < 0 ? 'album-order-up' : 'album-order-down';
+        const other = direction < 0 ? 'album-order-down' : 'album-order-up';
+        const row = list.querySelector(`[data-testid="album-order-row"][data-song-id="${song.id}"]`);
+        const same = row?.querySelector(`[data-testid="${testid}"]`);
+        (same?.getAttribute('aria-disabled') === 'true' ? row?.querySelector(`[data-testid="${other}"]`) : same)?.focus();
+      }
+
+      paint();
+      refresh();
+      body.append(
+        el('p', { class: 'dialog-text' }, `Usa «Subir» y «Bajar» para cambiar el orden de «${folder.name}». El orden nuevo llega a todos.`),
+        original.length > max
+          ? el('p', { class: 'field-error', 'data-testid': 'album-order-too-many' }, `Este álbum tiene más de ${max} canciones: no se puede ordenar desde aquí.`)
+          : list,
+        live,
+        editNote(),
+        el('div', { class: 'dialog-actions' }, submit.status, submit.button));
+    },
+    initialFocus: (dialog) => dialog.querySelector('[data-testid="album-order-down"]') ?? dialog.querySelector('button'),
   });
 }
 

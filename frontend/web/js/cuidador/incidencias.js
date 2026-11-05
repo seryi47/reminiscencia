@@ -8,7 +8,9 @@
 // también acepta download/<identificador>). Este módulo no toca el DOM: la hoja «Subir canciones» (js/views/upload.js)
 // usa evaluateImportForm y buildIssueUrl, y las hojas de edición (js/views/edit.js) usan buildOrganizeIssueUrl para
 // «Editar detalles» de una canción o de un álbum, «Añadir a un álbum», «Quitar de este álbum», «Añadir canciones» a
-// un álbum (move_songs, varias canciones en una sola petición) y «Crear álbum». Las carpetas del catálogo se
+// un álbum y «Quitar del álbum» o «Mover a otro álbum» de la selección múltiple (move_songs, varias canciones en una
+// sola petición), «Ordenar canciones» (order_album, la lista completa del álbum en el orden nuevo; ADR-0026) y
+// «Crear álbum». Las carpetas del catálogo se
 // llaman «Álbumes» en toda la interfaz; el contrato conserva sus nombres (create_folder, edit_folder, folder_id).
 // La carpeta js/cuidador/ conserva su nombre por las referencias de la documentación (CLAUDE.md, ADR-0005 y
 // ADR-0008); ya no hay modo cuidador (ADR-0015).
@@ -40,6 +42,9 @@ export const REQUEST_LIMITS = Object.freeze({
   issueTitle: 120,
   // move_songs: canciones distintas por petición (de 1 a 100).
   moveSongs: 100,
+  // order_album: canciones de un álbum que se pueden ordenar en una petición (de 1 a 190; caben en los 4000
+  // caracteres del payload, ADR-0026).
+  orderSongs: 190,
 });
 
 // Copia de BLOCKED_HOSTS en backend/sonidos/sources.py (ADR-0005), la misma lista que intake.js de main. Cada entrada
@@ -99,6 +104,8 @@ const OPERATIONS = Object.freeze({
   }),
   // Varias canciones a un álbum (o fuera de su álbum, con folder_id null) en una sola incidencia.
   move_songs: Object.freeze({ required: Object.freeze(['song_ids', 'folder_id']), optional: Object.freeze([]) }),
+  // El orden nuevo de un álbum: la lista completa y exacta de sus canciones (el backend lo comprueba al aplicarla).
+  order_album: Object.freeze({ required: Object.freeze(['folder_id', 'song_ids']), optional: Object.freeze([]) }),
 });
 
 // Textos de validación. Van junto al campo que los produce; ninguno repite lo que escribió la persona.
@@ -370,6 +377,19 @@ export function validateOperation(payload) {
       if (new Set(ids).size !== ids.length) return 'Hay canciones repetidas en la lista.';
       return folderRefProblem(payload.folder_id, { nullable: true });
     }
+    case 'order_album': {
+      const folderProblem = folderRefProblem(payload.folder_id);
+      if (folderProblem) return folderProblem;
+      const ids = payload.song_ids;
+      if (!Array.isArray(ids)) return 'Las canciones (song_ids) deben ser una lista.';
+      if (ids.length === 0) return 'El álbum no tiene canciones que ordenar.';
+      if (ids.length > REQUEST_LIMITS.orderSongs) return `Se pueden ordenar ${REQUEST_LIMITS.orderSongs} canciones como mucho.`;
+      for (const id of ids) {
+        const problem = songRefProblem(id);
+        if (problem) return problem;
+      }
+      return new Set(ids).size === ids.length ? null : 'Hay canciones repetidas en el orden.';
+    }
     default: {
       const problem = songRefProblem(payload.song_id);
       if (problem) return problem;
@@ -477,6 +497,8 @@ export function buildIssueTitle(request) {
         ? `Quitar ${songs} de su álbum`
         : `Añadir ${songs} al álbum ${payload.folder_id}`);
     }
+    case 'order_album':
+      return cleanIssueTitle(`Ordenar el álbum ${payload.folder_id}`);
     default:
       return FALLBACK_TITLE;
   }

@@ -63,10 +63,10 @@ enum UploadStage {
   failed,
 }
 
-/// Temporizador periódico. Se sustituye en pruebas.
 /// Revisa las canciones de una tanda antes de ponerlas en la cola y devuelve las posiciones que no se suben.
 typedef UploadReview = Future<Set<int>> Function(List<PickedAudioFile> songs);
 
+/// Temporizador periódico. Se sustituye en pruebas.
 typedef PeriodicTimerFactory =
     Timer Function(Duration period, void Function() onTick);
 

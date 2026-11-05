@@ -2,10 +2,13 @@
 // Spotify: cabecera con degradado del color dominante de la portada, portada de 232 px, tipo («Álbum», «Lista»),
 // título enorme (hasta 96 px) y metadatos («Artista • 1928 • 8 canciones, 23 min 10 s»); barra de acciones
 // (reproducir de 56 px, aleatorio, «Me gusta», descargar y «···») y tabla con cabecera fija.
+// En un álbum, además: modo «Seleccionar» (casillas, contador, todo o ninguna, «Quitar del álbum» y «Mover a otro
+// álbum», una petición por acción) y «Ordenar canciones» en «···» (ADR-0026). Las canciones de un álbum ya llegan en su
+// orden (número de pista; catalog.js, songsInFolder).
 
 import { filterSongs, formatTotalDuration, searchCatalog, songCountText, titleSize, totalDuration } from '../catalog.js';
 import { paintCoverColor } from '../cover-color.js';
-import { isCoverFolderId } from '../cuidador/incidencias.js';
+import { isCoverFolderId, REQUEST_LIMITS } from '../cuidador/incidencias.js';
 import { el, iconButton, openMenu } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { collectionCard, contextCover, DOT, playButton, shelf, songCoverNode, trackTable, viaDialog } from './components.js';
@@ -73,6 +76,9 @@ export function renderCollection(main, ctx, contextId) {
     return;
   }
   const { songs } = context;
+  const editable = context.kind === 'album' ? songs.filter((song) => ctx.isEditableSong(song)) : [];
+  const selecting = context.kind === 'album' && editable.length > 0 && ctx.state.albumSelection?.folderId === context.folder.id;
+  if (!selecting) ctx.state.albumSelection = null;
   const editDetails = context.kind === 'album'
     ? () => ctx.editAlbum(context.folder)
     : context.kind === 'playlist' ? () => ctx.editPlaylist(context.playlist.id) : null;
@@ -107,6 +113,16 @@ export function renderCollection(main, ctx, contextId) {
     const downloadable = songs.filter((song) => !song.local);
     if (downloadable.length > 0) actions.append(downloadButton(ctx, contextId, downloadable));
   }
+  if (editable.length > 0 && !selecting) {
+    actions.append(el('button', {
+      type: 'button',
+      class: 'button button-outline button-small album-select-button',
+      'aria-label': `Seleccionar canciones de ${context.title}`,
+      'data-testid': 'album-select',
+      'data-key': 'album-select',
+      on: { click: () => ctx.startAlbumSelection(context.folder.id) },
+    }, icon('check', { size: 16 }), 'Seleccionar'));
+  }
   const menuItems = collectionMenuItems(ctx, context, editDetails);
   if (menuItems.length > 0) {
     const more = iconButton('more', `Más opciones para ${context.title}`, {
@@ -124,7 +140,9 @@ export function renderCollection(main, ctx, contextId) {
   if (context.subfolders?.length > 0) {
     body.push(shelf({ title: 'Álbumes', testid: 'subfolders', items: context.subfolders.map((item) => collectionCard(ctx, item)) }));
   }
-  if (songs.length > 0) {
+  if (selecting) {
+    body.push(selectionPanel(ctx, context, editable));
+  } else if (songs.length > 0) {
     const tableOptions = {
       contextId,
       playlistId: context.kind === 'playlist' ? context.playlist.id : null,
@@ -144,7 +162,7 @@ export function renderCollection(main, ctx, contextId) {
   }
   if (context.kind === 'playlist') body.push(addSongsSection(ctx, context));
   // En un álbum, «Añadir canciones» abre el buscador con casillas (también está en «···»).
-  if (context.kind === 'album') {
+  if (context.kind === 'album' && !selecting) {
     body.push(el('div', { class: 'album-add' },
       el('button', {
         type: 'button',
@@ -168,6 +186,14 @@ function collectionMenuItems(ctx, context, editDetails) {
   }
   if (context.kind === 'album') {
     items.push({ label: 'Añadir canciones', icon: 'plus', testid: 'menu-album-add-songs', action: viaDialog(() => ctx.addSongsToAlbum(context.folder)) });
+    const editable = context.songs.filter((song) => ctx.isEditableSong(song));
+    if (editable.length > 0) {
+      items.push({ label: 'Seleccionar canciones', icon: 'check', testid: 'menu-album-select', action: () => ctx.startAlbumSelection(context.folder.id) });
+    }
+    // Ordenar solo tiene sentido con dos canciones o más.
+    if (editable.length >= 2) {
+      items.push({ label: 'Ordenar canciones', icon: 'sort', testid: 'menu-album-order', action: viaDialog(() => ctx.orderAlbum(context.folder)) });
+    }
   }
   if (editDetails) items.push({ label: 'Editar detalles', icon: 'pencil', testid: 'menu-edit-details', action: viaDialog(editDetails) });
   // Solo los álbumes de la forma nueva (F + 16 hexadecimales) admiten portada.
@@ -178,6 +204,79 @@ function collectionMenuItems(ctx, context, editDetails) {
     items.push({ label: 'Borrar la lista', icon: 'trash', testid: 'menu-delete-playlist', action: viaDialog(() => ctx.deletePlaylist(context.playlist.id)) });
   }
   return items;
+}
+
+const chosenText = (count) => {
+  if (count === 0) return 'Ninguna canción elegida.';
+  const text = count === 1 ? '1 canción elegida' : `${count} canciones elegidas`;
+  return count > REQUEST_LIMITS.moveSongs ? `${text}: como mucho ${REQUEST_LIMITS.moveSongs} de una vez.` : `${text}.`;
+};
+
+/**
+ * Modo «Seleccionar» de un álbum: una casilla por canción de la biblioteca común, contador, «Seleccionar todo» y
+ * «Ninguna», y las acciones «Quitar del álbum» y «Mover a otro álbum» (una sola petición move_songs cada una, con las
+ * canciones en el orden del álbum). Marcar una casilla no vuelve a pintar la página: el foco se queda donde está.
+ */
+function selectionPanel(ctx, context, editable) {
+  const folder = context.folder;
+  const selection = ctx.state.albumSelection;
+  const valid = new Set(editable.map((song) => song.id));
+  for (const id of [...selection.ids]) if (!valid.has(id)) selection.ids.delete(id);
+  const chosen = () => editable.filter((song) => selection.ids.has(song.id)).map((song) => song.id);
+
+  const count = el('p', { class: 'pick-count select-count', role: 'status', 'data-testid': 'album-select-count' });
+  const button = (testid, label, iconName, action) => el('button', {
+    type: 'button',
+    class: 'button button-outline button-small',
+    'data-testid': testid,
+    'data-key': testid,
+    on: { click: (event) => { if (event.currentTarget.getAttribute('aria-disabled') !== 'true') action(); } },
+  }, iconName ? icon(iconName, { size: 16 }) : null, label);
+  const all = button('album-select-all', 'Seleccionar todo', null, () => setAll(true));
+  const none = button('album-select-none', 'Ninguna', null, () => setAll(false));
+  const remove = button('album-select-remove', 'Quitar del álbum', 'trash', () => ctx.removeSongsFromAlbum(folder, chosen()));
+  const move = button('album-select-move', 'Mover a otro álbum', 'album', () => ctx.moveSongsToAlbum(folder, chosen()));
+  const cancel = button('album-select-cancel', 'Cancelar', 'close', () => ctx.endAlbumSelection());
+  const boxes = [];
+
+  const update = () => {
+    const total = selection.ids.size;
+    count.textContent = chosenText(total);
+    const blocked = total === 0 || total > REQUEST_LIMITS.moveSongs;
+    remove.setAttribute('aria-disabled', blocked ? 'true' : 'false');
+    move.setAttribute('aria-disabled', blocked ? 'true' : 'false');
+    all.setAttribute('aria-disabled', total === editable.length ? 'true' : 'false');
+    none.setAttribute('aria-disabled', total === 0 ? 'true' : 'false');
+    for (const box of boxes) box.checked = selection.ids.has(box.dataset.songId);
+  };
+  function setAll(on) {
+    if (on) editable.forEach((song) => selection.ids.add(song.id));
+    else selection.ids.clear();
+    update();
+  }
+
+  const list = el('ul', { class: 'select-list', 'aria-label': `Canciones de ${context.title}`, 'data-testid': 'album-select-list' },
+    editable.map((song) => {
+      const boxId = `elegir-${song.id}`;
+      const box = el('input', { type: 'checkbox', id: boxId, 'data-testid': 'album-select-check', 'data-song-id': song.id, 'data-key': `select:${song.id}` });
+      box.addEventListener('change', () => {
+        if (box.checked) selection.ids.add(song.id);
+        else selection.ids.delete(song.id);
+        update();
+      });
+      boxes.push(box);
+      return el('li', {},
+        el('label', { class: 'add-row pick-row', for: boxId, 'data-testid': 'album-select-option', 'data-song-id': song.id },
+          box,
+          songCoverNode(ctx, song, 'track-cover'),
+          el('span', { class: 'track-text' },
+            el('span', { class: 'add-title' }, song.title),
+            el('span', { class: 'track-artist' }, ctx.artistOf(song)))));
+    }));
+  update();
+  return el('section', { class: 'album-select', 'aria-label': `Seleccionar canciones de ${context.title}`, 'data-testid': 'album-select-panel' },
+    el('div', { class: 'select-bar' }, count, el('div', { class: 'select-actions' }, all, none, remove, move, cancel)),
+    list);
 }
 
 function emptyText(kind) {

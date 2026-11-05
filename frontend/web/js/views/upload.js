@@ -8,6 +8,9 @@
 //   las subidas siguen. Ni esta hoja ni la web conocen ningún token.
 // - ZIP: la app saca del ZIP sus canciones de audio (subida-zip.js y zip.js) y la hoja las pinta en un grupo, con la
 //   cabecera «Álbum.zip: 12 canciones», lo que se ignoró y una fila por canción. El ZIP no se sube nunca.
+// - Posibles duplicados (ADR-0026): antes de poner los archivos en la cola, cada uno se compara con la biblioteca y con
+//   los anteriores de la misma tanda (js/duplicates.js); si se parece a otro, se pregunta con askDuplicate: «Parece que
+//   ya está en la biblioteca: «X» (3:21). ¿Subirla igualmente?», con «Subir igualmente» y «Quitar de la cola».
 // - Las canciones guardadas antes solo en este navegador (ADR-0012) siguen sonando y se pueden borrar desde aquí.
 // - «Importar desde Internet Archive»: prepara una incidencia de importación con la validación de incidencias.js y de
 //   intake.js (la misma lista de bloqueo de 42 plataformas que el backend; ADR-0008).
@@ -220,7 +223,8 @@ function uploadPanel(ctx, openArchive) {
     const files = [...input.files];
     input.value = '';
     if (files.length === 0) return;
-    ctx.addUploads(files);
+    // Antes de la cola, se avisa de lo que parece estar ya en la biblioteca (ADR-0026).
+    ctx.addUploads(files, { checkDuplicates: true });
   });
 
   const uploads = ctx.uploads;
@@ -242,6 +246,27 @@ function uploadPanel(ctx, openArchive) {
     el('button', { type: 'button', class: 'button button-text upload-archive-link', 'data-testid': 'upload-open-archive', on: { click: openArchive } },
       icon('archive', { size: 20 }), 'Importar desde Internet Archive'));
   return { node, cleanup: unsubscribe };
+}
+
+/**
+ * Pregunta por un archivo que parece duplicado. Resuelve true con «Subir igualmente» (también si se cierra sin elegir:
+ * solo es un aviso) y false con «Quitar de la cola».
+ */
+export async function askDuplicate({ name, message }) {
+  const result = await openDialog({
+    title: 'Posible duplicado',
+    testid: 'duplicate-dialog',
+    render: (body, close) => {
+      body.append(
+        el('p', { class: 'dialog-text upload-item-name', 'data-testid': 'duplicate-file' }, name),
+        el('p', { class: 'dialog-text', 'data-testid': 'duplicate-message' }, message),
+        el('div', { class: 'dialog-actions' },
+          el('button', { type: 'button', class: 'button button-secondary', 'data-testid': 'duplicate-drop', on: { click: () => close(false) } }, 'Quitar de la cola'),
+          el('button', { type: 'button', class: 'button button-primary', 'data-testid': 'duplicate-keep', on: { click: () => close(true) } }, 'Subir igualmente')));
+    },
+    initialFocus: (dialog) => dialog.querySelector('[data-testid="duplicate-keep"]'),
+  });
+  return result !== false;
 }
 
 // ---------------------------------------------------------------------------

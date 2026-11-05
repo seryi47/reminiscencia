@@ -38,6 +38,7 @@ import {
 } from './cuidador/subida-local.js';
 import { sendOpus } from './cuidador/subida-publica.js';
 import { expandSelection } from './cuidador/subida-zip.js';
+import { duplicateMessage, findUploadDuplicates } from './duplicates.js';
 import {
   activeCount,
   createUploadTracker,
@@ -55,16 +56,19 @@ import {
   openEditAlbumSheet,
   openEditSongSheet,
   openAddSongsToAlbumSheet,
+  openMoveSongsToAlbumSheet,
   openMoveToAlbumSheet,
+  openOrderAlbumSheet,
   openPlaylistEditor,
   openRemoveFromAlbumSheet,
+  openRemoveSongsFromAlbumSheet,
 } from './views/edit.js';
 import { renderHome } from './views/home.js';
 import { refreshSearchResults, renderSearch } from './views/search.js';
 import { renderCollection } from './views/collection.js';
 import { libraryPanel, renderLibraryPage, renderSection } from './views/library.js';
 import { mountPlayerUi } from './views/player-ui.js';
-import { openUploadSheet } from './views/upload.js';
+import { askDuplicate, openUploadSheet } from './views/upload.js';
 import { openHomeostasiaSheet } from './views/homeostasia.js';
 
 const DATA_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
@@ -123,6 +127,8 @@ const state = {
   searchQuery: '',
   searchFilter: 'todo',
   addQuery: '',
+  // Modo «Seleccionar» de un álbum: { folderId, ids: Set } o null.
+  albumSelection: null,
   route: { name: 'inicio', id: null },
   ready: false,
 };
@@ -752,6 +758,8 @@ function renderSidebar() {
 /** Pinta la pantalla activa y «Tu biblioteca», conservando el foco y el desplazamiento si la ruta no cambia. */
 function render({ routeChanged = false } = {}) {
   closeMenu({ restoreFocus: false });
+  // El modo «Seleccionar» de un álbum no sobrevive a un cambio de página.
+  if (routeChanged) state.albumSelection = null;
   const active = document.activeElement;
   const focusKey = active?.closest?.('[data-key]')?.dataset.key ?? null;
   const selection = active && 'selectionStart' in active && typeof active.selectionStart === 'number'
@@ -943,6 +951,20 @@ const ctx = {
     return folder ? openRemoveFromAlbumSheet(ctx, song, folder) : null;
   },
   addSongsToAlbum: (folder) => openAddSongsToAlbumSheet(ctx, folder),
+  // Modo «Seleccionar» de la página de un álbum (ADR-0026).
+  startAlbumSelection: (folderId) => {
+    state.albumSelection = { folderId, ids: new Set() };
+    render();
+    focusByKey('album-select-all');
+  },
+  endAlbumSelection: () => {
+    state.albumSelection = null;
+    render();
+    focusByKey('album-select');
+  },
+  removeSongsFromAlbum: (folder, songIds) => openRemoveSongsFromAlbumSheet(ctx, folder, songIds, { onDone: () => ctx.endAlbumSelection() }),
+  moveSongsToAlbum: (folder, songIds) => openMoveSongsToAlbumSheet(ctx, folder, songIds, { onDone: () => ctx.endAlbumSelection() }),
+  orderAlbum: (folder) => openOrderAlbumSheet(ctx, folder),
   createAlbum: () => openCreateAlbumSheet(ctx),
   editAlbum: (folder) => openEditAlbumSheet(ctx, folder),
   changeCover: (target) => openCoverSheet(ctx, target),
@@ -1102,12 +1124,67 @@ let pendingSelection = Promise.resolve();
  * Archivos elegidos en la hoja: a la cola de subidas, con el título del nombre del archivo. Cada ZIP se abre aquí (solo
  * su directorio) y cada canción suya entra como una subida de su grupo (subida-zip.js); el ZIP no se sube.
  */
-function addUploads(files, { album = null, trackArtists = [] } = {}) {
+function addUploads(files, { album = null, trackArtists = [], checkDuplicates = false } = {}) {
   requestPersistence();
   const list = Array.from(files ?? []);
-  const run = pendingSelection.then(async () => uploads.addSources(await expandSelection(list), { album, trackArtists }));
+  const run = pendingSelection.then(async () => {
+    const sources = await expandSelection(list);
+    if (!checkDuplicates) return uploads.addSources(sources, { album, trackArtists });
+    const keep = await reviewDuplicates(sources);
+    const artists = trackArtists.length === sources.length ? trackArtists.filter((_, index) => keep[index]) : [];
+    return uploads.addSources(sources.filter((_, index) => keep[index]), { album, trackArtists: artists });
+  });
   pendingSelection = run.catch((error) => console.error('Reminiscencia: fallo al preparar la selección de archivos.', error));
   return run;
+}
+
+// Archivos más grandes no se decodifican solo para saber su duración (la conversión los rechaza igual).
+const PROBE_MAX_BYTES = 60 * 1024 * 1024;
+const PROBE_TIMEOUT_MS = 8000;
+
+/**
+ * Duración en segundos de un archivo de audio elegido, o null si no se sabe. Se decodifica con Web Audio (sin URL
+ * blob:, que la política de contenido no admite en media-src). Las canciones de un ZIP no se abren aquí: sin duración,
+ * la regla de duplicados compara el título y el artista.
+ */
+async function probeDurationS(file) {
+  const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
+  if (!AudioContextClass || typeof Blob === 'undefined' || !(file instanceof Blob) || file.size > PROBE_MAX_BYTES) return null;
+  let audioContext = null;
+  try {
+    audioContext = new AudioContextClass();
+    const decoded = await Promise.race([
+      file.arrayBuffer().then((data) => audioContext.decodeAudioData(data)),
+      new Promise((resolve) => { setTimeout(() => resolve(null), PROBE_TIMEOUT_MS); }),
+    ]);
+    return decoded && Number.isFinite(decoded.duration) && decoded.duration > 0 ? decoded.duration : null;
+  } catch {
+    return null;
+  } finally {
+    audioContext?.close?.().catch(() => {});
+  }
+}
+
+/**
+ * Aviso de posibles duplicados antes de poner archivos en la cola (ADR-0026): cada archivo se compara con la
+ * biblioteca y con los anteriores de la misma tanda (js/duplicates.js). Por cada parecido se pregunta «Subir
+ * igualmente» o «Quitar de la cola». Devuelve, por posición, si el archivo se sube.
+ */
+async function reviewDuplicates(sources) {
+  const keep = sources.map(() => true);
+  const positions = [];
+  const batch = [];
+  for (const [index, source] of sources.entries()) {
+    if (source?.error || !source?.file) continue;
+    positions.push(index);
+    batch.push({ title: source.title ?? '', artist: source.artist ?? '', durationS: await probeDurationS(source.file) });
+  }
+  const library = state.catalog.songs.map((song) => ({ title: song.title, artist: song.artist, durationS: song.durationS }));
+  for (const found of findUploadDuplicates(batch, library)) {
+    const index = positions[found.index];
+    keep[index] = await askDuplicate({ name: sources[index].name, message: duplicateMessage(found) });
+  }
+  return keep;
 }
 
 // ---------------------------------------------------------------------------
