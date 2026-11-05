@@ -10,9 +10,15 @@ import 'app_error.dart';
 const String kLibraryRepo = 'seryi47/reminiscencia';
 const String kLibraryIssueLabel = 'biblioteca';
 
-/// Límites (en caracteres) que la app valida antes de enviar el cambio.
+/// Límites (en caracteres) que la app valida antes de enviar el cambio. Son los del backend
+/// (backend/sonidos/issue_request.py) y los comprueba tests/contrato/peticiones.json.
 const int kMaxAlbumNameLength = 80;
+
+/// Artista de un álbum.
 const int kMaxArtistLength = 80;
+
+/// Artista de una canción: como en el backend (catalog.SONG_ARTIST_MAX_CHARS), 200, no los 80 del álbum.
+const int kMaxSongArtistLength = 200;
 const int kMaxSongTitleLength = 200;
 const int kMaxIssueTitleLength = 120;
 
@@ -37,6 +43,37 @@ final RegExp _control = RegExp(
   unicode: true,
 );
 
+// Espacios que el backend quita a los lados de un texto (str.strip de Python). No es lo mismo que trim() de Dart:
+// Python quita además U+001C a U+001F y no quita U+FEFF.
+const Set<int> _backendSpaces = {
+  0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x85, 0xa0, //
+  0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, //
+  0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+};
+
+/// El texto sin los espacios que quita el backend al principio y al final.
+String stripLikeBackend(String text) {
+  final runes = text.runes.toList();
+  var start = 0;
+  var end = runes.length;
+  while (start < end && _backendSpaces.contains(runes[start])) {
+    start++;
+  }
+  while (end > start && _backendSpaces.contains(runes[end - 1])) {
+    end--;
+  }
+  return String.fromCharCodes(runes.sublist(start, end));
+}
+
+/// Una petición que el backend rechazaría. [code] y [field] son los del backend (RequestError de issue_request.py) y
+/// los que comparan los casos de tests/contrato/peticiones.json; [message] es el texto que ve la persona.
+class LibraryRequestException extends AppException {
+  const LibraryRequestException(super.message, this.code, [this.field]);
+
+  final String code;
+  final String? field;
+}
+
 bool isCatalogSongId(String id) => _songId.hasMatch(id);
 bool isCatalogFolderId(String id) => _folderId.hasMatch(id);
 
@@ -45,26 +82,38 @@ bool isCatalogFolderId(String id) => _folderId.hasMatch(id);
 bool canChangeCatalogCover(String id) =>
     _songId.hasMatch(id) || _newFolderId.hasMatch(id);
 
-/// Valida un texto de una sola línea: sin saltos ni caracteres de control, recortado y con [min] a [max] caracteres.
-/// Devuelve el texto limpio o lanza AppException con el motivo.
+/// Valida un texto de una sola línea como el backend (_text): sin los espacios de los lados, sin caracteres de
+/// control y con [min] a [max] caracteres. Devuelve el texto limpio o lanza [LibraryRequestException] con el motivo.
+/// [field] es el nombre que ve la persona; [key], el campo del payload.
 String cleanRequestText(
   String raw, {
   required String field,
   required int min,
   required int max,
+  String? key,
 }) {
-  if (_control.hasMatch(raw)) {
-    throw AppException(
+  final clean = stripLikeBackend(raw);
+  if (_control.hasMatch(clean)) {
+    throw LibraryRequestException(
       '$field debe ir en una sola línea, sin caracteres especiales.',
+      'control_chars',
+      key,
     );
   }
-  final clean = raw.trim();
   final length = clean.runes.length;
   if (length < min) {
-    throw AppException('$field no puede quedar en blanco.');
+    throw LibraryRequestException(
+      '$field no puede quedar en blanco.',
+      'empty_text',
+      key,
+    );
   }
   if (length > max) {
-    throw AppException('$field no puede tener más de $max caracteres.');
+    throw LibraryRequestException(
+      '$field no puede tener más de $max caracteres.',
+      'too_long',
+      key,
+    );
   }
   return clean;
 }
@@ -74,22 +123,65 @@ String _albumName(String raw) => cleanRequestText(
   field: 'El nombre del álbum',
   min: 1,
   max: kMaxAlbumNameLength,
+  key: 'name',
 );
 
-String _artist(String raw) =>
-    cleanRequestText(raw, field: 'El artista', min: 0, max: kMaxArtistLength);
+String _albumArtist(String raw) => cleanRequestText(
+  raw,
+  field: 'El artista',
+  min: 0,
+  max: kMaxArtistLength,
+  key: 'artist',
+);
 
-void _checkSong(String songId) {
+String _songArtist(String raw) => cleanRequestText(
+  raw,
+  field: 'El artista',
+  min: 0,
+  max: kMaxSongArtistLength,
+  key: 'artist',
+);
+
+void _checkSong(String songId, {String key = 'song_id'}) {
   if (!isCatalogSongId(songId)) {
-    throw const AppException(
+    throw LibraryRequestException(
       'Solo se pueden editar las canciones de la biblioteca común.',
+      'invalid_song_id',
+      key,
     );
   }
 }
 
 void _checkFolder(String folderId, {String field = 'El álbum'}) {
   if (!isCatalogFolderId(folderId)) {
-    throw AppException('$field no es un álbum de la biblioteca común.');
+    throw LibraryRequestException(
+      '$field no es un álbum de la biblioteca común.',
+      'invalid_folder_id',
+      'folder_id',
+    );
+  }
+}
+
+/// Lista de canciones de «move_songs» y «order_album», en el orden del backend (_song_ids): de 1 a [max], todas
+/// válidas y sin repetir.
+void _checkSongIds(
+  List<String> songIds,
+  int max, {
+  required String empty,
+  required String tooMany,
+  required String repeated,
+}) {
+  if (songIds.isEmpty) {
+    throw LibraryRequestException(empty, 'song_ids_empty', 'song_ids');
+  }
+  if (songIds.length > max) {
+    throw LibraryRequestException(tooMany, 'song_ids_too_many', 'song_ids');
+  }
+  for (final id in songIds) {
+    _checkSong(id, key: 'song_ids');
+  }
+  if (songIds.toSet().length != songIds.length) {
+    throw LibraryRequestException(repeated, 'duplicate_song_ids', 'song_ids');
   }
 }
 
@@ -109,12 +201,13 @@ class LibraryRequest {
       field: 'El título',
       min: 1,
       max: kMaxSongTitleLength,
+      key: 'title',
     );
     return LibraryRequest._('Editar la canción $songId', {
       'op': 'edit_song',
       'song_id': songId,
       'title': cleanTitle,
-      'artist': _artist(artist),
+      'artist': _songArtist(artist),
     });
   }
 
@@ -145,18 +238,14 @@ class LibraryRequest {
     required String? folderId,
     String albumName = '',
   }) {
-    if (songIds.isEmpty) {
-      throw const AppException('Elige al menos una canción.');
-    }
-    if (songIds.length > kMaxMoveSongs) {
-      throw const AppException(
-        'Se pueden mover $kMaxMoveSongs canciones como mucho de una vez.',
-      );
-    }
-    if (songIds.toSet().length != songIds.length) {
-      throw const AppException('Hay canciones repetidas en la selección.');
-    }
-    songIds.forEach(_checkSong);
+    _checkSongIds(
+      songIds,
+      kMaxMoveSongs,
+      empty: 'Elige al menos una canción.',
+      tooMany:
+          'Se pueden mover $kMaxMoveSongs canciones como mucho de una vez.',
+      repeated: 'Hay canciones repetidas en la selección.',
+    );
     if (folderId != null) _checkFolder(folderId);
     final count = songIds.length;
     final songs = count == 1 ? '1 canción' : '$count canciones';
@@ -184,18 +273,13 @@ class LibraryRequest {
     String albumName = '',
   }) {
     _checkFolder(folderId);
-    if (songIds.isEmpty) {
-      throw const AppException('El álbum no tiene canciones que ordenar.');
-    }
-    if (songIds.length > kMaxOrderSongs) {
-      throw const AppException(
-        'Se pueden ordenar $kMaxOrderSongs canciones como mucho.',
-      );
-    }
-    if (songIds.toSet().length != songIds.length) {
-      throw const AppException('Hay canciones repetidas en el orden.');
-    }
-    songIds.forEach(_checkSong);
+    _checkSongIds(
+      songIds,
+      kMaxOrderSongs,
+      empty: 'El álbum no tiene canciones que ordenar.',
+      tooMany: 'Se pueden ordenar $kMaxOrderSongs canciones como mucho.',
+      repeated: 'Hay canciones repetidas en el orden.',
+    );
     final name = albumName.trim();
     return LibraryRequest._(
       name.isEmpty ? 'Ordenar el álbum $folderId' : 'Ordenar el álbum «$name»',
@@ -216,7 +300,7 @@ class LibraryRequest {
     return LibraryRequest._('Crear el álbum «$cleanName»', {
       'op': 'create_folder',
       'name': cleanName,
-      'artist': _artist(artist),
+      'artist': _albumArtist(artist),
     });
   }
 
@@ -231,14 +315,15 @@ class LibraryRequest {
       'op': 'edit_folder',
       'folder_id': folderId,
       'name': _albumName(name),
-      'artist': _artist(artist),
+      'artist': _albumArtist(artist),
     });
   }
 
   final String title;
   final Map<String, Object?> payload;
 
-  /// Cuerpo de la incidencia con el formato de las peticiones.
+  /// Cuerpo de la incidencia con el formato de las peticiones: «action: organize» y el payload en JSON compacto en una
+  /// sola línea, igual que buildIssueBody de la web (tests/contrato/peticiones.json).
   String get body => 'action: organize\npayload: ${jsonEncode(payload)}';
 }
 

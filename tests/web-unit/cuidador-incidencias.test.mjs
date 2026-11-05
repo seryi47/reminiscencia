@@ -312,7 +312,7 @@ describe('edición de canciones y álbumes', () => {
       assert.deepEqual(payloadOf(buildOrganizeIssueUrl(payload)), payload);
       assert.equal(buildIssueTitle({ action: 'organize', payload }), `Editar el álbum ${folderId}`);
     }
-    assert.match(validateOperation({ op: 'edit_folder', folder_id: NEW_FOLDER }), /al menos un campo que cambiar en el álbum/);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: NEW_FOLDER }), /Falta el campo name/);
     assert.match(validateOperation({ op: 'edit_folder', name: 'Valses' }), /Falta el campo folder_id/);
     assert.match(validateOperation({ op: 'edit_folder', folder_id: NEW_FOLDER, name: 'x', cover: 'covers/x.jpg' }), /no está permitido/);
   });

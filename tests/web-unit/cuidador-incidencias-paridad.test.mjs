@@ -139,12 +139,14 @@ describe('álbumes: identificadores y textos (issue_request.py de feat/portadas-
 
   test('nombre del álbum de 1 a 80 caracteres y artista de 0 a 80, en una línea', () => {
     assert.equal(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'x'.repeat(80), artist: 'y'.repeat(80) }), null);
-    assert.equal(validateOperation({ op: 'edit_folder', folder_id: '0123456789', artist: '' }), null);
+    // Como en el backend, edit_folder lleva siempre el nombre (antes la web lo daba por opcional).
+    assert.equal(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'Valses', artist: '' }), null);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', artist: '' }), /Falta el campo name/);
     assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'x'.repeat(81) }), /80 caracteres/);
-    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', artist: 'y'.repeat(81) }), /80 caracteres/);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'Valses', artist: 'y'.repeat(81) }), /80 caracteres/);
     assert.match(validateOperation({ op: 'create_folder', name: 'Valses', artist: 'y'.repeat(81) }), /80 caracteres/);
     assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'Val\u2028ses' }), /saltos de línea/);
     assert.match(validateOperation({ op: 'create_folder', name: 'Valses', artist: 'Or\nquesta' }), /saltos de línea/);
-    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', artist: 5 }), /debe ser texto/);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: '0123456789', name: 'Valses', artist: 5 }), /debe ser texto/);
   });
 });

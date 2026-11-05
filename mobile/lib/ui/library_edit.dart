@@ -62,7 +62,7 @@ Future<void> editSongDetailsFlow(
         RequestField(
           label: 'Artista',
           initial: song.artist,
-          maxLength: kMaxArtistLength,
+          maxLength: kMaxSongArtistLength,
         ),
       ],
       build: (values) => LibraryRequest.editSong(
