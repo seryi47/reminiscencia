@@ -1,0 +1,12 @@
+# Configuración de actionlint (https://github.com/rhysd/actionlint/blob/main/docs/config.md).
+#
+# `concurrency.queue` existe: GitHub lo añadió el 2026-05-07 («GitHub Actions concurrency groups now allow larger
+# queues») y está documentado en «Control the concurrency of workflows and jobs». Con `queue: max`, hasta 100
+# ejecuciones esperan en el grupo en vez de cancelarse la que esperaba cuando llega otra. buzon.yml y biblioteca.yml lo
+# necesitan para no perder subidas ni peticiones. actionlint 1.7.12 (la última versión, 2026-03-30) aún no conoce la
+# clave (rhysd/actionlint#657, PR #654 sin publicar): solo se ignora ese aviso, nada más del bloque concurrency.
+# Quitar esta excepción cuando una versión de actionlint acepte `queue`.
+paths:
+  .github/workflows/{buzon,biblioteca}.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -52,9 +53,31 @@ http.Response errorReply(int status, String message) =>
 PickedAudioFile picked(String name) =>
     PickedAudioFile(name: name, path: '/origen/$name');
 
-/// Deja terminar la E/S real (escrituras del índice, ficheros).
-Future<void> settleIo() =>
-    Future<void>.delayed(const Duration(milliseconds: 60));
+/// Disco lento: cada escritura del índice tarda [delay]. Antes, las pruebas dormían 60 ms y daban por hecho que el
+/// índice ya estaba escrito; con el runner de CI cargado no siempre era así.
+class SlowUploadsStore extends UploadsStore {
+  SlowUploadsStore({super.root, required this.delay});
+
+  final Duration delay;
+
+  @override
+  Future<void> write(List<UploadEntry> entries) async {
+    await Future<void>.delayed(delay);
+    return super.write(entries);
+  }
+}
+
+/// Espera, como mucho 10 s, a que se cumpla [condition]. Es para el trabajo que la biblioteca lanza sin esperar
+/// (recargarse al publicarse una canción, borrar la copia local) y que no se puede esperar desde fuera.
+Future<void> until(FutureOr<bool> Function() condition) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 10));
+  while (!await condition()) {
+    if (DateTime.now().isAfter(deadline)) {
+      fail('la condición no se cumplió en 10 s');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
 
 void main() {
   late Directory work;
@@ -66,6 +89,15 @@ void main() {
   late CountingConverter converter;
   late http.Response Function(int n) reply;
   late bool online;
+  late List<UploadTracker> trackers;
+
+  /// Espera a que los rastreadores de la prueba terminen lo que lanzaron sin esperar (comprobaciones y escrituras
+  /// del índice). Sin tiempos fijos: con el runner cargado, 60 ms no bastaban y se leía un índice antiguo.
+  Future<void> settle() async {
+    for (final t in trackers) {
+      await t.idle();
+    }
+  }
 
   setUp(() async {
     work = await Directory.systemTemp.createTemp('subida_tracker');
@@ -77,11 +109,12 @@ void main() {
     converter = CountingConverter();
     reply = (_) => okReply();
     online = true;
+    trackers = [];
   });
 
   tearDown(() async {
-    // Deja terminar las escrituras del índice que siguen en marcha.
-    await settleIo();
+    // Deja terminar las escrituras del índice que siguen en marcha: si no, el borrado choca con ellas.
+    await settle();
     if (await work.exists()) await work.delete(recursive: true);
   });
 
@@ -101,17 +134,24 @@ void main() {
 
   UploadsStore store() => UploadsStore(root: () async => storeDir);
 
+  UploadTracker track(UploadTracker t) {
+    trackers.add(t);
+    return t;
+  }
+
   UploadTracker tracker({
     int chunkBytes = kUploadChunkBytes,
     List<UploadEntry>? publishedLog,
-  }) => UploadTracker(
-    uploader: uploader(chunkBytes: chunkBytes),
-    published: published,
-    store: store(),
-    clock: () => now,
-    timer: timers.call,
-    random: Random(5),
-    onPublished: publishedLog?.add,
+  }) => track(
+    UploadTracker(
+      uploader: uploader(chunkBytes: chunkBytes),
+      published: published,
+      store: store(),
+      clock: () => now,
+      timer: timers.call,
+      random: Random(5),
+      onPublished: publishedLog?.add,
+    ),
   );
 
   group('estados', () {
@@ -249,7 +289,7 @@ void main() {
         t.notices.listen(notices.add);
 
         await t.start([picked('Charleston.mp3')]);
-        await settleIo();
+        await settle();
 
         final entry = t.entries.single;
         expect(entry.stage, UploadStage.saved);
@@ -259,13 +299,13 @@ void main() {
 
         // Primera comprobación: solo está la «Charleston» que ya había (mismo título, id conocido).
         timers.fire();
-        await settleIo();
+        await settle();
         expect(entry.stage, UploadStage.publishing);
         expect(published.fetches, 2, reason: 'la de antes de subir y esta');
 
         published.songs.add(const PublishedSong('S9', '  charleston '));
         timers.fire();
-        await settleIo();
+        await settle();
 
         expect(entry.stage, UploadStage.published);
         expect(entry.publishedId, 'S9');
@@ -282,17 +322,55 @@ void main() {
     );
 
     test(
+      'con el disco lento, idle() espera a que el índice guardado refleje lo que se ve',
+      () async {
+        UploadTracker slowTracker() => track(
+          UploadTracker(
+            uploader: uploader(),
+            published: published,
+            store: SlowUploadsStore(
+              root: () async => storeDir,
+              delay: const Duration(milliseconds: 250),
+            ),
+            clock: () => now,
+            timer: timers.call,
+            random: Random(5),
+          ),
+        );
+
+        final first = slowTracker();
+        await first.start([picked('Lenta.mp3')]);
+        await first.idle();
+        first.dispose();
+
+        // Otra instancia (la app al volver a abrirse) recupera la subida del índice.
+        timers = FakePollTimer();
+        final second = slowTracker();
+        await second.restore();
+        await second.idle();
+        expect(second.entries.single.title, 'Lenta');
+
+        published.songs.add(const PublishedSong('S9', 'Lenta'));
+        timers.fire();
+        await second.idle();
+        expect(second.entries.single.stage, UploadStage.published);
+        expect(await store().read(), isEmpty);
+        second.dispose();
+      },
+    );
+
+    test(
       'dos archivos con el mismo título se quedan cada uno con la suya',
       () async {
         final t = tracker();
         await t.start([picked('Tango.mp3'), picked('Tango.wav')]);
-        await settleIo();
+        await settle();
         published.songs.addAll(const [
           PublishedSong('S20', 'Tango'),
           PublishedSong('S21', 'Tango'),
         ]);
         timers.fire();
-        await settleIo();
+        await settle();
         expect(t.entries.map((e) => e.publishedId), ['S20', 'S21']);
         expect(t.summary, '2 de 2 publicadas');
         t.dispose();
@@ -304,14 +382,14 @@ void main() {
       () async {
         final t = tracker();
         await t.start([picked('Lenta.mp3')]);
-        await settleIo();
+        await settle();
         timers.fire();
-        await settleIo();
+        await settle();
         expect(t.entries.single.stage, UploadStage.publishing);
 
         now = now.add(const Duration(minutes: 10));
         timers.fire();
-        await settleIo();
+        await settle();
 
         final entry = t.entries.single;
         expect(entry.stage, UploadStage.slow);
@@ -343,16 +421,16 @@ void main() {
     test('un fallo al leer songs.json no corta la comprobación', () async {
       final t = tracker();
       await t.start([picked('Uno.mp3')]);
-      await settleIo();
+      await settle();
       published.error = const SocketException('sin red');
       timers.fire();
-      await settleIo();
+      await settle();
       expect(t.entries.single.stage, UploadStage.publishing);
       expect(timers.active, hasLength(1));
       published.error = null;
       published.songs.add(const PublishedSong('S2', 'Uno'));
       timers.fire();
-      await settleIo();
+      await settle();
       expect(t.entries.single.stage, UploadStage.published);
       t.dispose();
     });
@@ -488,7 +566,7 @@ void main() {
       () async {
         final t = tracker();
         await t.start([picked('Uno.mp3')]);
-        await settleIo();
+        await settle();
         expect(timers.active, hasLength(1));
 
         t.setForeground(false);
@@ -496,12 +574,12 @@ void main() {
         final fetches = published.fetches;
         timers.fire();
         await t.checkNow();
-        await settleIo();
+        await settle();
         expect(published.fetches, fetches, reason: 'nada en segundo plano');
 
         published.songs.add(const PublishedSong('S5', 'Uno'));
         t.setForeground(true);
-        await settleIo();
+        await settle();
         expect(published.fetches, fetches + 1);
         expect(t.entries.single.stage, UploadStage.published);
         expect(timers.active, isEmpty);
@@ -532,9 +610,9 @@ void main() {
             artist: 'Desakato',
           ),
         ]);
-        await settleIo();
+        await settle();
         timers.fire();
-        await settleIo();
+        await settle();
 
         final entry = t.entries.single;
         expect(entry.stage, UploadStage.published);
@@ -570,9 +648,9 @@ void main() {
           artist: 'Desakato',
         ),
       ]);
-      await settleIo();
+      await settle();
       timers.fire();
-      await settleIo();
+      await settle();
 
       expect(t.entries.single.stage, UploadStage.publishing);
       t.dispose();
@@ -583,7 +661,7 @@ void main() {
       () async {
         final t = tracker();
         await t.start([picked('Otro nombre.mp3')]);
-        await settleIo();
+        await settle();
         final path = t.entries.single.opusPath!;
         final digest = sha256
             .convert(await File(path).readAsBytes())
@@ -593,7 +671,7 @@ void main() {
           PublishedSong('S${digest.substring(0, 16)}', 'Título distinto'),
         ];
         timers.fire();
-        await settleIo();
+        await settle();
 
         final entry = t.entries.single;
         expect(entry.stage, UploadStage.published);
@@ -607,11 +685,11 @@ void main() {
       () async {
         final t = tracker();
         await t.start([picked('Uno.mp3')]);
-        await settleIo();
+        await settle();
         t.setForeground(false);
         now = now.add(const Duration(minutes: 12));
         t.setForeground(true);
-        await settleIo();
+        await settle();
         expect(t.entries.single.stage, UploadStage.slow);
         expect(timers.active, isNotEmpty);
         t.dispose();
@@ -623,7 +701,7 @@ void main() {
       () async {
         final first = tracker();
         await first.start([picked('Uno.mp3')]);
-        await settleIo();
+        await settle();
         final key = first.entries.single.key;
         first.dispose();
         // Un Opus que ya no es de ninguna subida se borra al recuperar.
@@ -632,7 +710,7 @@ void main() {
         timers = FakePollTimer();
         final second = tracker();
         await second.restore();
-        await settleIo();
+        await settle();
 
         final entry = second.entries.single;
         expect(entry.key, key);
@@ -646,7 +724,7 @@ void main() {
 
         published.songs.add(const PublishedSong('S7', 'Uno'));
         timers.fire();
-        await settleIo();
+        await settle();
         expect(entry.stage, UploadStage.published);
         second.dispose();
       },
@@ -678,6 +756,7 @@ void main() {
           clock: () => now,
         );
         final library = t.services.library;
+        track(library.uploads);
         await library.load();
         List<Song>? recentWhileSending;
         reply = (_) {
@@ -686,7 +765,7 @@ void main() {
         };
 
         await library.uploadShared([picked('Vals nuevo.mp3')]);
-        await settleIo();
+        await settle();
 
         expect(recentWhileSending!.first.title, 'Vals nuevo');
         expect(recentWhileSending!.first.uploadStatus, kPublishingLabel);
@@ -707,7 +786,9 @@ void main() {
           catalogSong('S2', 'Vals nuevo'),
         ];
         timers.fire();
-        await settleIo();
+        await settle();
+        // La recarga de la biblioteca al publicarse va sin esperar: se espera a que llegue, no un tiempo fijo.
+        await until(() => library.songs.length == 2);
 
         // La biblioteca se sincronizó sola: la pública sustituye a la provisional.
         expect(library.songs.map((s) => s.id), ['S1', 'S2']);
@@ -720,7 +801,7 @@ void main() {
 
         // Al pasar a otra canción, la copia local se borra.
         await library.playSong(library.songs.first);
-        await settleIo();
+        await until(() async => !await opus.exists());
         expect(await opus.exists(), isFalse);
         library.dispose();
       },
@@ -736,6 +817,7 @@ void main() {
         pollTimer: timers.call,
       );
       final library = t.services.library;
+      track(library.uploads);
       await library.load();
       await library.uploadShared([picked('Mala.mp3')]);
       final song = library.recentSongs().first;

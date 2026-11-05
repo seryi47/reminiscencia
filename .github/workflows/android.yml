@@ -1,6 +1,9 @@
 name: android
 
 # Analiza, prueba, compila y publica la app Android (mobile/). Procedimiento: docs/android/RELEASE.md.
+#   - Push a main o pull request que toque mobile/, scripts/android/ o este workflow: análisis, pruebas y APK
+#     de depuración. Es la única comprobación de la app (backend.yml ya no la repite). Sin APK de producción.
+#     Los pushes hechos por otros workflows con GITHUB_TOKEN no lanzan workflows, pero ninguno toca mobile/.
 #   - Ejecución manual (workflow_dispatch): análisis, pruebas y APK de depuración. Si están los secretos
 #     de firma, también el APK de producción. No publica nada.
 #   - Etiqueta android-vX.Y.Z: lo anterior y, además, la release de GitHub con el APK de depuración, los tres
@@ -11,18 +14,31 @@ name: android
 
 on:
   workflow_dispatch:
+  # Los filtros de rutas no se aplican a las etiquetas: android-v* siempre lanza la publicación.
   push:
+    branches: [main]
     tags:
       - "android-v*"
+    paths:
+      - "mobile/**"
+      - "scripts/android/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "scripts/android/**"
+      - ".github/workflows/android.yml"
 
 # Permisos mínimos: solo el job de publicación puede escribir en el repositorio.
 permissions:
   contents: read
 
-# Una ejecución cada vez por ref: evita dos publicaciones simultáneas de la misma etiqueta.
+# Una ejecución cada vez por ref: evita dos publicaciones simultáneas de la misma etiqueta. En main no se cancela
+# la que está en marcha; si llegan varios pushes seguidos, solo espera el último, que ya incluye los anteriores.
+# En un pull request, un envío nuevo cancela la comprobación anterior.
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Huella SHA-256 del certificado de firma de producción. Es un dato público (va en cada APK firmado),
@@ -39,6 +55,8 @@ jobs:
       nombre: ${{ steps.version.outputs.nombre }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Versión de la app
         id: version
@@ -112,6 +130,8 @@ jobs:
   produccion:
     name: Producción
     needs: depurar
+    # Solo a mano o con etiqueta: en cada push o pull request basta con el APK de depuración.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/android-v')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

@@ -263,10 +263,13 @@ function fakeStorage(initial = {}) {
   };
 }
 
+// Gestores creados por setup(): settle() espera a que terminen lo que lanzaron sin esperar.
+const live = new Set();
+
 const settle = async () => {
-  // Pasos de reloj real además de microtareas: en un ejecutor lento (CI) 30 setImmediate no bastaban.
-  for (let i = 0; i < 30; i += 1) await new Promise((resolve) => setImmediate(resolve));
-  for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+  // Sin vueltas fijas al bucle de eventos: el id de contenido (crypto.subtle.digest) termina en otro hilo y en un
+  // ejecutor lento (CI) ni 30 setImmediate ni 20 setTimeout bastaban siempre.
+  for (const tracker of live) await tracker.idle();
 };
 
 class FakeUploadError extends Error {
@@ -314,6 +317,7 @@ function setup({ songs = [{ id: 'S1', title: 'Tono de prueba' }], send, storage 
     setTimer: timers.setTimer,
     clearTimer: timers.clearTimer,
   });
+  live.add(tracker);
   const history = [];
   tracker.subscribe((items) => history.push(items.map((item) => `${item.name}:${statusText(item)}`)));
   return { tracker, timers, clock, server, calls, history, storage };
@@ -336,6 +340,28 @@ describe('gestor de subidas', () => {
     assert.equal(calls.send[0].artist, 'Desakato');
     assert.deepEqual(JSON.parse(storage.getItem(STORAGE_KEY)).items[0].album, album);
     assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)).items[0].artist, 'Desakato');
+  });
+
+  test('con el id de contenido lento (CI cargada), settle espera a que la subida quede guardada', async () => {
+    // crypto.subtle.digest termina en otro hilo: con el ejecutor cargado tarda lo que tarde. Antes, settle daba un
+    // número fijo de vueltas al bucle de eventos y a veces miraba el estado antes de tiempo.
+    const subtle = globalThis.crypto.subtle;
+    const digest = subtle.digest;
+    subtle.digest = async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return digest.apply(subtle, args);
+    };
+    try {
+      const { tracker, calls } = setup();
+      tracker.add([{ name: 'Lenta.wav' }], { titleOf: () => 'Lenta' });
+      await settle();
+      assert.deepEqual(states(tracker), [S.SAVED]);
+      assert.equal(calls.send.length, 1);
+    } finally {
+      // La propia de la instancia tapa la del prototipo: al borrarla vuelve la original.
+      delete subtle.digest;
+      assert.equal(subtle.digest, digest);
+    }
   });
 
   test('una subida pasa por todos los pasos y se da por publicada solo cuando songs.json trae un id nuevo con su título', async () => {
@@ -619,10 +645,13 @@ describe('gestor de subidas', () => {
 
   test('busy dice si hay archivos convirtiéndose o subiéndose', async () => {
     let release;
-    const { tracker } = setup({ send: () => new Promise((resolve) => { release = resolve; }) });
+    let sending;
+    const started = new Promise((resolve) => { sending = resolve; });
+    const { tracker } = setup({ send: () => new Promise((resolve) => { release = resolve; sending(); }) });
     assert.equal(tracker.busy(), false);
     tracker.add([{ name: 'a.wav' }], { titleOf: () => 'a' });
-    await settle();
+    // El envío queda colgado hasta release(): settle() esperaría para siempre. Basta con que haya empezado.
+    await started;
     assert.equal(tracker.busy(), true);
     release({ nombre: 'a.opus' });
     await settle();

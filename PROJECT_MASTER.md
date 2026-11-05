@@ -89,7 +89,7 @@ Numeración: `ADR-0009` es la interfaz única y `ADR-0010` el procesado y la pub
 | Experimento de compresión objetivo (`scripts/compression/`, `research-data/compression/`) | Hecho el 2026-10-31 con cinco grabaciones de dominio público: tamaño, tasa, tiempos, SNR y LSD. Sin pruebas perceptuales | `scripts/compression/test_metrics.py`; no lo ejecuta el CI de `backend.yml` |
 | Prueba perceptual de compresión (MUSHRA) | **No iniciada** | — |
 | Perfiles de pacientes y datos personales | **Retirado** (ADR-0015): la web y la APK no guardan perfiles, recuerdos, fotografías, observaciones ni registro del estudio | — |
-| Integración continua (GitHub Actions) | En verde en `main`: `backend.yml` (Python 3.12 y 3.13, Flutter y límites; sin pruebas web), `web.yml`, `web-e2e.yml`, `biblioteca.yml` y `buzon.yml`. `android.yml` sin ejecutar | Ver los workflows |
+| Integración continua (GitHub Actions) | En verde en `main`: `backend.yml` (Python 3.12 y 3.13 y límites; sin pruebas web ni de Flutter, que corren en `android.yml` con cada cambio de `mobile/`), `web.yml`, `web-e2e.yml`, `biblioteca.yml` y `buzon.yml`. `android.yml` pasó a mano el 2026-11-04 (ejecución 41801316025); también corre con cada push a `main` que toque `mobile/` | Ver los workflows |
 
 ## Presupuesto
 

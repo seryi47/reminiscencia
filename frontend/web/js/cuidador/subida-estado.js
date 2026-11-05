@@ -435,6 +435,16 @@ export function createUploadTracker(deps = {}) {
   const pauseTimers = new Set();
   let disposed = false;
   let storedSignature = null;
+  // Trabajo lanzado sin esperar (subir la cola, comprobar songs.json, resolver errores): idle() espera a que acabe.
+  const background = new Set();
+
+  function inBackground(work) {
+    const running = Promise.resolve(work).finally(() => background.delete(running));
+    background.add(running);
+    // El error ya se trata dentro de cada tarea; aquí solo se evita un rechazo sin manejar.
+    running.catch(() => {});
+    return running;
+  }
 
   const snapshot = () => entries.map((entry) => ({ ...entry.item }));
 
@@ -564,7 +574,7 @@ export function createUploadTracker(deps = {}) {
     if (disposed || pollTimer !== null || polling) return;
     pollTimer = setTimer(() => {
       pollTimer = null;
-      check();
+      inBackground(check());
     }, delay);
   }
 
@@ -715,7 +725,7 @@ export function createUploadTracker(deps = {}) {
       keys.push(key);
     }
     if (keys.length > 0) emit();
-    pump();
+    inBackground(pump());
     return keys;
   }
 
@@ -736,7 +746,7 @@ export function createUploadTracker(deps = {}) {
     retry(key) {
       const entry = find(key);
       if (!entry || !dispatch(entry, { type: 'retry' })) return false;
-      pump();
+      inBackground(pump());
       return true;
     },
     /**
@@ -758,8 +768,8 @@ export function createUploadTracker(deps = {}) {
         entries.push({ item: { ...item, state: S.ERROR, error: INTERRUPTED_TEXT, retryable: true }, file: null, bytes: null });
       }
       emit();
-      if (entries.some((entry) => WAITING_STATES.includes(entry.item.state) || entry.item.state === S.SLOW)) check();
-      resolveFailed();
+      if (entries.some((entry) => WAITING_STATES.includes(entry.item.state) || entry.item.state === S.SLOW)) inBackground(check());
+      inBackground(resolveFailed());
     },
     /** Estado de una subida por el id de su copia local, o null. */
     byLocalId(localId) {
@@ -769,7 +779,14 @@ export function createUploadTracker(deps = {}) {
     /** ¿Hay archivos convirtiéndose o subiéndose? (perderlos al cerrar la página sí importa). */
     busy: () => entries.some((entry) => [S.QUEUED, S.CONVERTING, S.SENDING].includes(entry.item.state)),
     /** Comprueba songs.json ahora mismo (pruebas y vuelta a la pestaña). */
-    checkNow: () => check(),
+    checkNow: () => inBackground(check()),
+    /**
+     * Termina cuando no queda trabajo en segundo plano, también el que lance ese mismo trabajo (no espera a los
+     * temporizadores pendientes). Las pruebas lo esperan en vez de dar un número fijo de vueltas al bucle.
+     */
+    async idle() {
+      while (background.size > 0) await Promise.allSettled([...background]);
+    },
     dispose() {
       disposed = true;
       if (pollTimer !== null) clearTimer(pollTimer);

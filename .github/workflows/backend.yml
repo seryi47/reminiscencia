@@ -32,25 +32,8 @@ jobs:
       - name: Ejecutar pruebas
         run: python -m pytest -q
 
-  app-flutter:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.44.9"
-          channel: stable
-      - name: Dependencias
-        run: flutter pub get
-      - name: Análisis estático
-        run: flutter analyze
-      - name: Pruebas
-        run: flutter test
+  # La app Flutter (análisis, pruebas y APK de depuración) se comprueba en android.yml, que corre cuando cambia
+  # mobile/. Aquí se ejecutaba en cada push, también en las subidas de canciones, y nunca compilaba el APK.
 
   limites-repositorio:
     runs-on: ubuntu-latest

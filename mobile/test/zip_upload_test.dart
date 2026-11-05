@@ -45,41 +45,50 @@ void main() {
   late Directory origin;
   late List<http.Request> requests;
   late RecordingConverter converter;
+  late List<UploadTracker> trackers;
 
   setUp(() async {
     work = await Directory.systemTemp.createTemp('subida_zip');
     origin = Directory('${work.path}/origen')..createSync();
     requests = [];
     converter = RecordingConverter();
+    trackers = [];
   });
 
   tearDown(() async {
-    await Future<void>.delayed(const Duration(milliseconds: 60));
+    // Deja terminar las escrituras del índice que siguen en marcha: si no, el borrado choca con ellas.
+    for (final t in trackers) {
+      await t.idle();
+    }
     if (await work.exists()) await work.delete(recursive: true);
   });
 
   Directory tmp() => Directory('${work.path}/tmp');
 
-  UploadTracker tracker() => UploadTracker(
-    uploader: SharedUploader(
-      client: MockClient((request) async {
-        requests.add(request);
-        return http.Response(
-          jsonEncode({'ok': true, 'ruta': 'r', 'nombre': 'n'}),
-          200,
-        );
-      }),
-      converter: converter,
-      hasConnection: () async => true,
-      workDir: () async => tmp(),
-      retryDelay: Duration.zero,
-      random: Random(3),
-    ),
-    published: FakePublishedSongs(),
-    store: UploadsStore(root: () async => Directory('${work.path}/subidas')),
-    timer: FakePollTimer().call,
-    random: Random(5),
-  );
+  UploadTracker tracker() {
+    final t = UploadTracker(
+      uploader: SharedUploader(
+        client: MockClient((request) async {
+          requests.add(request);
+          return http.Response(
+            jsonEncode({'ok': true, 'ruta': 'r', 'nombre': 'n'}),
+            200,
+          );
+        }),
+        converter: converter,
+        hasConnection: () async => true,
+        workDir: () async => tmp(),
+        retryDelay: Duration.zero,
+        random: Random(3),
+      ),
+      published: FakePublishedSongs(),
+      store: UploadsStore(root: () async => Directory('${work.path}/subidas')),
+      timer: FakePollTimer().call,
+      random: Random(5),
+    );
+    trackers.add(t);
+    return t;
+  }
 
   test(
     'varios ZIP mezclados con sueltas: cada canción se sube con su nombre base y los temporales se borran',
@@ -232,7 +241,8 @@ void main() {
     );
     final first = tracker();
     await first.start([PickedAudioFile(name: 'Álbum.zip', path: zip.path)]);
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    // El índice se termina de escribir en segundo plano: se espera a que acabe, no un tiempo fijo.
+    await first.idle();
     first.dispose();
 
     final again = tracker();
