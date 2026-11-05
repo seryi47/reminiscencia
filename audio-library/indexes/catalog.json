@@ -3270,6 +3270,54 @@
       "size_bytes": 1172714,
       "added_at": "2026-11-05T13:46:53+00:00",
       "public": false
+    },
+    {
+      "id": "S9b335713c866fdff",
+      "title": "BAD BUNNY - MONACO (Official Video) nadie sabe lo que va a pasar mañana",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "9b335713c866fdff0c471ce8015fe202a7faaa977f49b139a4e7a70563951e54",
+      "duration_s": 439.932,
+      "codec": "opus",
+      "size_bytes": 2823455,
+      "added_at": "2026-11-05T14:54:47+00:00",
+      "public": true
+    },
+    {
+      "id": "Sa6aaea52da7a56d5",
+      "title": "BAD BUNNY - NUEVAYoL (Video Oficial) DeBÍ TiRAR MáS FOToS",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "a6aaea52da7a56d5f296f6d120adde7425c19e2d6ebfcb5a65f3b7e9c642b134",
+      "duration_s": 223.429,
+      "codec": "opus",
+      "size_bytes": 1411107,
+      "added_at": "2026-11-05T14:54:52+00:00",
+      "public": true
+    },
+    {
+      "id": "Sb66b9022a5740b8d",
+      "title": "Bad Bunny - Yonaguni (Video Oficial)",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "b66b9022a5740b8d1264fbfa0e0b185f6197cea9cdfe4e504bbcbe8f09f27120",
+      "duration_s": 211.018,
+      "codec": "opus",
+      "size_bytes": 1496237,
+      "added_at": "2026-11-05T14:54:55+00:00",
+      "public": true
     }
   ]
 }
