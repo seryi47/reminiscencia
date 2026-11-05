@@ -3238,6 +3238,22 @@
       "size_bytes": 2049833,
       "added_at": "2026-11-05T11:30:35+00:00",
       "public": true
+    },
+    {
+      "id": "Sd6f31b71eac6f8c2",
+      "title": "Ray Heredia - Alegría de Vivir (Audio Oficial)",
+      "artist": "",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "d6f31b71eac6f8c2dfe0cd402e6326168c0fc3e5dec20e8d3309751e39876c6f",
+      "duration_s": 230.813,
+      "codec": "opus",
+      "size_bytes": 1393765,
+      "added_at": "2026-11-05T12:06:34+00:00",
+      "public": true
     }
   ]
 }
