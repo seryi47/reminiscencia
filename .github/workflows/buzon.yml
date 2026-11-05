@@ -47,6 +47,7 @@ jobs:
         shell: bash
     outputs:
       permitido: ${{ steps.permiso.outputs.permitido }}
+      pendiente: ${{ steps.pendiente.outputs.pendiente }}
     steps:
       # Sin checkout: este job no ejecuta código del repositorio. Solo consulta el permiso.
       - name: Comprobar el permiso de quien sube
@@ -74,9 +75,36 @@ jobs:
             exit 1
           fi
 
+      # Cada subida lanza un run, pero el primero ya procesa todo lo que hay en main. Los runs que llegan después
+      # de que el buzón se vaciara no tienen nada que hacer: se omiten procesar y publicar (sin ffmpeg ni commits).
+      # Se mira main ahora, no el evento. Se cuentan los archivos del buzón y los manifiestos de partes.
+      - name: Comprobar si queda algo pendiente en el buzón
+        id: pendiente
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! ARBOL=$(gh api "repos/$GITHUB_REPOSITORY/git/trees/main?recursive=1"); then
+            echo "No se pudo leer main: se procesa por si acaso."
+            echo "pendiente=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TRUNCADO=$(jq -r '.truncated' <<<"$ARBOL")
+          N=$(jq -r '[.tree[] | select(.type == "blob") | .path
+            | select(startswith("audio-library/buzon/"))
+            | select(. != "audio-library/buzon/README.md" and . != "audio-library/buzon/.gitkeep"
+                     and . != "audio-library/buzon/portadas/.gitkeep")
+            | select((startswith("audio-library/buzon/.partes/") | not) or endswith("/manifiesto.json"))] | length' <<<"$ARBOL")
+          echo "Elementos pendientes en el buzón: $N (árbol truncado: $TRUNCADO)"
+          if [ "$N" -gt 0 ] || [ "$TRUNCADO" = "true" ]; then
+            echo "pendiente=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pendiente=false" >> "$GITHUB_OUTPUT"
+            echo "El buzón ya está vacío: un run anterior procesó esta subida." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   procesar:
     needs: autorizar
-    if: needs.autorizar.outputs.permitido == 'true'
+    if: needs.autorizar.outputs.permitido == 'true' && needs.autorizar.outputs.pendiente == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -133,7 +161,7 @@ jobs:
 
   publicar:
     needs: [autorizar, procesar]
-    if: needs.autorizar.outputs.permitido == 'true'
+    if: needs.autorizar.outputs.permitido == 'true' && needs.autorizar.outputs.pendiente == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

@@ -87,7 +87,7 @@ def test_processing_and_publishing_need_the_authorization():
     assert "needs: autorizar\n" in procesar
     assert "needs: [autorizar, procesar]" in publicar
     for block in (procesar, publicar):
-        assert "if: needs.autorizar.outputs.permitido == 'true'" in block
+        assert "if: needs.autorizar.outputs.permitido == 'true' && needs.autorizar.outputs.pendiente == 'true'" in block
         assert "always()" not in block
 
 
@@ -175,3 +175,13 @@ def test_the_library_workflow_is_unchanged_in_its_shape():
 def test_the_mailbox_folder_exists_with_its_readme():
     # Sin comprobar que esté vacío: entre una subida y su procesado, el buzón de main tiene audio.
     assert (ROOT / "audio-library" / "buzon" / "README.md").is_file()
+
+
+def test_runs_with_an_empty_mailbox_skip_processing_and_publishing():
+    autorizar, _, _ = _jobs(_text())
+    assert "pendiente: ${{ steps.pendiente.outputs.pendiente }}" in autorizar
+    assert "git/trees/main?recursive=1" in autorizar
+    assert 'echo "pendiente=false"' in autorizar
+    # Si no se puede leer main o el árbol viene truncado, se procesa: nunca se pierde una subida por la comprobación.
+    assert 'echo "pendiente=true"' in autorizar
+    assert 'TRUNCADO" = "true"' in autorizar
