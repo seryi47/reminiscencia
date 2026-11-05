@@ -15,6 +15,7 @@ class Song {
     this.cover,
     this.local = false,
     this.uploadStatus,
+    this.track,
   });
 
   final String id;
@@ -39,6 +40,9 @@ class Song {
   /// («Publicándose…» o «Error»). Suena desde su copia Opus local. Null en el resto de canciones.
   final String? uploadStatus;
 
+  /// Número de pista dentro de su álbum (ADR-0026): entero desde 1. Null si no tiene álbum o el catálogo no lo trae.
+  final int? track;
+
   /// True si es una subida que todavía no se ha publicado.
   bool get provisional => uploadStatus != null;
 
@@ -56,8 +60,27 @@ class Song {
       license: (json['license'] as String?) ?? '',
       audio: json['audio'] as String,
       cover: cleanCoverPath(json['cover']),
+      track: cleanTrack(json['track']),
     );
   }
+}
+
+/// Número de pista válido (entero desde 1) o null. Un 2.0, un texto o un booleano no valen.
+int? cleanTrack(Object? value) => value is int && value >= 1 ? value : null;
+
+/// Canciones de un álbum en su orden (ADR-0026): primero las que tienen número de pista, de menor a mayor (a igualdad,
+/// en el orden en que llegan), y después las que no lo tienen, en el orden en que llegan (el de hoy).
+List<Song> sortByTrack(Iterable<Song> songs) {
+  final indexed = songs.toList().asMap().entries.toList();
+  indexed.sort((a, b) {
+    final ta = a.value.track;
+    final tb = b.value.track;
+    if (ta != null && tb != null && ta != tb) return ta.compareTo(tb);
+    if (ta != null && tb == null) return -1;
+    if (ta == null && tb != null) return 1;
+    return a.key.compareTo(b.key);
+  });
+  return [for (final entry in indexed) entry.value];
 }
 
 /// Álbum del catálogo (https://reminiscencia.vercel.app/data/folders.json). En los datos se llama «carpeta» (folder).

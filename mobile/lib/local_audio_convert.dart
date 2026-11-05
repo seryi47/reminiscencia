@@ -114,3 +114,17 @@ class _Probe {
   final double durationS;
   final int channels;
 }
+
+/// Duración de un archivo de audio en segundos, o null si no se puede leer. La usa el aviso de duplicados de
+/// «Subir canciones» antes de poner los archivos en la cola (ADR-0026); un fallo nunca impide subir.
+Future<double?> probeAudioDurationS(String path) async {
+  try {
+    final session = await FFprobeKit.getMediaInformation(path);
+    final value = double.tryParse(
+      session.getMediaInformation()?.getDuration() ?? '',
+    );
+    return value != null && value.isFinite && value > 0 ? value : null;
+  } catch (_) {
+    return null;
+  }
+}

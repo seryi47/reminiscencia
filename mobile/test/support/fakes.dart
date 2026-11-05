@@ -358,6 +358,7 @@ buildTestServices({
   DateTime Function()? clock,
   YoutubeImporter? youtube,
   YoutubeStreamResolver? streamResolver,
+  AudioDurationProbe? probeDuration,
 }) {
   final source = FakeLibrarySource(
     songs: songs,
@@ -408,6 +409,7 @@ buildTestServices({
     },
     pickImage: pickImage ?? () async => null,
     pickAudio: pickAudio ?? () async => const [],
+    probeDuration: probeDuration ?? (_) async => null,
     youtube: youtube,
     streamResolver: streamResolver,
     clock: () => now ?? DateTime(2026, 11, 3, 10),

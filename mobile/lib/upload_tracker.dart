@@ -64,6 +64,9 @@ enum UploadStage {
 }
 
 /// Temporizador periódico. Se sustituye en pruebas.
+/// Revisa las canciones de una tanda antes de ponerlas en la cola y devuelve las posiciones que no se suben.
+typedef UploadReview = Future<Set<int>> Function(List<PickedAudioFile> songs);
+
 typedef PeriodicTimerFactory =
     Timer Function(Duration period, void Function() onTick);
 
@@ -568,7 +571,13 @@ class UploadTracker extends ChangeNotifier {
   /// Un ZIP no se sube: se leen sus canciones (también las de subcarpetas) y cada una se sube como si se hubiera
   /// elegida suelta, con su nombre base como título. Si un ZIP está dañado o cifrado, su grupo lleva el error y
   /// las demás siguen.
-  Future<SharedUploadResult> start(List<PickedAudioFile> files) async {
+  ///
+  /// [review] (opcional) recibe las canciones de la tanda, ya sacadas de los ZIP, antes de ponerlas en la cola, y
+  /// devuelve las posiciones que no se suben (por ejemplo, las que parecen repetidas y la persona quita; ADR-0026).
+  Future<SharedUploadResult> start(
+    List<PickedAudioFile> files, {
+    UploadReview? review,
+  }) async {
     final shared = uploader;
     if (shared == null) {
       throw const AppException(
@@ -605,6 +614,33 @@ class UploadTracker extends ChangeNotifier {
         layout.add(entry.key);
         batch.add(entry);
         songs.add(file);
+      }
+      if (review != null && songs.isNotEmpty) {
+        final dropped = await review(List.unmodifiable(songs));
+        if (dropped.isNotEmpty) {
+          final droppedKeys = {
+            for (final index in dropped)
+              if (index >= 0 && index < batch.length) batch[index].key,
+          };
+          final keptGroups = <String>{};
+          final emptiedGroups = <String>{};
+          for (var i = batch.length - 1; i >= 0; i--) {
+            final group = batch[i].groupKey;
+            if (droppedKeys.contains(batch[i].key)) {
+              if (group != null) emptiedGroups.add(group);
+              batch.removeAt(i);
+              songs.removeAt(i);
+            } else if (group != null) {
+              keptGroups.add(group);
+            }
+          }
+          // Un ZIP al que no le queda ninguna canción no deja un grupo vacío en la lista.
+          emptiedGroups.removeAll(keptGroups);
+          layout.removeWhere(
+            (key) => droppedKeys.contains(key) || emptiedGroups.contains(key),
+          );
+          emptiedGroups.forEach(_groups.remove);
+        }
       }
     } finally {
       _busy = false;

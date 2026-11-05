@@ -84,6 +84,7 @@ Future<void> main() async {
         settings: settings,
         youtube: YoutubeImporter(client: client),
         streamResolver: ExplodeStreamResolver(),
+        probeDuration: probeAudioDurationS,
       ),
     ),
   );
