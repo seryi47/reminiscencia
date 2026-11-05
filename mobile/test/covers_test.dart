@@ -6,18 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reminiscencia/covers.dart';
 import 'package:reminiscencia/library_controller.dart';
-import 'package:reminiscencia/network.dart';
 import 'package:reminiscencia/offline_choice.dart';
 import 'package:reminiscencia/song.dart';
 
 import 'support/fakes.dart';
-
-class _Wifi implements NetworkInfo {
-  _Wifi(this.value);
-  bool value;
-  @override
-  Future<bool> onUnmeteredNetwork() async => value;
-}
 
 class _Offline implements OfflineChoice {
   _Offline(this.value);
@@ -306,26 +298,16 @@ void main() {
     });
 
     test(
-      '«sin conexión» descarga también las portadas, solo en Wi-Fi',
+      '«sin conexión» descarga también las portadas, con cualquier conexión',
       () async {
         final source = FakeLibrarySource(songs: songs, folders: folders);
         final store = FakeCoverStore();
-        final wifi = _Wifi(false);
         final library = LibraryController(
           source: source,
           playback: FakePlaybackPort(),
           offline: _Offline(true),
-          network: wifi,
           covers: store,
         );
-        await library.load();
-        expect(
-          store.log,
-          isNot(contains('download')),
-          reason: 'con datos móviles no se descarga',
-        );
-
-        wifi.value = true;
         await library.load();
         expect(store.log.last, 'download');
         expect(store.lastDownload, ['covers/f1.jpg', 'covers/s1.jpg']);

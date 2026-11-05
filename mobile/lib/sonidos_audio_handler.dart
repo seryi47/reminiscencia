@@ -240,6 +240,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     required String artist,
     required Uri uri,
     Duration? duration,
+    Map<String, String>? headers,
   }) => _exclusive(() async {
     final queueId = 'yt-$id';
     final item = MediaItem(
@@ -251,7 +252,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     );
     queue.add([item]);
     try {
-      await _player.setAudioSources([AudioSource.uri(uri, tag: queueId)]);
+      await _player.setAudioSources([AudioSource.uri(uri, headers: headers, tag: queueId)]);
     } catch (error) {
       queue.add(const []);
       mediaItem.add(null);

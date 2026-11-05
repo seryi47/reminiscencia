@@ -206,6 +206,8 @@ class SharedUploader {
   final int chunkBytes;
   final Future<Directory> Function() _workDir;
   final Random _random;
+  Future<void> _turn = Future<void>.value();
+  int _waiting = 0;
   bool _cancelled = false;
 
   static Future<Directory> _tempDir() async {
@@ -229,7 +231,42 @@ class SharedUploader {
   /// (para escucharlo mientras se publica y para reintentar sin volver a convertir) y [onConverted] avisa de que
   /// ya está escrito. Sin [outputFor], el Opus es temporal y se borra. [onItemDone] recibe el resultado de cada
   /// archivo en cuanto se conoce, en orden.
+  /// Una sola conversión a la vez: varias descargas del buscador a la vez no deben lanzar FFmpeg en paralelo.
   Future<SharedUploadResult> upload(
+    List<PickedAudioFile> files, {
+    void Function(UploadProgress progress)? onProgress,
+    Future<File> Function(int index)? outputFor,
+    void Function(int index, File opus, ConvertedAudio audio)? onConverted,
+    void Function(int index, UploadItemResult item)? onItemDone,
+  }) {
+    Future<SharedUploadResult> run() => _upload(
+      files,
+      onProgress: onProgress,
+      outputFor: outputFor,
+      onConverted: onConverted,
+      onItemDone: onItemDone,
+    );
+    if (_waiting == 0) {
+      _waiting += 1;
+      final first = run();
+      final done = Completer<void>();
+      _turn = done.future;
+      return first.whenComplete(() {
+        _waiting -= 1;
+        done.complete();
+      });
+    }
+    _waiting += 1;
+    final previous = _turn;
+    final done = Completer<void>();
+    _turn = done.future;
+    return previous.then((_) => run()).whenComplete(() {
+      _waiting -= 1;
+      done.complete();
+    });
+  }
+
+  Future<SharedUploadResult> _upload(
     List<PickedAudioFile> files, {
     void Function(UploadProgress progress)? onProgress,
     Future<File> Function(int index)? outputFor,

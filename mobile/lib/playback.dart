@@ -154,6 +154,7 @@ abstract interface class PlaybackPort {
     required String artist,
     required Uri uri,
     Duration? duration,
+    Map<String, String>? headers,
   });
 
   Future<void> togglePlayPause();

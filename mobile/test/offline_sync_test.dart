@@ -9,7 +9,6 @@ import 'package:reminiscencia/app_error.dart';
 import 'package:reminiscencia/library_controller.dart';
 import 'package:reminiscencia/library_store.dart';
 import 'package:reminiscencia/local_audio.dart';
-import 'package:reminiscencia/network.dart';
 import 'package:reminiscencia/offline_choice.dart';
 import 'package:reminiscencia/playback_plan.dart';
 import 'package:reminiscencia/song.dart';
@@ -50,15 +49,6 @@ class FakeWeb {
     'license': 'Dominio público',
     'audio': 'audio/$id.opus',
   };
-}
-
-class FakeNetwork implements NetworkInfo {
-  FakeNetwork({this.wifi = true});
-
-  bool wifi;
-
-  @override
-  Future<bool> onUnmeteredNetwork() async => wifi;
 }
 
 class MemoryOffline implements OfflineChoice {
@@ -181,7 +171,6 @@ void main() {
     LibraryController controllerWith({
       FakePlaybackPort? playback,
       MemoryOffline? offline,
-      FakeNetwork? network,
       bool withLocal = true,
       DateTime Function()? clock,
     }) {
@@ -196,7 +185,6 @@ void main() {
               )
             : null,
         offline: offline,
-        network: network,
         clock: clock,
       );
     }
@@ -388,23 +376,11 @@ void main() {
     );
 
     test(
-      'con la opción de escuchar sin conexión, la sincronización descarga solo en Wi-Fi',
+      'con la opción de escuchar sin conexión, la sincronización descarga con cualquier conexión, también datos móviles',
       () async {
         web.catalogIds = [kA];
-        final offline = MemoryOffline(true);
-
-        final noWifi = controllerWith(
-          offline: offline,
-          network: FakeNetwork(wifi: false),
-        );
-        await noWifi.load();
-        expect(await hasCachedAudio(kA), isFalse);
-
-        final wifi = controllerWith(
-          offline: offline,
-          network: FakeNetwork(wifi: true),
-        );
-        await wifi.load();
+        final controller = controllerWith(offline: MemoryOffline(true));
+        await controller.load();
         expect(await hasCachedAudio(kA), isTrue);
       },
     );
@@ -438,11 +414,7 @@ void main() {
       'sin la opción de escuchar sin conexión, la sincronización no descarga nada',
       () async {
         web.catalogIds = [kA];
-        final network = FakeNetwork(wifi: true);
-        final controller = controllerWith(
-          offline: MemoryOffline(false),
-          network: network,
-        );
+        final controller = controllerWith(offline: MemoryOffline(false));
         await controller.load();
         expect(await hasCachedAudio(kA), isFalse);
       },

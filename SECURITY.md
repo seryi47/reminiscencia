@@ -194,7 +194,7 @@ ADR-0015 retira las fotografías y los recuerdos. Persistencia: `js/cuidador/sub
 ### 3.10 Aplicación Android (`mobile/`): Implementado, sin usuarios
 
 - Versión 1.2.4+8, sin perfiles ni modo paciente (ADR-0015). La clave antigua del modo paciente se borra al leer los ajustes (`settings_store.dart`).
-- Permisos del manifiesto: acceso a la red (INTERNET y ACCESS_NETWORK_STATE, este para la descarga solo con Wi-Fi), reproducción en segundo plano (FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK y WAKE_LOCK) y notificaciones (POST_NOTIFICATIONS). Sin permisos de almacenamiento: el selector del sistema da acceso a los archivos elegidos (ADR-0013).
+- Permisos del manifiesto: acceso a la red (INTERNET y ACCESS_NETWORK_STATE, este para comprobar que hay conexión antes de subir), reproducción en segundo plano (FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK y WAKE_LOCK) y notificaciones (POST_NOTIFICATIONS). Sin permisos de almacenamiento: el selector del sistema da acceso a los archivos elegidos (ADR-0013).
 - En `mobile/lib` no hay código de PIN ni de cuentas.
 - Copia de Android: el manifiesto no declara `android:allowBackup` (vale el valor por defecto), pero sí `fullBackupContent` y `dataExtractionRules`, que excluyen `biblioteca-local/` (el audio subido en el teléfono) de la copia y del traspaso entre dispositivos. Las listas y «Me gusta» (`colecciones.json`) sí pueden entrar en la copia del sistema; no son datos sensibles.
 - La subida para todos usa la misma función `/api/subir` de la web (ADR-0017); la app no guarda tokens.

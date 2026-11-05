@@ -4,9 +4,12 @@ import 'app_error.dart';
 
 /// Audio de un vídeo de YouTube listo para reproducir ahora mismo (ADR-0021).
 class YoutubeStream {
-  const YoutubeStream({required this.uri, this.duration});
+  const YoutubeStream({required this.uri, this.duration, this.headers});
 
   final Uri uri;
+
+  /// Cabeceras que pide la URL: debe verse el mismo User-Agent del cliente que la generó, o responde 403.
+  final Map<String, String>? headers;
   final Duration? duration;
 }
 
@@ -36,7 +39,11 @@ class ExplodeStreamResolver implements YoutubeStreamResolver {
             .timeout(const Duration(seconds: 15));
         final audio = manifest.audioOnly;
         if (audio.isEmpty) continue;
-        return YoutubeStream(uri: audio.withHighestBitrate().url, duration: null);
+        final agent = client.payload['context']?['client']?['userAgent'];
+        return YoutubeStream(
+          uri: audio.withHighestBitrate().url,
+          headers: agent is String ? {'User-Agent': agent} : null,
+        );
       } catch (_) {
         continue;
       }

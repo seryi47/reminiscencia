@@ -238,6 +238,7 @@ class _YoutubeSearchSectionState extends State<YoutubeSearchSection> {
         title: result.title,
         artist: result.artist,
         uri: stream.uri,
+        headers: stream.headers,
         duration: result.durationS > 0
             ? Duration(seconds: result.durationS)
             : stream.duration,

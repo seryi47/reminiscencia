@@ -67,7 +67,6 @@ Future<void> main() async {
             converter: const FfmpegOpusConverter(),
           ),
           offline: SharedPrefsOfflineChoice(),
-          network: const ConnectivityNetworkInfo(),
           covers: covers,
           // Subida para todos: la función de la web guarda en el buzón; la app no tiene ningún token.
           uploader: SharedUploader(

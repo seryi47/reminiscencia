@@ -152,6 +152,7 @@ class FakePlaybackPort implements PlaybackPort {
     required String artist,
     required Uri uri,
     Duration? duration,
+    Map<String, String>? headers,
   }) async {
     log.add('stream:$id');
     final failure = playError;

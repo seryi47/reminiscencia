@@ -9,7 +9,9 @@
 - Causa probable de las canciones que se cortaban: el arreglo del panel `.yt-dock` no subió `SHELL_VERSION`, así que el navegador siguió sirviendo el JS viejo una carga más. Ahora `SHELL_VERSION = 22` y, cuando llega una versión nueva, `pwa.js` espera a que no suene nada (audio ni vídeo de «Escuchar») antes de recargar. Pruebas nuevas: el iframe es el mismo tras abrirse la hoja y publicarse (e2e) y una sincronización con canción nueva no corta un stream de YouTube (APK).
 - Icono nuevo (chica anime con cascos escuchando música) para la APK y la PWA. `scripts/android/make_icon.py` y `scripts/web/make_icons.py` ahora reducen el maestro `scripts/android/icon_1024.png` con Pillow; `SHELL_VERSION = 23`.
 - Descargas de YouTube: un registro «en cola» de otra sesión ya no hace que el buscador diga «ya se había descargado» sin que la canción esté en la biblioteca; se vuelve a descargar y el servidor reconoce lo ya publicado.
-- Pruebas: web unitarias 441, e2e 147, Flutter 245.
+- APK: «Escuchar» de YouTube prueba los clientes `android`, `androidVr` y `mweb` (YouTube pedía «confirma que no eres un bot» al único que se usaba) y envía a la URL el User-Agent del cliente que la generó (sin él, `Source error`). La tarjeta de descarga ya no marca «En cola» si la subida falla y enseña el motivo. `SharedUploader.upload` serializa las subidas: varias descargas a la vez ya no lanzan FFmpeg en paralelo («No se pudo convertir este archivo a Opus»). Pendiente de confirmar en el móvil.
+- APK: la sincronización con «Guardar para escuchar sin conexión» descarga también con datos móviles (antes solo Wi-Fi); se retira `NetworkInfo`.
+- Pruebas: web unitarias 441, e2e 147, Flutter 247.
 - Web: el reproductor de YouTube de «Escuchar» vive en un panel fijo (`.yt-dock`) fuera de los resultados; ya no se corta cuando se repinta el buscador (p. ej. al abrirse «Subir canciones» al empezar la descarga).
 - `buzon.yml` y `biblioteca.yml`: ffmpeg se instala sin `apt-get update` ni paquetes recomendados (con reintento si falla), unos 20 s menos por publicación.
 

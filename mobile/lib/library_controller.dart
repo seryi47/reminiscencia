@@ -9,7 +9,6 @@ import 'app_error.dart';
 import 'covers.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
-import 'network.dart';
 import 'offline_choice.dart';
 import 'playback.dart';
 import 'playback_plan.dart';
@@ -27,7 +26,6 @@ class LibraryController extends ChangeNotifier {
     required this.playback,
     this.local,
     this.offline,
-    this.network,
     this.covers,
     this.uploader,
     PublishedSongsSource? published,
@@ -60,7 +58,6 @@ class LibraryController extends ChangeNotifier {
   final OfflineChoice? offline;
 
   /// Estado de la red. Sin él, la sincronización nunca descarga audio nuevo.
-  final NetworkInfo? network;
 
   /// Portadas de la web guardadas en el teléfono. Null si no se guardan (pruebas).
   final CoverStore? covers;
@@ -106,7 +103,7 @@ class LibraryController extends ChangeNotifier {
   bool get downloading => _downloading;
   String get progress => _progress;
 
-  /// True si el usuario pidió escuchar sin conexión (la sincronización descargará en Wi-Fi).
+  /// True si el usuario pidió escuchar sin conexión (la sincronización descargará con cualquier conexión).
   bool get offlineWanted => _offlineWanted;
 
   /// True mientras se convierten y suben archivos a la biblioteca común.
@@ -292,7 +289,7 @@ class LibraryController extends ChangeNotifier {
       await _releasePublishedUploads();
       await _pruneAudio();
       await _pruneCovers();
-      if (_offlineWanted) await _downloadOnWifi();
+      if (_offlineWanted) await _downloadInBackground();
     }
   }
 
@@ -399,11 +396,9 @@ class LibraryController extends ChangeNotifier {
     }
   }
 
-  /// Descarga lo que falta, solo si hay Wi-Fi o cable. Un fallo no interrumpe nada: se registra y se espera a la próxima sincronización.
-  Future<void> _downloadOnWifi() async {
-    final info = network;
-    if (info == null || _downloading) return;
-    if (!await info.onUnmeteredNetwork()) return;
+  /// Descarga lo que falta con cualquier conexión, también con datos móviles. Un fallo no interrumpe nada: se registra y se espera a la próxima sincronización.
+  Future<void> _downloadInBackground() async {
+    if (_downloading) return;
     try {
       await downloadForOffline();
     } catch (error) {

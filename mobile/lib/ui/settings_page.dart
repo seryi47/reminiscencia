@@ -112,7 +112,7 @@ class SettingsPage extends StatelessWidget {
                   library.downloading
                       ? 'Guardando: ${library.progress}'
                       : library.offlineWanted
-                      ? 'Activado: lo nuevo se guarda solo con Wi-Fi.'
+                      ? 'Activado: lo nuevo se guarda solo, también con datos móviles.'
                       : 'Descarga el catálogo en este teléfono.',
                 ),
                 enabled: !library.downloading && library.songs.isNotEmpty,
