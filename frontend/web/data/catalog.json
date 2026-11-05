@@ -102,10 +102,22 @@
       "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": "F04b14b9c99130a4d",
+      "folder_id": "F055ccbef8d7de2ca",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 281.327,
+      "public": true
+    },
+    {
+      "id": "S69967586ea132d49",
+      "title": "A la sombra de la sierra",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 239.16,
       "public": true
     },
     {
@@ -183,10 +195,10 @@
     {
       "id": "Sb721835fc334a625",
       "title": "Animales hambrientos",
-      "artist": "Desakato",
+      "artist": "desakato",
       "year": null,
       "tags": [],
-      "folder_id": "F04b14b9c99130a4d",
+      "folder_id": "F055ccbef8d7de2ca",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 206.165,
@@ -205,6 +217,18 @@
       "public": true
     },
     {
+      "id": "S6a20f2e2ca7dbd64",
+      "title": "Aspencat - L'últim Segon",
+      "artist": "antifa93cat",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 227.945,
+      "public": true
+    },
+    {
       "id": "S25f115748a3b000f",
       "title": "AUTOMÁTICO",
       "artist": "Maria Becerra",
@@ -214,6 +238,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 196.888,
+      "public": true
+    },
+    {
+      "id": "Sc0a849f992039c40",
+      "title": "Averno",
+      "artist": "Rayden y Tanxugueiras",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 159.771,
       "public": true
     },
     {
@@ -313,6 +349,18 @@
       "public": true
     },
     {
+      "id": "Scfd338e7b59a7d30",
+      "title": "Bajar a Segunda",
+      "artist": "Onza",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 257.095,
+      "public": true
+    },
+    {
       "id": "Se3c20530a61a6ccf",
       "title": "Bandido",
       "artist": "Myke Towers y Juhn",
@@ -322,6 +370,30 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 232.659,
+      "public": true
+    },
+    {
+      "id": "Sa934e73f6280030f",
+      "title": "Barquito de Vela",
+      "artist": "Hard GZ y Antony Z",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 227.632,
+      "public": true
+    },
+    {
+      "id": "Sad1e9cd62c2f8959",
+      "title": "Believer",
+      "artist": "Imagine Dragons",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 216.544,
       "public": true
     },
     {
@@ -385,6 +457,30 @@
       "public": true
     },
     {
+      "id": "S6a44efbf35cc1b8b",
+      "title": "Boikot- Ines",
+      "artist": "EuskalGazte778",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 145.956,
+      "public": true
+    },
+    {
+      "id": "S1c86d1bc07851404",
+      "title": "Bones",
+      "artist": "Imagine Dragons",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 165.089,
+      "public": true
+    },
+    {
       "id": "Sf27b0a86e67c6ffd",
       "title": "Buenos Genes",
       "artist": "Rels B y DELLAFUENTE",
@@ -411,10 +507,10 @@
     {
       "id": "S1fc0b6a1923ebc29",
       "title": "Cada vez",
-      "artist": "Desakato",
+      "artist": "desakato",
       "year": null,
       "tags": [],
-      "folder_id": "F04b14b9c99130a4d",
+      "folder_id": "F055ccbef8d7de2ca",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 339.749,
@@ -553,6 +649,18 @@
       "public": true
     },
     {
+      "id": "Sc424aec9a6b3978d",
+      "title": "Colgando en tus manos (Video Oficial)",
+      "artist": "Shoda Monkas y Reality",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 200.894,
+      "public": true
+    },
+    {
       "id": "S4c756cb0d98ce438",
       "title": "Colocao",
       "artist": "Nicki Nicole",
@@ -577,6 +685,18 @@
       "public": true
     },
     {
+      "id": "S1906ea0dc1bcb3a4",
+      "title": "Contra la pared",
+      "artist": "Desakato",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 203.913,
+      "public": true
+    },
+    {
       "id": "Seb7a0e77692d5c2b",
       "title": "Cuando el Sol Se Va",
       "artist": "",
@@ -589,15 +709,39 @@
       "public": true
     },
     {
-      "id": "Sa886421c43a60416",
-      "title": "Cuando salga el sol",
-      "artist": "Desakato",
+      "id": "S9404cbb4fd2f7953",
+      "title": "Cuando sale el sol (con Autèntic Home Llúdriga)",
+      "artist": "Lagrimas de Sangre",
       "year": null,
       "tags": [],
-      "folder_id": "F04b14b9c99130a4d",
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 352.81,
+      "public": true
+    },
+    {
+      "id": "Sa886421c43a60416",
+      "title": "Cuando salga el sol",
+      "artist": "desakato",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 210.82,
+      "public": true
+    },
+    {
+      "id": "S91961ed9145103fe",
+      "title": "Cómo hablar",
+      "artist": "Amaral",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 239.811,
       "public": true
     },
     {
@@ -634,6 +778,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 174.087,
+      "public": true
+    },
+    {
+      "id": "S473de7c379e26100",
+      "title": "De Festi Vale",
+      "artist": "Trashtucada",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 228.572,
       "public": true
     },
     {
@@ -697,6 +853,18 @@
       "public": true
     },
     {
+      "id": "Sc173d744a371ce32",
+      "title": "DISPARA",
+      "artist": "Nicki Nicole y Milo J",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 153.014,
+      "public": true
+    },
+    {
       "id": "S2061590b27722c69",
       "title": "Don't Lose Ur Head (con Christina Modestou)",
       "artist": "SIX",
@@ -733,6 +901,54 @@
       "public": true
     },
     {
+      "id": "S2f8e76ee6b7ea108",
+      "title": "Días de verano",
+      "artist": "Amaral",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 229.536,
+      "public": true
+    },
+    {
+      "id": "S9d3d80416ee58023",
+      "title": "El cap per avall (Directe)",
+      "artist": "ZOO",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 322.323,
+      "public": true
+    },
+    {
+      "id": "S44570a864c8cd4b9",
+      "title": "El circo de la pena",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 424.327,
+      "public": true
+    },
+    {
+      "id": "Sbef7a95db8982ceb",
+      "title": "El Duelo",
+      "artist": "Onza",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 222.428,
+      "public": true
+    },
+    {
       "id": "S18de4c5b0499cd52",
       "title": "El Farsante (Remix)",
       "artist": "Ozuna y Romeo Santos",
@@ -745,6 +961,42 @@
       "public": true
     },
     {
+      "id": "S912c542f06ea0665",
+      "title": "El gobierno de las canciones (con Ciudad Jara)",
+      "artist": "Rayden",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 280.327,
+      "public": true
+    },
+    {
+      "id": "Sf06b77bc1f61bb7e",
+      "title": "El Lado De Los Rebeldes",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 247.623,
+      "public": true
+    },
+    {
+      "id": "S2db46a7706c3e3fe",
+      "title": "El libro de las sombras",
+      "artist": "Mägo de Oz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 403.846,
+      "public": true
+    },
+    {
       "id": "S279666d83978a3e4",
       "title": "EL MAKINON",
       "artist": "KAROL G y Mariah Angeliq",
@@ -754,6 +1006,30 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 213.688,
+      "public": true
+    },
+    {
+      "id": "S12798275cec523db",
+      "title": "El Universo Sobre Mi",
+      "artist": "Amaral",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 246.214,
+      "public": true
+    },
+    {
+      "id": "Se94e3110ef16653c",
+      "title": "Elegiré",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 363.422,
       "public": true
     },
     {
@@ -802,6 +1078,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 211.97,
+      "public": true
+    },
+    {
+      "id": "Sf7f18202e9b796b4",
+      "title": "En La Cuerda Floja",
+      "artist": "Lia Kali y Toni Anzis",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 136.853,
       "public": true
     },
     {
@@ -901,6 +1189,18 @@
       "public": true
     },
     {
+      "id": "See291ab7289d5671",
+      "title": "Figa",
+      "artist": "Tanxugueiras",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 179.497,
+      "public": true
+    },
+    {
       "id": "Sc915b66de5beb65e",
       "title": "Flow 2000 (Remix)",
       "artist": "Bad Gyal",
@@ -973,6 +1273,18 @@
       "public": true
     },
     {
+      "id": "S678873d043277045",
+      "title": "Guerrilla",
+      "artist": "Ebri Knight",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 272.007,
+      "public": true
+    },
+    {
       "id": "S0d721d46acafca5c",
       "title": "Guns and Ships",
       "artist": "Leslie Odom Jr., Daveed Diggs, Christopher Jackson y Original Broadway Cast of Hamilton",
@@ -982,6 +1294,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 127.585,
+      "public": true
+    },
+    {
+      "id": "S6aa8353659853ff4",
+      "title": "hARAkiRI",
+      "artist": "Duki y C.R.O",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 171.254,
       "public": true
     },
     {
@@ -1069,6 +1393,18 @@
       "public": true
     },
     {
+      "id": "Sde1b582181d9eeb5",
+      "title": "IMAGINE DRAGONS - SHARKS OFFICIALLY",
+      "artist": "Imagine Dragons FAN",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 42.627,
+      "public": true
+    },
+    {
       "id": "Se6e0534d70fe5ad0",
       "title": "Imagínate (con Lenny Tavárez, Cazzu, Feid y Justin Quiles)",
       "artist": "Dalex y Sech",
@@ -1105,6 +1441,18 @@
       "public": true
     },
     {
+      "id": "Sd49bf8e121bb57ea",
+      "title": "Jarama",
+      "artist": "Boikot",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 262.684,
+      "public": true
+    },
+    {
       "id": "S3558a2f1ac2678f5",
       "title": "Kater St. Rag",
       "artist": "",
@@ -1114,6 +1462,18 @@
       "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:Free_20s_Jazz_Collection",
       "duration_s": 151.284,
+      "public": true
+    },
+    {
+      "id": "Sec8f5c3aadd170e6",
+      "title": "Kemba Walker",
+      "artist": "Bad Bunny y Eladio Carrion",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 153.014,
       "public": true
     },
     {
@@ -1153,6 +1513,18 @@
       "public": true
     },
     {
+      "id": "S02efdb93dab9d736",
+      "title": "Kiero ser",
+      "artist": "Desakato",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 246.913,
+      "public": true
+    },
+    {
       "id": "Se816c090044cb9ba",
       "title": "La Bachata",
       "artist": "Manuel Turizo",
@@ -1174,6 +1546,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 238.208,
+      "public": true
+    },
+    {
+      "id": "S20dcfe28f92b979b",
+      "title": "La casa por el tejado",
+      "artist": "Fito y Fitipaldis",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 243.816,
       "public": true
     },
     {
@@ -1285,6 +1669,18 @@
       "public": true
     },
     {
+      "id": "S20ee9884209dec2d",
+      "title": "La Tormenta",
+      "artist": "desakato",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 209.286,
+      "public": true
+    },
+    {
       "id": "S83400e538c88a1d4",
       "title": "La Trampa es Ley",
       "artist": "LIT killah",
@@ -1294,6 +1690,30 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 150.007,
+      "public": true
+    },
+    {
+      "id": "S40da8b0bf2c4db16",
+      "title": "La Voz Del Pueblo",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 264.966,
+      "public": true
+    },
+    {
+      "id": "Sbd5d76cfc1069d05",
+      "title": "La Voz Dormida",
+      "artist": "Ebri Knight",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 283.058,
       "public": true
     },
     {
@@ -1345,6 +1765,18 @@
       "public": true
     },
     {
+      "id": "S84a1733c0cdfb77d",
+      "title": "Lucha interior",
+      "artist": "Onza",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 183.345,
+      "public": true
+    },
+    {
       "id": "Sb180c8bab74f0167",
       "title": "Lucifer (Lyric Video Oficial)",
       "artist": "SFDK",
@@ -1381,6 +1813,42 @@
       "public": true
     },
     {
+      "id": "Scd66b4911b38a089",
+      "title": "Marea - Corazon de mimbre",
+      "artist": "gigatr0n",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 340.051,
+      "public": true
+    },
+    {
+      "id": "Sa491620b85d93cf8",
+      "title": "Marea - La luna me sabe a poco",
+      "artist": "gigatr0n",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 265.329,
+      "public": true
+    },
+    {
+      "id": "S98a1c79e3ac22dfe",
+      "title": "Marea - Trasegando",
+      "artist": "Daniel Castro",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 170.035,
+      "public": true
+    },
+    {
       "id": "S4c387f277be286d0",
       "title": "mariposas",
       "artist": "sangiovanni y Aitana",
@@ -1390,6 +1858,30 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 162.674,
+      "public": true
+    },
+    {
+      "id": "S5e2d7a49060194eb",
+      "title": "Marta, Sebas, Guille y los demás",
+      "artist": "Amaral",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 223.975,
+      "public": true
+    },
+    {
+      "id": "S39b89faa95fbc057",
+      "title": "Mbappe",
+      "artist": "Eladio Carrion",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 149.717,
       "public": true
     },
     {
@@ -1438,6 +1930,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 177.407,
+      "public": true
+    },
+    {
+      "id": "Sdf06c3c4bf526812",
+      "title": "Melendi - Un Violinista En Tu Tejado (Videoclip Oficial 4K)",
+      "artist": "Warner Music Spain Archivos",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 242.631,
       "public": true
     },
     {
@@ -1498,6 +2002,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 172.345,
+      "public": true
+    },
+    {
+      "id": "Sd7b3dd94e0ecc320",
+      "title": "Música Naix de la Ràbia",
+      "artist": "Aspencat",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 298.652,
       "public": true
     },
     {
@@ -1562,6 +2078,18 @@
       "public": true
     },
     {
+      "id": "S5602b9873b6acca2",
+      "title": "Nuestra Nación",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 236.153,
+      "public": true
+    },
+    {
       "id": "S8dde08f2a538bfc0",
       "title": "Nueva York (Tot )",
       "artist": "Bad Gyal",
@@ -1591,7 +2119,7 @@
       "artist": "Desakato",
       "year": null,
       "tags": [],
-      "folder_id": "F04b14b9c99130a4d",
+      "folder_id": "F055ccbef8d7de2ca",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 201.113,
@@ -1610,6 +2138,18 @@
       "public": true
     },
     {
+      "id": "S76836540fee7bcf1",
+      "title": "Oliveira Dos Cen Anos (Video Oficial)",
+      "artist": "C. Tangana",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 310.933,
+      "public": true
+    },
+    {
       "id": "Sc561a4ba1ae57521",
       "title": "One Dime Blues",
       "artist": "Blind Lemon Jefferson",
@@ -1619,6 +2159,18 @@
       "license": "Dominio público según Internet Archive (item Blind_Lemon_Jefferson_One_Dime_Blues; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:Blind_Lemon_Jefferson_One_Dime_Blues",
       "duration_s": 169.04,
+      "public": true
+    },
+    {
+      "id": "Sb4ae2fc710a4872c",
+      "title": "Ovejas Negras (con Inma Cuesta, Jose Luis Algar y Niño de Elche)",
+      "artist": "Inma Cuesta, Jose Luis Algar y Niño de Elche",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 317.468,
       "public": true
     },
     {
@@ -1718,6 +2270,18 @@
       "public": true
     },
     {
+      "id": "S3d591d2c7d75214a",
+      "title": "Perros",
+      "artist": "NADAL 015 y Fyahbwoy",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 191.025,
+      "public": true
+    },
+    {
       "id": "S1e56cffecde2180a",
       "title": "Piel de cordero",
       "artist": "Quevedo",
@@ -1751,6 +2315,30 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 408.062,
+      "public": true
+    },
+    {
+      "id": "Sa683cc38cbf21f8b",
+      "title": "Por la boca vive el pez",
+      "artist": "Fito y Fitipaldis",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 270.809,
+      "public": true
+    },
+    {
+      "id": "S515f0bf6dcb2ea8e",
+      "title": "Por Ti",
+      "artist": "Sons of Aguirre y Scila",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 236.977,
       "public": true
     },
     {
@@ -1790,6 +2378,30 @@
       "public": true
     },
     {
+      "id": "S2789c1f67c23b171",
+      "title": "Pánico en Frankfurt",
+      "artist": "desakato",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 323.542,
+      "public": true
+    },
+    {
+      "id": "S68fb3ad0955656c1",
+      "title": "Quemar el Mar (con Neidos, Microbio y Still Ill)",
+      "artist": "Lagrimas de Sangre",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 300.209,
+      "public": true
+    },
+    {
       "id": "S48668adfa12c655c",
       "title": "Quevedo Bzrp Music Sessions, Vol. 52",
       "artist": "Quevedo y Bizarrap",
@@ -1799,6 +2411,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 203.767,
+      "public": true
+    },
+    {
+      "id": "Sc50f66eebe73b5a1",
+      "title": "Radio clandestina (Directo)",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 265.817,
       "public": true
     },
     {
@@ -1823,6 +2447,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 230.813,
+      "public": true
+    },
+    {
+      "id": "S9b891847da790397",
+      "title": "Raíces (con La Gossa Sorda)",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 304.902,
       "public": true
     },
     {
@@ -1898,6 +2534,18 @@
       "public": true
     },
     {
+      "id": "Sd2e4a81d434b61fc",
+      "title": "SALGO A LA CALLE , BOIKOT",
+      "artist": "Angel Delgado Sanchez",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 208.51,
+      "public": true
+    },
+    {
       "id": "S2574e545f47818dd",
       "title": "Salimo de Noche",
       "artist": "Tiago PZK y Trueno",
@@ -1958,6 +2606,18 @@
       "public": true
     },
     {
+      "id": "S419d9595268a1496",
+      "title": "Seguiré al Sol",
+      "artist": "SFDK y Fyahbwoy",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 203.053,
+      "public": true
+    },
+    {
       "id": "S216c4bfc505361f7",
       "title": "Serpiente Veneno (con Ele A El Dominio)",
       "artist": "Kidd Keo",
@@ -1979,6 +2639,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 230.012,
+      "public": true
+    },
+    {
+      "id": "S97667e5351d09d3f",
+      "title": "Si la Calle Llama",
+      "artist": "Eladio Carrion",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 171.138,
       "public": true
     },
     {
@@ -2018,6 +2690,30 @@
       "public": true
     },
     {
+      "id": "S9c5696a962907910",
+      "title": "Sin tiempo para respirar",
+      "artist": "Boikot",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 279.819,
+      "public": true
+    },
+    {
+      "id": "S04af5e83e9fbb398",
+      "title": "Sin-Ceros (con Natos y Waor)",
+      "artist": "SFDK",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 235.91,
+      "public": true
+    },
+    {
       "id": "S52de8a2edf03ead5",
       "title": "Snow Tha Product Bzrp Music Sessions, Vol. 39 66",
       "artist": "Snow Tha Product y Bizarrap",
@@ -2032,13 +2728,25 @@
     {
       "id": "S6e61247551537851",
       "title": "Sombras",
-      "artist": "Desakato",
+      "artist": "desakato",
       "year": null,
       "tags": [],
-      "folder_id": "F04b14b9c99130a4d",
+      "folder_id": "F055ccbef8d7de2ca",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 311.758,
+      "public": true
+    },
+    {
+      "id": "S67393e57adf4d7fa",
+      "title": "Sonne",
+      "artist": "Rammstein",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 252.373,
       "public": true
     },
     {
@@ -2114,6 +2822,30 @@
       "public": true
     },
     {
+      "id": "S760e448946508609",
+      "title": "Terra",
+      "artist": "Tanxugueiras",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 179.057,
+      "public": true
+    },
+    {
+      "id": "Sd4e852db84113b42",
+      "title": "The Monster",
+      "artist": "Eminem y Rihanna",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 318.433,
+      "public": true
+    },
+    {
       "id": "Sa20f7ee35917a38e",
       "title": "The Room Where It Happens",
       "artist": "Leslie Odom Jr., Lin-Manuel Miranda, Daveed Diggs y Okieriete Onaodowan",
@@ -2150,6 +2882,18 @@
       "public": true
     },
     {
+      "id": "S28e675c914164a1b",
+      "title": "Tobogan",
+      "artist": "ZOO",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 293.611,
+      "public": true
+    },
+    {
       "id": "S12d6b208f1069add",
       "title": "Todo De Ti (Official Video)",
       "artist": "Rauw Alejandro",
@@ -2159,6 +2903,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 211.471,
+      "public": true
+    },
+    {
+      "id": "S0ce6b6d7abba8e78",
+      "title": "Todo Lo Que Importa ft. Fyahbwoy (Video Oficial)",
+      "artist": "SFDK",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 242.822,
       "public": true
     },
     {
@@ -2195,6 +2951,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 195.031,
+      "public": true
+    },
+    {
+      "id": "S5fe8088455b19624",
+      "title": "Toxic",
+      "artist": "Britney Spears",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 211.645,
       "public": true
     },
     {
@@ -2270,6 +3038,18 @@
       "public": true
     },
     {
+      "id": "Sd3134a6620b20bf9",
+      "title": "Un Pobre Con Dinero (Video Oficial)",
+      "artist": "SFDK",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 223.729,
+      "public": true
+    },
+    {
       "id": "Sf6370d58447e9f55",
       "title": "Una locura",
       "artist": "Ozuna, J Balvin y Chencho Corleone",
@@ -2291,6 +3071,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 190.085,
+      "public": true
+    },
+    {
+      "id": "S1b3ac3afdf049cf0",
+      "title": "Ventiladors",
+      "artist": "ZOO",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 214.303,
       "public": true
     },
     {
@@ -2339,6 +3131,30 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 273.34,
+      "public": true
+    },
+    {
+      "id": "Sde0a5b797207c308",
+      "title": "Voy a celebrarlo",
+      "artist": "Lagrimas de Sangre",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 427.416,
+      "public": true
+    },
+    {
+      "id": "S0951194da7739feb",
+      "title": "Vull",
+      "artist": "ZOO",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 222.605,
       "public": true
     },
     {
@@ -2450,6 +3266,30 @@
       "public": true
     },
     {
+      "id": "Sfe3bdf2e3119f25f",
+      "title": "Zarzuela Y Castañuela",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 294.983,
+      "public": true
+    },
+    {
+      "id": "S48a421b452aa81f5",
+      "title": "ZOO - ESBARZERS (REMIX LA GOSSA SORDA)",
+      "artist": "ZOO",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 292.264,
+      "public": true
+    },
+    {
       "id": "S1111cf3e8462b5ad",
       "title": "Zorra",
       "artist": "Bad Gyal",
@@ -2487,6 +3327,11 @@
     {
       "id": "F8b4910e7e6018cb9",
       "name": "Mi lista n.º 2",
+      "parent_id": null
+    },
+    {
+      "id": "F055ccbef8d7de2ca",
+      "name": "Buga",
       "parent_id": null
     }
   ]
