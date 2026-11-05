@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { ALLOWED_OPS, handleEdit, isJpeg, organizeProblem, DONE_MESSAGE, MAX_COVER_BYTES } from '../../frontend/web/api/editar.js';
+import {
+  ALLOWED_OPS, DONE_MESSAGE, editStateOf, handleEdit, isJpeg, issueNumberFrom, MAX_COVER_BYTES, organizeProblem,
+} from '../../frontend/web/api/editar.js';
 
 const TOKEN = 'github_pat_PRUEBA_que_no_debe_salir_nunca';
 const ENV = { GITHUB_TOKEN: TOKEN };
@@ -119,7 +121,10 @@ describe('organizar', () => {
   });
 
   test('solo admite POST, exige el token y un JSON válido', async () => {
-    assert.equal((await handleEdit(jsonRequest(null, 'GET'), { env: ENV })).status, 405);
+    assert.equal((await handleEdit(jsonRequest(null, 'PUT'), { env: ENV })).status, 405);
+    assert.equal((await handleEdit(jsonRequest(null, 'DELETE'), { env: ENV })).status, 405);
+    // GET sin número de incidencia: no es una consulta de estado válida.
+    assert.equal((await handleEdit(jsonRequest(null, 'GET'), { env: ENV })).status, 400);
     assert.equal((await handleEdit(jsonRequest({}), { env: {} })).status, 500);
     const mal = new Request('https://x.test/api/editar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{no' });
     assert.equal((await handleEdit(mal, { env: ENV, fetchImpl: fakeGitHub().fetchImpl })).status, 400);
@@ -181,5 +186,83 @@ describe('portadas', () => {
   test('isJpeg', () => {
     assert.equal(isJpeg(JPEG), true);
     assert.equal(isJpeg(new Uint8Array([0x89, 0x50, 0x4e, 0x47])), false);
+  });
+});
+
+// Estado de una edición (ADR-0027): GET /api/editar?incidencia=N con el token del servidor.
+function fakeIssue(issue, status = 200) {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ method: options.method, path: new URL(url).pathname, auth: options.headers.Authorization });
+    return new Response(JSON.stringify(issue), { status });
+  };
+  return { fetchImpl, calls };
+}
+const statusRequest = (query) => new Request(`https://x.test/api/editar${query}`, { method: 'GET' });
+const ORGANIZE_BODY = 'action: organize\npayload: {"op":"create_folder","name":"A"}';
+
+describe('estado de una edición', () => {
+  test('abierta, cerrada y error, leídos con el token del servidor', async () => {
+    const casos = [
+      [{ number: 12, state: 'open', labels: [], body: ORGANIZE_BODY }, 'abierta'],
+      [{ number: 12, state: 'closed', state_reason: 'completed', labels: [{ name: 'biblioteca' }], body: ORGANIZE_BODY }, 'cerrada'],
+      [{ number: 12, state: 'open', labels: [{ name: 'error' }], body: ORGANIZE_BODY }, 'error'],
+      [{ number: 12, state: 'closed', labels: [{ name: 'error' }], body: ORGANIZE_BODY }, 'error'],
+      [{ number: 12, state: 'closed', state_reason: 'not_planned', labels: [], body: ORGANIZE_BODY }, 'error'],
+    ];
+    for (const [issue, estado] of casos) {
+      const gh = fakeIssue(issue);
+      const response = await handleEdit(statusRequest('?incidencia=12'), { env: ENV, fetchImpl: gh.fetchImpl });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      const reply = await response.json();
+      assert.deepEqual(reply, { ok: true, incidencia: 12, estado });
+      assert.deepEqual(gh.calls.map(({ method, path }) => [method, path]), [['GET', '/repos/seryi47/reminiscencia/issues/12']]);
+      assert.equal(gh.calls[0].auth, `Bearer ${TOKEN}`);
+      assert.ok(!JSON.stringify(reply).includes(TOKEN));
+    }
+  });
+
+  test('valida el número estrictamente y no llama a GitHub si no vale', async () => {
+    for (const query of ['', '?incidencia=', '?incidencia=0', '?incidencia=-3', '?incidencia=012', '?incidencia=1.5', '?incidencia=1e3',
+      '?incidencia=%201', '?incidencia=abc', '?incidencia=1234567890', '?incidencia=1&incidencia=2', '?incidencia=12/comments', '?numero=12']) {
+      const gh = fakeIssue({});
+      const response = await handleEdit(statusRequest(query), { env: ENV, fetchImpl: gh.fetchImpl });
+      assert.equal(response.status, 400, query);
+      assert.equal(gh.calls.length, 0, query);
+    }
+    assert.equal(issueNumberFrom('https://x.test/api/editar?incidencia=987654321'), 987654321);
+    assert.throws(() => issueNumberFrom('no es una url'), /dirección/);
+  });
+
+  test('solo responde de incidencias de edición: ni pull requests ni otras incidencias', async () => {
+    for (const issue of [
+      { number: 5, state: 'open', labels: [], body: 'Hola, tengo una duda' },
+      { number: 5, state: 'open', labels: [], body: null },
+      { number: 5, state: 'open', labels: [], body: ORGANIZE_BODY, pull_request: { url: 'x' } },
+    ]) {
+      const response = await handleEdit(statusRequest('?incidencia=5'), { env: ENV, fetchImpl: fakeIssue(issue).fetchImpl });
+      assert.equal(response.status, 404);
+    }
+    const missing = await handleEdit(statusRequest('?incidencia=5'), { env: ENV, fetchImpl: fakeIssue({ message: 'Not Found' }, 404).fetchImpl });
+    assert.equal(missing.status, 404);
+  });
+
+  test('sin token o sin permiso lo explica sin filtrar el token', async () => {
+    assert.equal((await handleEdit(statusRequest('?incidencia=5'), { env: {} })).status, 500);
+    const original = console.error;
+    console.error = () => {};
+    const response = await handleEdit(statusRequest('?incidencia=5'), { env: ENV, fetchImpl: fakeIssue({}, 401).fetchImpl });
+    const caida = await handleEdit(statusRequest('?incidencia=5'), { env: ENV, fetchImpl: async () => { throw new Error('red'); } });
+    console.error = original;
+    assert.equal(response.status, 500);
+    assert.ok(!(await response.text()).includes(TOKEN));
+    assert.equal(caida.status, 502);
+  });
+
+  test('editStateOf', () => {
+    assert.equal(editStateOf(null), 'abierta');
+    assert.equal(editStateOf({ state: 'open', labels: ['error'] }), 'error');
+    assert.equal(editStateOf({ state: 'closed', labels: [] }), 'cerrada');
   });
 });
