@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Sin publicar: cierre de la música y CSP (2026-11-05)
+
+- Web: `media-src` de la CSP admite el bucket de R2 (solo estaba en `connect-src` y el navegador bloqueaba el audio).
+- APK: al quitar la app de recientes, `SonidosAudioHandler.onTaskRemoved` para la música y cierra el servicio y la notificación (antes seguía sonando). Pruebas Flutter: 233.
+
 ## Sin publicar: buzón más rápido y R2 preparado (2026-11-05)
 
 - Causa de las subidas atascadas: GitHub Actions dejó de arrancar jobs por el límite de minutos de un repositorio privado; el repositorio pasó a público y se relanzó `buzon` (188 canciones).

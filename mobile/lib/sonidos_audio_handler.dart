@@ -278,6 +278,10 @@ class SonidosAudioHandler extends BaseAudioHandler
     await super.stop();
   }
 
+  /// Al quitar la app de recientes se para la música y se cierra el servicio y su notificación.
+  @override
+  Future<void> onTaskRemoved() => stop();
+
   @override
   Future<void> skipToNext() => playNext();
 
