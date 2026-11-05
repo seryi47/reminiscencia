@@ -508,7 +508,25 @@ class UploadTracker extends ChangeNotifier {
   bool _disposed = false;
   Timer? _timer;
 
+  /// Trabajo lanzado sin esperar (comprobaciones de publicación y escrituras del estado) que no ha terminado.
+  final Set<Future<void>> _background = {};
+
   List<UploadEntry> get entries => List.unmodifiable(_entries);
+
+  /// Termina cuando no queda trabajo en segundo plano, también el que lance ese mismo trabajo. Después, el estado
+  /// guardado refleja lo que se ve. Las pruebas lo esperan en vez de dormir un tiempo fijo.
+  Future<void> idle() async {
+    while (_background.isNotEmpty) {
+      await Future.wait(
+        List.of(_background),
+      ).then<void>((_) {}, onError: (Object _) {});
+    }
+  }
+
+  void _inBackground(Future<void> work) {
+    _background.add(work);
+    unawaited(work.whenComplete(() => _background.remove(work)));
+  }
 
   /// La lista agrupada: cada ZIP con sus canciones, en el orden en que se eligieron.
   List<UploadSection> get sections {
@@ -742,7 +760,7 @@ class UploadTracker extends ChangeNotifier {
             ..opusPath = opus.path
             ..durationS = audio.durationS;
           _changed();
-          unawaited(_persist());
+          _inBackground(_persist());
         },
         onItemDone: (index, item) => _applyResult(batch[index], item, baseline),
       );
@@ -778,7 +796,7 @@ class UploadTracker extends ChangeNotifier {
         ..error = null
         ..savedAt = _clock();
       _changed();
-      unawaited(
+      _inBackground(
         baseline.then((ids) {
           entry.baseline = ids;
           _ensurePolling();
@@ -792,7 +810,7 @@ class UploadTracker extends ChangeNotifier {
       ..stage = UploadStage.failed
       ..error = failureReason(item.message);
     _changed();
-    unawaited(_persist());
+    _inBackground(_persist());
   }
 
   /// Ids publicados antes de subir. Si la web no responde, los del catálogo que ya conoce la app.
@@ -813,7 +831,7 @@ class UploadTracker extends ChangeNotifier {
     if (_foreground == foreground) return;
     _foreground = foreground;
     if (foreground && _entries.any((e) => e.matchable)) {
-      unawaited(checkNow());
+      _inBackground(checkNow());
     }
     _ensurePolling();
   }
@@ -829,7 +847,10 @@ class UploadTracker extends ChangeNotifier {
     final needed =
         _foreground && published != null && _entries.any((e) => e.matchable);
     if (needed && _timer == null) {
-      _timer = _timerFactory(kPublishPollInterval, () => unawaited(checkNow()));
+      _timer = _timerFactory(
+        kPublishPollInterval,
+        () => _inBackground(checkNow()),
+      );
     } else if (!needed && _timer != null) {
       _timer!.cancel();
       _timer = null;
@@ -888,7 +909,7 @@ class UploadTracker extends ChangeNotifier {
     ]);
     _changed();
     _ensurePolling();
-    unawaited(_persist());
+    _inBackground(_persist());
   }
 
   /// Id de contenido de la copia Opus (el buzón nombra la canción `S` + SHA-256[:16]).
@@ -1105,9 +1126,9 @@ class UploadTracker extends ChangeNotifier {
     }
     _changed();
     if (_foreground && _entries.any((e) => e.awaitingPublication)) {
-      unawaited(checkNow());
+      _inBackground(checkNow());
     }
-    unawaited(_resolveFailed());
+    _inBackground(_resolveFailed());
     _ensurePolling();
   }
 
