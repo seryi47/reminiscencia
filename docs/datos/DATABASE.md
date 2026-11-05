@@ -108,7 +108,7 @@ Están en `frontend/web/data/`. Vercel sirve solo `frontend/web` (`CLAUDE.md`). 
 - `added_at`: ISO 8601 en UTC, con precisión de segundos.
 - `source`: `<fuente>:<identificador>` (`pipeline.py`). En los ficheros directos (`sources.py`), el identificador es el host seguido del nombre del fichero, no la URL completa. En el buzón, `Subida por <cuenta>`, con la cuenta de GitHub que hizo el push o lanzó la ejecución (`github.actor`).
 - `codec`, `size_bytes` y `duration_s` salen de `probe.py`, sobre el fichero original descargado. `duration_s` se redondea a 3 decimales.
-- Audio: `audio-library/audio/<id>.opus`, codificado con el perfil `opus-64k`. Al publicar, el job `publicar` lo sube a R2 (`audio/<id>.opus` en el bucket), solo para las canciones públicas (ADR-0020).
+- Audio: `audio/<id>.opus` del bucket privado de R2 (ADR-0024), codificado con el perfil `opus-64k`; el procesado lo genera en `audio-library/audio/<id>.opus` de su copia y el job `publicar` lo sube al bucket privado y, si la canción es pública, al público (ADR-0020).
 
 ### 4.3 Quién escribe
 
