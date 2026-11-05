@@ -167,18 +167,49 @@ class LibraryStore implements LibrarySource {
       if (song.local) continue;
       if (!await isCached(song)) missing.add(song);
     }
+    var failed = 0;
     for (final song in missing) {
-      final file = await audioFile(song);
-      final response = await _client
-          .get(audioUri(song))
-          .timeout(const Duration(minutes: 3));
-      if (response.statusCode != 200) {
-        throw HttpException('No se pudo descargar ${song.title}');
+      if (await _downloadOne(song)) {
+        done += 1;
+      } else {
+        failed += 1;
       }
-      await file.writeAsBytes(response.bodyBytes, flush: true);
-      done += 1;
-      onProgress(done, missing.length);
+      onProgress(done + failed, missing.length);
+    }
+    if (failed > 0 && done == 0) {
+      throw HttpException('No se pudo descargar ninguna de $failed canciones');
     }
     return done;
+  }
+
+  /// Descarga una canción a disco sin cargarla en memoria, con hasta 3 intentos. El fichero solo
+  /// existe completo (se escribe en `.part` y se renombra), y una canción rota no frena a las demás.
+  Future<bool> _downloadOne(Song song) async {
+    final file = await audioFile(song);
+    final part = File('${file.path}.part');
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        final response = await _client
+            .send(http.Request('GET', audioUri(song)))
+            .timeout(const Duration(seconds: 30));
+        if (response.statusCode != 200) {
+          throw HttpException('HTTP ${response.statusCode}');
+        }
+        final sink = part.openWrite();
+        try {
+          await sink.addStream(
+            response.stream.timeout(const Duration(seconds: 60)),
+          );
+        } finally {
+          await sink.close();
+        }
+        await part.rename(file.path);
+        return true;
+      } catch (error) {
+        debugPrint('biblioteca: ${song.title}, intento $attempt: $error');
+        if (await part.exists()) await part.delete();
+      }
+    }
+    return false;
   }
 }

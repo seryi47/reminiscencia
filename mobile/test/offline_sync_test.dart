@@ -201,6 +201,35 @@ void main() {
       );
     }
 
+    test(
+      'la descarga reintenta, no deja ficheros a medias y una canción rota no frena a las demás',
+      () async {
+        var attempts = 0;
+        final flaky = LibraryStore(
+          root: () async => Directory('${tmp.path}/biblioteca'),
+          client: MockClient.streaming((request, _) async {
+            final path = request.url.path;
+            if (path.contains('Sbad')) {
+              return http.StreamedResponse(const Stream.empty(), 500);
+            }
+            attempts += 1;
+            if (attempts == 1) throw const SocketException('corte');
+            return http.StreamedResponse(Stream.value([1, 2, 3, 4]), 200);
+          }),
+        );
+        Song song(String id) => Song.fromJson(FakeWeb._json(id));
+        final done = await flaky.downloadAll([
+          song('Sok'),
+          song('Sbad'),
+        ], (_, _) {});
+        expect(done, 1);
+        expect(await hasCachedAudio('Sok'), isTrue);
+        expect(await hasCachedAudio('Sbad'), isFalse);
+        final dir = Directory('${tmp.path}/biblioteca/audio');
+        expect(dir.listSync().where((f) => f.path.endsWith('.part')), isEmpty);
+      },
+    );
+
     test('un catálogo que cambia actualiza la biblioteca', () async {
       web.catalogIds = [kA, kB];
       final controller = controllerWith();

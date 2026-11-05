@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Si el usuario pidió escuchar la biblioteca sin conexión. Con esa opción, la sincronización
+/// Si se guarda la biblioteca para escuchar sin conexión (activo por defecto, el usuario puede desactivarlo). Con esa opción, la sincronización
 /// descarga las canciones nuevas, pero solo en Wi-Fi (ver NetworkInfo).
 abstract interface class OfflineChoice {
   Future<bool> read();
@@ -15,10 +15,10 @@ class SharedPrefsOfflineChoice implements OfflineChoice {
   Future<bool> read() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool(key) ?? false;
+      return prefs.getBool(key) ?? true;
     } catch (error) {
       debugPrint('biblioteca: no se pudo leer la opción sin conexión: $error');
-      return false;
+      return true;
     }
   }
 

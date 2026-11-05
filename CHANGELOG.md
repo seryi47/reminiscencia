@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Sin publicar: descarga automática en Wi-Fi (2026-11-05)
+
+- APK: «Sin conexión» viene activado por defecto (`biblioteca.sinConexion`, desactivable): con Wi-Fi o cable se descargan todas las canciones y las nuevas en cada sincronización; con datos no se descarga nada, pero lo guardado suena siempre, sin red.
+- La descarga escribe a disco en streaming (sin cargar la canción en memoria), usa `.part` que se renombra al terminar (nunca quedan ficheros a medias), reintenta 3 veces y una canción rota ya no aborta las demás. Se guarda el Opus tal cual está publicado, sin copias ni duplicados, para ocupar lo mínimo. Pruebas Flutter: 231.
+
 ## Sin publicar: seguimiento de subidas pendientes (2026-11-04)
 
 - «Tus subidas» ya no deja de comprobar una canción tras los primeros diez minutos: cambia a «Aún no aparece en la biblioteca; seguiremos comprobando» y revisa el catálogo cada minuto hasta encontrarla.
