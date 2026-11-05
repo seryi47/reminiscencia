@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## Sin publicar: buzón más rápido y R2 preparado (2026-11-05)
+
+- Causa de las subidas atascadas: GitHub Actions dejó de arrancar jobs por el límite de minutos de un repositorio privado; el repositorio pasó a público y se relanzó `buzon` (188 canciones).
+- `buzon.yml`: el job `autorizar` mira si queda algo en el buzón de `main` (archivos y manifiestos de partes). Los runs que llegan con el buzón ya vacío (cada subida lanza uno, pero el primero procesa todo) omiten `procesar` y `publicar`. Si no puede leer `main`, procesa.
+- R2 preparado, sin activar y sin tocar Vercel: `scripts/sync_r2.py` (simulación por defecto), `sonidos/r2.py` y [ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md).
+
 ## Sin publicar: descarga automática en Wi-Fi (2026-11-05)
 
 - APK: «Sin conexión» viene activado por defecto (`biblioteca.sinConexion`, desactivable): con Wi-Fi o cable se descargan todas las canciones y las nuevas en cada sincronización; con datos no se descarga nada, pero lo guardado suena siempre, sin red.
