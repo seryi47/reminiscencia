@@ -1,9 +1,11 @@
 name: r2
 
-# Repaso del audio público en Cloudflare R2 (ADR-0020). El audio lo suben a R2 los jobs 'publicar' de buzon.yml y
+# Repaso del audio en Cloudflare R2 (ADR-0020 y ADR-0024). El audio lo suben a R2 los jobs 'publicar' de buzon.yml y
 # biblioteca.yml antes de subir a main (fase 3); este workflow vuelve a comprobarlo cuando terminan, o a mano, y sube
-# lo que falte. Sin permiso de escritura en el repositorio: las credenciales de R2 solo llegan a este workflow, que
-# ejecuta código de main y no el de ninguna subida. Nunca borra nada del bucket (eso solo lo hace 'publicar').
+# lo que falte: al bucket privado, el audio de audio-library/audio/ de la copia de trabajo (mientras siga en Git); al
+# público, el de las canciones públicas, desde la copia local o desde el privado. Sin permiso de escritura en el
+# repositorio: las credenciales de R2 solo llegan a este workflow, que ejecuta código de main y no el de ninguna subida.
+# Nunca borra nada de ningún bucket (eso solo lo hace 'publicar', y solo en el público).
 
 on:
   workflow_run:
@@ -48,8 +50,9 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}
         run: |
-          if [ -z "$R2_BUCKET" ]; then
+          if [ -z "$R2_BUCKET" ] || [ -z "$R2_PRIVATE_BUCKET" ]; then
             echo "R2 no está configurado: se omite."
             exit 0
           fi

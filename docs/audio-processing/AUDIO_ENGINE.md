@@ -132,9 +132,9 @@ Los valores son los que declara `limits.py`, que indica haberlos verificado en d
 
 `sync_public` se ejecuta al final de cada acción de `ci_library.py`, también cuando el catálogo no cambia.
 
-- Comprueba que existe el audio de cada canción con `public: true`; ya no lo copia a la web (ADR-0020, fase 3). Lo sube a R2 `scripts/sync_r2.py` en el job `publicar`, que también borra del bucket el de las despublicadas.
+- No mira el audio (ADR-0024): ya no lo copia a la web (ADR-0020, fase 3). En el job `publicar`, `scripts/sync_r2.py` sube el audio nuevo al bucket privado de R2, copia al público el de las canciones públicas (desde la copia local o desde el privado) y borra del público el de las despublicadas.
 - Borra de `frontend/web/audio/` cualquier `.opus` que quede de antes.
-- Si falta el `.opus` de una canción pública en `audio-library/audio/`, lanza `FileNotFoundError`.
+- Si una canción pública no tiene audio ni en la copia local ni en ningún bucket, es `sync_r2.py` el que se detiene, antes de escribir nada y de subir a `main` (ADR-0024).
 - `frontend/web/data/songs.json`: solo las públicas, ordenadas por título sin distinguir mayúsculas. Campos: `id`, `title`, `artist`, `year`, `tags`, `folder_id`, `duration_s`, `license` y `audio` (`audio/<id>.opus`).
 - `frontend/web/data/folders.json`: todas las carpetas (`id`, `name`, `parent_id`).
 - Según el docstring, Vercel sirve solo `frontend/web`. Los `.opus` privados sí quedan versionados en `audio-library/audio/` (ver `.gitignore`), pero no se copian a la web.

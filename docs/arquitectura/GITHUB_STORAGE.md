@@ -1,18 +1,20 @@
 # Almacenamiento en GitHub: audio, catálogo y límites
 
-- Estado: 2026-11-04; la interfaz ya no tiene usuarios (ADR-0015) y las canciones también entran por el buzón `audio-library/buzon/` (`buzon.yml`, ADR-0014), que borra cada archivo tras procesarlo, aunque el original queda en el historial de git y cuenta para su tamaño. Desde ADR-0017, «Subir canciones» en la web y en la APK escribe también en el repositorio: la función de Vercel `frontend/web/api/subir.js` guarda cada trozo de la subida con un commit en `audio-library/buzon/.partes/<id>/`, y esos trozos (Opus ya convertido en el dispositivo) también quedan en el historial. Portadas en `audio-library/covers/` (ADR-0016). Cifras verificadas en la rama `main`.
-- Decisiones: ADR-0003 (almacenamiento en el ecosistema GitHub, parcialmente superada), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo), ADR-0008 (entrada por incidencias), ADR-0010 (procesado y publicación separados), ADR-0014 (buzón), ADR-0016 (portadas) y ADR-0017 (subida para todos por `/api/subir`).
-- Código: `backend/sonidos/` (`limits.py`, `catalog.py`, `pipeline.py`, `publish.py`, `paquete.py`) y `scripts/check_repo_limits.py`.
+- Estado: 2026-11-05; la interfaz ya no tiene usuarios (ADR-0015) y las canciones también entran por el buzón `audio-library/buzon/` (`buzon.yml`, ADR-0014), que borra cada archivo tras procesarlo, aunque el original queda en el historial de git y cuenta para su tamaño. Desde ADR-0024 (parte 1), «Subir canciones» en la web y en la APK ya no escribe en el repositorio: la función de Vercel `frontend/web/api/subir.js` guarda los trozos en el bucket privado de R2 (`entrada/<id>/`) y lanza `buzon.yml`; los trozos que hasta entonces se guardaron en `audio-library/buzon/.partes/<id>/` siguen en el historial. Todo el audio se copia a ese bucket privado, que pasa a ser su fuente de verdad; con la parte 2 de ADR-0024, `audio-library/audio/` deja de estar en Git. Portadas en `audio-library/covers/` (ADR-0016).
+- Decisiones: ADR-0003 (almacenamiento en el ecosistema GitHub, parcialmente superada), ADR-0006 (audio publicado en el repositorio), ADR-0007 (catálogo y flujo), ADR-0008 (entrada por incidencias), ADR-0010 (procesado y publicación separados), ADR-0014 (buzón), ADR-0016 (portadas), ADR-0017 (subida para todos por `/api/subir`), ADR-0020 (audio público en R2), ADR-0024 (audio privado en R2) y ADR-0025 (publicar aunque main avance).
+- Código: `backend/sonidos/` (`limits.py`, `catalog.py`, `pipeline.py`, `publish.py`, `paquete.py`, `r2.py`, `entrada.py`) y `scripts/` (`check_repo_limits.py`, `sync_r2.py`, `entrada_r2.py`, `migrar_audio_privado.py`).
 
 ## 1. Qué hay en el repositorio
 
 | Ruta | Qué contiene | Estado en main | Llega al público |
 |---|---|---|---|
 | `audio-library/indexes/catalog.json` | Catálogo: 30 canciones (19 públicas y 11 privadas) y un álbum | Versionado | No |
-| `audio-library/audio/<id>.opus` | Audio de reproducción de todas las canciones (30 ficheros) | Versionado | No |
-| `frontend/web/audio/<id>.opus` | Ya no existe (ADR-0020, fase 3): el audio publicado lo sirve Cloudflare R2 desde `audio-library/audio/` | — | Vercel redirige `/audio/*` a R2 |
+| `audio-library/audio/<id>.opus` | Audio de reproducción de todas las canciones (287 ficheros, unos 480 MB, el 2026-11-05) | Versionado hasta la parte 2 de ADR-0024; después, en `.gitignore` (el historial lo conserva) | No |
+| `audio/<id>.opus` del bucket privado de R2 | Copia de todo el audio, público y privado: la fuente de verdad desde ADR-0024. La rellenan `migrar-audio-privado.yml` (una vez) y cada `publicar` | Fuera de Git | No |
+| `entrada/<id>/` del bucket privado de R2 | Trozos y manifiesto de las subidas de `/api/subir`, hasta que `buzon.yml` los publica y los borra (ADR-0024) | Fuera de Git | No |
+| `frontend/web/audio/<id>.opus` | Ya no existe (ADR-0020, fase 3): el audio publicado lo sirve el bucket público de Cloudflare R2 | — | Vercel redirige `/audio/*` a R2 |
 | `audio-library/covers/<id>.jpg` y `frontend/web/covers/<id>.jpg` | Portadas de 640×640 (hoy una); a la web van las de canciones públicas y todas las carpetas (ADR-0016) | Versionado | Las de `frontend/web/covers/` |
-| `audio-library/buzon/` (y `.partes/<id>/`) | Carpeta de paso del workflow `buzon`: archivos subidos desde GitHub y trozos de `/api/subir`, que se borran al procesarlos | Versionado de paso; queda en el historial | No |
+| `audio-library/buzon/` (y `.partes/<id>/`) | Carpeta de paso del workflow `buzon`: archivos subidos desde la página de GitHub, que se borran al procesarlos. `.partes/` solo guarda subidas de `/api/subir` anteriores a ADR-0024 | Versionado de paso; queda en el historial | No |
 | `frontend/web/data/songs.json`, `folders.json`, `catalog.json` | Datos públicos, regenerados desde el catálogo | Versionado | Sí, lo sirve Vercel |
 | `audio-library/**/*.mp3`, `*.wav`, `*.flac`, `*.m4a` | Fuentes sin convertir | Excluidas por `.gitignore` | No |
 | `releases/**/*.apk` y `SHA256SUMS.txt` | APK de la app Android | Excluidos por `.gitignore`; se adjuntan a la release | Como descarga de la release |
@@ -27,9 +29,9 @@ Por incidencia (ADR-0008):
 2. **Descarga.** El original va a `audio-library/staging/`, un directorio de trabajo sin rastrear, con los límites de `intake.py`. Se borra al terminar, también si la importación falla (`pipeline.py`).
 3. **Conversión.** ffmpeg lo convierte a Opus a 64 kb/s, con el perfil `opus-64k` de `compression.py`, y lo deja en `audio-library/audio/<id>.opus`. Antes, `probe.py` (ffprobe) lee sus metadatos.
 4. **Catálogo.** Se añade la canción con `public: false` («las canciones nuevas nacen privadas», `catalog.py`). Guarda la licencia, el origen (`internet-archive:<identificador>` o `direct-url:<host>/<fichero>`), la huella SHA-256, el códec, la duración, el tamaño y la fecha de alta. Sin licencia no entra (`test_song_without_license_is_refused` en `backend/tests/test_catalog.py`).
-5. **Publicación.** Editar la canción con `public: true` regenera `frontend/web/data/` (`publish.py`) y el job `publicar` sube su audio a R2 antes de subir a main (`scripts/sync_r2.py`). Con `public: false`, regenera los datos y `publicar` borra su audio del bucket (ADR-0020).
+5. **Publicación.** Editar la canción con `public: true` regenera `frontend/web/data/` (`publish.py`) y el job `publicar`, antes de subir a main (`scripts/sync_r2.py`), sube el audio nuevo al bucket privado y copia al público el de las canciones públicas, desde la copia local o desde el privado. Con `public: false`, regenera los datos y `publicar` borra su audio del bucket público; el privado nunca pierde nada (ADR-0020 y ADR-0024).
 
-Por el buzón (ADR-0014 y ADR-0017): desde la web o la APK, «Subir canciones» convierte el archivo a Opus en el dispositivo y lo envía en trozos de hasta 4 MiB a `/api/subir`, que los guarda en `audio-library/buzon/.partes/<id>/` con un commit cada uno (con `GITHUB_TOKEN` de Vercel) y, con el último, el manifiesto. `buzon.yml` une los trozos, convierte con el mismo perfil, da de alta la canción (título: el nombre del archivo sin extensión; pública con la licencia fija de la web) y borra los trozos del buzón. Quien tiene permiso de escritura puede subir también desde la página de GitHub, con «Licencia: …» en el commit.
+Por el buzón (ADR-0014, ADR-0017 y ADR-0024): desde la web o la APK, «Subir canciones» convierte el archivo a Opus en el dispositivo y lo envía en trozos de hasta 4 MiB a `/api/subir`, que los guarda en `entrada/<id>/` del bucket privado de R2 (sin sobrescribir) y, con el último, el manifiesto; después lanza `buzon.yml` con un `repository_dispatch`. El job `recoger` baja las subidas completas, `procesar` (sin secretos) une los trozos, convierte con el mismo perfil y da de alta la canción (título: el nombre del archivo sin extensión; pública con la licencia fija de la web), y `publicar` borra la subida del bucket tras subir a main. Quien tiene permiso de escritura puede subir también desde la página de GitHub, con «Licencia: …» en el commit.
 
 ## 3. Qué sale a la web
 
@@ -56,7 +58,7 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 
 `check_repo_limits.py` corre en `backend.yml` (en cada push a `main` y en cada pull request) y en `biblioteca.yml` y `buzon.yml`, antes de cada commit del catálogo. El 2026-11-02 devuelve «Límites de GitHub: correcto».
 
-**Cómo se mide.** `audit_repository` suma el tamaño de cada fichero versionado (`git ls-files`) tal como está en el árbol de trabajo. Por eso el audio publicado cuenta dos veces: la copia de la biblioteca y la copia publicada. Hoy (2026-11-03) el audio versionado ocupa unos 35 MiB en total. El cálculo no mide el historial de Git, que también ocupa espacio. Si el audio publicado se acerca a 1 GiB, hay que pasarlo a almacenamiento externo (ADR-0006), y eso requiere decisión y coste explícitos.
+**Cómo se mide.** `audit_repository` suma el tamaño de cada fichero versionado (`git ls-files`) tal como está en el árbol de trabajo. El 2026-11-05 el audio versionado (`audio-library/audio/`) ocupa unos 480 MB. El cálculo no mide el historial de Git, que también ocupa espacio. Por eso el audio sale de Git (ADR-0024): con la parte 2, `audit_repository` deja de contarlo (ya no está en `git ls-files`), aunque el historial lo conserve.
 
 ## 5. Límites de entrada y descarga
 
@@ -80,12 +82,12 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 2. **Validación.** `scripts/issue_request.py` valida la petición con `sonidos/issue_request.py`: claves y operaciones en lista blanca, identificadores con formato fijo, límites de longitud y booleanos JSON estrictos.
 3. **Procesado (`procesar`, sin token).** `scripts/ci_library.py` aplica la petición: importa (`pipeline.py`) o organiza (crea, renombra o borra carpetas, y edita canciones). Después regenera los datos públicos en su copia, pero no los empaqueta. `scripts/empaquetar_cambios.py` deja en el artefacto `biblioteca-paquete` solo el catálogo y el audio que cambiaron, con un día de retención.
 4. **Publicación (`publicar`, con token solo para subir).** Descarga el paquete y lo valida (`backend/sonidos/paquete.py`) antes de tocar el repositorio:
-   - el manifiesto tiene la forma exacta, y su base es el HEAD de `main`; si `main` cambió, la petición se rechaza y hay que reenviarla;
+   - el manifiesto tiene la forma exacta, y su base es el HEAD de `main` o un antecesor suyo cuyos cambios posteriores no tocan las rutas del paquete, el catálogo, el audio, las portadas ni la parte pública (ADR-0025); si no, la petición se rechaza y hay que reenviarla;
    - solo se admiten rutas de la biblioteca: el catálogo, el audio con identificador (`S` + 16 hexadecimales + `.opus`) en las dos carpetas de audio, y los tres JSON públicos;
    - solo se pueden borrar ficheros de audio (al despublicar o retirar); nunca el catálogo ni los datos públicos;
    - ningún enlace simbólico ni fichero que no sea regular.
 
-   Después aplica el paquete y regenera la parte pública desde el catálogo (`scripts/aplicar_paquete.py`, con `sonidos.publish`; ADR-0010), comprueba los límites, confirma con `github-actions[bot]` y sube a `main`.
+   Después aplica el paquete y regenera la parte pública desde el catálogo (`scripts/aplicar_paquete.py`, con `sonidos.publish`; ADR-0010), comprueba los límites, confirma con `github-actions[bot]`, sincroniza los buckets de R2 y sube a `main`. Si el push se rechaza porque `main` avanzó sin tocar nada de lo anterior, rebasa el commit y reintenta, hasta tres veces (ADR-0025).
 5. **Respuesta.** `scripts/responder_incidencia.py` comenta en la incidencia. Si todo salió bien, la cierra. Si algo falló, le añade la etiqueta `error`.
 
 **Garantías y límites.** Un único grupo de concurrencia (`library-catalog`) evita dos escrituras a la vez, y las peticiones en espera no se cancelan (ADR-0008). La validación comprueba rutas y tipos de fichero, no el contenido: un procesado comprometido podría escribir contenido indebido en las rutas permitidas (riesgo residual de ADR-0010).
@@ -100,5 +102,6 @@ Cifras de `backend/sonidos/limits.py`, que cita docs.github.com consultado el 20
 
 - El campo `source` de `catalog.json` público incluye, en las URL directas, el host y el nombre del fichero de origen. Decidir si se publica.
 - Verificar en las políticas de GitHub que el audio versionado es admisible (ADR-0003).
-- Cualquiera puede subir por `/api/subir` sin límite de tamaño ni por hora (ADR-0017), y cada subida queda en el historial de git aunque se despublique: vigilar el tamaño del repositorio con `check_repo_limits.py`, que no mide el historial.
+- Cualquiera puede subir por `/api/subir` sin límite de tamaño ni por hora (ADR-0017). Desde ADR-0024 los trozos ya no entran en el historial de git, pero el Opus convertido sí, mientras `audio-library/audio/` siga versionado (hasta la parte 2): vigilar el tamaño del repositorio con `check_repo_limits.py`, que no mide el historial, y el del bucket privado en Cloudflare.
+- Tras la parte 2 de ADR-0024 el historial sigue guardando el audio antiguo y los trozos de `.partes/`; quitarlo exigiría reescribir la historia, que no se ha decidido.
 - Si el repositorio pasa a ser público, revisar antes el filtro de autor del workflow (ADR-0008).

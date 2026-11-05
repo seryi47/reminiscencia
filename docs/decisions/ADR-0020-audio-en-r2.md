@@ -4,6 +4,8 @@
 - Fecha: 2026-11-05.
 - Relacionadas: ADR-0014 y ADR-0017 (buzón y subida), ADR-0008 (publicación por workflows).
 
+> **Nota (2026-11-05):** con [ADR-0024](ADR-0024-audio-privado-en-r2.md) hay un segundo bucket, privado, que es la fuente de verdad de todo el audio. `sync_r2.py` ya no toma el audio público de `audio-library/audio/`: sube al privado el audio nuevo y copia al público, desde la copia local o desde el privado, el de las canciones públicas. Los secretos de GitHub añaden `R2_PRIVATE_BUCKET`.
+
 ## Contexto
 
 Vercel sirve el audio público (`frontend/web/audio/`, 188 canciones, unos 315 MB). El 2026-11-04 Vercel avisó de que el equipo gratuito había usado el 75 % de *Fast Origin Transfer* (10 GB al mes); superar el límite pausa los proyectos. Cada móvil que instale la APK con descarga automática (Wi-Fi) baja todo el audio, así que el consumo crece con el número de móviles y de canciones.

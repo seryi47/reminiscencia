@@ -94,7 +94,54 @@ def test_publicar_avisa_de_lo_que_regenera_aunque_el_paquete_no_lo_traiga(main_p
     assert b"Tema nuevo" in _indice(repo, SONGS_JSON)
 
 
-def test_publicar_se_detiene_si_falta_el_audio_de_una_cancion_publica(main_publicado, tmp_path, aplicar, capsys):
+def _commit_ajeno(repo: Path, ruta: str, data: bytes) -> str:
+    (repo / ruta).parent.mkdir(parents=True, exist_ok=True)
+    (repo / ruta).write_bytes(data)
+    for args in (("add", "--", ruta), ("-c", "user.name=web", "-c", "user.email=web@example.invalid", "commit", "-qm", "x")):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    return paquete.head_commit(repo)
+
+
+def _paquete_de_titulo(repo: Path, tmp_path: Path) -> Path:
+    data = catalog.load(repo / CATALOG)
+    data["songs"][0]["title"] = "Tema retitulado"
+    catalogo = tmp_path / "catalogo.json"
+    catalog.save(catalogo, data)
+    return _paquete(
+        tmp_path, files={CATALOG: catalogo.read_bytes()}, changes=[{"ruta": CATALOG, "estado": "M"}],
+        base=paquete.head_commit(repo),
+    )
+
+
+def test_publicar_aplica_sobre_main_si_entre_medias_solo_llegaron_trozos_de_una_subida(
+    main_publicado, tmp_path, aplicar, capsys, monkeypatch,
+):
+    # ADR-0025: el fallo real era un trozo de /api/subir en audio-library/buzon/.partes/ entre procesar y publicar.
+    repo = main_publicado
+    package = _paquete_de_titulo(repo, tmp_path)
+    head = _commit_ajeno(repo, "audio-library/buzon/.partes/0f8fad5b-d9cb-469f-a165-70867728950e/0.part", b"trozo")
+    entorno = tmp_path / "github_env"
+    monkeypatch.setenv("GITHUB_ENV", str(entorno))
+
+    assert aplicar.main(["--paquete", str(package), "--raiz", str(repo)]) == 0
+
+    assert b"Tema retitulado" in _indice(repo, SONGS_JSON)
+    assert f"BASE={head}" in entorno.read_text(encoding="utf-8")
+
+
+def test_publicar_se_detiene_si_entre_medias_cambio_el_catalogo(main_publicado, tmp_path, aplicar, capsys):
+    repo = main_publicado
+    package = _paquete_de_titulo(repo, tmp_path)
+    _commit_ajeno(repo, CATALOG, (repo / CATALOG).read_bytes() + b"\n")
+
+    assert aplicar.main(["--paquete", str(package), "--raiz", str(repo)]) == 1
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "main cambió" in error and CATALOG in error
+
+
+def test_aplicar_no_mira_el_audio_lo_comprueba_sync_r2(main_publicado, tmp_path, aplicar, capsys):
+    # ADR-0024: el audio de la biblioteca está en el bucket privado; aplicar_paquete no lo tiene en la copia local. La
+    # parada por falta de audio de una canción pública la hace scripts/sync_r2.py antes del push (test_r2.py).
     repo = main_publicado
     data = catalog.load(repo / CATALOG)
     nueva, _ = catalog.add_song(
@@ -109,5 +156,5 @@ def test_publicar_se_detiene_si_falta_el_audio_de_una_cancion_publica(main_publi
         base=paquete.head_commit(repo),
     )
 
-    assert aplicar.main(["--paquete", str(package), "--raiz", str(repo)]) == 1
-    assert "falta el audio" in json.loads(capsys.readouterr().out)["error"]
+    assert aplicar.main(["--paquete", str(package), "--raiz", str(repo)]) == 0
+    assert b"Sin audio" in _indice(repo, SONGS_JSON)

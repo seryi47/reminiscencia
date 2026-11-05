@@ -111,13 +111,16 @@ def test_audio_left_in_the_web_from_before_r2_is_removed(tmp_path):
     assert list((web / "audio").glob("*.opus")) == []
 
 
-def test_a_public_song_without_its_audio_in_the_library_is_refused(tmp_path):
+def test_a_public_song_without_local_audio_is_still_published(tmp_path):
+    # ADR-0024: el audio está en el bucket privado de R2, no en la copia local. Que una canción pública tenga audio lo
+    # comprueba scripts/sync_r2.py en 'publicar', antes de subir a main (pruebas en test_r2.py).
     path, audio = _catalog_with(tmp_path, [True])
     song_id = catalog.load(path)["songs"][0]["id"]
     (audio / f"{song_id}.opus").unlink()
 
-    with pytest.raises(FileNotFoundError):
-        sync_public(catalog_path=path, audio_dir=audio, web_dir=tmp_path / "web")
+    result = sync_public(catalog_path=path, audio_dir=audio, web_dir=tmp_path / "web")
+
+    assert result["public"] == 1
 
 
 def test_public_song_id_that_is_not_a_library_id_is_refused(tmp_path):

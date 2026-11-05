@@ -1,7 +1,8 @@
 """Sincroniza lo que se publica en la web pública (frontend/web) con el catálogo (ADR-0007, ADR-0008).
 
-- Comprueba que existe el audio de cada canción con public=true. El audio público ya no se copia a la web: lo sirve
-  Cloudflare R2 (ADR-0020, fase 3), y scripts/sync_r2.py lo sube desde audio-library/audio/ antes de publicar.
+- No mira el audio: el público lo sirve Cloudflare R2 (ADR-0020, fase 3) y la fuente de verdad de todo el audio es el
+  bucket privado (ADR-0024). scripts/sync_r2.py, en el job 'publicar', sube el audio nuevo al bucket privado, copia al
+  público el de las canciones públicas y se detiene antes de subir a main si a alguna le falta el audio.
 - Borra de frontend/web/audio/ cualquier audio que quede de antes (la carpeta ya no se usa).
 - Regenera frontend/web/data/songs.json (solo públicas), folders.json (todas las carpetas)
   y catalog.json (solo las canciones públicas y todas las carpetas, sin rutas de audio ni huellas SHA-256).
@@ -10,8 +11,8 @@
   las carpetas con artista, "artist". Los dos campos solo aparecen cuando tienen valor.
 - Las canciones con número de pista en su álbum llevan "track" (entero desde 1) en songs.json y catalog.json; las que
   no lo tienen, no llevan el campo (ADR-0026). La web y la APK ordenan cada álbum por "track".
-Vercel sirve solo frontend/web (y redirige /audio/<id>.opus a R2); el audio privado de audio-library/ nunca llega al
-público, porque sync_r2 solo sube las canciones de data/songs.json.
+Vercel sirve solo frontend/web (y redirige /audio/<id>.opus a R2); el audio privado nunca llega al bucket público,
+porque sync_r2 solo copia allí las canciones de data/songs.json.
 Los metadatos de las canciones no publicadas (título, artista, origen...) tampoco salen de audio-library/:
 la web es pública y catalog.json forma parte de ella (ADR-0008).
 """
@@ -72,12 +73,8 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
     for song in public:
         if not isinstance(song.get("id"), str) or not SONG_ID.fullmatch(song["id"]):
             raise ValueError(f"identificador de canción no válido en la parte pública: {song.get('id')!r}")
-    public_names = {f"{song['id']}.opus" for song in public}
-
-    for name in sorted(public_names):
-        source = audio_dir / name
-        if source.is_symlink() or not source.is_file():
-            raise FileNotFoundError(f"falta el audio de {name} en {audio_dir}")
+    # El audio no se mira aquí (ADR-0024): su fuente de verdad es el bucket privado de R2, y el job 'publicar'
+    # (scripts/sync_r2.py) se detiene antes de subir a main si una canción pública no tiene audio en ningún sitio.
     # El audio público lo sirve R2: lo que quede en frontend/web/audio/ es de antes de la fase 3 y se borra.
     if web_audio.is_dir() and not web_audio.is_symlink():
         for stale in web_audio.glob("*.opus"):
