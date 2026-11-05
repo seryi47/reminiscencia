@@ -136,7 +136,7 @@ jobs:
       - name: Instalar ffmpeg
         # apt a veces se cuelga en el runner y bloquea la cola `library-catalog` entera: cada intento tiene 120 s y hay tres.
         run: |
-          for intento in 1 2 3; do
+          for _ in 1 2 3; do
             timeout 120 sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null 2>&1 && break
             timeout 120 sudo apt-get update -qq > /dev/null 2>&1 || true
           done
