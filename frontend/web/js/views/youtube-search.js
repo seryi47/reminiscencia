@@ -22,6 +22,39 @@ const cache = new Map();
 const downloads = new Map();
 let session = null;
 
+// El vídeo vive en un panel fijo fuera de los resultados: si el buscador se repinta (por ejemplo al abrirse «Subir
+// canciones» al empezar la descarga), el iframe no se destruye y la canción no se corta.
+const dock = { id: null, node: null };
+
+function closeDock() {
+  dock.node?.remove();
+  dock.node = null;
+  dock.id = null;
+  for (const button of document.querySelectorAll('.yt-listen')) button.lastChild.textContent = 'Escuchar';
+}
+
+function openDock(ctx, item) {
+  closeDock();
+  // La música de la biblioteca se pausa para no sonar a la vez que el vídeo.
+  ctx.player?.pause?.();
+  dock.id = item.id;
+  dock.node = el('div', { class: 'yt-dock', role: 'region', 'aria-label': 'Reproductor de YouTube', 'data-testid': 'youtube-embed' },
+    el('div', { class: 'yt-dock-bar' },
+      el('p', { class: 'yt-dock-title' }, item.title),
+      el('button', { type: 'button', class: 'button button-text button-small', 'aria-label': 'Cerrar el reproductor de YouTube', on: { click: closeDock } }, 'Cerrar')),
+    el('iframe', {
+      src: embedUrl(item.id),
+      title: `Vídeo de YouTube: ${item.title}`,
+      allow: 'autoplay; encrypted-media; picture-in-picture',
+      allowfullscreen: true,
+      referrerpolicy: 'strict-origin-when-cross-origin',
+    }));
+  document.body.append(dock.node);
+  for (const button of document.querySelectorAll('.yt-listen')) {
+    button.lastChild.textContent = button.closest('.yt-row')?.dataset.videoId === item.id ? 'Cerrar' : 'Escuchar';
+  }
+}
+
 function remember(query, items) {
   cache.delete(query);
   cache.set(query, items);
@@ -120,16 +153,16 @@ function resultRow(ctx, item) {
     hidden: true,
     on: { click: () => ctx.openUpload() },
   }, 'Ver el progreso');
-  const embed = el('div', { class: 'yt-embed', hidden: true, 'data-testid': 'youtube-embed' });
   const row = el('li', { class: 'yt-row', 'data-testid': 'youtube-result', 'data-video-id': item.id },
     el('div', { class: 'yt-main' },
       el('div', { class: 'yt-info' },
         el('p', { class: 'yt-title' }, item.title),
         el('p', { class: 'yt-meta' }, meta)),
       el('div', { class: 'yt-actions' }, listen, download)),
-    status, progress, embed);
+    status, progress);
 
   const paint = () => {
+    listen.lastChild.textContent = dock.id === item.id ? 'Cerrar' : 'Escuchar';
     const state = downloads.get(item.id);
     download.disabled = state?.state === 'running' || state?.state === 'queued';
     download.lastChild.textContent = state?.state === 'queued' ? 'En cola' : state?.state === 'running' ? 'Descargando…' : state?.state === 'error' ? 'Reintentar' : 'Descargar';
@@ -161,34 +194,12 @@ function resultRow(ctx, item) {
   };
 
   const toggleEmbed = () => {
-    if (!embed.hidden) {
-      embed.replaceChildren();
-      embed.hidden = true;
-      listen.lastChild.textContent = 'Escuchar';
-      return;
-    }
-    for (const other of document.querySelectorAll('.yt-embed:not([hidden])')) {
-      other.replaceChildren();
-      other.hidden = true;
-      const label = other.closest('.yt-row')?.querySelector('.yt-listen');
-      if (label?.lastChild) label.lastChild.textContent = 'Escuchar';
-    }
-    // La música de la biblioteca se pausa para no sonar a la vez que el vídeo.
-    ctx.player?.pause?.();
-    embed.replaceChildren(el('iframe', {
-      src: embedUrl(item.id),
-      title: `Vídeo de YouTube: ${item.title}`,
-      allow: 'autoplay; encrypted-media; picture-in-picture',
-      allowfullscreen: true,
-      referrerpolicy: 'strict-origin-when-cross-origin',
-      loading: 'lazy',
-    }));
-    embed.hidden = false;
-    listen.lastChild.textContent = 'Cerrar';
+    if (dock.id === item.id) closeDock();
+    else openDock(ctx, item);
   };
 
   listen.addEventListener('click', () => {
-    const opening = embed.hidden;
+    const opening = dock.id !== item.id;
     toggleEmbed();
     if (opening) startDownload();
   });
