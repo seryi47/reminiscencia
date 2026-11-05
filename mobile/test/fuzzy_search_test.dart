@@ -45,6 +45,31 @@ void main() {
     expect(filterSongsByText(songs, 'zzzzzz'), isEmpty);
   });
 
+  test(
+    'una sincronización con canción nueva no corta un stream de YouTube',
+    () async {
+      final t = buildTestServices(
+        songs: [_song('S0000000000000001', 'Uno', 'A')],
+      );
+      await t.services.library.load();
+      await t.playback.playStream(
+        id: 'abc',
+        title: 'Tema',
+        artist: 'Canal',
+        uri: Uri.parse('https://example.com/a.m4a'),
+      );
+      t.playback.log.clear();
+      t.source.songs = [
+        _song('S0000000000000001', 'Uno', 'A'),
+        _song('S0000000000000002', 'Dos', 'A'),
+      ];
+      await t.services.library.refresh();
+      expect(t.playback.log.where((e) => e.startsWith('load')), isEmpty);
+      expect(t.playback.nowPlaying.value.songId, 'yt-abc');
+      expect(t.playback.nowPlaying.value.playing, isTrue);
+    },
+  );
+
   group('filtro de colección', () {
     testWidgets('aparece con 6 canciones o más y filtra', (tester) async {
       setWindow(tester, const Size(400, 900));

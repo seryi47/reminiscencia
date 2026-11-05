@@ -5,6 +5,26 @@ import { audioCacheName, listAudioUrls, planOfflineDownload } from './offline-co
 const SW_URL = '/sw.js';
 const SW_SCOPE = '/';
 
+/** ¿Está sonando algo? El audio de la biblioteca o el vídeo de «Escuchar» de YouTube. */
+function isPlayingMedia() {
+  const audio = typeof document !== 'undefined' ? document.getElementById('audio') : null;
+  const playing = Boolean(audio && !audio.paused && !audio.ended);
+  return playing || Boolean(document.querySelector('.yt-dock'));
+}
+
+/** Recarga para estrenar la versión nueva, pero sin cortar lo que suena: espera a que pare. */
+function reloadWhenIdle() {
+  if (!isPlayingMedia()) {
+    window.location.reload();
+    return;
+  }
+  const timer = setInterval(() => {
+    if (isPlayingMedia()) return;
+    clearInterval(timer);
+    window.location.reload();
+  }, 3000);
+}
+
 /** Registra sw.js como módulo con alcance '/'. Si el navegador no tiene service workers
  *  o el registro falla, devuelve null y la web sigue funcionando en línea.
  *  Cuando una versión nueva toma el control de una página que ya tenía una anterior, la página se recarga
@@ -17,7 +37,7 @@ export async function registerPwa() {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!hadController || reloaded) return;
       reloaded = true;
-      window.location.reload();
+      reloadWhenIdle();
     });
   }
   try {

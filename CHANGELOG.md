@@ -6,7 +6,8 @@
 - Servidor: `GET /api/youtube/search` (HTML de YouTube y, de respaldo, `yt-dlp`). Web: `js/youtube-search.js`, `js/views/youtube-search.js` y `importYoutubeVideo`; la CSP añade `frame-src` de `youtube-nocookie.com`; `SHELL_VERSION = 21`. APK: `YoutubeImporter.search`, `lib/youtube_stream.dart` (`youtube_explode_dart`), `PlaybackPort.playStream` y `lib/ui/youtube_results.dart`. Escuchar en la APK está pendiente de probar en un móvil real.
 - Búsqueda tolerante a erratas («kid keo» encuentra «Kidd Keo») y campo «Buscar en esta colección» en «Todas las canciones», álbumes y listas con 6 canciones o más, igual en web (`fuzzyScore`, `filterSongs` en `js/catalog.js`) y APK (`lib/fuzzy_search.dart`).
 - Las descargas de YouTube sin artista en los metadatos usan el canal del resultado (web `fallbackArtist`, APK `result.artist`).
-- Pruebas: web unitarias 441, e2e 145, Flutter 244.
+- Causa probable de las canciones que se cortaban: el arreglo del panel `.yt-dock` no subió `SHELL_VERSION`, así que el navegador siguió sirviendo el JS viejo una carga más. Ahora `SHELL_VERSION = 22` y, cuando llega una versión nueva, `pwa.js` espera a que no suene nada (audio ni vídeo de «Escuchar») antes de recargar. Pruebas nuevas: el iframe es el mismo tras abrirse la hoja y publicarse (e2e) y una sincronización con canción nueva no corta un stream de YouTube (APK).
+- Pruebas: web unitarias 441, e2e 146, Flutter 245.
 - Web: el reproductor de YouTube de «Escuchar» vive en un panel fijo (`.yt-dock`) fuera de los resultados; ya no se corta cuando se repinta el buscador (p. ej. al abrirse «Subir canciones» al empezar la descarga).
 - `buzon.yml` y `biblioteca.yml`: ffmpeg se instala sin `apt-get update` ni paquetes recomendados (con reintento si falla), unos 20 s menos por publicación.
 

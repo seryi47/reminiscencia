@@ -339,7 +339,12 @@ describe("Buscar en YouTube", () => {
       await search(page, "prueba 15");
       await waitVisible(page, "youtube-search-button", { context: "botón de YouTube" });
       assert.equal((await page.$$('[data-testid="youtube-result"]')).length, 0);
-      await page.$eval('[data-testid="youtube-search-button"]', (el) => el.click());
+      // El buscador se repinta al escribir: se vuelve a pulsar si el botón se ha sustituido antes de recibir el clic.
+      await page.waitForFunction(() => {
+        if (document.querySelector('[data-testid="youtube-results"]')) return true;
+        document.querySelector('[data-testid="youtube-search-button"]')?.click();
+        return false;
+      }, { timeout: 8000, polling: 300 });
       await waitVisible(page, "youtube-results", { context: "resultados tras pulsar" });
     }));
 });
@@ -805,6 +810,33 @@ describe("Subir canciones", () => {
       assert.equal(await page.$eval('[data-testid="upload-item-name"]', (node) => [node.title, getComputedStyle(node).textOverflow].join("|")), "Tono de prueba.wav|ellipsis");
       // Mientras se publican, una copia local en este navegador (se borra al publicarse).
       assert.equal(await countLocalSongs(page), 2);
+    }),
+  );
+
+  prueba("El vídeo de «Escuchar» sigue sonando (mismo iframe) al abrirse la hoja de subidas y al publicarse la canción", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      subidas.length = 0;
+      restaurarCatalogo();
+      await prepararPagina(page);
+      await openApp(page, server.url);
+      await waitServiceWorker(page);
+      await page.evaluate(() => { window.__sinRecargar = true; });
+      await search(page, "cancion inexistente zzqx");
+      await waitVisible(page, "youtube-results", { context: "resultados de YouTube" });
+      await page.$eval('[data-testid="youtube-listen"]', (el) => el.click());
+      await page.waitForSelector('[data-testid="youtube-embed"] iframe', { timeout: 5000 });
+      await page.$eval('[data-testid="youtube-embed"] iframe', (el) => { window.__iframe = el; el.dataset.marca = "viva"; });
+      await openUpload(page, VIEWPORTS.escritorio);
+      await uploadWavs(page, ["Tono nuevo.wav"]);
+      publicar({ id: "S00000000000000bb", title: "Tono nuevo" });
+      await toastText(page, "“Tono nuevo” ya está en la biblioteca");
+      await page.keyboard.press("Escape");
+      const estado = await page.evaluate(() => ({
+        igual: window.__iframe === document.querySelector('[data-testid="youtube-embed"] iframe'),
+        conectado: window.__iframe.isConnected,
+        sinRecargar: window.__sinRecargar === true,
+      }));
+      assert.deepEqual(estado, { igual: true, conectado: true, sinRecargar: true });
     }),
   );
 
