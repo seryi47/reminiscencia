@@ -70,6 +70,14 @@ let cancionesBase;
 before(async () => {
   catalogo = createTestCatalogOverrides();
   cancionesBase = catalogo.get("/data/songs.json").body;
+  // Búsqueda de YouTube simulada (ADR-0021): el servidor de pruebas ignora la query y siempre devuelve estos resultados.
+  catalogo.set("/api/youtube/search", {
+    type: "application/json; charset=utf-8",
+    body: JSON.stringify({ items: [
+      { id: "dQw4w9WgXcQ", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", title: "Tema de YouTube uno", artist: "Artista Uno", durationS: 213 },
+      { id: "aaaaaaaaaaa", url: "https://www.youtube.com/watch?v=aaaaaaaaaaa", title: "Tema de YouTube dos", artist: "Artista Dos", durationS: 95 },
+    ] }),
+  });
   server = await startStaticServer({ overrides: catalogo, functions: new Map([["/api/subir", fakeUploadFunction]]) });
   browser = await launchBrowser();
 });
@@ -284,6 +292,32 @@ describe("Reproducir", () => {
       assert.ok(await waitHidden(page, "full-player"), "Escape cierra la pantalla completa.");
     }),
   );
+});
+
+describe("Buscar en YouTube", () => {
+  prueba("Si la biblioteca no tiene la canción, busca sola en YouTube y ofrece Escuchar y Descargar", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await search(page, "cancion inexistente zzqx");
+      await waitVisible(page, "youtube-results", { context: "resultados de YouTube" });
+      assert.equal((await page.$$('[data-testid="youtube-result"]')).length, 2);
+      assert.match(await textOf(page, "youtube-results"), /Tema de YouTube uno[\s\S]*Artista Uno · 3:33/);
+      await page.click('[data-testid="youtube-listen"]');
+      await page.waitForSelector('[data-testid="youtube-embed"] iframe', { timeout: 5000 });
+      assert.match(await page.$eval('[data-testid="youtube-embed"] iframe', (el) => el.src), /^https:\/\/www\.youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
+      // La descarga empieza con Escuchar; sin el proxy de playlists del servidor de pruebas acaba en error y se puede reintentar.
+      await page.waitForFunction(() => /Reintentar/.test(document.querySelector('[data-testid="youtube-download"]')?.textContent ?? ""), { timeout: 8000 });
+    }));
+
+  prueba("Si la biblioteca sí la tiene, solo ofrece el botón «Buscar en YouTube»", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      await search(page, "prueba 15");
+      await waitVisible(page, "youtube-search-button", { context: "botón de YouTube" });
+      assert.equal((await page.$$('[data-testid="youtube-result"]')).length, 0);
+      await page.$eval('[data-testid="youtube-search-button"]', (el) => el.click());
+      await waitVisible(page, "youtube-results", { context: "resultados tras pulsar" });
+    }));
 });
 
 describe("Buscar", () => {

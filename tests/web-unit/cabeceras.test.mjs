@@ -31,6 +31,8 @@ describe("vercel.json: Content-Security-Policy", () => {
     // Además de la propia web, solo el bucket de audio de R2 (lo pide el service worker y lo reproduce el elemento audio; ADR-0020).
     assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN]);
     assert.deepEqual(directives.get("frame-ancestors"), ["'none'"]);
+    // Solo el reproductor incrustado de YouTube sin cookies (buscador, ADR-0021).
+    assert.deepEqual(directives.get("frame-src"), ["https://www.youtube-nocookie.com"]);
   });
 
   it("permite el favicon en data: y no admite eval ni scripts en línea", () => {

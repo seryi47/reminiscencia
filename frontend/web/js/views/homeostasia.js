@@ -649,6 +649,41 @@ async function convertirPlaylist(items, onProgress, signal) {
 }
 
 // ==================================================
+// IMPORTAR UN VÍDEO SUELTO (buscador, ADR-0021)
+// ==================================================
+
+/** Importa un vídeo de YouTube por el mismo camino que pegar su URL en Homeostasia: lee título y artista con el proxy,
+ *  convierte a WAV y lo entrega a la cola de subidas, donde se pasa a Opus y se publica.
+ *  Devuelve 'queued' si lo ha añadido a la cola o 'already' si ya estaba hecho o en marcha. Lanza Error si falla. */
+export async function importYoutubeVideo(ctx, url, { signal, onStatus } = {}) {
+  if (!validateYoutubeImportUrl(url)) throw new Error('La URL de YouTube no es válida.');
+  const videoId = getVideoId(url);
+  if (!videoId || completedVideos.has(videoId) || activeVideos.has(videoId) || cachedRecord(videoId)?.state === 'queued') {
+    return 'already';
+  }
+  onStatus?.('Leyendo YouTube…');
+  const { items, album } = await listarPlaylist(url, signal);
+  if (items.length === 0) throw new Error('No se han encontrado canciones en YouTube.');
+  const result = await convertirPlaylist(items, ({ retryAttempt, retryInSeconds, conversionStatus }) => {
+    if (retryAttempt) {
+      onStatus?.(`El conversor está saturado. Reintento ${retryAttempt}/${CONFIG.convertCreateAttempts} en ${retryInSeconds} s.`);
+    } else if (conversionStatus) {
+      onStatus?.(`Convirtiendo: ${conversionStatusLabel(conversionStatus)}.`);
+    }
+  }, signal);
+  if (result.files.length === 0) {
+    if (result.errors.length > 0) throw result.errors[0].error ?? new Error('No se pudo convertir la canción.');
+    return 'already';
+  }
+  await ctx.addUploads(result.files, { album, trackArtists: result.trackArtists });
+  result.completedIds.forEach((id) => {
+    completedVideos.add(id);
+    saveImportRecord(id, { state: 'queued' });
+  });
+  return 'queued';
+}
+
+// ==================================================
 // ABRIR HOJA HOMEOSTASIA
 // ==================================================
 

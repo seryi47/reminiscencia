@@ -30,7 +30,7 @@ function bundledExecutable() {
   }
 }
 
-function executable(env) {
+export function executable(env) {
   const configured = typeof env?.YTDLP_PATH === 'string' ? env.YTDLP_PATH.trim() : '';
   return configured || bundledExecutable() || 'yt-dlp';
 }
@@ -96,7 +96,7 @@ function runYtdlp(url, { spawnImpl = nodeSpawn, env = process.env } = {}) {
   });
 }
 
-function parseAssignedJson(html, marker) {
+export function parseAssignedJson(html, marker) {
   const markerAt = String(html ?? '').indexOf(marker);
   if (markerAt < 0) return null;
   const start = markerAt + marker.length;

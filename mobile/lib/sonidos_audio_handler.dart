@@ -233,6 +233,55 @@ class SonidosAudioHandler extends BaseAudioHandler
     _startPlayback();
   });
 
+  @override
+  Future<void> playStream({
+    required String id,
+    required String title,
+    required String artist,
+    required Uri uri,
+    Duration? duration,
+  }) => _exclusive(() async {
+    final queueId = 'yt-$id';
+    final item = MediaItem(
+      id: queueId,
+      title: title,
+      artist: artist.isEmpty ? null : artist,
+      album: 'YouTube',
+      duration: duration,
+    );
+    queue.add([item]);
+    try {
+      await _player.setAudioSources([AudioSource.uri(uri, tag: queueId)]);
+    } catch (error) {
+      queue.add(const []);
+      mediaItem.add(null);
+      _queueIds = const [];
+      _queueSongs = const [];
+      _playableOffline = const [];
+      _publish();
+      throw AppException(describePlayerError(error));
+    }
+    // Marcador para la cola: nunca se busca en la biblioteca ni se guarda.
+    _queueSongs = [
+      Song(
+        id: queueId,
+        title: title,
+        artist: artist,
+        year: null,
+        tags: const [],
+        folderId: null,
+        durationS: (duration?.inMilliseconds ?? 0) / 1000,
+        license: '',
+        audio: '',
+      ),
+    ];
+    _queueIds = [queueId];
+    _playableOffline = const [false];
+    mediaItem.add(item);
+    _publish();
+    _startPlayback();
+  });
+
   /// Arranca la reproducción sin esperar a que termine la canción (el Future de just_audio dura hasta el final).
   void _startPlayback() {
     _error.value = null;

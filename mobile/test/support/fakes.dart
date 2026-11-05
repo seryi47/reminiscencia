@@ -21,6 +21,8 @@ import 'package:reminiscencia/settings_store.dart';
 import 'package:reminiscencia/shared_upload.dart';
 import 'package:reminiscencia/song.dart';
 import 'package:reminiscencia/upload_tracker.dart';
+import 'package:reminiscencia/youtube_importer.dart';
+import 'package:reminiscencia/youtube_stream.dart';
 
 /// Canción de prueba con id y título predecibles.
 Song fakeSong(
@@ -140,6 +142,28 @@ class FakePlaybackPort implements PlaybackPort {
       songId: first.id,
       title: first.title,
       artist: first.artist,
+    );
+  }
+
+  @override
+  Future<void> playStream({
+    required String id,
+    required String title,
+    required String artist,
+    required Uri uri,
+    Duration? duration,
+  }) async {
+    log.add('stream:$id');
+    final failure = playError;
+    if (failure != null) throw failure;
+    _queue
+      ..clear()
+      ..add('yt-$id');
+    _now.value = NowPlaying(
+      songId: 'yt-$id',
+      title: title,
+      artist: artist,
+      playing: true,
     );
   }
 
@@ -327,6 +351,8 @@ buildTestServices({
   UploadsStore? uploadsStore,
   PeriodicTimerFactory? pollTimer,
   DateTime Function()? clock,
+  YoutubeImporter? youtube,
+  YoutubeStreamResolver? streamResolver,
 }) {
   final source = FakeLibrarySource(
     songs: songs,
@@ -365,6 +391,8 @@ buildTestServices({
     },
     pickImage: pickImage ?? () async => null,
     pickAudio: pickAudio ?? () async => const [],
+    youtube: youtube,
+    streamResolver: streamResolver,
     clock: () => now ?? DateTime(2026, 11, 3, 10),
   );
   return (

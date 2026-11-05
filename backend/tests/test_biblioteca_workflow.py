@@ -139,7 +139,7 @@ def test_web_has_no_administration_code():
     # server solo contiene módulos compartidos, no rutas alternativas de publicación.
     api = ROOT / "frontend" / "web" / "api"
     assert sorted(path.name for path in api.iterdir()) == ["subir.js", "youtube"]
-    assert sorted(path.name for path in (api / "youtube").iterdir()) == ["convert.js", "download.js", "playlist.js", "status.js"]
+    assert sorted(path.name for path in (api / "youtube").iterdir()) == ["convert.js", "download.js", "playlist.js", "search.js", "status.js"]
 
 
 # --- Corrección de la ronda 2 (2026-11-02): procesado separado de la publicación -----------------

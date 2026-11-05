@@ -146,6 +146,16 @@ abstract interface class PlaybackPort {
   /// Lanza AppException si no se puede reproducir.
   Future<void> playAt(List<Song> songs, int index);
 
+  /// Reproduce una dirección de audio de internet (resultado de YouTube, ADR-0021) como cola de una sola canción.
+  /// [id] identifica el vídeo; no entra en la biblioteca. Lanza AppException si no se puede reproducir.
+  Future<void> playStream({
+    required String id,
+    required String title,
+    required String artist,
+    required Uri uri,
+    Duration? duration,
+  });
+
   Future<void> togglePlayPause();
 
   Future<void> playNext();

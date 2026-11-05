@@ -7,6 +7,7 @@ import 'collection_page.dart';
 import 'collection_ref.dart';
 import 'common.dart';
 import 'song_row.dart';
+import 'youtube_results.dart';
 
 /// Buscar: campo redondeado grande y, sin texto, «Explorar todo» con las colecciones en tiles de color.
 class SearchPage extends StatefulWidget {
@@ -126,6 +127,13 @@ class _SearchPageState extends State<SearchPage> {
     final library = services.library;
     final songs = library.searchSongs(_query);
     final folders = library.searchFolders(_query);
+    final youtube = SliverToBoxAdapter(
+      child: YoutubeSearchSection(
+        services: services,
+        query: _query,
+        automatic: songs.isEmpty,
+      ),
+    );
     if (songs.isEmpty && folders.isEmpty) {
       return [
         SliverToBoxAdapter(
@@ -141,6 +149,7 @@ class _SearchPageState extends State<SearchPage> {
             ),
           ),
         ),
+        youtube,
       ];
     }
     return [
@@ -187,6 +196,7 @@ class _SearchPageState extends State<SearchPage> {
           ),
         ),
       ),
+      youtube,
     ];
   }
 }

@@ -124,6 +124,71 @@ class _PendingYoutubeJob {
 /// El cliente nunca habla directamente con yt-dlp ni con yttowav: obtiene la
 /// playlist, crea los trabajos y descarga los WAV a una carpeta temporal para
 /// que `homeostasia.dart` los entregue a `LibraryController.uploadShared`.
+/// Resultado de buscar en YouTube desde el buscador (ADR-0021).
+class YoutubeSearchResult {
+  const YoutubeSearchResult({
+    required this.id,
+    required this.url,
+    required this.title,
+    this.artist = '',
+    this.durationS = 0,
+  });
+
+  final String id;
+  final String url;
+  final String title;
+  final String artist;
+  final int durationS;
+}
+
+final RegExp _videoIdPattern = RegExp(r'^[A-Za-z0-9_-]{11}$');
+
+/// Texto que se manda a YouTube (entre 3 y 100 letras, sin espacios de más) o null si no sirve.
+String? youtubeSearchQuery(String raw) {
+  final text = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+  final length = text.runes.length;
+  return length >= 3 && length <= 100 ? text : null;
+}
+
+/// Segundos a «3:45» o «1:02:03».
+String formatYoutubeDuration(int seconds) {
+  final total = seconds > 0 ? seconds : 0;
+  final h = total ~/ 3600;
+  final m = (total % 3600) ~/ 60;
+  final s = (total % 60).toString().padLeft(2, '0');
+  return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$s' : '$m:$s';
+}
+
+/// Lee la respuesta de `/api/youtube/search`; descarta lo que no tiene la forma esperada.
+List<YoutubeSearchResult> parseYoutubeSearch(Object? json) {
+  final items = json is Map ? json['items'] : null;
+  if (items is! List) {
+    throw const AppException('La respuesta de la búsqueda no es válida.');
+  }
+  final seen = <String>{};
+  final results = <YoutubeSearchResult>[];
+  for (final raw in items) {
+    if (raw is! Map) continue;
+    final id = raw['id'];
+    final title = raw['title'];
+    if (id is! String || !_videoIdPattern.hasMatch(id) || !seen.add(id)) {
+      continue;
+    }
+    if (title is! String || title.trim().isEmpty) continue;
+    final duration = raw['durationS'];
+    results.add(
+      YoutubeSearchResult(
+        id: id,
+        url: 'https://www.youtube.com/watch?v=$id',
+        title: title.trim(),
+        artist: _artistText(raw['artist']),
+        durationS: duration is num ? duration.round() : 0,
+      ),
+    );
+  }
+  return results;
+}
+
 class YoutubeImporter {
   YoutubeImporter({
     required this.client,
@@ -605,6 +670,28 @@ class YoutubeImporter {
       return until.isNegative ? Duration.zero : until;
     } on FormatException {
       return null;
+    }
+  }
+
+  /// Busca [query] en YouTube con el proxy de la web. Lanza AppException si falla.
+  Future<List<YoutubeSearchResult>> search(
+    String query, {
+    YoutubeImportCancellation? cancellation,
+  }) async {
+    final text = youtubeSearchQuery(query);
+    if (text == null) {
+      throw const AppException(
+        'Escribe al menos tres letras para buscar en YouTube.',
+      );
+    }
+    final response = await _get(
+      _endpoint('api/youtube/search').replace(queryParameters: {'q': text}),
+      cancellation: cancellation,
+    );
+    try {
+      return parseYoutubeSearch(jsonDecode(utf8.decode(response.bodyBytes)));
+    } on FormatException {
+      throw const AppException('La respuesta de la búsqueda no es válida.');
     }
   }
 

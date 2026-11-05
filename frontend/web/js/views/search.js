@@ -4,6 +4,7 @@
 
 import { searchCatalog, songCountText } from '../catalog.js';
 import { el, iconButton } from '../ui/dom.js';
+import { youtubeSection } from './youtube-search.js';
 import { icon } from '../ui/icons.js';
 import { chips, collectionCard, contextCover, DOT, playButton, shelf, songCoverNode, trackTable } from './components.js';
 
@@ -75,7 +76,8 @@ export function refreshSearchResults(main, ctx) {
   if (total === 0) {
     container.replaceChildren(el('div', { class: 'search-empty', 'data-testid': 'search-empty' },
       el('h2', { class: 'empty-title' }, `No se ha encontrado nada para «${searchQuery.trim()}»`),
-      el('p', { class: 'empty-text' }, 'Revisa la ortografía o prueba con menos palabras o con otras.')));
+      el('p', { class: 'empty-text' }, 'Revisa la ortografía o prueba con menos palabras o con otras.')),
+    youtubeSection(ctx, searchQuery, 0));
     return;
   }
   const filter = ctx.state.searchFilter;
@@ -116,6 +118,7 @@ export function refreshSearchResults(main, ctx) {
     if (albums.length > 0) parts.push(shelf({ title: 'Álbumes', testid: 'search-albums', items: albums.map((item) => collectionCard(ctx, item)) }));
     if (lists.length > 0) parts.push(shelf({ title: 'Tus listas', testid: 'search-playlists', items: lists.map((item) => collectionCard(ctx, item)) }));
   }
+  if (filter === 'todo' || filter === 'canciones') parts.push(youtubeSection(ctx, searchQuery, found.songs.length));
   container.replaceChildren(...parts);
 }
 

@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## Sin publicar: buscar en YouTube desde el buscador (2026-11-05)
+
+- Si la canción no está en la biblioteca, Buscar la busca en YouTube y ofrece **Escuchar** (suena al momento y empieza la descarga) y **Descargar** (mismo flujo que pegar la URL en Homeostasia). Si hay coincidencias en la biblioteca, solo aparece el botón «Buscar en YouTube» ([ADR-0021](docs/decisions/ADR-0021-buscar-en-youtube.md)).
+- Servidor: `GET /api/youtube/search` (HTML de YouTube y, de respaldo, `yt-dlp`). Web: `js/youtube-search.js`, `js/views/youtube-search.js` y `importYoutubeVideo`; la CSP añade `frame-src` de `youtube-nocookie.com`; `SHELL_VERSION = 21`. APK: `YoutubeImporter.search`, `lib/youtube_stream.dart` (`youtube_explode_dart`), `PlaybackPort.playStream` y `lib/ui/youtube_results.dart`. Escuchar en la APK está pendiente de probar en un móvil real.
+- Pruebas: web unitarias 436, e2e 143, Flutter 239.
+
 ## Sin publicar: cierre de la música y CSP (2026-11-05)
 
 - Web: `media-src` de la CSP admite el bucket de R2 (solo estaba en `connect-src` y el navegador bloqueaba el audio).
