@@ -35,6 +35,7 @@ PendingEdit editFromContract(Map<String, dynamic> json, [int index = 0]) {
     state: (json['state'] as String?) ?? kEditPending,
     hadCover: json['hadCover'] == true,
     preview: json['preview'] as String?,
+    coverKey: json['coverKey'] as String?,
     knownFolderIds: [
       for (final id in (json['knownFolderIds'] as List? ?? const [])) '$id',
     ],
@@ -577,6 +578,61 @@ void main() {
         expect(edits.previewFor('covers/$id.jpg'), isNull);
       },
     );
+
+    test(
+      'portada por el Worker: guarda su fichero, se revisa a los 3 s y se confirma cuando el índice la refleja',
+      () async {
+        final edits = build();
+        final jpeg = Uint8List.fromList([0xff, 0xd8, 2, 0xff, 0xd9]);
+        const id = 'F0000000000000001';
+        const key = 'portadas/$id-0123456789abcdef.jpg';
+        await edits.submitCover(
+          id,
+          jpeg,
+          (_, _) async => const EditReceipt(message: 'Hecho.', cover: key),
+        );
+        final edit = edits.items.single;
+        expect([edit.hadCover, edit.coverKey], [true, key]);
+        expect(timers.active.single.period, kEditCoverKeyCheck);
+        expect(kEditCoverKeyCheck, const Duration(seconds: 3));
+        // Se guarda con su fichero.
+        final saved = await store.read();
+        expect(saved.single.coverKey, key);
+        // La vista previa también vale cuando el álbum ya apunta a un fichero del índice.
+        expect(
+          edits.previewFor('portadas/$id-1111111111111111.jpg'),
+          isNotNull,
+        );
+        // A los 10 minutos no se supone nada: sigue pendiente.
+        now = now.add(const Duration(minutes: 10));
+        await edits.check();
+        expect(edits.items, hasLength(1));
+        final confirmed = <String>[];
+        edits.onCoverConfirmed = confirmed.add;
+        catalog = catalogFrom(contract, {
+          'albumes': {
+            id: {'cover': key},
+          },
+        });
+        await edits.check();
+        expect(edits.items, isEmpty);
+        expect(confirmed, [key]);
+      },
+    );
+
+    test('portada por el Worker: un fichero de otro id no se guarda', () async {
+      final edits = build();
+      await edits.submitCover(
+        'F0000000000000001',
+        Uint8List.fromList([0xff, 0xd8, 3, 0xff, 0xd9]),
+        (_, _) async => const EditReceipt(
+          message: 'Hecho.',
+          cover: 'portadas/F0000000000000002-0123456789abcdef.jpg',
+        ),
+      );
+      expect(edits.items.single.coverKey, isNull);
+      expect(timers.active.single.period.inSeconds, 20);
+    });
 
     test(
       'crear álbum: queda pendiente sin vista previa y se confirma con un álbum nuevo',
