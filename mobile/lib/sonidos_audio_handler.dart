@@ -56,8 +56,8 @@ class SonidosAudioHandler extends BaseAudioHandler
   // Canciones de la cola cargada y si cada una puede sonar sin red (local o ya guardada).
   List<Song> _queueSongs = const [];
   List<bool> _playableOffline = const [];
-  // Canciones de la cola actual que ya se han reintentado desde la web tras fallar en R2 (una vez cada una).
-  final Set<String> _fallbackTried = <String>{};
+  // Direcciones de audio ya probadas en la cola actual, por canción (la primera y cada reintento; ADR-0031).
+  final Map<String, Set<Uri>> _sourcesTried = <String, Set<Uri>>{};
   Future<void> _serial = Future<void>.value();
 
   @override
@@ -73,8 +73,8 @@ class SonidosAudioHandler extends BaseAudioHandler
   Set<String> get queueSongIds => _queueIds.toSet();
 
   /// Error de un elemento de la cola. Si es la canción que suena y no se puede reproducir sin red, primero se
-  /// reintenta una vez desde la web (R2 puede fallar un momento); si vuelve a fallar, se pasa a la siguiente sin
-  /// cerrar la reproducción. Un error de un elemento que no suena (precarga) se ignora.
+  /// reintenta con las otras direcciones de su audio (Worker, r2.dev y la web; ADR-0031); si todas fallan, se pasa a
+  /// la siguiente sin cerrar la reproducción. Un error de un elemento que no suena (precarga) se ignora.
   void _onPlaybackError(Object error) {
     final failed =
         (error is PlayerException ? error.index : null) ?? _player.currentIndex;
@@ -88,28 +88,32 @@ class SonidosAudioHandler extends BaseAudioHandler
       _reportError(error);
       return;
     }
-    if (failed < _queueSongs.length &&
-        shouldRetryFromFallback(
-          song: _queueSongs[failed],
-          cached: _playableOffline[failed],
-          tried: _fallbackTried,
-        )) {
-      unawaited(_retryFromFallback(failed));
+    final next = failed < _queueSongs.length
+        ? nextFallbackUri(
+            song: _queueSongs[failed],
+            cached: _playableOffline[failed],
+            sources: _store.audioUris(_queueSongs[failed]),
+            tried: _sourcesTried[_queueSongs[failed].id] ?? const <Uri>{},
+          )
+        : null;
+    if (next != null) {
+      unawaited(_retryFromFallback(failed, next));
       return;
     }
     unawaited(_skipUnavailable(failed));
   }
 
-  /// Vuelve a cargar la canción [index] desde la web (Vercel, que la redirige a R2) y la reproduce desde el principio.
+  /// Vuelve a cargar la canción [index] desde [uri], la siguiente dirección de su audio (tras el Worker, r2.dev; tras
+  /// r2.dev, la web, que la redirige al Worker), y la reproduce desde el principio.
   /// Va en la cola de operaciones para no pisar un cambio de cola; si la cola cambió mientras tanto, no hace nada.
   /// Si el reintento no se puede preparar, se salta como antes.
-  Future<void> _retryFromFallback(int index) => _exclusive(() async {
+  Future<void> _retryFromFallback(int index, Uri uri) => _exclusive(() async {
     final ids = _queueIds;
     if (index >= _queueSongs.length) return;
     final song = _queueSongs[index];
-    _fallbackTried.add(song.id);
+    (_sourcesTried[song.id] ??= <Uri>{}).add(uri);
     debugPrint(
-      'reproductor: «${song.title}» falló en R2; reintento desde la web',
+      'reproductor: «${song.title}» falló; reintento desde ${uri.host}',
     );
     try {
       final file = await _store.audioFile(song);
@@ -118,16 +122,12 @@ class SonidosAudioHandler extends BaseAudioHandler
       await _player.insertAudioSource(
         index,
         // ignore: experimental_member_use
-        LockCachingAudioSource(
-          _store.fallbackAudioUri(song),
-          cacheFile: file,
-          tag: song.id,
-        ),
+        LockCachingAudioSource(uri, cacheFile: file, tag: song.id),
       );
       await _player.seek(Duration.zero, index: index);
       _startPlayback();
     } catch (error) {
-      debugPrint('reproductor: el reintento desde la web falló: $error');
+      debugPrint('reproductor: el reintento falló: $error');
       if (identical(ids, _queueIds)) await _skipUnavailable(index);
     }
   });
@@ -186,6 +186,7 @@ class SonidosAudioHandler extends BaseAudioHandler
         )
         .toList();
     queue.add(items);
+    final tried = <String, Set<Uri>>{};
     try {
       final sources = <AudioSource>[];
       final playable = <bool>[];
@@ -204,13 +205,11 @@ class SonidosAudioHandler extends BaseAudioHandler
           );
         } else {
           // LockCachingAudioSource (experimental en just_audio 0.10) transmite y guarda a la vez.
+          final uri = _store.audioUri(song);
+          (tried[song.id] ??= <Uri>{}).add(uri);
           sources.add(
             // ignore: experimental_member_use
-            LockCachingAudioSource(
-              _store.audioUri(song),
-              cacheFile: file,
-              tag: song.id,
-            ),
+            LockCachingAudioSource(uri, cacheFile: file, tag: song.id),
           );
         }
       }
@@ -227,7 +226,9 @@ class SonidosAudioHandler extends BaseAudioHandler
     }
     _queueSongs = songs;
     _queueIds = [for (final song in songs) song.id];
-    _fallbackTried.clear();
+    _sourcesTried
+      ..clear()
+      ..addAll(tried);
     mediaItem.add(items.first);
     _fillArtwork(0);
     _publish();
@@ -325,7 +326,7 @@ class SonidosAudioHandler extends BaseAudioHandler
       ),
     ];
     _queueIds = [queueId];
-    _fallbackTried.clear();
+    _sourcesTried.clear();
     _playableOffline = const [false];
     mediaItem.add(item);
     _publish();

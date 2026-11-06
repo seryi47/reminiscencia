@@ -40,7 +40,7 @@ void main() {
     expect(coverPathIsFor(ks, s1), isTrue);
     expect(coverPathIsFor('covers/$s1.jpg', s1), isTrue);
     expect(coverPathIsFor(kf, s1), isFalse);
-    expect(kCoverBucketBase, kAudioBase);
+    expect(kCoverBucketBase, kR2AudioBase);
   });
 
   test('parseCoverIndex descarta lo que no vale y nunca lanza', () {

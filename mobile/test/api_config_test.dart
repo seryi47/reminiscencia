@@ -46,6 +46,43 @@ void main() {
     },
   );
 
+  test(
+    'audio por el Worker (ADR-0031): la base sale de kWorkerApiBase, y las pruebas no la usan',
+    () {
+      // Por defecto (la app): el mismo origen que el API, sin otra copia de la dirección.
+      final production = normalizeApiBase(kWorkerApiBase);
+      expect(
+        ApiRoutes().audioBase,
+        production.isEmpty ? isEmpty : '$production/',
+      );
+      // test/flutter_test_config.dart: las rutas comunes de las pruebas no tienen Worker, tampoco para el audio.
+      expect(apiRoutes.audioBase, isEmpty);
+      // Caído: sin audio por el Worker hasta kRetryWorkerAfter; reportWorkerFailure sin Worker no hace nada.
+      var now = DateTime(2026, 11, 6, 12);
+      final routes = ApiRoutes(base: base, clock: () => now);
+      expect(routes.audioBase, '$base/');
+      routes.reportWorkerFailure();
+      expect(routes.audioBase, isEmpty);
+      now = now.add(kRetryWorkerAfter);
+      expect(routes.audioBase, '$base/');
+      final none = ApiRoutes(base: '')..reportWorkerFailure();
+      expect(none.audioBase, isEmpty);
+      // La web y la redirección de vercel.json usan la misma dirección para el audio.
+      final vercel =
+          jsonDecode(File('../frontend/web/vercel.json').readAsStringSync())
+              as Map<String, dynamic>;
+      final redirect = (vercel['redirects'] as List).cast<Map>().firstWhere(
+        (rule) => rule['source'] == '/audio/:file',
+      );
+      expect(
+        redirect['destination'],
+        production.isEmpty
+            ? startsWith('https://pub-')
+            : '$production/audio/:file',
+      );
+    },
+  );
+
   test('normalizeApiBase: solo un origen https (o http local)', () {
     expect(normalizeApiBase(' $base/ '), base);
     expect(normalizeApiBase('http://localhost:8787'), 'http://localhost:8787');
