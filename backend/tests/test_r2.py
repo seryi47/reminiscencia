@@ -44,12 +44,17 @@ def test_plan_uploads_missing_and_resized_and_keeps_extras_separate(tmp_path):
 class FakeBucket:
     """Un bucket en memoria con la interfaz de r2.Bucket."""
 
-    def __init__(self, objects: dict[str, bytes] | None = None):
+    def __init__(self, objects: dict[str, bytes] | None = None, modified: dict[str, str] | None = None):
         self.objects = dict(objects or {})
+        self.modified = dict(modified or {})  # clave -> LastModified (sin ella, «»)
         self.put_keys, self.deleted, self.got = [], [], []
 
     def list_sizes(self, prefix: str = r2.AUDIO_PREFIX):
         return {key: len(data) for key, data in self.objects.items() if key.startswith(prefix)}
+
+    def list_details(self, prefix: str = r2.AUDIO_PREFIX):
+        return {key: (len(data), self.modified.get(key, "")) for key, data in self.objects.items()
+                if key.startswith(prefix)}
 
     def put(self, key, path):
         self.put_keys.append(key)
@@ -240,6 +245,15 @@ def _bucket(opener, name="b") -> r2.S3Bucket:
                        client=_client(opener))
 
 
+def test_client_reads_the_last_modified_date_of_each_object():
+    # ADR-0030: 'recoger' ordena las subidas por la fecha de su manifiesto (cuándo se completaron).
+    body = LISTING.format(truncated="false", token="", key=ID_A, size=3).replace(
+        "<Size>3</Size>", "<Size>3</Size><LastModified>2026-11-06T09:08:21.123Z</LastModified>").encode()
+    assert _bucket(FakeOpener(body)).list_details() == {KEY_A: (3, "2026-11-06T09:08:21.123Z")}
+    sin_fecha = LISTING.format(truncated="false", token="", key=ID_A, size=3).encode()
+    assert _bucket(FakeOpener(sin_fecha)).list_details() == {KEY_A: (3, "")}
+
+
 def test_client_lists_every_page_of_the_bucket():
     opener = FakeOpener(
         LISTING.format(truncated="true", token="<NextContinuationToken>t+1</NextContinuationToken>",
@@ -304,12 +318,13 @@ def test_the_same_credentials_serve_both_buckets():
 class FakeS3:
     """Varios buckets en memoria con la interfaz del cliente (list_objects_v2, put_object, get_object, delete_object)."""
 
-    def __init__(self, buckets: dict[str, dict[str, bytes]]):
+    def __init__(self, buckets: dict[str, dict[str, bytes]], modified: dict[str, str] | None = None):
         self.buckets = buckets
+        self.modified = dict(modified or {})  # clave -> LastModified, como la da R2
 
     def list_objects_v2(self, *, Bucket, Prefix="", ContinuationToken=None):  # noqa: N803
-        items = [{"Key": key, "Size": len(data)} for key, data in sorted(self.buckets[Bucket].items())
-                 if key.startswith(Prefix)]
+        items = [{"Key": key, "Size": len(data), "LastModified": self.modified.get(key, "")}
+                 for key, data in sorted(self.buckets[Bucket].items()) if key.startswith(Prefix)]
         return {"Contents": items, "IsTruncated": False}
 
     def put_object(self, *, Bucket, Key, Body, ContentType, CacheControl):  # noqa: N803

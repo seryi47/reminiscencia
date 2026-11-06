@@ -20,6 +20,11 @@ name: buzon
 # parte pública desde el catálogo, confirma, sube el audio a R2, sube a main y borra de entrada/ lo recogido; el token
 # de GitHub solo llega al paso que sube a main y las credenciales de R2 solo a los pasos de R2. Publicar no ejecuta
 # ffmpeg ni código del procesado.
+# Subida rápida (ADR-0030): cada subida de la web lanza su ejecución, pero la primera que llega recoge TODO lo completo
+# del bucket (por orden de llegada, con tope) y lo publica de una vez; las siguientes de la cola no encuentran nada y
+# terminan tras 'recoger' (cantidad=0), sin procesar ni instalar ffmpeg. 'recoger' y 'procesar' solo bajan de main lo
+# que usan (sparse-checkout), 'procesar' no instala el backend (no tiene dependencias: los scripts lo importan desde
+# backend/) y toma los .deb de ffmpeg de una caché comprobada contra el índice de apt.
 # El push del bot no vuelve a lanzar este workflow: GitHub no lanza workflows con pushes hechos con GITHUB_TOKEN.
 # Ningún nombre de archivo ni mensaje de commit se interpola en un script: el procesado los lee del evento.
 
@@ -89,8 +94,9 @@ jobs:
 
       # Cada subida lanza un run, pero el primero ya procesa todo lo que hay en main. Los runs que llegan después
       # de que el buzón se vaciara no tienen nada que hacer: se omiten procesar y publicar (sin ffmpeg ni commits).
-      # Se mira main ahora, no el evento. Se cuentan los archivos del buzón y los manifiestos de partes. Lo pendiente
-      # en el bucket privado lo cuenta 'recoger'.
+      # Se mira main ahora, no el evento. Se cuentan los archivos del buzón y los manifiestos de partes. En un aviso de
+      # la web (repository_dispatch) el buzón de main no se procesa (ADR-0024): solo cuentan los manifiestos de partes
+      # antiguos de .partes, que sí se unen. Lo pendiente en el bucket privado lo cuenta 'recoger' (ADR-0030).
       - name: Comprobar si queda algo pendiente en el buzón
         id: pendiente
         env:
@@ -102,11 +108,17 @@ jobs:
             exit 0
           fi
           TRUNCADO=$(jq -r '.truncated' <<<"$ARBOL")
-          N=$(jq -r '[.tree[] | select(.type == "blob") | .path
+          if [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ]; then
+            SOLO_PARTES=true
+          else
+            SOLO_PARTES=false
+          fi
+          N=$(jq -r --argjson solo_partes "$SOLO_PARTES" '[.tree[] | select(.type == "blob") | .path
             | select(startswith("audio-library/buzon/"))
             | select(. != "audio-library/buzon/README.md" and . != "audio-library/buzon/.gitkeep"
                      and . != "audio-library/buzon/portadas/.gitkeep")
-            | select((startswith("audio-library/buzon/.partes/") | not) or endswith("/manifiesto.json"))] | length' <<<"$ARBOL")
+            | select((startswith("audio-library/buzon/.partes/") | not) or endswith("/manifiesto.json"))
+            | select(($solo_partes | not) or startswith("audio-library/buzon/.partes/"))] | length' <<<"$ARBOL")
           echo "Elementos pendientes en el buzón: $N (árbol truncado: $TRUNCADO)"
           if [ "$N" -gt 0 ] || [ "$TRUNCADO" = "true" ]; then
             echo "pendiente=true" >> "$GITHUB_OUTPUT"
@@ -133,17 +145,24 @@ jobs:
       cantidad: ${{ steps.recoger.outputs.cantidad }}
       ids: ${{ steps.recoger.outputs.ids }}
     steps:
+      # Solo lo que ejecuta este job (scripts/entrada_r2.py y backend/sonidos), sin el historial ni el resto del árbol
+      # (ADR-0030). Con sparse-checkout, el checkout baja además sin el contenido de lo demás (blob:none).
       - name: Obtener main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
+          sparse-checkout: |
+            scripts
+            backend/sonidos
 
       - name: Preparar Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
+      # Recoge TODAS las subidas completas del bucket, no solo la del aviso, por orden de llegada y como mucho 50 o
+      # 2 GiB (sonidos.entrada; ADR-0030). Si no hay ninguna, cantidad=0 y la ejecución termina aquí.
       - name: Recoger las subidas de la web del bucket privado
         id: recoger
         env:
@@ -187,13 +206,22 @@ jobs:
         shell: bash
     steps:
       # Sin credenciales en el disco: el procesado no tiene nada con que escribir en el repositorio. Se procesa main
-      # tal como está ahora (una ejecución relanzada no trabaja sobre una copia antigua).
+      # tal como está ahora (una ejecución relanzada no trabaja sobre una copia antigua). Solo lo que usa el procesado
+      # (ADR-0030): los scripts, el backend, la biblioteca (catálogo, buzón y portadas) y la parte pública que
+      # regenera; sin la web, la APK, las pruebas ni la documentación. Con el modo «cone», también los ficheros sueltos
+      # de la raíz y de las carpetas que llevan a esas (frontend/, frontend/web/ y backend/).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
+          sparse-checkout: |
+            scripts
+            backend/sonidos
+            audio-library
+            frontend/web/data
+            frontend/web/covers
 
-      # Solo main procesa. Va antes de instalar nada: la instalación también ejecuta código del árbol.
+      # Solo main procesa. Va antes de ejecutar nada del árbol.
       - name: Guarda de rama
         run: |
           mkdir -p "$RUNNER_TEMP/paquete"
@@ -202,29 +230,110 @@ jobs:
             exit 1
           fi
 
-      # Las subidas de la web que bajó 'recoger' (trozos y manifiesto de cada una), fuera del repositorio.
+      # Sin instalar el backend con pip: no tiene dependencias y los scripts lo importan desde backend/ (sys.path).
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      # ffmpeg desde una caché de sus .deb (ADR-0030). La clave es el hash de la lista exacta de paquetes que apt
+      # instalaría ahora (URL, nombre, tamaño y hash de su índice firmado): si cambia una versión, cambia la clave.
+      - name: Calcular la clave de la caché de ffmpeg
+        id: ffmpeg_clave
+        run: |
+          LISTA="$RUNNER_TEMP/ffmpeg-paquetes.txt"
+          if apt-get install --print-uris -qq --no-install-recommends ffmpeg > "$LISTA" && [ -s "$LISTA" ]; then
+            echo "Paquetes de ffmpeg: $(wc -l < "$LISTA")"
+            echo "clave=ffmpeg-debs-${ImageOS:-ubuntu}-$(sha256sum "$LISTA" | cut -c1-32)" >> "$GITHUB_OUTPUT"
+            echo "lista=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No se ha podido saber qué paquetes instalaría apt: se instala ffmpeg sin caché."
+            : > "$LISTA"
+            echo "clave=ffmpeg-debs-sin-lista-$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "lista=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restaurar los paquetes de ffmpeg
+        id: ffmpeg_cache
+        if: steps.ffmpeg_clave.outputs.lista == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/ffmpeg-debs
+          key: ${{ steps.ffmpeg_clave.outputs.clave }}
+
+      # apt solo compara el tamaño de un .deb que ya tiene en su carpeta de descargas, no su hash (pkgAcqArchive en
+      # apt-pkg/acquire-item.cc): aquí se compara el de cada uno con el de la lista de apt, que sale de su índice
+      # firmado. Lo que no esté en la lista o no coincida se borra, y apt lo vuelve a descargar.
+      - name: Comprobar los paquetes de ffmpeg de la caché
+        run: |
+          DEBS="$HOME/ffmpeg-debs"
+          LISTA="$RUNNER_TEMP/ffmpeg-paquetes.txt"
+          mkdir -p "$DEBS"
+          BUENOS=0
+          DESCARTADOS=0
+          for DEB in "$DEBS"/* "$DEBS"/.[!.]*; do
+            if [ ! -e "$DEB" ] && [ ! -L "$DEB" ]; then
+              continue
+            fi
+            NOMBRE=$(basename -- "$DEB")
+            ESPERADO=$(awk -v nombre="$NOMBRE" '$2 == nombre { print $4; exit }' "$LISTA")
+            REAL=""
+            if [ -f "$DEB" ] && [ ! -L "$DEB" ]; then
+              case "$ESPERADO" in
+                SHA256:*) REAL="SHA256:$(sha256sum -- "$DEB" | cut -d ' ' -f 1)" ;;
+                SHA512:*) REAL="SHA512:$(sha512sum -- "$DEB" | cut -d ' ' -f 1)" ;;
+              esac
+            fi
+            if [ -n "$REAL" ] && [ "$REAL" = "$ESPERADO" ]; then
+              BUENOS=$((BUENOS + 1))
+            else
+              rm -rf -- "$DEB"
+              DESCARTADOS=$((DESCARTADOS + 1))
+            fi
+          done
+          echo "Paquetes de ffmpeg en la caché: $BUENOS comprobados, $DESCARTADOS descartados."
+
+      - name: Instalar ffmpeg
+        # apt a veces se cuelga en el runner y bloquea la cola `library-catalog` entera: cada intento tiene 180 s y hay
+        # tres; si otro proceso tiene el bloqueo de dpkg, se espera hasta 60 s. Con la caché, apt no descarga nada. Sin
+        # regenerar el índice de las páginas de manual (man-db) y sin sincronizar cada fichero con el disco: es una
+        # máquina de usar y tirar.
+        run: |
+          DEBS="$HOME/ffmpeg-debs"
+          sudo mkdir -p "$DEBS/partial"
+          sudo rm -f /var/lib/man-db/auto-update
+          for INTENTO in 1 2 3; do
+            if timeout 180 sudo apt-get install -y -q --no-install-recommends -o DPkg::Lock::Timeout=60 \
+                -o Dir::Cache::Archives="$DEBS" -o Dpkg::Options::=--force-unsafe-io ffmpeg; then
+              break
+            fi
+            if [ "$INTENTO" -eq 3 ]; then
+              echo "No se ha podido instalar ffmpeg tras tres intentos." >&2
+              exit 1
+            fi
+            echo "La instalación de ffmpeg ha fallado (intento $INTENTO de 3): se actualiza el índice de apt."
+            timeout 180 sudo apt-get update -q -o DPkg::Lock::Timeout=60 || echo "apt-get update también ha fallado."
+          done
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+          sudo rm -rf "$DEBS/partial" "$DEBS/lock"
+          sudo chown -R "$(id -u):$(id -g)" "$DEBS"
+
+      # Se guarda ANTES de que el job toque nada subido: lo que entra en la caché solo lo ha escrito apt. La caché es
+      # de main (este job solo corre en main) y una clave no se sobrescribe.
+      - name: Guardar los paquetes de ffmpeg en la caché
+        if: steps.ffmpeg_clave.outputs.lista == 'true' && steps.ffmpeg_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/ffmpeg-debs
+          key: ${{ steps.ffmpeg_clave.outputs.clave }}
+
+      # Las subidas de la web que bajó 'recoger' (trozos y manifiesto de cada una, y su orden), fuera del repositorio.
       - name: Descargar las subidas de la web
         if: needs.recoger.outputs.cantidad != '0'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: buzon-entrada
           path: ${{ runner.temp }}/entrada
-
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
-
-      - name: Instalar ffmpeg
-        # apt a veces se cuelga en el runner y bloquea la cola `library-catalog` entera: cada intento tiene 120 s y hay tres.
-        run: |
-          for _ in 1 2 3; do
-            timeout 120 sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null 2>&1 && break
-            timeout 120 sudo apt-get update -qq > /dev/null 2>&1 || true
-          done
-          ffmpeg -version | head -1
-
-      - name: Instalar el backend
-        run: pip install -q -e backend
 
       # Lee los archivos del push en el evento (GITHUB_EVENT_PATH) y escribe el resumen del job: canciones públicas,
       # privadas por falta de licencia, duplicadas, portadas, rechazadas y lo que hay que revisar a mano. En un
@@ -382,7 +491,9 @@ jobs:
 
       # Las subidas de la web que recogió 'recoger' ya están publicadas o rechazadas (ver el resumen de 'procesar'): se
       # borran de entrada/ del bucket privado, solo después de subir a main y sin el token de GitHub. El script solo
-      # acepta UUID en IDS y solo borra dentro de entrada/<UUID>/.
+      # acepta UUID en IDS y solo borra dentro de entrada/<UUID>/: lo que llegó después de 'recoger' se queda para la
+      # ejecución siguiente. Si este paso fallara, la siguiente las vuelve a recoger y salen como duplicadas, sin cambiar
+      # nada (mismo SHA-256; ADR-0030).
       - name: Borrar del bucket privado las subidas ya procesadas
         if: needs.recoger.outputs.cantidad != '0'
         env:

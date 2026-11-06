@@ -1,184 +1,49 @@
-// Función de Vercel POST /api/subir (ADR-0017, revisada por ADR-0024): guarda por trozos, en el bucket PRIVADO de
-// Cloudflare R2, el Ogg Opus que la web (js/cuidador/subida-publica.js) o la APK (lib/shared_upload.dart) ya han
-// convertido, y al terminar lanza el workflow buzon de GitHub. Nada pasa por Git hasta que el workflow publica la
-// canción. Node, sin dependencias: solo fetch y node:crypto (firma AWS SigV4 propia, como backend/sonidos/r2.py).
+// Función de Vercel POST /api/subir (ADR-0017, revisada por ADR-0024 y ADR-0029): guarda por trozos, en el bucket
+// PRIVADO de Cloudflare R2, el Ogg Opus que la web (js/cuidador/subida-publica.js) o la APK (lib/shared_upload.dart) ya
+// han convertido, y al terminar lanza el workflow buzon de GitHub. Node, sin dependencias: solo fetch y node:crypto
+// (firma AWS SigV4 propia, como backend/sonidos/r2.py).
 //
-// Contrato (lo usan la web y la APK; no cambiarlo sin cambiar los dos; no ha cambiado con ADR-0024):
-//   POST /api/subir, cuerpo: los bytes del trozo (application/octet-stream), hasta 4 MB (Vercel admite 4,5 MB por
-//   petición). Cabeceras:
-//     X-Nombre-Archivo  nombre original del archivo, con encodeURIComponent
-//     X-Subida-Id       UUID del archivo (el mismo en todos sus trozos)
-//     X-Parte           índice del trozo, desde 0
-//     X-Partes          número total de trozos, de 1 a 1000
-//     X-Album-Id, X-Album-Name, X-Artista-Cancion  opcionales (playlists de YouTube, ADR-0019)
-//   Respuesta JSON: { ok, parte, partes, completa, repetido, nombre, mensaje } o { ok: false, error }.
+// El contrato, la validación, el orden de los trozos, el manifiesto y el aviso a GitHub están en
+// ../server/upload-core.js, compartido con el Worker de Cloudflare (worker/src/index.js, ADR-0029), que hace lo mismo
+// con el binding de R2 y trozos de hasta 32 MB. Aquí solo queda lo propio de Vercel: la configuración por variables de
+// entorno, la firma SigV4 y el cliente S3 del bucket privado. El trozo máximo en Vercel es de 4 MB (Vercel admite 4,5 MB
+// por petición). Las APK antiguas siguen usando esta función.
 //
-// Almacenamiento: cada trozo va a entrada/<id>/<índice>.part del bucket privado (R2_PRIVATE_BUCKET), en orden (un trozo
-// solo se acepta si ya están todos los anteriores) y sin sobrescribir nunca (PUT con If-None-Match: *). Con el último se
-// escribe entrada/<id>/manifiesto.json, {"nombre": "<nombre>.opus", "partes": N} (y álbum y artista si llegan), y se
-// lanza el workflow buzon con un repository_dispatch (tipo «subida-web», con el id) usando GITHUB_TOKEN (basta
-// «Contents: write»). El workflow recoge las subidas completas del bucket (job 'recoger'), las une, las convierte y las
-// publica con la licencia de la web (backend/sonidos/buzon.py, WEB_LICENSE), y después las borra de entrada/.
-// Si el aviso a GitHub falla, se responde 502: el cliente reintenta el último trozo, que ya está guardado, y solo se
-// repite el aviso.
-//
-// Protecciones: el primer trozo debe empezar por una página Ogg con la cabecera OpusHead; el nombre se limpia (sin
-// rutas, sin caracteres de control ni fuera de la lista del buzón, longitud acotada, extensión .opus); solo se escribe
-// en entrada/<UUID>/; un trozo repetido con el mismo contenido se da por bueno y uno distinto se rechaza. Las claves de
-// R2 y el token solo salen de process.env, solo van a sus servicios (firma de R2; cabecera Authorization de GitHub) y
-// nunca van en los registros (solo el estado HTTP) ni en las respuestas.
+// Protecciones: las de upload-core.js. Las claves de R2 y el token solo salen de process.env, solo van a sus servicios
+// (firma de R2; cabecera Authorization de GitHub) y nunca van en los registros (solo el estado HTTP) ni en las
+// respuestas.
 
 import { createHash, createHmac } from 'node:crypto';
 
-export const REPOSITORY = 'seryi47/reminiscencia';
-export const DISPATCH_EVENT = 'subida-web';
-export const ENTRY_PREFIX = 'entrada';
-export const MANIFEST_NAME = 'manifiesto.json';
-export const MAX_CHUNK_BYTES = 4 * 1024 * 1024;
-export const MAX_PARTS = 1000;
-export const DONE_MESSAGE = 'Subida: llegará a todos en un par de minutos.';
-// El buzón admite hasta 200 caracteres y 255 bytes por nombre; se deja sitio para « (NN)» y «.opus».
-export const MAX_STEM_CHARS = 150;
-export const MAX_STEM_BYTES = 180;
-const GITHUB_API = 'https://api.github.com';
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const INTEGER = /^(?:0|[1-9][0-9]{0,3})$/;
-const PLAYLIST_ID = /^[A-Za-z0-9_-]{1,200}$/;
+import {
+  handleUploadRequest,
+  UploadError,
+  VERCEL_MAX_CHUNK_BYTES,
+} from '../server/upload-core.js';
+
+export {
+  checkChunk,
+  cleanStem,
+  DISPATCH_EVENT,
+  DONE_MESSAGE,
+  ENTRY_PREFIX,
+  isOggOpus,
+  MANIFEST_NAME,
+  manifestKey,
+  manifestText,
+  MAX_PARTS,
+  MAX_STEM_BYTES,
+  MAX_STEM_CHARS,
+  parseUploadHeaders,
+  partKey,
+  REPOSITORY,
+  UploadError,
+} from '../server/upload-core.js';
+
+export const MAX_CHUNK_BYTES = VERCEL_MAX_CHUNK_BYTES;
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const BUCKET_NAME = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
-// La misma lista que backend/sonidos/buzon.py (_NAME_PUNCTUATION), además de letras, marcas y números.
-const NAME_PUNCTUATION = new Set(" ._-()[]'’&,!¡¿+#");
-const NAME_CHAR = /[\p{L}\p{M}\p{N}]/u;
 const NOT_CONFIGURED = 'La subida no está configurada en el servidor (falta GITHUB_TOKEN o alguna variable de R2). Avisa a quien mantiene la web.';
-
-/** Error con estado HTTP y mensaje en español para quien sube. */
-export class UploadError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.name = 'UploadError';
-    this.status = status;
-  }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Validación (funciones puras)
-// ---------------------------------------------------------------------------------------------
-
-/**
- * Nombre limpio, sin extensión: solo la última parte de la ruta, sin la última extensión, en NFC, con los caracteres
- * que el buzón no admite cambiados por espacios, sin punto, guion ni espacio iniciales ni punto o espacio finales y
- * acotado. Sin nada útil, «Sin título».
- */
-export function cleanStem(raw) {
-  const base = String(raw ?? '').split(/[\\/]/).pop() ?? '';
-  const withoutExtension = base.includes('.') ? base.slice(0, base.lastIndexOf('.')) : base;
-  let stem = Array.from(withoutExtension.normalize('NFC'), (char) => (NAME_CHAR.test(char) || NAME_PUNCTUATION.has(char) ? char : ' '))
-    .join('')
-    .replace(/ {2,}/g, ' ');
-  stem = trimEdges(stem);
-  let chars = Array.from(stem).slice(0, MAX_STEM_CHARS);
-  while (chars.length > 0 && Buffer.byteLength(chars.join(''), 'utf8') > MAX_STEM_BYTES) chars.pop();
-  stem = trimEdges(chars.join(''));
-  return stem || 'Sin título';
-}
-
-function trimEdges(text) {
-  return text.replace(/^[.\- ]+/, '').replace(/[. ]+$/, '');
-}
-
-/** Dice si los bytes empiezan por una página Ogg inicial cuyo primer paquete es una cabecera OpusHead. */
-export function isOggOpus(bytes) {
-  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes ?? []);
-  if (data.length < 27 + 1 + 19) return false;
-  if (data[0] !== 0x4f || data[1] !== 0x67 || data[2] !== 0x67 || data[3] !== 0x53) return false; // "OggS"
-  if (data[4] !== 0 || (data[5] & 0x02) === 0) return false; // versión 0 y página de inicio de flujo
-  const segments = data[26];
-  const start = 27 + segments;
-  if (segments === 0 || data.length < start + 19) return false;
-  return Buffer.from(data.subarray(start, start + 8)).toString('latin1') === 'OpusHead' && data[start + 8] === 1;
-}
-
-function header(headers, name) {
-  const value = headers.get(name);
-  return value === null ? '' : value.trim();
-}
-
-/** Lee y valida las cabeceras del contrato. Devuelve { fileName, uploadId, index, total }. */
-export function parseUploadHeaders(headers) {
-  const contentType = header(headers, 'content-type').toLowerCase();
-  if (contentType.startsWith('multipart/')) {
-    throw new UploadError(400, 'Envía un solo archivo por petición, como bytes del trozo (no como formulario).');
-  }
-  let fileName;
-  try {
-    fileName = decodeURIComponent(header(headers, 'x-nombre-archivo'));
-  } catch {
-    throw new UploadError(400, 'El nombre del archivo no está bien codificado.');
-  }
-  if (!fileName) throw new UploadError(400, 'Falta el nombre del archivo (cabecera X-Nombre-Archivo).');
-  const uploadId = header(headers, 'x-subida-id').toLowerCase();
-  if (!UUID.test(uploadId)) throw new UploadError(400, 'El identificador de la subida no es válido (X-Subida-Id debe ser un UUID).');
-  const rawIndex = header(headers, 'x-parte');
-  const rawTotal = header(headers, 'x-partes');
-  if (!INTEGER.test(rawIndex) || !INTEGER.test(rawTotal)) {
-    throw new UploadError(400, 'X-Parte y X-Partes deben ser números enteros.');
-  }
-  const index = Number(rawIndex);
-  const total = Number(rawTotal);
-  if (total < 1 || total > MAX_PARTS) throw new UploadError(400, `Un archivo se puede enviar en 1 a ${MAX_PARTS} trozos.`);
-  if (index >= total) throw new UploadError(400, 'El número de trozo no cabe en el total de trozos.');
-  const albumId = header(headers, 'x-album-id');
-  let albumName = header(headers, 'x-album-name');
-  try {
-    albumName = albumName ? decodeURIComponent(albumName) : '';
-  } catch {
-    throw new UploadError(400, 'El nombre del álbum no está bien codificado.');
-  }
-  let album;
-  if (albumId || albumName) {
-    if (!PLAYLIST_ID.test(albumId) || !albumName) {
-      throw new UploadError(400, 'El álbum de YouTube debe incluir un identificador y un nombre válidos.');
-    }
-    if ([...albumName].length > 200 || /[\u0000-\u001f\u007f]/u.test(albumName)) {
-      throw new UploadError(400, 'El nombre del álbum no es válido.');
-    }
-    album = { id: albumId, name: albumName };
-  }
-  let artist = header(headers, 'x-artista-cancion');
-  try {
-    artist = artist ? decodeURIComponent(artist) : '';
-  } catch {
-    throw new UploadError(400, 'El nombre del artista no está bien codificado.');
-  }
-  if ([...artist].length > 200 || /[\u0000-\u001f\u007f]/u.test(artist)) {
-    throw new UploadError(400, 'El nombre del artista no es válido.');
-  }
-  return { fileName, uploadId, index, total, ...(album ? { album } : {}), ...(artist ? { artist } : {}) };
-}
-
-/** Comprueba el cuerpo de un trozo: no vacío, hasta 4 MB y, el primero, Ogg Opus. */
-export function checkChunk(bytes, index) {
-  if (!bytes || bytes.length === 0) throw new UploadError(400, 'El trozo llega vacío.');
-  if (bytes.length > MAX_CHUNK_BYTES) {
-    throw new UploadError(413, 'El trozo pasa de 4 MB, lo máximo que admite el servidor por petición. Envía el archivo en trozos más pequeños.');
-  }
-  if (index === 0 && !isOggOpus(bytes)) {
-    throw new UploadError(415, 'El archivo no es Ogg Opus. La web lo convierte antes de subirlo; vuelve a intentarlo desde la página.');
-  }
-}
-
-export function partKey(uploadId, index) {
-  return `${ENTRY_PREFIX}/${uploadId}/${index}.part`;
-}
-
-export function manifestKey(uploadId) {
-  return `${ENTRY_PREFIX}/${uploadId}/${MANIFEST_NAME}`;
-}
-
-/** Contenido de manifiesto.json: lo que lee backend/sonidos/buzon.py (_leer_manifiesto), sin más claves. */
-export function manifestText({ name, total, album, artist }) {
-  return `${JSON.stringify({ nombre: name, partes: total, ...(album ? { album } : {}), ...(artist ? { artist } : {}) })}\n`;
-}
 
 // ---------------------------------------------------------------------------------------------
 // Firma AWS Signature Version 4 (la misma que sign_v4 de backend/sonidos/r2.py; vectores comunes en
@@ -237,7 +102,7 @@ export function signV4({ method, host, path, query = '', payload = new Uint8Arra
 }
 
 // ---------------------------------------------------------------------------------------------
-// R2 (API S3) y GitHub
+// R2 (API S3)
 // ---------------------------------------------------------------------------------------------
 
 /** Configuración desde el entorno, o null si falta algo. */
@@ -329,128 +194,24 @@ function r2Client(config, fetchImpl, now) {
   };
 }
 
-/** Avisa al workflow buzon (repository_dispatch). El token solo va a api.github.com en la cabecera Authorization. */
-async function dispatchWorkflow({ token, uploadId, fetchImpl }) {
-  let response;
-  try {
-    response = await fetchImpl(`${GITHUB_API}/repos/${REPOSITORY}/dispatches`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'reminiscencia-subida',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ event_type: DISPATCH_EVENT, client_payload: { id: uploadId } }),
-    });
-  } catch {
-    throw new UploadError(502, 'No se ha podido avisar a GitHub. Inténtalo de nuevo en un momento.');
-  }
-  if (response.status === 204 || response.status === 200) return;
-  console.error(`subir: GitHub respondió ${response.status} al lanzar el workflow`);
-  if (response.status === 401 || response.status === 403 || response.status === 404) {
-    throw new UploadError(500, 'El servidor no tiene permiso para avisar a GitHub. Avisa a quien mantiene la web.');
-  }
-  throw new UploadError(502, 'GitHub no ha aceptado el aviso de la subida. Inténtalo de nuevo en un momento.');
-}
-
-function sameBytes(left, right) {
-  return left.length === right.length && Buffer.compare(Buffer.from(left), Buffer.from(right)) === 0;
-}
-
-/** Guarda un trozo en el bucket privado y, con el último, el manifiesto; después avisa al workflow. */
-async function storeChunk({ r2, config, fetchImpl, uploadId, index, total, stem, bytes, album, artist }) {
-  const prefix = `${ENTRY_PREFIX}/${uploadId}/`;
-  const stored = await r2.list(prefix);
-  const name = `${index}.part`;
-  const last = index === total - 1;
-  const isSame = async () => sameBytes(await r2.get(partKey(uploadId, index)), bytes);
-
-  if (stored.has(MANIFEST_NAME)) {
-    // Una subida completa solo admite repetir su último trozo (el cliente reintenta si el aviso a GitHub falló).
-    if (!last || !stored.has(name) || !(await isSame())) {
-      throw new UploadError(409, 'Esta subida ya está completa. Para subir el archivo otra vez, elígelo de nuevo.');
-    }
-    let manifestName = null;
-    try {
-      manifestName = JSON.parse(new TextDecoder().decode(await r2.get(manifestKey(uploadId))))?.nombre ?? null;
-    } catch (error) {
-      if (error instanceof UploadError) throw error;
-    }
-    await dispatchWorkflow({ token: config.token, uploadId, fetchImpl });
-    return { repeated: true, name: typeof manifestName === 'string' ? manifestName : null };
-  }
-
-  let repeated = false;
-  if (stored.has(name)) {
-    if (!(await isSame())) throw new UploadError(409, 'Ese trozo ya se había subido con otro contenido. Vuelve a elegir el archivo.');
-    repeated = true;
-  } else {
-    for (let previous = 0; previous < index; previous += 1) {
-      if (!stored.has(`${previous}.part`)) {
-        throw new UploadError(409, 'Faltan trozos anteriores de este archivo. Vuelve a elegirlo para subirlo desde el principio.');
-      }
-    }
-    if (!(await r2.putNew(partKey(uploadId, index), bytes, 'application/octet-stream'))) {
-      // Otra petición lo escribió entre la lista y la escritura: vale si es igual.
-      if (!(await isSame())) throw new UploadError(409, 'Ese trozo ya se había subido con otro contenido. Vuelve a elegir el archivo.');
-      repeated = true;
-    }
-  }
-  if (!last) return { repeated, name: null };
-
-  // El nombre final lo decide el buzón (sufijo « (2)» si ya hay uno igual); aquí solo se limpia.
-  const fileName = `${stem}.opus`;
-  const manifest = new TextEncoder().encode(manifestText({ name: fileName, total, album, artist }));
-  await r2.putNew(manifestKey(uploadId), manifest, 'application/json');
-  await dispatchWorkflow({ token: config.token, uploadId, fetchImpl });
-  return { repeated, name: fileName };
-}
-
 // ---------------------------------------------------------------------------------------------
 // Petición
 // ---------------------------------------------------------------------------------------------
 
-function json(status, body) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-  });
-}
-
 /** Atiende una petición. env, fetchImpl y now se inyectan en las pruebas (tests/web-unit/api-subir.test.mjs). */
-export async function handleUpload(request, { env = {}, fetchImpl = globalThis.fetch, now = () => new Date() } = {}) {
-  try {
-    if (request.method !== 'POST') throw new UploadError(405, 'Solo se admite POST.');
-    const config = readConfig(env);
-    if (!config) {
-      console.error('subir: faltan variables de entorno (GITHUB_TOKEN, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY o R2_PRIVATE_BUCKET) o no tienen el formato esperado');
-      throw new UploadError(500, NOT_CONFIGURED);
-    }
-    const { fileName, uploadId, index, total, album, artist } = parseUploadHeaders(request.headers);
-    const declared = Number(request.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > MAX_CHUNK_BYTES) checkChunk({ length: declared }, -1);
-    const bytes = new Uint8Array(await request.arrayBuffer());
-    checkChunk(bytes, index);
-    const stem = cleanStem(fileName);
-    const r2 = r2Client(config, fetchImpl, now);
-    const stored = await storeChunk({ r2, config, fetchImpl, uploadId, index, total, stem, bytes, album, artist });
-    const complete = index === total - 1;
-    return json(200, {
-      ok: true,
-      parte: index,
-      partes: total,
-      completa: complete,
-      repetido: stored.repeated,
-      nombre: stored.name,
-      mensaje: complete ? DONE_MESSAGE : `Trozo ${index + 1} de ${total} recibido.`,
-    });
-  } catch (error) {
-    if (error instanceof UploadError) return json(error.status, { ok: false, error: error.message });
-    console.error('subir: fallo inesperado', error?.name ?? 'Error');
-    return json(500, { ok: false, error: 'No se ha podido completar la subida. Inténtalo de nuevo.' });
-  }
+export function handleUpload(request, { env = {}, fetchImpl = globalThis.fetch, now = () => new Date() } = {}) {
+  return handleUploadRequest(request, {
+    fetchImpl,
+    maxChunkBytes: MAX_CHUNK_BYTES,
+    config: () => {
+      const config = readConfig(env);
+      if (!config) {
+        console.error('subir: faltan variables de entorno (GITHUB_TOKEN, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY o R2_PRIVATE_BUCKET) o no tienen el formato esperado');
+        throw new UploadError(500, NOT_CONFIGURED);
+      }
+      return { token: config.token, storage: r2Client(config, fetchImpl, now) };
+    },
+  });
 }
 
 /** Punto de entrada de Vercel (firma web: Request → Response). */

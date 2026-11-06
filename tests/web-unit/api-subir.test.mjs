@@ -335,6 +335,29 @@ describe('subida al bucket privado', () => {
     }
   });
 
+  test('dos archivos a la vez (ADR-0030): sus trozos se intercalan, incluso en paralelo, y cada uno se completa solo', async () => {
+    // La web y la APK envían hasta dos archivos a la vez, con UUID versión 7. El orden se exige dentro de cada archivo.
+    const services = fakeServices();
+    const first = '019a5b2c-3d4e-7000-8a1b-2c3d4e5f6a7b';
+    const second = '019a5b2c-3d4e-7001-9a1b-2c3d4e5f6a7b';
+    const parts = [OPUS.subarray(0, 60), OPUS.subarray(60)];
+    const results = await Promise.all([
+      send(services, { name: 'Uno.wav', id: first, index: 0, total: 2, body: parts[0] }),
+      send(services, { name: 'Dos.wav', id: second, index: 0, total: 2, body: parts[0] }),
+    ]);
+    assert.deepEqual(results.map(({ status }) => status), [200, 200]);
+    const second1 = await send(services, { name: 'Dos.wav', id: second, index: 1, total: 2, body: parts[1] });
+    assert.equal(second1.body.completa, true);
+    assert.equal(services.objects.has(manifest(first)), false, 'la primera sigue a medias');
+    const first1 = await send(services, { name: 'Uno.wav', id: first, index: 1, total: 2, body: parts[1] });
+    assert.equal(first1.body.completa, true);
+    assert.deepEqual(services.dispatches.map((item) => item.client_payload.id), [second, first]);
+    for (const id of [first, second]) {
+      const joined = Buffer.concat([0, 1].map((index) => Buffer.from(services.objects.get(part(index, id)))));
+      assert.deepEqual(new Uint8Array(joined), OPUS);
+    }
+  });
+
   test('un trozo sin los anteriores se rechaza', async () => {
     const services = fakeServices();
     const { status, body } = await send(services, { index: 1, total: 3, body: new Uint8Array([1, 2, 3]) });

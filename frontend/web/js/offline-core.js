@@ -6,7 +6,7 @@
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 27;
+export const SHELL_VERSION = 28;
 
 /** Origen público del bucket de audio en Cloudflare R2 (ADR-0020). Debe coincidir con connect-src de vercel.json. */
 export const AUDIO_ORIGIN = 'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev';
@@ -58,10 +58,12 @@ export const SHELL_ASSETS = Object.freeze([
   '/fonts/figtree-700.woff2',
   '/fonts/figtree-800.woff2',
   '/js/app.js',
+  '/js/api-config.js',
   '/js/catalog.js',
   '/js/youtube-search.js',
   '/js/cover-color.js',
   '/js/cover-image.js',
+  '/js/cover-index.js',
   '/js/duplicates.js',
   '/js/edit-pending.js',
   '/js/edit-remote.js',

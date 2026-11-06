@@ -14,8 +14,11 @@ import {
   findNewSong,
   INTERRUPTED_TEXT,
   indicatorText,
+  MAX_CONVERTED_WAITING,
+  MAX_PARALLEL_SENDS,
   MAX_WAIT_MS,
   normalizeTitle,
+  orderedUploadIds,
   parseItems,
   POLL_MS,
   progressOf,
@@ -32,6 +35,7 @@ import {
   titleCandidates,
   transition,
 } from '../../frontend/web/js/cuidador/subida-estado.js';
+import { sendOpus } from '../../frontend/web/js/cuidador/subida-publica.js';
 
 const S = STATES;
 const NBSP = ' ';
@@ -300,8 +304,8 @@ function setup({ songs = [{ id: 'S1', title: 'Tono de prueba' }], send, storage 
       return song;
     },
     readCopy: async () => new Uint8Array([9, 9]),
-    send: send ?? (async (bytes, { fileName, album, artist, onChunk }) => {
-      calls.send.push({ fileName, bytes: [...bytes], album, artist });
+    send: send ?? (async (bytes, { fileName, uploadId, album, artist, onChunk }) => {
+      calls.send.push({ fileName, uploadId, bytes: [...bytes], album, artist });
       for (let index = 0; index < 3; index += 1) onChunk({ index, total: 3 });
       return { ok: true, nombre: fileName.replace(/\.[^.]*$/, '.opus') };
     }),
@@ -586,20 +590,30 @@ describe('gestor de subidas', () => {
     }
   });
 
-  test('varias subidas, de una en una y en orden; con el mismo título, cada una reconoce una canción distinta', async () => {
+  test('varias subidas se envían a la vez, la lista conserva su orden y, con el mismo título, cada una reconoce una canción distinta', async () => {
     const order = [];
+    const releases = new Map();
+    let bothStarted;
+    const started = new Promise((resolve) => { bothStarted = resolve; });
     const { tracker, timers, server } = setup({
-      send: async (bytes, { fileName, onChunk }) => {
+      send: (bytes, { fileName, onChunk }) => new Promise((resolve) => {
         order.push(`inicio ${fileName}`);
-        await new Promise((resolve) => setImmediate(resolve));
-        onChunk({ index: 0, total: 1 });
-        order.push(`fin ${fileName}`);
-        return { nombre: 'Tono de prueba.opus' };
-      },
+        releases.set(fileName, () => {
+          onChunk({ index: 0, total: 1 });
+          order.push(`fin ${fileName}`);
+          resolve({ nombre: 'Tono de prueba.opus' });
+        });
+        if (releases.size === 2) bothStarted();
+      }),
     });
     tracker.add([{ name: 'Tono de prueba.wav' }, { name: 'Tono de prueba.mp3' }], { titleOf: () => 'Tono de prueba' });
+    await started;
+    // La segunda termina antes que la primera.
+    releases.get('Tono de prueba.mp3')();
+    releases.get('Tono de prueba.wav')();
     await settle();
-    assert.deepEqual(order, ['inicio Tono de prueba.wav', 'fin Tono de prueba.wav', 'inicio Tono de prueba.mp3', 'fin Tono de prueba.mp3']);
+    assert.deepEqual(order, ['inicio Tono de prueba.wav', 'inicio Tono de prueba.mp3', 'fin Tono de prueba.mp3', 'fin Tono de prueba.wav']);
+    assert.deepEqual(tracker.items().map((item) => item.name), ['Tono de prueba.wav', 'Tono de prueba.mp3']);
     server.songs.push({ id: 'S8', title: 'Tono de prueba' }, { id: 'S9', title: 'Tono de prueba' });
     timers.run(POLL_MS);
     await settle();
@@ -656,5 +670,225 @@ describe('gestor de subidas', () => {
     release({ nombre: 'a.opus' });
     await settle();
     assert.equal(tracker.busy(), false);
+  });
+});
+
+// --- Canalización (ADR-0030) ----------------------------------------------------------------------------------------
+
+/** Una promesa que se resuelve desde fuera. */
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+/** Espera, sin tiempos fijos, a que el gestor cumpla una condición: se comprueba con cada cambio que emite. */
+function until(tracker, predicate) {
+  if (predicate(tracker.items())) return Promise.resolve();
+  return new Promise((resolve) => {
+    const stop = tracker.subscribe((items) => {
+      if (predicate(items)) {
+        stop();
+        resolve();
+      }
+    });
+  });
+}
+
+/**
+ * fetch simulado de /api/subir: cada petición queda pendiente hasta que la prueba la responde. Valida, como la función
+ * real, que los trozos de cada subida llegan en orden, y lleva la cuenta de cuántas peticiones hay a la vez.
+ */
+function heldFetch() {
+  const pending = [];
+  const waiters = [];
+  const seen = new Map(); // uploadId → trozos recibidos
+  const state = { inFlight: 0, maxInFlight: 0, requests: [] };
+  const fetchImpl = (url, { headers, body }) => {
+    const uploadId = headers['X-Subida-Id'];
+    const index = Number(headers['X-Parte']);
+    const parts = Number(headers['X-Partes']);
+    assert.equal(url, '/api/subir');
+    assert.equal(index, seen.get(uploadId) ?? 0, 'los trozos de un archivo van en orden');
+    seen.set(uploadId, index + 1);
+    state.inFlight += 1;
+    state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+    const request = { uploadId, index, parts, name: decodeURIComponent(headers['X-Nombre-Archivo']), size: body.length };
+    state.requests.push(request);
+    return new Promise((resolve) => {
+      request.reply = (response) => {
+        state.inFlight -= 1;
+        resolve(response);
+      };
+      request.respond = () => request.reply({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, parte: index, partes: parts, completa: index === parts - 1, nombre: request.name.replace(/\.[^.]*$/, '.opus') }),
+      });
+      const waiter = waiters.shift();
+      if (waiter) waiter(request);
+      else pending.push(request);
+    });
+  };
+  /** La siguiente petición que llega (o la primera que espera respuesta). */
+  const next = () => (pending.length > 0 ? Promise.resolve(pending.shift()) : new Promise((resolve) => waiters.push(resolve)));
+  return { fetchImpl, next, state, waiting: () => pending.length };
+}
+
+function pipelineSetup({ files = 4, chunkBytes = 2 } = {}) {
+  const net = heldFetch();
+  const conversions = [];
+  const converting = [];
+  const { tracker, calls } = setup({
+    convert: async (file, { onProgress }) => {
+      conversions.push(file.name);
+      converting.push(file.name);
+      onProgress({ fraction: 1 });
+      converting.splice(converting.indexOf(file.name), 1);
+      return { bytes: new Uint8Array([1, 2, 3, conversions.length]), durationS: 1, channels: 1, bitrate: 32000 };
+    },
+    send: (bytes, { fileName, uploadId, album, artist, onChunk }) => {
+      calls.send.push({ fileName, uploadId });
+      return sendOpus(bytes, { fileName, uploadId, album, artist, onChunk, fetchImpl: net.fetchImpl, chunkBytes });
+    },
+  });
+  const names = Array.from({ length: files }, (_, index) => `Pista ${index + 1}.wav`);
+  tracker.add(names.map((name) => ({ name })), { titleOf: (file) => file.name.replace(/\.wav$/, '') });
+  return { tracker, calls, net, conversions, names };
+}
+
+describe('canalización de las subidas (ADR-0030)', () => {
+  test('los límites son dos envíos a la vez y un archivo convertido esperando', () => {
+    assert.equal(MAX_PARALLEL_SENDS, 2);
+    assert.equal(MAX_CONVERTED_WAITING, 1);
+  });
+
+  test('el archivo siguiente se convierte mientras se envía el anterior', async () => {
+    const { tracker, net, conversions } = pipelineSetup({ files: 2 });
+    const first = await net.next();
+    assert.equal(first.name, 'Pista 1.wav');
+    // El trozo 0 del primero sigue sin respuesta, y el segundo ya está convertido y enviándose.
+    await until(tracker, (items) => items[1].state === S.SENDING);
+    assert.deepEqual(conversions, ['Pista 1.wav', 'Pista 2.wav']);
+    const second = await net.next();
+    assert.equal(second.name, 'Pista 2.wav');
+    assert.equal(net.state.inFlight, 2);
+    for (const request of [first, second]) request.respond();
+    for (let index = 0; index < 2; index += 1) (await net.next()).respond();
+    await settle();
+    assert.deepEqual(states(tracker), [S.SAVED, S.SAVED]);
+  });
+
+  test('como mucho dos archivos se envían a la vez y uno convertido espera: la conversión no se adelanta más', async () => {
+    const { tracker, net, conversions, calls } = pipelineSetup({ files: 4 });
+    const first = await net.next();
+    const second = await net.next();
+    // La tercera ya está convertida, esperando hueco; la cuarta, en cola sin convertir.
+    await until(tracker, (items) => items[2].state === S.SENDING);
+    assert.deepEqual(states(tracker), [S.SENDING, S.SENDING, S.SENDING, S.QUEUED]);
+    assert.deepEqual(conversions, ['Pista 1.wav', 'Pista 2.wav', 'Pista 3.wav']);
+    assert.equal(net.waiting(), 0, 'no hay una tercera petición');
+    assert.equal(calls.send.length, 2);
+    assert.equal(statusText(tracker.items()[2]), `Subiendo… 0${NBSP}%`);
+    assert.equal(tracker.busy(), true);
+
+    // La segunda termina antes que la primera: entra la tercera y empieza a convertirse la cuarta.
+    second.respond();
+    const secondTail = await net.next();
+    assert.deepEqual([secondTail.name, secondTail.index], ['Pista 2.wav', 1]);
+    secondTail.respond();
+    const third = await net.next();
+    assert.deepEqual([third.name, third.index], ['Pista 3.wav', 0]);
+    await until(tracker, (items) => items[3].state === S.SENDING);
+    assert.deepEqual(conversions, ['Pista 1.wav', 'Pista 2.wav', 'Pista 3.wav', 'Pista 4.wav']);
+    assert.equal(net.waiting(), 0);
+
+    // Se responde todo lo que quede, por orden de llegada.
+    first.respond();
+    third.respond();
+    for (let index = 0; index < 4; index += 1) (await net.next()).respond();
+    await settle();
+    assert.deepEqual(states(tracker), [S.SAVED, S.SAVED, S.SAVED, S.SAVED]);
+    assert.equal(net.state.maxInFlight, 2);
+    assert.deepEqual(tracker.items().map((item) => item.name), ['Pista 1.wav', 'Pista 2.wav', 'Pista 3.wav', 'Pista 4.wav']);
+    // Cada subida, su UUID v7; ordenados como la cola aunque terminaran en otro orden.
+    const ids = calls.send.map((call) => call.uploadId);
+    assert.deepEqual(calls.send.map((call) => call.fileName), ['Pista 1.wav', 'Pista 2.wav', 'Pista 3.wav', 'Pista 4.wav']);
+    for (const id of ids) assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.deepEqual([...ids].sort(), ids);
+    assert.equal(new Set(ids).size, 4);
+    for (const id of ids) {
+      assert.deepEqual(net.state.requests.filter((request) => request.uploadId === id).map((request) => request.index), [0, 1]);
+    }
+  });
+
+  test('un fallo del servidor que para la cola falla la convertida que espera y las de la cola; la que se envía termina sola', async () => {
+    const net = heldFetch();
+    const { tracker, calls } = setup({
+      send: (bytes, { fileName, uploadId, onChunk }) => {
+        calls.send.push({ fileName, uploadId });
+        return sendOpus(bytes, { fileName, uploadId, onChunk, fetchImpl: net.fetchImpl });
+      },
+    });
+    tracker.add([{ name: 'a.wav' }, { name: 'b.wav' }, { name: 'c.wav' }, { name: 'd.wav' }], { titleOf: (file) => file.name });
+    const first = await net.next();
+    const second = await net.next();
+    await until(tracker, (items) => items[2].state === S.SENDING);
+    // b: la función no está configurada (500). Los demás fallarían igual.
+    second.reply({ ok: false, status: 500, json: async () => ({ ok: false, error: 'La subida no está configurada en el servidor.' }) });
+    await until(tracker, (items) => items[1].state === S.ERROR);
+    assert.deepEqual(states(tracker), [S.SENDING, S.ERROR, S.ERROR, S.ERROR]);
+    assert.equal(calls.convert, 3, 'd no se llega a convertir');
+    first.respond();
+    await settle();
+    assert.deepEqual(tracker.items().map((item) => [item.name, item.state, item.error]), [
+      ['a.wav', S.SAVED, null],
+      ['b.wav', S.ERROR, 'La subida no está configurada en el servidor.'],
+      ['c.wav', S.ERROR, 'La subida no está configurada en el servidor.'],
+      ['d.wav', S.ERROR, 'La subida no está configurada en el servidor.'],
+    ]);
+    assert.deepEqual(net.state.requests.map((request) => request.name), ['a.wav', 'b.wav']);
+    // «Reintentar» en c la envía con lo ya convertido, sin convertir otra vez.
+    assert.equal(tracker.retry(tracker.items()[2].key), true);
+    (await net.next()).respond();
+    await settle();
+    assert.equal(tracker.items()[2].state, S.SAVED);
+    assert.equal(calls.convert, 3);
+  });
+});
+
+describe('identificadores de subida en orden (UUID v7, ADR-0030)', () => {
+  const V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  test('llevan el milisegundo delante y crecen aunque coincida el milisegundo o el reloj vaya hacia atrás', () => {
+    const clock = { now: 0x019a5b2c3d4e };
+    const next = orderedUploadIds({ now: () => clock.now, randomBytes: (size) => new Uint8Array(size).fill(0xff) });
+    const first = next();
+    assert.equal(first, '019a5b2c-3d4e-7000-bfff-ffffffffffff');
+    const second = next();
+    assert.equal(second, '019a5b2c-3d4e-7001-bfff-ffffffffffff');
+    clock.now -= 5_000;
+    const third = next();
+    assert.equal(third, '019a5b2c-3d4e-7002-bfff-ffffffffffff');
+    clock.now += 10_000;
+    const fourth = next();
+    assert.equal(fourth.slice(0, 18), (0x019a5b2c3d4e + 5_000).toString(16).padStart(12, '0').replace(/^(.{8})/, '$1-') + '-7000');
+    assert.deepEqual([first, second, third, fourth].sort(), [first, second, third, fourth]);
+  });
+
+  test('con más de 4096 en el mismo milisegundo pasan al siguiente sin repetirse', () => {
+    const next = orderedUploadIds({ now: () => 1_000, randomBytes: (size) => new Uint8Array(size) });
+    const ids = Array.from({ length: 4100 }, () => next());
+    for (const id of ids.slice(0, 3)) assert.match(id, V7);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.deepEqual([...ids].sort(), ids);
+    assert.equal(ids[4096].slice(0, 13), '00000000-03e9');
+  });
+
+  test('con el azar real cumplen el formato y no se repiten', () => {
+    const next = orderedUploadIds();
+    const ids = Array.from({ length: 200 }, () => next());
+    for (const id of ids) assert.match(id, V7);
+    assert.equal(new Set(ids).size, 200);
   });
 });

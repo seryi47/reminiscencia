@@ -67,6 +67,10 @@ export async function launchBrowser() {
       "--hide-scrollbars",
       "--mute-audio",
       "--font-render-hinting=none",
+      // Las pruebas nunca van al bucket real de R2 (pub-….r2.dev): el audio cae al servidor de pruebas, como cuando R2
+      // falla, y el índice de portadas (ADR-0029) falla al momento en lugar de depender de la red. worker.e2e.mjs sirve
+      // el bucket simulado interceptando las peticiones, antes de resolver el nombre.
+      "--host-resolver-rules=MAP *.r2.dev ~NOTFOUND",
       // Chrome en Linux dentro de contenedores de CI necesita desactivar el sandbox.
       ...(process.platform === "linux" ? ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"] : []),
     ],
