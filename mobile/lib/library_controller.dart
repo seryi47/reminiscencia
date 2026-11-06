@@ -462,7 +462,8 @@ class LibraryController extends ChangeNotifier {
     return shared.hasConnection();
   }
 
-  /// Convierte y sube a la biblioteca común los archivos elegidos, de uno en uno y en trozos, y sigue cada uno
+  /// Convierte y sube a la biblioteca común los archivos elegidos, en trozos (se convierte el siguiente mientras se
+  /// envía el anterior y van hasta dos a la vez; ADR-0030), y sigue cada uno
   /// hasta que se publica ([uploads]). Sin red lanza AppException sin intentar nada.
   /// [review] puede quitar canciones de la tanda antes de que entren en la cola (aviso de duplicados, ADR-0026).
   Future<SharedUploadResult> uploadShared(
