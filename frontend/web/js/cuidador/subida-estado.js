@@ -14,6 +14,12 @@
 // pública y borra la copia. Las subidas siguen aunque se cierre la hoja (el gestor vive en la app) y las pendientes
 // se guardan en localStorage para seguir comprobándolas al volver a abrir la página.
 //
+// Canalización (ADR-0030, igual que la APK): mientras se envía un archivo ya se convierte el siguiente, y se envían hasta
+// dos archivos a la vez (los trozos de cada uno, en orden). Como mucho hay un archivo convertido esperando hueco para
+// enviarse: la memoria no crece con la cola. Cada subida lleva un UUID versión 7 (orderedUploadIds) sacado al empezar a
+// prepararla, en el orden de la cola: el buzón cataloga por ese orden aunque terminen desordenadas. La lista visible
+// no cambia de orden.
+//
 // Este módulo no toca el DOM: la máquina de estados, los textos, la detección y el gestor (con sus dependencias
 // inyectadas) se prueban en node (tests/web-unit/subida-estado.test.mjs).
 
@@ -24,6 +30,10 @@ export const MAX_WAIT_MS = 10 * 60_000;
 export const SAVED_PAUSE_MS = 2_000;
 export const STORAGE_KEY = 'reminiscencia.subidas';
 const STORAGE_VERSION = 1;
+/** Archivos que se envían a la vez (ADR-0030). /api/subir exige en orden los trozos de cada archivo, no entre archivos. */
+export const MAX_PARALLEL_SENDS = 2;
+/** Archivos ya convertidos que pueden esperar un hueco para enviarse: así la conversión no se adelanta sin límite. */
+export const MAX_CONVERTED_WAITING = 1;
 
 export const STATES = Object.freeze({
   QUEUED: 'cola',
@@ -311,6 +321,39 @@ export function idsOf(songs) {
 // Persistencia (localStorage)
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Generador de identificadores de subida UUID versión 7 (RFC 9562, apartado 5.7): 48 bits de milisegundos Unix, la
+ * versión, 12 bits de contador (método 1 del apartado 6.2: si coincide el milisegundo, o el reloj va hacia atrás, se
+ * sigue del último sumando uno) y 62 bits aleatorios. Cada identificador es mayor que el anterior, así que su orden es
+ * el de la cola. /api/subir y el buzón aceptan cualquier UUID en minúsculas; el buzón ordena por el tiempo de los v7.
+ */
+export function orderedUploadIds({ now = () => Date.now(), randomBytes = (size) => globalThis.crypto.getRandomValues(new Uint8Array(size)) } = {}) {
+  let lastMs = -1;
+  let counter = 0;
+  return function next() {
+    let ms = Math.max(0, Math.floor(Number(now()) || 0));
+    if (ms > lastMs) {
+      lastMs = ms;
+      counter = 0;
+    } else {
+      counter += 1;
+      if (counter > 0xfff) {
+        // Más de 4096 en el mismo milisegundo: se toma el siguiente.
+        lastMs += 1;
+        counter = 0;
+      }
+      ms = lastMs;
+    }
+    // 9 bytes: 2 bits del primero para la variante (10xx) y 60 bits de los otros ocho.
+    const random = randomBytes(9);
+    const hex = (value, length) => value.toString(16).padStart(length, '0');
+    const time = hex(ms, 12);
+    const tail = [...random.slice(1, 9)].map((byte) => hex(byte, 2)).join('');
+    const variant = (8 | (random[0] & 0x3)).toString(16);
+    return `${time.slice(0, 8)}-${time.slice(8)}-7${hex(counter, 3)}-${variant}${tail.slice(0, 3)}-${tail.slice(3, 15)}`;
+  };
+}
+
 const PERSISTED_STATES = [S.SAVED, S.PUBLISHING, S.SLOW, S.ERROR, S.CONVERTING, S.SENDING, S.QUEUED];
 
 /** Lo que se guarda: las subidas que hay que seguir al volver (las que esperan y las que tienen copia local). */
@@ -400,11 +443,13 @@ function writeStorage(storage, value) {
  *   perezosa (una canción de un ZIP, con open()), primero se abre (se descomprime) y solo vive mientras se convierte.
  * - saveCopy({ title, bytes, durationS, channels, bitrate }) → canción local ({ id, … }); su fallo no para la subida
  * - readCopy(localId) → Uint8Array | null (para reintentar tras recargar)
- * - send(bytes, { fileName, onChunk({ index, total }) }) → respuesta del último trozo ({ nombre, … })
+ * - send(bytes, { fileName, uploadId, album, artist, onChunk({ index, total }) }) → respuesta del último trozo
+ *   ({ nombre, … }). Se llama con hasta maxParallelSends archivos a la vez; uploadId es un UUID v7 en orden de cola.
  * - fetchSongs() → la lista de /data/songs.json, leída sin caché
  * - currentIds() → ids que ya conoce la app (si no se puede leer songs.json antes de subir)
  * - onCopy(song), onPublished([{ item, song }], songs), onChange(items)
- * - storage (localStorage), now, setTimer, clearTimer, newKey, pollMs, maxWaitMs, savedPauseMs
+ * - storage (localStorage), now, setTimer, clearTimer, newKey, newUploadId, pollMs, maxWaitMs, savedPauseMs,
+ *   maxParallelSends
  */
 export function createUploadTracker(deps = {}) {
   const {
@@ -421,15 +466,23 @@ export function createUploadTracker(deps = {}) {
     setTimer = (fn, ms) => setTimeout(fn, ms),
     clearTimer = (id) => clearTimeout(id),
     newKey = defaultKey,
+    newUploadId = orderedUploadIds({ now }),
+    maxParallelSends = MAX_PARALLEL_SENDS,
     pollMs = POLL_MS,
     slowPollMs = SLOW_POLL_MS,
     maxWaitMs = MAX_WAIT_MS,
     savedPauseMs = SAVED_PAUSE_MS,
   } = deps;
 
-  const entries = []; // { item, file, bytes }
+  const entries = []; // { item, file, bytes, run, uploadId }
   const listeners = new Set();
-  let pumping = false;
+  // Canalización (ADR-0030): una subida se prepara (se convierte) a la vez; las preparadas esperan en «ready» (como
+  // mucho MAX_CONVERTED_WAITING) y se envían hasta maxParallelSends a la vez. «run» marca cada intento de una subida:
+  // un trabajo de un intento anterior (por ejemplo, una conversión que seguía cuando un fallo del servidor paró la
+  // cola) no toca el intento nuevo.
+  let preparing = null;
+  const ready = [];
+  const sending = new Set();
   let pollTimer = null;
   let polling = false;
   const pauseTimers = new Set();
@@ -498,17 +551,27 @@ export function createUploadTracker(deps = {}) {
     return 'No se ha podido subir este archivo.';
   }
 
-  async function processEntry(entry) {
+  const current = (entry, run) => entry.run === run && !disposed;
+
+  /** Convierte (o recupera de la copia local) y deja la subida lista para enviarse. false si el intento ya no vale. */
+  async function prepare(entry, run) {
     const knownIds = await baselineIds();
+    if (!current(entry, run) || entry.item.state !== S.QUEUED) return false;
     let bytes = entry.bytes;
     if (!entry.item.localId || !bytes) {
       if (entry.item.localId && !bytes) bytes = await readCopy(entry.item.localId).catch(() => null);
+      if (!current(entry, run)) return false;
       if (!bytes) {
         if (!entry.file) throw Object.assign(new Error(LOST_FILE_TEXT), { name: 'LocalAudioError', lost: true });
         dispatch(entry, { type: 'convert', fraction: 0 });
         // Una canción de un ZIP se descomprime ahora, justo antes de convertirla, y se suelta al terminar.
         const source = typeof entry.file.open === 'function' ? await entry.file.open() : entry.file;
-        const converted = await convert(source, { onProgress: ({ fraction }) => dispatch(entry, { type: 'convert', fraction }) });
+        const converted = await convert(source, {
+          onProgress: ({ fraction }) => {
+            if (current(entry, run)) dispatch(entry, { type: 'convert', fraction });
+          },
+        });
+        if (!current(entry, run) || entry.item.state !== S.CONVERTING) return false;
         bytes = converted.bytes;
         if (!entry.item.localId) {
           try {
@@ -523,19 +586,33 @@ export function createUploadTracker(deps = {}) {
         }
       }
     }
+    if (!current(entry, run)) return false;
     entry.bytes = bytes;
+    entry.knownIds = knownIds;
     entry.item = { ...entry.item, expectedId: await expectedSongId(bytes) };
-    dispatch(entry, { type: 'converted', localId: entry.item.localId });
-    const result = await send(bytes, {
+    if (!current(entry, run)) return false;
+    // El UUID v7 se saca al terminar de preparar, que va en el orden de la cola (una preparación a la vez).
+    entry.uploadId = newUploadId();
+    return dispatch(entry, { type: 'converted', localId: entry.item.localId }) || entry.item.state === S.SENDING;
+  }
+
+  /** Envía una subida preparada, trozo a trozo, y la deja «Guardada». */
+  async function transmit(entry, run) {
+    const result = await send(entry.bytes, {
       fileName: entry.item.name,
+      uploadId: entry.uploadId,
       album: entry.item.album,
       artist: entry.item.artist,
-      onChunk: ({ index, total }) => dispatch(entry, { type: 'send', fraction: (index + 1) / total }),
+      onChunk: ({ index, total }) => {
+        if (current(entry, run)) dispatch(entry, { type: 'send', fraction: (index + 1) / total });
+      },
     });
-    dispatch(entry, { type: 'saved', serverName: result?.nombre, at: now(), knownIds });
-    // Ya está en GitHub: no hace falta conservar el archivo (ni el ZIP del que sale) ni los bytes.
+    if (!current(entry, run)) return;
+    dispatch(entry, { type: 'saved', serverName: result?.nombre, at: now(), knownIds: entry.knownIds });
+    // Ya está en el servidor: no hace falta conservar el archivo (ni el ZIP del que sale) ni los bytes.
     entry.file = null;
     entry.bytes = null;
+    entry.knownIds = null;
     const timer = setTimer(() => {
       pauseTimers.delete(timer);
       dispatch(entry, { type: 'publishing' });
@@ -544,30 +621,60 @@ export function createUploadTracker(deps = {}) {
     schedulePoll(pollMs);
   }
 
-  async function pump() {
-    if (pumping) return;
-    pumping = true;
-    try {
-      for (;;) {
-        if (disposed) return;
-        const entry = entries.find((candidate) => candidate.item.state === S.QUEUED);
-        if (!entry) return;
-        try {
-          await processEntry(entry);
-        } catch (error) {
-          const message = failMessage(error);
-          dispatch(entry, { type: 'fail', message, retryable: !error?.lost && !error?.permanent && Boolean(entry.file || entry.item.localId) });
-          // Un error que no se arregla reintentando (por ejemplo, una canción cifrada en el ZIP) suelta el archivo.
-          if (error?.permanent) entry.file = null;
-          // Un fallo de configuración del servidor afectaría igual a las demás: no se intentan.
-          if (error?.stop) {
-            for (const other of entries) if (other.item.state === S.QUEUED) dispatch(other, { type: 'fail', message, retryable: true });
-          }
+  function fail(entry, run, error) {
+    if (!current(entry, run)) return;
+    const message = failMessage(error);
+    dispatch(entry, { type: 'fail', message, retryable: !error?.lost && !error?.permanent && Boolean(entry.file || entry.item.localId) });
+    // Un error que no se arregla reintentando (por ejemplo, una canción cifrada en el ZIP) suelta el archivo.
+    if (error?.permanent) entry.file = null;
+    // Un fallo de configuración del servidor afectaría igual a las demás: no se intentan. Las que ya se están enviando
+    // terminan solas (con su propio resultado).
+    if (error?.stop) {
+      for (const other of entries) {
+        if (other === entry || sending.has(other)) continue;
+        if ([S.QUEUED, S.CONVERTING].includes(other.item.state) || ready.includes(other)) {
+          dispatch(other, { type: 'fail', message, retryable: true });
         }
       }
-    } finally {
-      pumping = false;
+      ready.splice(0, ready.length);
     }
+  }
+
+  /** Arranca lo que se pueda: envíos de lo preparado, en orden, mientras haya hueco, y una preparación. */
+  function schedule() {
+    if (disposed) return;
+    while (ready.length > 0 && sending.size < maxParallelSends) {
+      const entry = ready.shift();
+      if (entry.item.state !== S.SENDING || entry.run === undefined) continue;
+      const { run } = entry;
+      sending.add(entry);
+      inBackground((async () => {
+        try {
+          await transmit(entry, run);
+        } catch (error) {
+          fail(entry, run, error);
+        } finally {
+          sending.delete(entry);
+          schedule();
+        }
+      })());
+    }
+    if (preparing || ready.length >= MAX_CONVERTED_WAITING) return;
+    const entry = entries.find((candidate) => candidate.item.state === S.QUEUED);
+    if (!entry) return;
+    const run = {};
+    entry.run = run;
+    preparing = entry;
+    inBackground((async () => {
+      try {
+        if (await prepare(entry, run)) ready.push(entry);
+      } catch (error) {
+        fail(entry, run, error);
+      } finally {
+        if (preparing === entry) preparing = null;
+        schedule();
+      }
+    })());
   }
 
   function schedulePoll(delay) {
@@ -725,7 +832,7 @@ export function createUploadTracker(deps = {}) {
       keys.push(key);
     }
     if (keys.length > 0) emit();
-    inBackground(pump());
+    schedule();
     return keys;
   }
 
@@ -737,7 +844,7 @@ export function createUploadTracker(deps = {}) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    /** Añade archivos a la cola (se suben de uno en uno y en orden). Devuelve las claves. */
+    /** Añade archivos a la cola (se convierten de uno en uno y en orden, y se envían hasta dos a la vez). Devuelve las claves. */
     add(files, { titleOf = (file) => file?.name ?? '', album = null, trackArtists = [] } = {}) {
       return addSources(Array.from(files ?? []).map((file) => ({ file, name: file?.name, title: titleOf(file) })), { album, trackArtists });
     },
@@ -746,7 +853,7 @@ export function createUploadTracker(deps = {}) {
     retry(key) {
       const entry = find(key);
       if (!entry || !dispatch(entry, { type: 'retry' })) return false;
-      inBackground(pump());
+      schedule();
       return true;
     },
     /**

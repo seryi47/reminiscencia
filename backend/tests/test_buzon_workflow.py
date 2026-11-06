@@ -5,8 +5,16 @@ Sin dependencias de YAML: se leen los bloques por indentación. Ningún nombre d
 llegar a un intérprete de shell por interpolación de ${{ }}; el procesado los lee del evento.
 """
 
+import hashlib
+import os
+import json
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 from sonidos import paquete
 from test_biblioteca_workflow import _run_blocks, _steps, _token_violations
@@ -142,10 +150,13 @@ def test_processing_has_no_token_and_no_credentials_on_disk():
     assert "name: buzon-entrada" in procesar and "actions/download-artifact" in procesar
 
 
-def test_branch_guard_runs_before_any_code_of_the_tree_is_installed():
+def test_branch_guard_runs_before_anything_of_the_tree_runs_and_nothing_is_pip_installed():
     _, _, procesar, _ = _jobs(_text())
 
-    assert procesar.index('"$GITHUB_REF_NAME" != "main"') < procesar.index("pip install")
+    guard = procesar.index('"$GITHUB_REF_NAME" != "main"')
+    assert guard < procesar.index("Instalar ffmpeg") < procesar.index("scripts/buzon.py")
+    # ADR-0030: el backend no tiene dependencias y los scripts lo importan desde backend/; no hace falta instalarlo.
+    assert "pip install" not in procesar
 
 
 def test_publishing_validates_applies_regenerates_checks_limits_and_runs_no_processing_tool():
@@ -228,6 +239,13 @@ def test_every_checkout_drops_its_credentials_and_reads_main():
     assert text.count("ref: main") == 3
 
 
+# La caché de los .deb de ffmpeg (ADR-0030) solo la usa el buzón.
+CACHE_PINS = {
+    "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+    "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+}
+
+
 def test_actions_are_pinned_to_the_same_commits_as_the_library_workflow():
     pins = set()
     for line in _text().splitlines():
@@ -236,7 +254,9 @@ def test_actions_are_pinned_to_the_same_commits_as_the_library_workflow():
             pins.add(line.split("uses: ", 1)[1].split(" ", 1)[0])
     biblioteca = (WORKFLOWS / "biblioteca.yml").read_text(encoding="utf-8")
 
-    assert pins and all(pin in biblioteca for pin in pins)
+    assert CACHE_PINS <= pins
+    assert pins and all(pin in biblioteca for pin in pins - CACHE_PINS)
+    assert all("# v6.1.0" in line for line in _text().splitlines() if "actions/cache/" in line)
 
 
 def test_permissions_are_declared_on_the_jobs_not_on_the_workflow():
@@ -281,3 +301,184 @@ def test_the_collected_uploads_are_deleted_only_after_pushing_and_without_the_gi
     assert step.index('"$GITHUB_REF_NAME" != "main"') < step.index("python scripts/entrada_r2.py limpiar")
     for name in R2_SECRETS:
         assert f"{name}: ${{{{ secrets.{name} }}}}" in step
+
+
+# --- Subida rápida (ADR-0030) ------------------------------------------------------------------------------------------
+
+def _step(job: str, name: str) -> str:
+    return next(step for step in _steps(job) if f"name: {name}" in step)
+
+
+def _script(step: str) -> str:
+    lines = step.split("run: |\n", 1)[1].splitlines()
+    return "\n".join(line[10:] if line.startswith(" " * 10) else line for line in lines)
+
+
+def _sparse(job: str) -> list[str]:
+    checkout = next(step for step in _steps(job) if "actions/checkout" in step)
+    block = checkout.split("sparse-checkout: |\n", 1)[1]
+    paths = []
+    for line in block.splitlines():
+        if not line.startswith(" " * 12) or not line.strip():
+            break
+        paths.append(line.strip())
+    return paths
+
+
+def test_collecting_and_processing_check_out_only_what_they_run():
+    _, recoger, procesar, publicar = _jobs(_text())
+
+    assert _sparse(recoger) == ["scripts", "backend/sonidos"]
+    assert _sparse(procesar) == ["scripts", "backend/sonidos", "audio-library", "frontend/web/data",
+                                 "frontend/web/covers"]
+    assert "sparse-checkout" not in publicar  # ADR-0025: publicar necesita el historial completo (sin contenidos viejos)
+    for job in (recoger, procesar):
+        assert "fetch-depth: 0" not in job and "sparse-checkout-cone-mode: false" not in job
+
+
+def _copy_sparse(tmp_path: Path, paths: list[str]) -> Path:
+    """Una copia del árbol con lo que deja el sparse-checkout en modo cone: las carpetas de la lista y los ficheros
+    sueltos de la raíz y de las carpetas que llevan a ellas."""
+    copy = tmp_path / "sparse"
+    copy.mkdir(parents=True)
+    parents = {"."}
+    for path in paths:
+        parts = Path(path).parts
+        parents.update(str(Path(*parts[:index])) for index in range(1, len(parts)))
+        source = ROOT / path
+        if source.is_dir():
+            shutil.copytree(source, copy / path, ignore=shutil.ignore_patterns("__pycache__"))
+    for parent in parents:
+        for item in (ROOT / parent).iterdir():
+            if item.is_file():
+                (copy / parent).mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, copy / parent / item.name)
+    return copy
+
+
+def test_the_scripts_of_each_job_import_with_only_its_sparse_checkout(tmp_path):
+    # Nada de lo que ejecutan 'recoger' y 'procesar' depende de lo que su checkout deja fuera (por ejemplo, tests/).
+    _, recoger, procesar, _ = _jobs(_text())
+    for name, job, commands in (
+        ("recoger", recoger, [["scripts/entrada_r2.py", "--help"]]),
+        ("procesar", procesar, [["scripts/buzon.py", "--help"], ["scripts/empaquetar_cambios.py", "--help"]]),
+    ):
+        copy = _copy_sparse(tmp_path / name, _sparse(job))
+        for command in commands:
+            result = subprocess.run([sys.executable, "-I", *command], cwd=copy, capture_output=True, text=True)
+            assert result.returncode == 0, (name, command, result.stderr)
+        module = "sonidos.entrada" if name == "recoger" else "sonidos.buzon"
+        probe = f"import sys; sys.path.insert(0, 'backend'); import {module}, sonidos.paquete"
+        assert subprocess.run([sys.executable, "-I", "-c", probe], cwd=copy).returncode == 0
+
+
+def test_the_ffmpeg_cache_is_restored_checked_and_saved_before_anything_uploaded_is_touched():
+    _, _, procesar, _ = _jobs(_text())
+    order = [procesar.index(marker) for marker in (
+        "name: Calcular la clave de la caché de ffmpeg",
+        "actions/cache/restore@",
+        "name: Comprobar los paquetes de ffmpeg de la caché",
+        "name: Instalar ffmpeg",
+        "actions/cache/save@",
+        "name: Descargar las subidas de la web",
+        "scripts/buzon.py",
+    )]
+    assert order == sorted(order)
+    save = _step(procesar, "Guardar los paquetes de ffmpeg en la caché")
+    assert "steps.ffmpeg_cache.outputs.cache-hit != 'true'" in save
+    assert "steps.ffmpeg_clave.outputs.lista == 'true'" in save
+    clave = _step(procesar, "Calcular la clave de la caché de ffmpeg")
+    assert "apt-get install --print-uris -qq --no-install-recommends ffmpeg" in clave
+    assert "sudo" not in clave  # --print-uris no instala nada
+
+
+def test_ffmpeg_installs_without_hiding_errors_and_waits_for_the_dpkg_lock():
+    _, _, procesar, _ = _jobs(_text())
+    install = _step(procesar, "Instalar ffmpeg")
+
+    assert "/dev/null" not in install and "|| true" not in install
+    assert "-o DPkg::Lock::Timeout=60" in install
+    assert '-o Dir::Cache::Archives="$DEBS"' in install
+    assert "--no-install-recommends" in install and "timeout 180 sudo apt-get install" in install
+    assert 'echo "No se ha podido instalar ffmpeg tras tres intentos." >&2' in install
+    assert "ffmpeg -version" in install and "ffprobe -version" in install
+
+
+@pytest.fixture
+def ffmpeg_debs(tmp_path: Path) -> dict:
+    """Una lista de apt (--print-uris) y una caché con un paquete bueno, uno alterado y uno que no está en la lista."""
+    home = tmp_path / "home"
+    debs = home / "ffmpeg-debs"
+    debs.mkdir(parents=True)
+    runner = tmp_path / "runner"
+    runner.mkdir()
+    good, tampered = b"paquete bueno", b"paquete original"
+    (debs / "libbueno_1.0_amd64.deb").write_bytes(good)
+    (debs / "libalterado_7%3a2.0_amd64.deb").write_bytes(b"paquete cambiado")
+    (debs / "intruso_1.0_amd64.deb").write_bytes(b"no esta en la lista")
+    (debs / "largo_1.0_amd64.deb").write_bytes(good)
+    lines = [
+        f"'http://archive.ubuntu.com/a/libbueno_1.0_amd64.deb' libbueno_1.0_amd64.deb {len(good)} "
+        f"SHA256:{hashlib.sha256(good).hexdigest()}",
+        f"'http://archive.ubuntu.com/a/libalterado_2.0_amd64.deb' libalterado_7%3a2.0_amd64.deb {len(tampered)} "
+        f"SHA256:{hashlib.sha256(tampered).hexdigest()}",
+        f"'http://archive.ubuntu.com/a/largo_1.0_amd64.deb' largo_1.0_amd64.deb {len(good)} "
+        f"SHA512:{hashlib.sha512(good).hexdigest()}",
+    ]
+    (runner / "ffmpeg-paquetes.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {"home": home, "debs": debs, "runner": runner}
+
+
+def _check_cache(ffmpeg_debs: dict) -> subprocess.CompletedProcess:
+    _, _, procesar, _ = _jobs(_text())
+    script = _script(_step(procesar, "Comprobar los paquetes de ffmpeg de la caché"))
+    env = {"HOME": str(ffmpeg_debs["home"]), "RUNNER_TEMP": str(ffmpeg_debs["runner"]), "PATH": os.environ["PATH"]}
+    return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script], env=env,
+                          capture_output=True, text=True)
+
+
+@pytest.mark.skipif(shutil.which("sha256sum") is None or shutil.which("sha512sum") is None,
+                    reason="sin sha256sum/sha512sum (coreutils de GNU), como en el runner")
+def test_only_cached_packages_with_the_hash_of_apt_index_are_kept(ffmpeg_debs):
+    result = _check_cache(ffmpeg_debs)
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(path.name for path in ffmpeg_debs["debs"].iterdir()) == ["largo_1.0_amd64.deb",
+                                                                           "libbueno_1.0_amd64.deb"]
+    assert "2 comprobados, 2 descartados" in result.stdout
+
+
+@pytest.mark.skipif(shutil.which("sha256sum") is None, reason="sin sha256sum (coreutils de GNU), como en el runner")
+def test_without_a_list_every_cached_package_is_discarded(ffmpeg_debs):
+    (ffmpeg_debs["runner"] / "ffmpeg-paquetes.txt").write_text("", encoding="utf-8")
+    (ffmpeg_debs["debs"] / "enlace.deb").symlink_to(ffmpeg_debs["debs"] / "libbueno_1.0_amd64.deb")
+
+    result = _check_cache(ffmpeg_debs)
+
+    assert result.returncode == 0, result.stderr
+    assert list(ffmpeg_debs["debs"].iterdir()) == []
+
+
+def _pending_filter(autorizar: str) -> str:
+    step = _step(autorizar, "Comprobar si queda algo pendiente en el buzón")
+    return re.search(r"--argjson solo_partes \"\$SOLO_PARTES\" '(.+?)' <<<", step, flags=re.DOTALL).group(1)
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="sin jq (está en el runner)")
+@pytest.mark.parametrize(("solo_partes", "rutas", "esperado"), [
+    # Un push o a mano: todo lo del buzón (menos los marcadores) y los manifiestos de partes.
+    ("false", ["audio-library/buzon/README.md", "audio-library/buzon/Vals.mp3",
+               "audio-library/buzon/.partes/x/0.part", "audio-library/buzon/.partes/x/manifiesto.json"], 2),
+    # Un aviso de la web: el buzón de main no se procesa; solo los manifiestos de partes antiguos.
+    ("true", ["audio-library/buzon/Vals.mp3", "audio-library/buzon/portadas/S0123456789abcdef.jpg"], 0),
+    ("true", ["audio-library/buzon/Vals.mp3", "audio-library/buzon/.partes/x/0.part",
+              "audio-library/buzon/.partes/x/manifiesto.json"], 1),
+])
+def test_a_web_upload_run_does_not_wake_up_for_files_in_the_mailbox_of_main(solo_partes, rutas, esperado):
+    autorizar, _, _, _ = _jobs(_text())
+    tree = json.dumps({"truncated": False, "tree": [{"type": "blob", "path": ruta} for ruta in rutas]})
+
+    result = subprocess.run(["jq", "-r", "--argjson", "solo_partes", solo_partes, _pending_filter(autorizar)],
+                            input=tree, capture_output=True, text=True, check=True)
+
+    assert int(result.stdout) == esperado

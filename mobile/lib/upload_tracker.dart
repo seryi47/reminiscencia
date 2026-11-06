@@ -584,7 +584,8 @@ class UploadTracker extends ChangeNotifier {
         ?entry.toSong(),
   ];
 
-  /// Convierte y sube [files], de uno en uno. Sin red lanza AppException sin crear nada.
+  /// Convierte [files] de uno en uno y los envía hasta dos a la vez (ADR-0030). Sin red lanza AppException sin crear
+  /// nada.
   ///
   /// Un ZIP no se sube: se leen sus canciones (también las de subcarpetas) y cada una se sube como si se hubiera
   /// elegida suelta, con su nombre base como título. Si un ZIP está dañado o cifrado, su grupo lleva el error y

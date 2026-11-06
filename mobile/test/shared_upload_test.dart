@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -19,6 +20,12 @@ class FakeOpusConverter implements AudioConverter {
   final List<String> outputs = [];
   void Function()? onConvert;
 
+  /// Conversiones que esperan a que la prueba las deje terminar (por título).
+  final Map<String, Future<void>> gates = {};
+
+  /// Conversiones terminadas, en orden.
+  final List<String> finished = [];
+
   List<int> get content => List<int>.generate(bytes, (i) => i % 251);
 
   @override
@@ -30,12 +37,15 @@ class FakeOpusConverter implements AudioConverter {
     titles.add(title);
     outputs.add(outputPath);
     onConvert?.call();
+    final gate = gates[title];
+    if (gate != null) await gate;
     final failure = failures[inputPath.split('/').last];
     if (failure != null) {
       await File(outputPath).writeAsBytes([1]);
       throw AppException(failure);
     }
     await File(outputPath).writeAsBytes(content);
+    finished.add(title);
     return ConvertedAudio(
       durationS: 10,
       channels: 2,
@@ -100,6 +110,10 @@ void main() {
   final uuidPattern = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
   );
+  // Los identificadores de subida son UUID versión 7, en el orden de la cola (ADR-0030).
+  final uuid7Pattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+  );
 
   group('contrato de la función', () {
     test(
@@ -122,7 +136,7 @@ void main() {
         );
         expect(request.headers['Content-Type'], startsWith('audio/ogg'));
         expect(request.headers['X-Nombre-Archivo'], 'Charleston.mp3');
-        expect(request.headers['X-Subida-Id'], matches(uuidPattern));
+        expect(request.headers['X-Subida-Id'], matches(uuid7Pattern));
         expect(request.headers['X-Parte'], '0');
         expect(request.headers['X-Partes'], '1');
         expect(request.bodyBytes, converter.content);
@@ -205,7 +219,8 @@ void main() {
       'error 4xx: se muestra el mensaje de la web, sin reintentar, y sigue con el siguiente',
       () async {
         final uploader = uploaderWith(
-          (request, n) async => n == 1
+          (request, n) async =>
+              request.headers['X-Nombre-Archivo'] == 'Mala.wav'
               ? errorReply(400, 'El archivo no es audio Ogg Opus.')
               : okReply(),
         );
@@ -296,15 +311,22 @@ void main() {
     test(
       'si se cae la red: un reintento y el resto queda pendiente, sin más peticiones',
       () async {
+        // «Dos» se convierte mientras se envía «Uno», pero no termina hasta saberse que «Uno» perdió la red: así lo
+        // que aún no se ha empezado a enviar queda pendiente (lo que ya se envía termina solo; ADR-0030).
+        final converter = FakeOpusConverter();
+        final unoDone = Completer<void>();
+        converter.gates['Dos'] = unoDone.future;
         final uploader = uploaderWith(
           (_, _) async => throw const SocketException('sin red'),
+          converter: converter,
         );
 
-        final result = await uploader.upload([
-          picked('Uno.mp3'),
-          picked('Dos.mp3'),
-          picked('Tres.mp3'),
-        ]);
+        final result = await uploader.upload(
+          [picked('Uno.mp3'), picked('Dos.mp3'), picked('Tres.mp3')],
+          onItemDone: (index, _) {
+            if (index == 0) unoDone.complete();
+          },
+        );
 
         expect(requests, hasLength(2), reason: 'un intento y un reintento');
         expect(result.items.map((i) => i.outcome), [
@@ -335,7 +357,7 @@ void main() {
 
   group('varios archivos', () {
     test(
-      'se suben de uno en uno, cada uno con su id, y el resultado va en orden',
+      'cada uno con su id, la que no se convierte no se envía y el resultado va en el orden de la lista',
       () async {
         final converter = FakeOpusConverter(
           failures: {'Rota.wav': 'No se puede leer este archivo.'},
@@ -356,10 +378,10 @@ void main() {
           hasLength(2),
           reason: 'la que no se convierte no se envía',
         );
-        expect(requests.map((r) => r.headers['X-Nombre-Archivo']), [
-          'Uno.mp3',
-          'Tres.ogg',
-        ]);
+        expect(
+          requests.map((r) => r.headers['X-Nombre-Archivo']),
+          unorderedEquals(['Uno.mp3', 'Tres.ogg']),
+        );
         expect(
           requests.map((r) => r.headers['X-Subida-Id']).toSet(),
           hasLength(2),
@@ -403,6 +425,234 @@ void main() {
         'Subidas 2 canciones: llegarán a todos en un par de minutos.',
       );
     });
+  });
+
+  group('canalización (ADR-0030)', () {
+    /// Cliente cuyas respuestas da la prueba: cada petición espera a que se complete su respuesta.
+    ({
+      MockClient client,
+      List<({http.Request request, Completer<http.Response> reply})> pending,
+      List<int> inFlight,
+    })
+    heldClient() {
+      final pending =
+          <({http.Request request, Completer<http.Response> reply})>[];
+      final inFlight = <int>[0, 0]; // [ahora, máximo]
+      final client = MockClient((request) async {
+        requests.add(request);
+        final reply = Completer<http.Response>();
+        pending.add((request: request, reply: reply));
+        inFlight[0] += 1;
+        inFlight[1] = max(inFlight[1], inFlight[0]);
+        try {
+          return await reply.future;
+        } finally {
+          inFlight[0] -= 1;
+        }
+      });
+      return (client: client, pending: pending, inFlight: inFlight);
+    }
+
+    /// Deja correr el bucle de eventos hasta que se cumpla [ready] (sin tiempos fijos: vueltas a la cola de eventos,
+    /// con un tope para no colgar la prueba si no llega nunca).
+    Future<void> until(bool Function() ready) async {
+      for (var turn = 0; turn < 10000 && !ready(); turn += 1) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(ready(), isTrue, reason: 'la condición no llegó a cumplirse');
+    }
+
+    String name(http.Request request) =>
+        Uri.decodeComponent(request.headers['X-Nombre-Archivo']!);
+
+    test(
+      'se convierte el siguiente mientras se envía el anterior, hasta dos envíos a la vez y uno convertido esperando',
+      () async {
+        final held = heldClient();
+        final converter = FakeOpusConverter(bytes: 25);
+        final uploader = SharedUploader(
+          client: held.client,
+          converter: converter,
+          hasConnection: () async => true,
+          workDir: () async => work,
+          retryDelay: Duration.zero,
+          chunkBytes: 10,
+          random: Random(7),
+        );
+        final done = <int>[];
+        final upload = uploader.upload([
+          picked('Uno.mp3'),
+          picked('Dos.mp3'),
+          picked('Tres.mp3'),
+          picked('Cuatro.mp3'),
+        ], onItemDone: (index, _) => done.add(index));
+
+        // El primer trozo de «Uno» espera respuesta; «Dos» ya se ha convertido y también se envía.
+        await until(() => held.pending.length == 2);
+        expect(held.pending.map((p) => name(p.request)), [
+          'Uno.mp3',
+          'Dos.mp3',
+        ]);
+        // «Tres» está convertido y espera hueco; «Cuatro» no se convierte todavía.
+        await until(() => converter.finished.length == 3);
+        for (var turn = 0; turn < 50; turn += 1) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(converter.titles, ['Uno', 'Dos', 'Tres']);
+        expect(
+          held.pending,
+          hasLength(2),
+          reason: 'no hay una tercera petición',
+        );
+
+        // «Dos» termina antes que «Uno»: entra «Tres» y empieza a convertirse «Cuatro».
+        var answered = 0;
+        Future<void> answer(String file) async {
+          final entry = held.pending.firstWhere(
+            (p) => name(p.request) == file && !p.reply.isCompleted,
+          );
+          entry.reply.complete(okReply());
+          answered += 1;
+        }
+
+        await answer('Dos.mp3');
+        for (var part = 1; part < 3; part += 1) {
+          await until(
+            () => held.pending
+                .where(
+                  (p) => !p.reply.isCompleted && name(p.request) == 'Dos.mp3',
+                )
+                .isNotEmpty,
+          );
+          await answer('Dos.mp3');
+        }
+        await until(() => done.contains(1));
+        await until(
+          () => held.pending.any((p) => name(p.request) == 'Tres.mp3'),
+        );
+        await until(() => converter.titles.length == 4);
+        // Se responde todo lo que quede, en el orden en que llega.
+        while (answered < 12) {
+          await until(() => held.pending.any((p) => !p.reply.isCompleted));
+          held.pending
+              .firstWhere((p) => !p.reply.isCompleted)
+              .reply
+              .complete(okReply());
+          answered += 1;
+        }
+        final result = await upload;
+
+        expect(result.items.map((i) => i.title), [
+          'Uno',
+          'Dos',
+          'Tres',
+          'Cuatro',
+        ]);
+        expect(result.items.map((i) => i.outcome).toSet(), {
+          UploadOutcome.uploaded,
+        });
+        expect(done.first, 1, reason: '«Dos» terminó antes que «Uno»');
+        expect(
+          held.inFlight[1],
+          2,
+          reason: 'nunca más de dos peticiones a la vez',
+        );
+        // Por subida: un id v7, trozos 0, 1 y 2 en orden; los id, en el orden de la cola aunque acabaran en otro.
+        final ids = <String, List<String>>{};
+        for (final request in requests) {
+          (ids[name(request)] ??= []).add(request.headers['X-Subida-Id']!);
+        }
+        final order = ['Uno.mp3', 'Dos.mp3', 'Tres.mp3', 'Cuatro.mp3'];
+        final first = [for (final file in order) ids[file]!.first];
+        for (final file in order) {
+          expect(ids[file]!.toSet(), hasLength(1));
+          expect(ids[file]!.first, matches(uuid7Pattern));
+          expect(
+            requests
+                .where((r) => name(r) == file)
+                .map((r) => r.headers['X-Parte']),
+            ['0', '1', '2'],
+          );
+        }
+        expect([...first]..sort(), first);
+        expect(work.listSync(), isEmpty, reason: 'no quedan temporales');
+      },
+    );
+
+    test(
+      'con un solo envío a la vez se comporta como antes, en serie',
+      () async {
+        final held = heldClient();
+        final uploader = SharedUploader(
+          client: held.client,
+          converter: FakeOpusConverter(),
+          hasConnection: () async => true,
+          workDir: () async => work,
+          retryDelay: Duration.zero,
+          maxParallelSends: 1,
+          random: Random(7),
+        );
+        final upload = uploader.upload([picked('A.mp3'), picked('B.mp3')]);
+        await until(() => held.pending.length == 1);
+        for (var turn = 0; turn < 50; turn += 1) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(held.pending, hasLength(1));
+        held.pending.single.reply.complete(okReply());
+        await until(() => held.pending.length == 2);
+        held.pending.last.reply.complete(okReply());
+        final result = await upload;
+        expect(requests.map(name), ['A.mp3', 'B.mp3']);
+        expect(held.inFlight[1], 1);
+        expect(result.uploaded, 2);
+      },
+    );
+  });
+
+  group('identificadores de subida en orden (UUID v7)', () {
+    test(
+      'llevan el milisegundo delante y crecen aunque coincida el milisegundo o el reloj vaya hacia atrás',
+      () {
+        // Los mismos casos que la web (tests/web-unit/subida-estado.test.mjs).
+        var now = 0x019a5b2c3d4e;
+        final ids = OrderedUploadIds(
+          now: () => DateTime.fromMillisecondsSinceEpoch(now),
+          random: _MaxRandom(),
+        );
+        final first = ids.next();
+        expect(first, '019a5b2c-3d4e-7000-bfff-ffffffffffff');
+        final second = ids.next();
+        expect(second, '019a5b2c-3d4e-7001-bfff-ffffffffffff');
+        now -= 5000;
+        final third = ids.next();
+        expect(third, '019a5b2c-3d4e-7002-bfff-ffffffffffff');
+        now += 10000;
+        final fourth = ids.next();
+        expect(
+          fourth.substring(0, 18),
+          '${(0x019a5b2c3d4e + 5000).toRadixString(16).padLeft(12, '0').replaceFirstMapped(RegExp(r'^(.{8})'), (m) => '${m[1]}-')}-7000',
+        );
+        final all = [first, second, third, fourth];
+        expect([...all]..sort(), all);
+      },
+    );
+
+    test(
+      'con más de 4096 en el mismo milisegundo pasan al siguiente sin repetirse',
+      () {
+        final ids = OrderedUploadIds(
+          now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+          random: Random(3),
+        );
+        final list = List<String>.generate(4100, (_) => ids.next());
+        expect(list.toSet(), hasLength(list.length));
+        expect([...list]..sort(), list);
+        expect(list[4096].substring(0, 13), '00000000-03e9');
+        for (final id in list.take(5)) {
+          expect(id, matches(uuid7Pattern));
+        }
+      },
+    );
   });
 
   group('nombres', () {
@@ -451,4 +701,16 @@ void main() {
       expect(a, isNot(b));
     });
   });
+}
+
+/// Azar que siempre da el máximo: para comparar los identificadores con los de la web.
+class _MaxRandom implements Random {
+  @override
+  int nextInt(int max) => max - 1;
+
+  @override
+  bool nextBool() => true;
+
+  @override
+  double nextDouble() => 0.999;
 }

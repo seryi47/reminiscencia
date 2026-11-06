@@ -1208,7 +1208,7 @@ describe("Subir canciones", () => {
 
   const toastText = (page, text) => page.waitForFunction((t) => document.querySelector('[data-testid="toast"]')?.textContent === t, { timeout: 30000 }, text);
 
-  prueba("Una sola opción: convierte cada archivo a Opus y lo sube a /api/subir, de uno en uno y en orden, con cada paso a la vista", () =>
+  prueba("Una sola opción: convierte cada archivo a Opus y lo sube a /api/subir (hasta dos a la vez, con un UUID v7 en el orden de la cola), con cada paso a la vista", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       subidas.length = 0;
       restaurarCatalogo();
@@ -1223,13 +1223,16 @@ describe("Subir canciones", () => {
 
       await uploadWavs(page, ["Tono de prueba.wav", "Mi canción.wav"]);
 
-      assert.deepEqual(subidas.map((item) => [item.name, item.index, item.total, item.type]), [
+      // Hasta dos archivos a la vez (ADR-0030): pueden llegar en cualquier orden, pero el UUID v7 de cada uno sigue el
+      // orden de la cola, que es el que usa el buzón.
+      const porId = [...subidas].sort((a, b) => (a.id < b.id ? -1 : 1));
+      assert.deepEqual(porId.map((item) => [item.name, item.index, item.total, item.type]), [
         ["Tono de prueba.wav", 0, 1, "audio/ogg"],
         ["Mi canción.wav", 0, 1, "audio/ogg"],
       ]);
       assert.notEqual(subidas[0].id, subidas[1].id, "un id de subida por archivo");
       for (const item of subidas) {
-        assert.match(item.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        assert.match(item.id, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
         assert.equal(item.body.subarray(0, 4).toString("latin1"), "OggS", "el cuerpo ya es Ogg Opus");
         assert.equal(item.body.subarray(28, 36).toString("latin1"), "OpusHead");
         assert.ok(item.body.length < 64 * 1024, `1,5 s de Opus pesa poco (${item.body.length} bytes)`);
