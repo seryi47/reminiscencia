@@ -1130,7 +1130,8 @@ function createUploads() {
     convert: (file, { onProgress }) => convertToOpus(file, { limits: false, checkStorage: false, onProgress }),
     saveCopy: (data) => saveUploadCopy(data),
     readCopy: (id) => readLocalBytes(id),
-    send: (bytes, { fileName, album, artist, onChunk }) => sendOpus(bytes, { fileName, uploadId: crypto.randomUUID(), album, artist, onChunk }),
+    // uploadId: UUID v7 en el orden de la cola (ADR-0030); el gestor envía hasta dos archivos a la vez.
+    send: (bytes, { fileName, uploadId, album, artist, onChunk }) => sendOpus(bytes, { fileName, uploadId: uploadId ?? crypto.randomUUID(), album, artist, onChunk }),
     fetchSongs: songsFetcher((url, init) => fetch(url, init), DATA_URLS.songs),
     currentIds: () => state.publicSongs.map((song) => song?.id),
     onCopy: (song) => {
