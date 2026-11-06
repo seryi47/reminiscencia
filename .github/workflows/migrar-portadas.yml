@@ -1,0 +1,55 @@
+name: migrar-portadas
+
+# Migración de las portadas publicadas de Git al índice de portadas de R2 (ADR-0029), por el Worker de Cloudflare
+# (POST /api/portada): scripts/migrar_portadas_r2.mjs. A mano y solo desde main. Sin secretos ni credenciales: el
+# Worker ya tiene el bucket. Solo sube las portadas que ya publica la web (canciones públicas y álbumes), nunca pisa una
+# portada que ya esté en el índice y no borra nada de Git ni del bucket. Sin «aplicar», solo dice qué haría.
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker:
+        description: "Dirección del Worker (https://reminiscencia-api.<subdominio>.workers.dev)"
+        required: true
+        type: string
+      aplicar:
+        description: "Subir de verdad (sin marcar, solo simulación)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrar-portadas
+  cancel-in-progress: false
+
+jobs:
+  migrar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Las entradas van por variables de entorno, nunca interpoladas en el script.
+      - name: Migrar portadas
+        env:
+          WORKER: ${{ inputs.worker }}
+          APLICAR: ${{ inputs.aplicar }}
+        run: |
+          set -euo pipefail
+          if [ "$APLICAR" = "true" ]; then
+            node scripts/migrar_portadas_r2.mjs --worker "$WORKER" --aplicar
+          else
+            node scripts/migrar_portadas_r2.mjs --worker "$WORKER"
+          fi

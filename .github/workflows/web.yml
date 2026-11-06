@@ -9,6 +9,7 @@ on:
       - "tests/fixtures/**"
       - "tests/contrato/**"
       - "worker/**"
+      - "scripts/migrar_portadas_r2.mjs"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - "tests/fixtures/**"
       - "tests/contrato/**"
       - "worker/**"
+      - "scripts/migrar_portadas_r2.mjs"
       - ".github/workflows/web.yml"
 
 # Solo lectura: este flujo solo comprueba la web, no escribe nada en el repositorio.
