@@ -4,6 +4,7 @@ buzón sin tocar Git (job 'procesar') y limpiar (job 'publicar'). Con buckets en
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -38,6 +39,17 @@ def test_the_formats_are_the_same_as_the_mailbox():
     assert entrada.PART_NAME.pattern == buzon._PART_NAME.pattern
     assert entrada.MAX_MANIFEST_BYTES == buzon.MAX_MANIFEST_BYTES
     assert entrada.MAX_UPLOAD_BYTES == buzon.MAX_FILE_BYTES
+
+
+def test_part_limit_is_the_largest_chunk_that_api_subir_accepts():
+    # El Worker de Cloudflare (ADR-0029) admite trozos de 32 MiB; Vercel, de 4 MiB. El bucket recoge los dos.
+    config = (ROOT / "frontend" / "web" / "js" / "api-config.js").read_text(encoding="utf-8")
+    sizes = {
+        name: int(mib) * 1024 * 1024
+        for name, mib in re.findall(r"export const (\w+_CHUNK_BYTES) = (\d+) \* 1024 \* 1024;", config)
+    }
+    assert sizes == {"VERCEL_CHUNK_BYTES": 4 * 1024 * 1024, "WORKER_CHUNK_BYTES": 32 * 1024 * 1024}
+    assert entrada.MAX_PART_BYTES == max(sizes.values())
 
 
 def test_only_complete_and_well_formed_uploads_are_collected():
