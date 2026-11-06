@@ -64,6 +64,10 @@ def _success_body(peticion: dict, resultado: dict) -> str:
     if "song_id" in resultado:
         estado = "añadida al catálogo" if resultado.get("created") else "ya estaba en el catálogo"
         lines.append(f"- Canción {resultado['song_id']}: {estado}.")
+    cleaned = resultado.get("cleaned")
+    if isinstance(cleaned, int) and not isinstance(cleaned, bool):
+        # clean_titles (ADR-0032): solo el número; los cambios están en el resumen de la ejecución.
+        lines.append(f"- Títulos limpiados: {cleaned} {'canción' if cleaned == 1 else 'canciones'}.")
     web = resultado.get("web")
     if isinstance(web, dict):
         lines.append(f"- Web pública: {web.get('public', 0)} canciones publicadas y {web.get('folders', 0)} carpetas.")

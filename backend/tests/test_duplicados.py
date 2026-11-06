@@ -41,6 +41,11 @@ def test_artist_normalization_matches_the_contract(case):
     assert duplicados.normalize_artist(case["entrada"]) == case["salida"]
 
 
+@pytest.mark.parametrize("case", CONTRATO["titulo_con_artista"], ids=lambda case: case["entrada"]["title"])
+def test_title_with_artist_matches_the_contract(case):
+    assert duplicados.title_with_artist(case["entrada"]) == case["salida"]
+
+
 @pytest.mark.parametrize("case", CONTRATO["casos"], ids=lambda case: case["nota"])
 def test_every_contract_case_in_both_directions(case):
     assert duplicados.is_possible_duplicate(case["a"], case["b"]) is case["duplicado"]
@@ -118,7 +123,8 @@ def test_buzon_warns_about_possible_duplicates_without_blocking(repo):
 
     resumen = resumen_markdown(result)
     assert "### Posibles duplicados (se han añadido igualmente; revisa si sobran)" in resumen
-    assert f'"Nueva.wav" -> {avisos["Nueva.wav"]["song_id"]} · parece "Nueva [HD]"' in resumen
+    # «Nueva [HD].wav» ya entra con el título limpio, «Nueva» (ADR-0032).
+    assert f'"Nueva.wav" -> {avisos["Nueva.wav"]["song_id"]} · parece "Nueva"' in resumen
 
 
 def test_an_identical_file_is_still_reported_as_already_there_not_as_a_possible_duplicate(repo):

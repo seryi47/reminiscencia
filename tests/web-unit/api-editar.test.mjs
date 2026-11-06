@@ -90,7 +90,7 @@ describe('organizar', () => {
   });
 
   test('admite move_songs (varias canciones a un álbum en una sola incidencia)', async () => {
-    assert.deepEqual([...ALLOWED_OPS], ['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs', 'order_album']);
+    assert.deepEqual([...ALLOWED_OPS], ['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs', 'order_album', 'clean_titles']);
     const gh = fakeGitHub();
     const payload = { op: 'move_songs', song_ids: [SONG, 'S0000000000000005'], folder_id: FOLDER };
     const response = await handleEdit(jsonRequest({ action: 'organize', payload }), { env: ENV, fetchImpl: gh.fetchImpl });
@@ -103,6 +103,32 @@ describe('organizar', () => {
     // Sacar canciones de su álbum (folder_id null) también vale.
     const out = await handleEdit(jsonRequest({ action: 'organize', payload: { op: 'move_songs', song_ids: [SONG], folder_id: null } }), { env: ENV, fetchImpl: fakeGitHub().fetchImpl });
     assert.equal(out.status, 200);
+  });
+
+  test('admite clean_titles (ADR-0032): todas las canciones o una lista, en una sola incidencia', async () => {
+    const gh = fakeGitHub();
+    const payload = { op: 'clean_titles' };
+    const response = await handleEdit(jsonRequest({ action: 'organize', payload }), { env: ENV, fetchImpl: gh.fetchImpl });
+    assert.equal(response.status, 200);
+    assert.equal(gh.calls.length, 1);
+    const [call] = gh.calls;
+    assert.equal(call.body.title, 'Limpiar los títulos de todas las canciones');
+    assert.deepEqual(call.body.labels, ['biblioteca']);
+    assert.equal(call.body.body, 'action: organize\npayload: {"op":"clean_titles"}');
+
+    const some = fakeGitHub();
+    const list = { op: 'clean_titles', song_ids: [SONG] };
+    const out = await handleEdit(jsonRequest({ action: 'organize', payload: list }), { env: ENV, fetchImpl: some.fetchImpl });
+    assert.equal(out.status, 200);
+    assert.equal(some.calls[0].body.title, 'Limpiar los títulos de 1 canción');
+    assert.equal(some.calls[0].body.body, `action: organize\npayload: ${JSON.stringify(list)}`);
+
+    for (const bad of [{ op: 'clean_titles', song_ids: [] }, { op: 'clean_titles', song_ids: [SONG, SONG] }, { op: 'clean_titles', folder_id: FOLDER }]) {
+      const none = fakeGitHub();
+      const rejected = await handleEdit(jsonRequest({ action: 'organize', payload: bad }), { env: ENV, fetchImpl: none.fetchImpl });
+      assert.equal(rejected.status, 400, JSON.stringify(bad));
+      assert.equal(none.calls.length, 0);
+    }
   });
 
   test('rechaza move_songs mal formado sin llamar a GitHub', async () => {

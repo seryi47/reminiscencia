@@ -6,7 +6,8 @@ import 'package:flutter/foundation.dart';
 //
 // Dos canciones son un posible duplicado si su título normalizado es igual y no está vacío y, además: si las dos
 // tienen duración (mayor que 0), se diferencian como mucho en [kDuplicateToleranceS] segundos; si a alguna le falta,
-// su artista normalizado es igual. Solo avisa: nunca impide subir.
+// su artista normalizado es igual. El título de una también vale si es «artista título» de la otra (ADR-0032):
+// entonces solo cuenta la duración. Solo avisa: nunca impide subir.
 
 /// Diferencia máxima de duración, en segundos.
 const int kDuplicateToleranceS = 2;
@@ -113,15 +114,29 @@ class DuplicateCandidate {
 double? _duration(double? value) =>
     value != null && value.isFinite && value > 0 ? value : null;
 
-/// ¿Parecen la misma canción?
+/// «artista título» normalizado (ADR-0032), para comparar con un archivo «Artista - Título»; vacío si falta alguno.
+String titleWithArtist(DuplicateCandidate song) {
+  final artist = normalizeDuplicateArtist(song.artist);
+  final title = normalizeDuplicateTitle(song.title);
+  return artist.isNotEmpty && title.isNotEmpty ? '$artist $title' : '';
+}
+
+/// ¿Parecen la misma canción? Los títulos coinciden si sus normalizados son iguales y no vacíos (sin las dos
+/// duraciones decide el artista), o si el de una es «artista título» de la otra («Bad Bunny - Monaco.mp3» frente a
+/// «Monaco» de «Bad Bunny»; ADR-0032), y entonces el artista ya coincide: solo cuenta la duración.
 bool isPossibleDuplicate(DuplicateCandidate a, DuplicateCandidate b) {
-  final title = normalizeDuplicateTitle(a.title);
-  if (title.isEmpty || title != normalizeDuplicateTitle(b.title)) return false;
+  final titleA = normalizeDuplicateTitle(a.title);
+  final titleB = normalizeDuplicateTitle(b.title);
+  final sameTitle = titleA.isNotEmpty && titleA == titleB;
+  final crossed =
+      (titleA.isNotEmpty && titleA == titleWithArtist(b)) ||
+      (titleB.isNotEmpty && titleB == titleWithArtist(a));
+  if (!sameTitle && !crossed) return false;
   final da = _duration(a.durationS);
   final db = _duration(b.durationS);
   if (da != null && db != null) return (da - db).abs() <= kDuplicateToleranceS;
-  return normalizeDuplicateArtist(a.artist) ==
-      normalizeDuplicateArtist(b.artist);
+  return crossed ||
+      normalizeDuplicateArtist(a.artist) == normalizeDuplicateArtist(b.artist);
 }
 
 /// Las de [others] que parecen la misma canción que [candidate], en su orden.

@@ -85,6 +85,7 @@
 - **Posible duplicado:** título normalizado igual y no vacío, y además:
   - si las dos tienen duración, que se diferencien como mucho 2 s;
   - si a alguna le falta, que tengan el mismo artista normalizado.
+  - Desde ADR-0032, el título también coincide si es el «artista título» de la otra; entonces solo cuenta la duración (ver la nota del final).
 - **Los datos son un dato, no código disperso.** La tolerancia, la tabla de pliegue, la lista de etiquetas y las marcas de featuring están en `tests/contrato/duplicados.json`, con los casos de prueba.
   - Las tres implementaciones llevan esas constantes: `backend/sonidos/duplicados.py`, `frontend/web/js/duplicates.js` y `mobile/lib/duplicates.dart`.
   - Sus pruebas comprueban que son idénticas al JSON y que dan los resultados del JSON, en los dos sentidos.
@@ -115,3 +116,9 @@
   - Pruebas de extremo a extremo (`funcional.e2e.mjs`): seleccionar y quitar, mover, ordenar, orden por pista y aviso de duplicado.
   - Pantallas nuevas en `a11y.e2e.mjs`.
 - **APK:** `duplicates_test.dart`, `album_tools_test.dart` y `upload_review_test.dart`.
+
+## Nota (2026-11-06): títulos limpios
+
+Desde [ADR-0032](ADR-0032-titulos-limpios.md), el buzón crea cada canción con el título limpio («Tema (Official Video)» pasa a «Tema») y el aviso de posible duplicado del buzón compara ese título.
+
+La regla de duplicados se amplía en las tres capas, con el contrato en `duplicados.json`. Los títulos también coinciden si el de una canción es el «artista título» normalizado de la otra («Bad Bunny - Monaco.mp3» frente a «Monaco» de «Bad Bunny»). Entonces el artista ya coincide y solo cuenta la duración. Así, el aviso de «Subir canciones» sigue funcionando con un archivo «Artista - Tema» frente al catálogo limpio. Ver la sección 6 de ADR-0032.

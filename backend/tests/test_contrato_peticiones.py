@@ -40,6 +40,7 @@ def test_limites_del_contrato():
         "anio_max": issue_request.YEAR_MAX,
         "move_songs": issue_request.MAX_MOVE_SONGS,
         "order_album": issue_request.MAX_ORDER_SONGS,
+        "clean_titles": issue_request.MAX_CLEAN_SONGS,
         "canciones_playlist_youtube": issue_request.MAX_PLAYLIST_SONGS,
         # El título de la incidencia solo lo recortan la web y la APK; el backend no lo lee.
         "titulo_incidencia": 120,

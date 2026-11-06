@@ -1,3 +1,16 @@
+## Sin publicar: títulos limpios (2026-11-06, rama `feature/titulos-limpios`)
+
+- **Títulos limpios** ([ADR-0032](docs/decisions/ADR-0032-titulos-limpios.md)): las canciones nuevas del buzón entran limpias.
+  - Sin las etiquetas de YouTube («(Official Video)», «(Letra)», «[HD]»…) ni lo que va detrás.
+  - Sin número de pista.
+  - Con «Artista - Título» separado en artista y título.
+  - Los títulos escritos enteros en mayúsculas pasan a formato normal.
+- **Canales de YouTube como artista** (con VEVO, Music, Archivos, TV…, o nombres de letras y cifras): el artista real sale de «Artista - Título», y el sufijo VEVO se quita.
+- **Dónde está la regla:** en `backend/sonidos/titulos.py`, con casos en `tests/contrato/titulos.json`.
+- **Operación nueva `clean_titles`:** limpia todas las canciones, o las indicadas en `song_ids` (de 1 a 100). Es atómica e idempotente, y también se puede pedir por `/api/editar`. Para ver antes qué cambiaría: `scripts/vista_previa_titulos.py`. A 2026-11-06 cambiarían 77 de 305 canciones.
+- **Aviso de duplicado:** reconoce «Artista - Título.mp3» frente a la canción ya limpia, en la web, la APK y el buzón. `SHELL_VERSION = 31`.
+- **Pruebas:** backend 1415; web 850 unitarias y 200 de extremo a extremo; Flutter 534; `flutter analyze` y `actionlint` sin avisos. Comprobado que no tocan producción.
+
 ## Sin publicar: el audio por el Worker de Cloudflare (2026-11-06, rama `feature/audio-por-worker`)
 
 - **Audio público por el Worker** ([ADR-0031](docs/decisions/ADR-0031-audio-por-el-worker.md)): `GET`/`HEAD /audio/<id>.opus` desde el bucket público por binding, con rangos (206 y 416), ETag y 304, y caché de un año. Así desaparece el límite de velocidad de `r2.dev`, sin necesidad de dominio propio.

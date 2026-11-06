@@ -2,7 +2,8 @@
 
 Quien tiene permiso de escritura en el repositorio sube audio a audio-library/buzon/ desde la página de subida de
 GitHub. El workflow buzon.yml (job 'procesar', sin token) llama a procesar_buzon: convierte cada archivo a Opus con el
-perfil de reproducción de la biblioteca, lo añade al catálogo con el nombre del archivo como título y lo borra del
+perfil de reproducción de la biblioteca, lo añade al catálogo con el nombre del archivo como título (limpio: sin
+«(Official Video)», con el artista separado de «Artista - Título»...; sonidos.titulos, ADR-0032) y lo borra del
 buzón. La publicación (job 'publicar') valida el paquete y regenera la parte pública como en biblioteca.yml.
 
 Qué archivos se procesan: los que añadió o modificó el push que lanzó el workflow (el evento de GitHub, fichero
@@ -72,7 +73,7 @@ import zlib
 from collections.abc import Mapping
 from pathlib import Path
 
-from sonidos import catalog, duplicados
+from sonidos import catalog, duplicados, titulos
 from sonidos.compression import TranscodeError, transcode
 from sonidos.hashing import sha256_file
 from sonidos.limits import GIT_BLOCK_FILE_BYTES
@@ -615,7 +616,7 @@ def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: s
     if motivo is None:
         entry, motivo, song_changed = _add(
             data, target=target, archivo=archivo, title=title, info=info, license_text=license_text, source=source,
-            audio_dir=audio_dir, staging=staging, artist=artist or "",
+            audio_dir=audio_dir, staging=staging, artist=artist or "", keep_artist=album is not None,
         )
         if motivo is None and album is not None and license_text:
             folder, folder_changed = catalog.youtube_album(data, album["id"], album["name"])
@@ -769,8 +770,11 @@ def _motivo_de_rechazo(target: Path, name: str) -> str | None:
 
 
 def _add(data: dict, *, target: Path, archivo: str, title: str, info, license_text: str | None, source: str,
-         audio_dir: Path, staging: Path, artist: str = "") -> tuple[dict, str | None, bool]:
-    """Añade la canción (o reconoce la que ya está). Devuelve (entrada del resultado, motivo de rechazo, cambió)."""
+         audio_dir: Path, staging: Path, artist: str = "", keep_artist: bool = False) -> tuple[dict, str | None, bool]:
+    """Añade la canción (o reconoce la que ya está). Devuelve (entrada del resultado, motivo de rechazo, cambió).
+
+    Una canción nueva entra con el título y el artista limpios (sonidos.titulos, ADR-0032). keep_artist: el artista
+    viene de una playlist (ADR-0019) y se respeta; solo se limpia el título. Una que ya estaba no cambia de título."""
     sha256 = sha256_file(target)
     name = archivo
     existing = next((song for song in data["songs"] if song["sha256"] == sha256), None)
@@ -787,6 +791,9 @@ def _add(data: dict, *, target: Path, archivo: str, title: str, info, license_te
         return ({"lista": "duplicadas", "archivo": name, "song_id": existing["id"], "titulo": existing["title"]},
                 None, artist_changed)
 
+    title, artist = titulos.clean_song(
+        title, artist, keep_artist=keep_artist, known_artists=titulos.known_artists(data["songs"], data["folders"]),
+    )
     song, _ = catalog.add_song(
         data, sha256=sha256, title=title, license=license_text or catalog.LICENSE_UNDECLARED, source=source,
         codec=info.codec, duration_s=info.duration_s, size_bytes=info.size_bytes, artist=artist,
