@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'api_config.dart';
+import 'cover_index.dart';
 import 'local_audio.dart';
 import 'song.dart';
 
@@ -46,12 +48,18 @@ abstract interface class LibrarySource {
 }
 
 class LibraryStore implements LibrarySource {
-  LibraryStore({Future<Directory> Function()? root, http.Client? client})
-    : _resolveRoot = root ?? _documentsRoot,
-      _client = client ?? http.Client();
+  LibraryStore({
+    Future<Directory> Function()? root,
+    http.Client? client,
+    ApiRoutes? routes,
+  }) : _resolveRoot = root ?? _documentsRoot,
+       _client = client ?? http.Client(),
+       // ignore: prefer_initializing_formals
+       _routes = routes;
 
   final Future<Directory> Function() _resolveRoot;
   final http.Client _client;
+  final ApiRoutes? _routes;
   Directory? _root;
 
   static Future<Directory> _documentsRoot() async {
@@ -67,19 +75,37 @@ class LibraryStore implements LibrarySource {
     return root;
   }
 
-  /// Lee la biblioteca de Vercel. Si no hay conexión, usa la última copia guardada.
-  /// La copia solo se reemplaza cuando la respuesta es válida: un JSON roto no borra la copia buena.
+  /// Lee la biblioteca de Vercel, con el índice de portadas de R2 encima (ADR-0029). Si no hay conexión, usa la
+  /// última copia guardada. La copia solo se reemplaza cuando la respuesta es válida: un JSON roto no borra la copia
+  /// buena. Si el índice no se puede leer, vale el último guardado (solo crece).
   @override
   Future<LibraryData> load() async {
     final dir = await _dir();
     final songsFile = File('${dir.path}/songs.json');
     final foldersFile = File('${dir.path}/folders.json');
+    final indexFile = File('${dir.path}/portadas.json');
+    Future<String?> savedIndex() async =>
+        await indexFile.exists() ? await indexFile.readAsString() : null;
     try {
       final songsBody = await _get('data/songs.json');
       final foldersBody = await _get('data/folders.json');
-      final data = _parse(songsBody, foldersBody, fromNetwork: true);
+      String? indexBody;
+      var indexFresh = false;
+      try {
+        indexBody = await fetchCoverIndexBody(
+          _client,
+          bucketBase: kAudioBase,
+          routes: _routes,
+        );
+        indexFresh = indexBody != null;
+      } catch (error) {
+        debugPrint('portadas: índice no disponible, uso el guardado: $error');
+        indexBody = await savedIndex();
+      }
+      final data = _parse(songsBody, foldersBody, indexBody, fromNetwork: true);
       await songsFile.writeAsString(songsBody, flush: true);
       await foldersFile.writeAsString(foldersBody, flush: true);
+      if (indexFresh) await indexFile.writeAsString(indexBody!, flush: true);
       return data;
     } catch (error) {
       debugPrint('biblioteca: descarga fallida, uso la copia guardada: $error');
@@ -90,6 +116,7 @@ class LibraryStore implements LibrarySource {
       return _parse(
         await songsFile.readAsString(),
         foldersBody,
+        await savedIndex(),
         fromNetwork: false,
       );
     }
@@ -97,15 +124,19 @@ class LibraryStore implements LibrarySource {
 
   LibraryData _parse(
     String songsBody,
-    String foldersBody, {
+    String foldersBody,
+    String? indexBody, {
     required bool fromNetwork,
   }) {
-    final songs = (jsonDecode(songsBody) as List)
-        .map((e) => Song.fromJson(e as Map<String, dynamic>))
-        .toList();
-    final folders = (jsonDecode(foldersBody) as List)
-        .map((e) => Folder.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final index = parseCoverIndex(indexBody);
+    final songs = applyCoverIndexJson(
+      jsonDecode(songsBody) as List,
+      index,
+    ).map((e) => Song.fromJson((e as Map).cast<String, dynamic>())).toList();
+    final folders = applyCoverIndexJson(
+      jsonDecode(foldersBody) as List,
+      index,
+    ).map((e) => Folder.fromJson((e as Map).cast<String, dynamic>())).toList();
     return LibraryData(
       songs: songs,
       folders: folders,

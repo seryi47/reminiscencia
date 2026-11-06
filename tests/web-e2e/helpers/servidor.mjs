@@ -2,7 +2,8 @@
 // Sirve frontend/web (la raíz de Vercel) con node:http, sin dependencias externas, y con la misma política de
 // contenido (CSP) que vercel.json, para que las pruebas fallen si la web carga algo que producción bloquearía.
 // Admite sustituciones por ruta (por ejemplo, un catálogo de prueba ficticio en data/songs.json) y funciones simuladas
-// (por ejemplo, POST /api/subir, la función de Vercel de ADR-0017, que aquí no llama a GitHub).
+// (por ejemplo, POST /api/subir, la función de Vercel de ADR-0017, que aquí no llama a GitHub). El Worker de Cloudflare
+// (ADR-0029) se simula aparte, en otro puerto, con su código real: helpers/worker.mjs.
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
@@ -111,16 +112,21 @@ async function readBody(request) {
  * functions: Map de ruta (por ejemplo "/api/subir") a una función async ({ method, headers, body, query }) que devuelve
  * { status, json }: simula una función de Vercel para cualquier método que no sea GET ni HEAD. Si la función tiene
  * acceptsGet = true, también atiende GET (por ejemplo, GET /api/editar?incidencia=N; query es un URLSearchParams).
+ * extraConnectSrc: orígenes que se añaden a connect-src de la CSP (por ejemplo, el Worker simulado de
+ * helpers/worker.mjs, que escucha en otro puerto: otro origen, como el Worker real en workers.dev).
  * Devuelve { url, port, close() }.
  */
-export async function startStaticServer({ root = WEB_ROOT, overrides = new Map(), functions = new Map() } = {}) {
+export async function startStaticServer({ root = WEB_ROOT, overrides = new Map(), functions = new Map(), extraConnectSrc = [] } = {}) {
   const absoluteRoot = resolve(root);
   const rootInfo = await stat(absoluteRoot).catch(() => null);
   if (!rootInfo?.isDirectory()) {
     throw new Error(`No existe la raíz que se debe servir: ${absoluteRoot}`);
   }
 
-  const csp = readCsp(absoluteRoot);
+  const baseCsp = readCsp(absoluteRoot);
+  const csp = baseCsp && extraConnectSrc.length > 0
+    ? baseCsp.replace(/connect-src ([^;]*)/, (_, sources) => `connect-src ${sources} ${extraConnectSrc.join(" ")}`)
+    : baseCsp;
   const server = createServer(async (request, response) => {
     try {
       const { pathname, searchParams } = new URL(request.url ?? "/", "http://127.0.0.1");

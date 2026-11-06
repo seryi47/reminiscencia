@@ -58,9 +58,14 @@ def test_runs_on_pushes_to_main_that_touch_the_mailbox_on_web_uploads_and_by_han
 
 
 def test_the_dispatch_type_is_the_one_the_vercel_function_sends():
+    # El aviso lo manda el código común de /api/subir (ADR-0029), que usan la función de Vercel y el Worker.
+    core = (ROOT / "frontend" / "web" / "server" / "upload-core.js").read_text(encoding="utf-8")
+    assert "export const DISPATCH_EVENT = 'subida-web';" in core
+    assert "/dispatches" in core
     function = (ROOT / "frontend" / "web" / "api" / "subir.js").read_text(encoding="utf-8")
-    assert "export const DISPATCH_EVENT = 'subida-web';" in function
-    assert "/dispatches" in function
+    worker = (ROOT / "worker" / "src" / "index.js").read_text(encoding="utf-8")
+    assert "from '../server/upload-core.js'" in function
+    assert "from '../../frontend/web/server/upload-core.js'" in worker
 
 
 def test_shares_the_single_write_queue_with_the_library_workflow():

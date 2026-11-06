@@ -2,6 +2,8 @@
 
 Revisión del 3 de noviembre de 2026 sobre `main` (`b058a0c`), con la interfaz sin usuarios de ADR-0015 y el buzón de ADR-0014, actualizada el mismo día con la subida directa a GitHub desde la web pública (ADR-0017: función `frontend/web/api/subir.js`, §3.12). La revisión anterior (2 de noviembre, `8a19a09`) describía la capa de datos del cuidador, retirada desde entonces.
 
+> **Nota (2026-11-06, [ADR-0029](docs/decisions/ADR-0029-worker-cloudflare-y-portadas.md), rama `feature/worker-portadas`, sin desplegar):** un Worker de Cloudflare (`worker/`) puede atender `/api/subir`, `/api/editar` y `/api/portada` con los buckets de R2 por *binding* (sin claves de R2) y el `GITHUB_TOKEN` como secreto del Worker. CORS solo para la web y `localhost`; otro `Origin` recibe 403. Las portadas cambiadas por él se publican al momento en el bucket público, sin pasar por GitHub (cualquiera con la web puede cambiarlas, como ya podía por `/api/editar`). La CSP admite el bucket en `img-src` y `connect-src` y `https://*.workers.dev` en `connect-src`. La migración de portadas solo sube las ya publicadas, nunca las de canciones privadas.
+
 Este documento describe lo que el código de `main` hace hoy, separa lo implementado de lo previsto en el diseño y recoge lo pendiente. No es asesoramiento jurídico ni una evaluación de impacto (ver §5).
 
 ## 0. Alcance, estado y convenciones

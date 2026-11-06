@@ -35,7 +35,9 @@ MANIFEST = "manifiesto.json"
 # Los mismos formatos que sonidos.buzon (_UPLOAD_ID, _PART_NAME y MAX_MANIFEST_BYTES; lo comprueban las pruebas).
 UPLOAD_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 PART_NAME = re.compile(r"(?:0|[1-9][0-9]{0,2})\.part")
-MAX_PART_BYTES = 4 * 1024 * 1024  # lo que admite /api/subir por trozo
+# El mayor trozo que admite /api/subir: 4 MiB en Vercel y 32 MiB en el Worker de Cloudflare (ADR-0029;
+# WORKER_CHUNK_BYTES de frontend/web/js/api-config.js, lo comprueban las pruebas).
+MAX_PART_BYTES = 32 * 1024 * 1024
 MAX_MANIFEST_BYTES = 4096
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # sonidos.buzon.MAX_FILE_BYTES: el buzón rechaza un archivo unido mayor
 MAX_UPLOADS_PER_RUN = 50

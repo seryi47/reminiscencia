@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'api_config.dart';
 import 'app_error.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
@@ -472,12 +473,22 @@ class UploadTracker extends ChangeNotifier {
     Random? random,
     Set<String> Function()? knownIds,
     this.onPublished,
-  }) : _clock = clock ?? DateTime.now,
+    ApiRoutes? routes,
+  }) : _routes = routes ?? apiRoutes,
+       _clock = clock ?? DateTime.now,
        _timerFactory = timer ?? _periodic,
        _random = random ?? Random.secure(),
        _knownIds = knownIds ?? (() => <String>{});
 
   final SharedUploader? uploader;
+
+  /// Decide antes de cada tanda si se sube por el Worker o por Vercel (ADR-0029).
+  final ApiRoutes _routes;
+
+  /// Fija el destino de la tanda que empieza (solo con el subidor libre: nunca cambia a mitad de un archivo).
+  Future<void> _chooseRoute(SharedUploader shared) async {
+    shared.route = await _routes.uploadRoute(shared.client);
+  }
 
   /// Sin él no se comprueba la publicación (solo al sincronizar la biblioteca).
   final PublishedSongsSource? published;
@@ -727,6 +738,7 @@ class UploadTracker extends ChangeNotifier {
       _changed();
       final baseline = _fetchBaseline();
       try {
+        await _chooseRoute(shared);
         final item = await shared.resend(
           opus,
           entry.name,
@@ -777,6 +789,7 @@ class UploadTracker extends ChangeNotifier {
     _changed();
     final baseline = _fetchBaseline();
     try {
+      await _chooseRoute(shared);
       return await shared.upload(
         files,
         outputFor: saveTo == null

@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'api_config.dart';
 import 'app_error.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
@@ -21,11 +22,13 @@ import 'zip_audio.dart';
 /// [kMaxConvertedWaiting] archivo convertido esperando hueco. Cada subida lleva un UUID versión 7
 /// ([OrderedUploadIds]) sacado en el orden de la cola: el buzón cataloga por ese orden aunque terminen desordenadas.
 
-/// Función de la web que recibe los trozos.
+/// Función de la web que recibe los trozos (Vercel). Con el Worker de Cloudflare (ADR-0029), [SharedUploader.route]
+/// apunta a él y los trozos son de 32 MB; lo decide quien sube antes de cada tanda (lib/api_config.dart).
 final Uri kUploadEndpoint = Uri.parse('${kLibraryBase}api/subir');
 
-/// Tamaño de cada trozo (4 MB): Vercel acepta como máximo 4,5 MB por petición.
-const int kUploadChunkBytes = 4 * 1024 * 1024;
+/// Tamaño de cada trozo por Vercel (4 MB): Vercel acepta como máximo 4,5 MB por petición. Por el Worker,
+/// [kWorkerChunkBytes] (32 MB).
+const int kUploadChunkBytes = kVercelChunkBytes;
 
 /// Cabeceras de cada trozo.
 const String kUploadNameHeader = 'X-Nombre-Archivo';
@@ -236,28 +239,40 @@ class SharedUploader {
     required this.converter,
     required this.hasConnection,
     Future<Directory> Function()? workDir,
-    this.endpoint,
+    Uri? endpoint,
     this.retryDelay = const Duration(seconds: 3),
     this.timeout = kUploadTimeout,
-    this.chunkBytes = kUploadChunkBytes,
+    int? chunkBytes,
     this.maxParallelSends = kMaxParallelSends,
     Random? random,
     OrderedUploadIds? uploadIds,
-  }) : _workDir = workDir ?? _tempDir,
+    // ignore: prefer_initializing_formals
+  }) : _endpoint = endpoint,
+       // ignore: prefer_initializing_formals
+       _chunkBytes = chunkBytes,
+       _workDir = workDir ?? _tempDir,
        _random = random ?? Random.secure(),
        _uploadIds = uploadIds ?? OrderedUploadIds(random: random);
 
   final http.Client client;
   final AudioConverter converter;
   final ConnectionCheck hasConnection;
-  final Uri? endpoint;
+  final Uri? _endpoint;
+
+  /// Destino de las subidas (Worker o Vercel, ADR-0029). Lo pone UploadTracker antes de cada tanda, nunca a mitad de
+  /// un archivo: los trozos de 32 MB del Worker no caben en Vercel.
+  UploadRoute route = UploadRoute.vercel;
+
+  /// Dirección a la que se envían los trozos: la fijada en las pruebas o la de [route].
+  Uri? get endpoint => _endpoint ?? route.endpoint;
 
   /// Espera antes del único reintento de un trozo.
   final Duration retryDelay;
   final Duration timeout;
 
-  /// Tamaño de los trozos. Solo se cambia en pruebas.
-  final int chunkBytes;
+  /// Tamaño de los trozos: el fijado en las pruebas o el de [route].
+  int get chunkBytes => _chunkBytes ?? route.chunkBytes;
+  final int? _chunkBytes;
 
   /// Archivos que se envían a la vez.
   final int maxParallelSends;

@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'cover_index.dart';
 import 'covers.dart';
 import 'edit_remote.dart';
 import 'library_requests.dart';
@@ -16,7 +17,9 @@ import 'song.dart';
 // Ediciones pendientes de la biblioteca común (ADR-0027), igual que la web (js/edit-pending.js): cada cambio enviado a
 // /api/editar se guarda como pendiente, se ve al momento sobre el catálogo (sin tocar el catálogo real) con la marca
 // «Pendiente», se confirma cuando el catálogo ya lo refleja y, si el servidor dice que falló (o tarda demasiado), se
-// deshace y se avisa con «Reintentar». Las reglas están en tests/contrato/ediciones-pendientes.json.
+// deshace y se avisa con «Reintentar». Las reglas están en tests/contrato/ediciones-pendientes.json. Una portada
+// guardada por el Worker (ADR-0029) trae su fichero de R2 ([PendingEdit.coverKey]) y se confirma en cuanto el catálogo,
+// con el índice de portadas encima, apunta a él: en segundos y sin suponer nada.
 
 /// Estados de una edición guardada.
 const String kEditPending = 'pendiente';
@@ -31,8 +34,12 @@ const Duration kEditMaxPending = Duration(minutes: 30);
 /// Cerrada por el servidor hace este tiempo sin verse en el catálogo: se da por guardada.
 const Duration kEditClosedGrace = Duration(minutes: 10);
 
-/// Portada de algo que ya tenía portada (la ruta no cambia): se da por guardada pasado este tiempo.
+/// Portada de algo que ya tenía portada (la ruta no cambia): se da por guardada pasado este tiempo. No vale para las
+/// portadas guardadas por el Worker, que sí se ven en el catálogo.
 const Duration kEditCoverAssume = Duration(minutes: 10);
+
+/// Primera revisión de una portada guardada por el Worker: el índice ya la tiene, así que se mira enseguida.
+const Duration kEditCoverKeyCheck = Duration(seconds: 3);
 
 /// Espera antes de la revisión número [attempt] (desde 0).
 Duration editCheckDelay(int attempt) => Duration(
@@ -61,6 +68,7 @@ class PendingEdit {
     this.error,
     this.hadCover = false,
     this.preview,
+    this.coverKey,
     this.knownFolderIds = const [],
   });
 
@@ -97,6 +105,9 @@ class PendingEdit {
   /// Portadas: el JPEG ya recortado, en base64.
   final String? preview;
 
+  /// Portadas guardadas por el Worker: su fichero en R2 (`portadas/<id>-<hash>.jpg`), o null.
+  final String? coverKey;
+
   /// create_folder: álbumes que había al crearlo.
   final List<String> knownFolderIds;
 
@@ -115,6 +126,8 @@ class PendingEdit {
     String? state,
     String? error,
     bool clearError = false,
+    String? coverKey,
+    bool clearCoverKey = false,
   }) => PendingEdit(
     key: key ?? this.key,
     kind: kind,
@@ -129,6 +142,7 @@ class PendingEdit {
     error: clearError ? null : (error ?? this.error),
     hadCover: hadCover,
     preview: preview,
+    coverKey: clearCoverKey ? null : (coverKey ?? this.coverKey),
     knownFolderIds: knownFolderIds,
   );
 
@@ -146,6 +160,7 @@ class PendingEdit {
     'error': error,
     'hadCover': hadCover,
     'preview': preview,
+    'coverKey': ?coverKey,
     'knownFolderIds': knownFolderIds,
   };
 
@@ -188,6 +203,9 @@ class PendingEdit {
       error: json['error'] is String ? json['error'] as String : null,
       hadCover: json['hadCover'] == true,
       preview: json['preview'] is String ? json['preview'] as String : null,
+      coverKey: isCoverKey(json['coverKey'], target is String ? target : null)
+          ? json['coverKey'] as String
+          : null,
       knownFolderIds: known is List
           ? [
               for (final id in known)
@@ -481,10 +499,12 @@ bool isEditReflected(PendingEdit edit, List<Song> songs, List<Folder> folders) {
   if (edit.isCover) {
     final target = edit.targetId;
     final songTarget = song(target);
-    if (songTarget != null) return !edit.hadCover && songTarget.cover != null;
-    final folderTarget = folder(target);
-    if (folderTarget == null) return true;
-    return !edit.hadCover && folderTarget.cover != null;
+    final folderTarget = songTarget == null ? folder(target) : null;
+    if (songTarget == null && folderTarget == null) return true;
+    final cover = songTarget?.cover ?? folderTarget?.cover;
+    // Por el Worker: reflejada cuando el catálogo (con el índice de portadas encima) apunta a ese fichero.
+    if (edit.coverKey != null) return isCoverReflected(cover, edit.coverKey);
+    return !edit.hadCover && cover != null;
   }
   final payload = edit.payload!;
   switch (payload['op']) {
@@ -588,7 +608,10 @@ enum EditOutcome { pending, confirmed, failed }
     return (outcome: EditOutcome.confirmed, closedAt: closedAt);
   }
   final age = now.difference(edit.createdAt);
-  if (edit.isCover && edit.hadCover && age >= kEditCoverAssume) {
+  if (edit.isCover &&
+      edit.hadCover &&
+      edit.coverKey == null &&
+      age >= kEditCoverAssume) {
     return (outcome: EditOutcome.confirmed, closedAt: closedAt);
   }
   if (catalogOk && closedAt == null && age >= kEditMaxPending) {
@@ -919,7 +942,13 @@ class PendingEditsController extends ChangeNotifier {
     final duplicate = _pendingDuplicate(candidate);
     if (duplicate != null) return editDuplicateText(duplicate.label);
     final receipt = await send(id, jpeg);
-    _register(candidate.copyWith(issue: receipt.issue, createdAt: _clock()));
+    _register(
+      candidate.copyWith(
+        issue: receipt.issue,
+        createdAt: _clock(),
+        coverKey: isCoverKey(receipt.cover, id) ? receipt.cover : null,
+      ),
+    );
     return receipt.message;
   }
 
@@ -942,6 +971,9 @@ class PendingEditsController extends ChangeNotifier {
       receipt = await sendEdit(LibraryRequest.resend(edit.payload!));
     }
     _items.removeWhere((e) => e.key == key);
+    final coverKey = edit.isCover && isCoverKey(receipt.cover, edit.targetId)
+        ? receipt.cover
+        : null;
     _register(
       edit.copyWith(
         key: _newKey(),
@@ -951,6 +983,8 @@ class PendingEditsController extends ChangeNotifier {
         clearClosedAt: true,
         state: kEditPending,
         clearError: true,
+        coverKey: coverKey,
+        clearCoverKey: coverKey == null,
       ),
     );
     return receipt.message;
@@ -982,7 +1016,7 @@ class PendingEditsController extends ChangeNotifier {
     _attempt = 0;
     _cancelTimer();
     _changed();
-    _schedule();
+    _schedule(first: edit.coverKey != null ? kEditCoverKeyCheck : null);
   }
 
   void _changed() {
@@ -1072,7 +1106,9 @@ class PendingEditsController extends ChangeNotifier {
             ),
           );
           if (edit.isCover) {
-            onCoverConfirmed?.call('covers/${edit.targetId}.jpg');
+            onCoverConfirmed?.call(
+              edit.coverKey ?? 'covers/${edit.targetId}.jpg',
+            );
           }
         case EditOutcome.failed:
           _items[i] = edit.copyWith(
@@ -1103,10 +1139,10 @@ class PendingEditsController extends ChangeNotifier {
     }
   }
 
-  void _schedule() {
+  void _schedule({Duration? first}) {
     if (_disposed || _timer != null || !_items.any((e) => e.pending)) return;
     final generation = ++_timerGeneration;
-    _timer = _timerFactory(editCheckDelay(_attempt), () {
+    _timer = _timerFactory(first ?? editCheckDelay(_attempt), () {
       if (generation != _timerGeneration) return;
       _cancelTimer();
       unawaited(check());
@@ -1119,12 +1155,12 @@ class PendingEditsController extends ChangeNotifier {
     _timer = null;
   }
 
-  /// Vista previa de una portada pendiente para [coverPath] (`covers/<id>.jpg`), o null.
+  /// Vista previa de una portada pendiente para [coverPath] (`covers/<id>.jpg` o `portadas/<id>-<hash>.jpg`), o null.
   ImageProvider? previewFor(String? coverPath) {
     if (coverPath == null) return null;
     for (final edit in _items.reversed) {
       if (!edit.pending || !edit.isCover || edit.preview == null) continue;
-      if ('covers/${edit.targetId}.jpg' != coverPath) continue;
+      if (!coverPathIsFor(coverPath, edit.targetId)) continue;
       return _previews.putIfAbsent(edit.key, () {
         try {
           return MemoryImage(base64Decode(edit.preview!));

@@ -7,12 +7,18 @@ on:
       - "frontend/web/**"
       - "tests/web-unit/**"
       - "tests/fixtures/**"
+      - "tests/contrato/**"
+      - "worker/**"
+      - "scripts/migrar_portadas_r2.mjs"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "frontend/web/**"
       - "tests/web-unit/**"
       - "tests/fixtures/**"
+      - "tests/contrato/**"
+      - "worker/**"
+      - "scripts/migrar_portadas_r2.mjs"
       - ".github/workflows/web.yml"
 
 # Solo lectura: este flujo solo comprueba la web, no escribe nada en el repositorio.
@@ -41,6 +47,8 @@ jobs:
           set -eo pipefail
           find frontend/web/js -name '*.js' -print0 | xargs -0 -r -n1 node --check
           node --check frontend/web/sw.js
+          find frontend/web/server frontend/web/api worker/src -name '*.js' -print0 | xargs -0 -r -n1 node --check
 
+      # También las del Worker de Cloudflare (tests/web-unit/worker.test.mjs, ADR-0029).
       - name: Ejecutar pruebas de la web
         run: node --test "tests/web-unit/*.test.mjs"

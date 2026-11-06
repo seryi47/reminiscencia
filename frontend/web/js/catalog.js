@@ -3,16 +3,20 @@
 // colores de portada. No usa el DOM ni APIs del navegador, así que se
 // prueba en Node (tests/web-unit/catalog.test.mjs).
 
+import { COVER_URL } from './cover-index.js';
+
 // Identificadores seguros: van en rutas (audio/<id>.opus) y en el hash de la página.
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_TEXT = 200;
-// Portada publicada por el backend: "covers/<id>.jpg" (data/songs.json y data/folders.json). Cualquier otra forma se
-// ignora y la portada se genera con un color y un icono.
+// Portada publicada por el backend: "covers/<id>.jpg" (data/songs.json y data/folders.json), o la del índice de
+// portadas de R2 ya superpuesta (js/cover-index.js, ADR-0029): la dirección completa del bucket público,
+// "https://pub-….r2.dev/portadas/<id>-<hash>.jpg". Cualquier otra forma se ignora y la portada se genera con un color
+// y un icono.
 const COVER_PATH = /^covers\/[A-Za-z0-9_-]{1,64}\.jpg$/;
 
-/** Ruta de portada válida ("covers/<id>.jpg") o null. */
+/** Ruta de portada válida ("covers/<id>.jpg" o la dirección de R2 del índice de portadas) o null. */
 export function normalizeCoverPath(value) {
-  return typeof value === 'string' && COVER_PATH.test(value) ? value : null;
+  return typeof value === 'string' && (COVER_PATH.test(value) || COVER_URL.test(value)) ? value : null;
 }
 
 /** Colores de portada. Todos dan un contraste de 6:1 o más con texto blanco (WCAG 1.4.3). */

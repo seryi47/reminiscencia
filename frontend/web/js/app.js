@@ -41,6 +41,8 @@ import { expandSelection } from './cuidador/subida-zip.js';
 import { duplicateMessage, findUploadDuplicates } from './duplicates.js';
 import { applyPendingEdits, createEditTracker, indicatorText as editsIndicatorText, STATES as EDIT_STATES } from './edit-pending.js';
 import { dataUrlToBytes, fetchEditStatus, sendCover, sendOrganize } from './edit-remote.js';
+import { api } from './api-config.js';
+import { applyCoverIndex, fetchCoverIndex } from './cover-index.js';
 import {
   activeCount,
   createUploadTracker,
@@ -81,6 +83,7 @@ const APP_NAME = 'Reminiscencia';
 const OWNER = 'Reminiscencia';
 const LIBRARY_WIDTH = Object.freeze({ min: 280, max: 420, step: 16 });
 const RECENTS_MAX = 50;
+const COVER_INDEX_WAIT_MS = 1500;
 
 // ---------------------------------------------------------------------------
 // Preferencias (solo comodidad: si el navegador no deja guardar, valen durante la visita)
@@ -112,6 +115,8 @@ const libraryPrefs = readJson(LIBRARY_PREFS_KEY);
 const state = {
   publicSongs: [],
   publicFolders: [],
+  // Índice de portadas de R2 (id → fichero; js/cover-index.js, ADR-0029): manda sobre el «cover» del catálogo.
+  coverIndex: new Map(),
   localSongs: [],
   catalog: buildCatalog(),
   loadError: null,
@@ -151,13 +156,40 @@ const retiredCopies = new Map();
 
 const dom = {};
 
+/** Catálogo publicado con las portadas del índice de R2 encima (el índice manda; ADR-0029). */
+function publicView() {
+  return applyCoverIndex(state.publicSongs, state.publicFolders, state.coverIndex);
+}
+
+/**
+ * Índice de portadas sin caché: primero por el Worker (lee el bucket al momento) y, si no está o no responde, del
+ * bucket público. Si tampoco se puede, se queda el que había.
+ */
+async function loadCoverIndex() {
+  try {
+    if (api.usesWorker()) {
+      state.coverIndex = await fetchCoverIndex((url, init) => api.workerFetch('/api/portadas', init));
+      return true;
+    }
+  } catch {
+    // Se prueba con el bucket.
+  }
+  try {
+    state.coverIndex = await fetchCoverIndex((url, init) => fetch(url, init));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Catálogo que se pinta: el real (state.publicSongs y state.publicFolders, que no se tocan) con las ediciones pendientes
  * encima (ADR-0027). Lo editado lleva pendingEdit (marca «Pendiente») y una portada pendiente se ve con su vista previa.
  */
 function rebuildCatalog() {
   const pendingEdits = edits?.items() ?? [];
-  const view = applyPendingEdits(state.publicSongs, state.publicFolders, pendingEdits);
+  const published = publicView();
+  const view = applyPendingEdits(published.songs, published.folders, pendingEdits);
   state.catalog = buildCatalog(view.songs, view.folders, state.localSongs);
   for (const id of view.songIds) {
     const song = state.catalog.songById.get(id);
@@ -1130,8 +1162,15 @@ function createUploads() {
     convert: (file, { onProgress }) => convertToOpus(file, { limits: false, checkStorage: false, onProgress }),
     saveCopy: (data) => saveUploadCopy(data),
     readCopy: (id) => readLocalBytes(id),
+    // Cada archivo entero por el mismo sitio: el Worker (trozos de 32 MB) si responde, si no Vercel (4 MB). ADR-0029.
     // uploadId: UUID v7 en el orden de la cola (ADR-0030); el gestor envía hasta dos archivos a la vez.
-    send: (bytes, { fileName, uploadId, album, artist, onChunk }) => sendOpus(bytes, { fileName, uploadId: uploadId ?? crypto.randomUUID(), album, artist, onChunk }),
+    send: async (bytes, { fileName, uploadId, album, artist, onChunk }) => {
+      const target = await api.uploadTarget();
+      return sendOpus(bytes, {
+        fileName, uploadId: uploadId ?? crypto.randomUUID(), album, artist, onChunk,
+        fetchImpl: target.fetch, chunkBytes: target.chunkBytes,
+      });
+    },
     fetchSongs: songsFetcher((url, init) => fetch(url, init), DATA_URLS.songs),
     currentIds: () => state.publicSongs.map((song) => song?.id),
     onCopy: (song) => {
@@ -1225,15 +1264,17 @@ function createEdits() {
     sendOrganize: (payload) => sendOrganize(payload),
     sendCover: (id, bytes) => sendCover(id, bytes),
     fetchStatus: (issue) => fetchEditStatus(issue),
+    // El catálogo con el índice de portadas encima: así una portada enviada por el Worker se confirma en segundos.
     fetchCatalog: async () => {
       const [songs, folders] = await Promise.all([
         fetchJson(DATA_URLS.songs, { cache: 'no-store' }),
         fetchJson(DATA_URLS.folders, { cache: 'no-store' }),
+        loadCoverIndex(),
       ]);
       if (!Array.isArray(songs) || !Array.isArray(folders)) throw new Error('El catálogo no es una lista.');
-      return { songs, folders };
+      return applyCoverIndex(songs, folders, state.coverIndex);
     },
-    catalog: () => ({ songs: state.publicSongs, folders: state.publicFolders }),
+    catalog: () => publicView(),
     previewBytes: (dataUrl) => dataUrlToBytes(dataUrl),
     // Lo leído al revisar es el catálogo real más reciente: la biblioteca se pone al día con él.
     onCatalog: (songs, folders) => {
@@ -1426,11 +1467,25 @@ async function start() {
 
   registerPwa().catch(() => {});
   library = await openLocalLibrary();
+  // El índice de portadas (ADR-0029) no retrasa la apertura más de COVER_INDEX_WAIT_MS: si tarda, se aplica al llegar.
+  const coverIndexReady = loadCoverIndex();
   const [, localSongs, cached] = await Promise.all([loadPublicCatalog(), loadLocalSongs(), cachedAudioPaths()]);
+  await Promise.race([coverIndexReady, new Promise((resolve) => { setTimeout(resolve, COVER_INDEX_WAIT_MS); })]);
   state.localSongs = localSongs;
   state.cached = cached;
   // Lo que el catálogo recién cargado ya refleja deja de estar pendiente.
-  if (!state.loadError) edits.reconcile(state.publicSongs, state.publicFolders);
+  const reconcilePublished = () => {
+    if (state.loadError) return;
+    const published = publicView();
+    edits.reconcile(published.songs, published.folders);
+  };
+  reconcilePublished();
+  coverIndexReady.then((loaded) => {
+    if (!loaded || state.coverIndex.size === 0) return;
+    reconcilePublished();
+    rebuildCatalog();
+    if (state.ready) render();
+  });
   rebuildCatalog();
   state.playlists = await library.listPlaylists();
   state.likes = await library.listLikes();

@@ -7,19 +7,28 @@ import 'package:flutter/painting.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
-/// Portadas publicadas en la web: `covers/<id>.jpg` (contrato de data/songs.json y data/folders.json).
-/// Solo se aceptan rutas relativas dentro de covers/, con un nombre simple: nada de direcciones ni «..».
+/// Portadas publicadas en la web: `covers/<id>.jpg` (contrato de data/songs.json y data/folders.json), o las del índice
+/// de portadas de R2 (`portadas/<id>-<hash>.jpg`, ADR-0029; lib/cover_index.dart), que se piden al bucket público.
+/// Solo se aceptan rutas relativas con un nombre simple: nada de direcciones ni «..».
 final RegExp _coverPath = RegExp(
-  r'^covers/[A-Za-z0-9_-]{1,64}\.(?:jpg|jpeg|png|webp)$',
+  r'^(?:covers/[A-Za-z0-9_-]{1,64}\.(?:jpg|jpeg|png|webp)|portadas/[SF][0-9a-f]{16}-[0-9a-f]{16}\.jpg)$',
 );
+
+/// Bucket público de R2 (el mismo que kAudioBase de library_store.dart): de ahí salen las portadas `portadas/…`.
+const String kCoverBucketBase =
+    'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/';
 
 /// Tamaño máximo de una portada descargada. Una respuesta mayor se descarta.
 const int kMaxCoverBytes = 5 * 1024 * 1024;
 
-/// Devuelve la ruta de la portada si es válida, o null.
+/// Devuelve la ruta de la portada si es válida, o null. Una portada del índice con la dirección del bucket delante
+/// (como la escribe la web) se queda en su fichero, `portadas/…`.
 String? cleanCoverPath(Object? value) {
   if (value is! String) return null;
-  final path = value.trim();
+  var path = value.trim();
+  if (path.startsWith('${kCoverBucketBase}portadas/')) {
+    path = path.substring(kCoverBucketBase.length);
+  }
   return _coverPath.hasMatch(path) ? path : null;
 }
 
@@ -106,13 +115,21 @@ class CoverCache extends ChangeNotifier implements CoverImages, CoverStore {
     Future<Directory> Function()? root,
     http.Client? client,
     this.base = 'https://reminiscencia.vercel.app/',
+    this.bucketBase = kCoverBucketBase,
     DateTime Function()? clock,
   }) : _resolveRoot = root ?? _documentsRoot,
        _client = client ?? http.Client(),
        _clock = clock ?? DateTime.now;
 
-  /// Dirección de la web; las rutas de portada son relativas a ella.
+  /// Dirección de la web; las rutas `covers/…` son relativas a ella.
   final String base;
+
+  /// Dirección del bucket público; las rutas `portadas/…` son relativas a él.
+  final String bucketBase;
+
+  /// Dirección completa de una portada.
+  Uri uriFor(String path) =>
+      Uri.parse('${path.startsWith('portadas/') ? bucketBase : base}$path');
   final Future<Directory> Function() _resolveRoot;
   final http.Client _client;
   final DateTime Function() _clock;
@@ -198,7 +215,7 @@ class CoverCache extends ChangeNotifier implements CoverImages, CoverStore {
           'If-Modified-Since': previous!.lastModified!,
       };
       final response = await _client
-          .get(Uri.parse('$base$path'), headers: headers)
+          .get(uriFor(path), headers: headers)
           .timeout(const Duration(seconds: 30));
       if (previous != null && response.statusCode == 304) return true;
       if (response.statusCode != 200) {
@@ -225,7 +242,7 @@ class CoverCache extends ChangeNotifier implements CoverImages, CoverStore {
   }) async {
     final dir = _dir!;
     final stem = path
-        .substring('covers/'.length)
+        .substring(path.indexOf('/') + 1)
         .replaceAll(RegExp(r'\.[a-z]+$'), '');
     final extension = path.substring(path.lastIndexOf('.'));
     _version += 1;
