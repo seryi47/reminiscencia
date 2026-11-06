@@ -55,6 +55,31 @@ void main() {
     }
   });
 
+  test('«artista título» como el contrato (ADR-0032)', () {
+    final cases = (contract['titulo_con_artista'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(cases, isNotEmpty);
+    for (final item in cases) {
+      final song = _candidate(item['entrada'] as Map<String, dynamic>);
+      expect(titleWithArtist(song), item['salida'], reason: song.title);
+    }
+  });
+
+  test('un archivo «Artista - Título» avisa de la canción ya limpia', () {
+    final found = findUploadDuplicates(
+      const [DuplicateCandidate(title: 'Bad Bunny - Monaco')],
+      const [
+        DuplicateCandidate(
+          title: 'Monaco',
+          artist: 'Bad Bunny',
+          durationS: 201,
+        ),
+      ],
+    );
+    expect(found, hasLength(1));
+    expect(found.single.inBatch, isFalse);
+  });
+
   test('cada caso da lo mismo que el contrato, en los dos sentidos', () {
     final cases = (contract['casos'] as List).cast<Map<String, dynamic>>();
     expect(cases, isNotEmpty);

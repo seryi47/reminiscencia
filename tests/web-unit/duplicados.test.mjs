@@ -16,6 +16,7 @@ import {
   isPossibleDuplicate,
   normalizeDuplicateArtist,
   normalizeDuplicateTitle,
+  titleWithArtist,
 } from '../../frontend/web/js/duplicates.js';
 
 const CONTRATO = JSON.parse(readFileSync(new URL('../contrato/duplicados.json', import.meta.url), 'utf8'));
@@ -38,6 +39,17 @@ describe('contrato común de duplicados', () => {
 
   test('normalización del artista', () => {
     for (const { entrada, salida } of CONTRATO.normalizar_artista) assert.equal(normalizeDuplicateArtist(entrada), salida, entrada);
+  });
+
+  test('«artista título» (ADR-0032)', () => {
+    assert.ok(CONTRATO.titulo_con_artista.length > 0);
+    for (const { entrada, salida } of CONTRATO.titulo_con_artista) assert.equal(titleWithArtist(entrada), salida, entrada.title);
+  });
+
+  test('un archivo «Artista - Título» avisa de la canción ya limpia (ADR-0032)', () => {
+    const found = findUploadDuplicates([{ title: 'Bad Bunny - Monaco', artist: '', durationS: null }], [{ title: 'Monaco', artist: 'Bad Bunny', durationS: 201 }]);
+    assert.equal(found.length, 1);
+    assert.equal(found[0].inBatch, false);
   });
 
   test('cada caso, en los dos sentidos', () => {

@@ -41,6 +41,11 @@ def test_artist_normalization_matches_the_contract(case):
     assert duplicados.normalize_artist(case["entrada"]) == case["salida"]
 
 
+@pytest.mark.parametrize("case", CONTRATO["titulo_con_artista"], ids=lambda case: case["entrada"]["title"])
+def test_title_with_artist_matches_the_contract(case):
+    assert duplicados.title_with_artist(case["entrada"]) == case["salida"]
+
+
 @pytest.mark.parametrize("case", CONTRATO["casos"], ids=lambda case: case["nota"])
 def test_every_contract_case_in_both_directions(case):
     assert duplicados.is_possible_duplicate(case["a"], case["b"]) is case["duplicado"]

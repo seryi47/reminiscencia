@@ -2,7 +2,9 @@
 
 Hasta ahora solo se detectaban los ficheros idénticos (misma huella SHA-256). Esta regla avisa también de la misma
 canción en otro fichero: título normalizado igual y duración dentro de ±2 s; o, si falta alguna duración, título y
-artista normalizados iguales. Solo avisa: nunca bloquea una subida.
+artista normalizados iguales. Desde ADR-0032 (títulos limpios), el título de una también vale si es «artista título»
+de la otra («Bad Bunny - Monaco.mp3» frente a «Monaco» de «Bad Bunny»): entonces el artista ya coincide y solo cuenta
+la duración. Solo avisa: nunca bloquea una subida.
 
 La web (frontend/web/js/duplicates.js) y la APK (mobile/lib/duplicates.dart) aplican exactamente la misma regla con los
 mismos datos. Los datos (pliegue de letras, etiquetas entre paréntesis o corchetes y marcas de featuring) y los casos de
@@ -101,16 +103,32 @@ def _duration(value: object) -> float | None:
     return float(value)
 
 
+def title_with_artist(song: Mapping) -> str:
+    """«artista título» normalizado (ADR-0032), para comparar con un nombre de archivo «Artista - Título»: el artista
+    normalizado, un espacio y el título normalizado. Vacío si falta alguno de los dos."""
+    artist = normalize_artist(song.get("artist"))
+    title = normalize_title(song.get("title"))
+    return f"{artist} {title}" if artist and title else ""
+
+
 def is_possible_duplicate(a: Mapping, b: Mapping) -> bool:
-    """¿Parecen la misma canción? a y b tienen "title", "artist" y "duration_s" (este puede faltar o ser None)."""
-    title = normalize_title(a.get("title"))
-    if not title or title != normalize_title(b.get("title")):
+    """¿Parecen la misma canción? a y b tienen "title", "artist" y "duration_s" (este puede faltar o ser None).
+
+    Los títulos coinciden si sus normalizados son iguales y no vacíos (y entonces, sin las dos duraciones, decide el
+    artista), o si el título de una es «artista título» de la otra (title_with_artist: «Bad Bunny - Monaco.mp3» frente
+    a «Monaco» de «Bad Bunny»; ADR-0032), y entonces el artista ya coincide: solo cuenta la duración, si están las
+    dos."""
+    title_a = normalize_title(a.get("title"))
+    title_b = normalize_title(b.get("title"))
+    same_title = bool(title_a) and title_a == title_b
+    crossed = (bool(title_a) and title_a == title_with_artist(b)) or (bool(title_b) and title_b == title_with_artist(a))
+    if not same_title and not crossed:
         return False
     duration_a = _duration(a.get("duration_s"))
     duration_b = _duration(b.get("duration_s"))
     if duration_a is not None and duration_b is not None:
         return abs(duration_a - duration_b) <= TOLERANCE_S
-    return normalize_artist(a.get("artist")) == normalize_artist(b.get("artist"))
+    return crossed or normalize_artist(a.get("artist")) == normalize_artist(b.get("artist"))
 
 
 def possible_duplicates(candidate: Mapping, songs: Iterable[Mapping]) -> list[Mapping]:

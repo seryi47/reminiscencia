@@ -5,7 +5,8 @@
 //
 // Dos canciones son un posible duplicado si su título normalizado es igual y no está vacío y, además: si las dos tienen
 // duración (un número mayor que 0), se diferencian como mucho en DUPLICATE_TOLERANCE_S segundos; si a alguna le falta,
-// su artista normalizado es igual. Solo avisa: nunca impide subir.
+// su artista normalizado es igual. El título de una también vale si es «artista título» de la otra (ADR-0032): entonces
+// solo cuenta la duración. Solo avisa: nunca impide subir.
 
 import { foldText, FOLD_FROM, FOLD_TO, formatDuration } from './catalog.js';
 
@@ -66,14 +67,29 @@ export function normalizeDuplicateArtist(artist) {
 
 const durationOf = (value) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null);
 
-/** ¿Parecen la misma canción? a y b: { title, artist, durationS } (durationS puede faltar o ser null). */
+/** «artista título» normalizado (ADR-0032), para comparar con un archivo «Artista - Título»; '' si falta alguno. */
+export function titleWithArtist(song) {
+  const artist = normalizeDuplicateArtist(song?.artist);
+  const title = normalizeDuplicateTitle(song?.title);
+  return artist !== '' && title !== '' ? `${artist} ${title}` : '';
+}
+
+/**
+ * ¿Parecen la misma canción? a y b: { title, artist, durationS } (durationS puede faltar o ser null).
+ * Los títulos coinciden si sus normalizados son iguales y no vacíos (sin las dos duraciones decide el artista), o si el
+ * de una es «artista título» de la otra («Bad Bunny - Monaco.mp3» frente a «Monaco» de «Bad Bunny»; ADR-0032), y
+ * entonces el artista ya coincide: solo cuenta la duración, si están las dos.
+ */
 export function isPossibleDuplicate(a, b) {
-  const title = normalizeDuplicateTitle(a?.title);
-  if (title === '' || title !== normalizeDuplicateTitle(b?.title)) return false;
+  const titleA = normalizeDuplicateTitle(a?.title);
+  const titleB = normalizeDuplicateTitle(b?.title);
+  const sameTitle = titleA !== '' && titleA === titleB;
+  const crossed = (titleA !== '' && titleA === titleWithArtist(b)) || (titleB !== '' && titleB === titleWithArtist(a));
+  if (!sameTitle && !crossed) return false;
   const da = durationOf(a?.durationS);
   const db = durationOf(b?.durationS);
   if (da !== null && db !== null) return Math.abs(da - db) <= DUPLICATE_TOLERANCE_S;
-  return normalizeDuplicateArtist(a?.artist) === normalizeDuplicateArtist(b?.artist);
+  return crossed || normalizeDuplicateArtist(a?.artist) === normalizeDuplicateArtist(b?.artist);
 }
 
 /**
