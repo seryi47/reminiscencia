@@ -1,3 +1,11 @@
+## Sin publicar: el audio por el Worker de Cloudflare (2026-11-06, rama `feature/audio-por-worker`)
+
+- **Audio público por el Worker** ([ADR-0031](docs/decisions/ADR-0031-audio-por-el-worker.md)): `GET`/`HEAD /audio/<id>.opus` desde el bucket público por binding, con rangos (206 y 416), ETag y 304, y caché de un año. Así desaparece el límite de velocidad de `r2.dev`, sin necesidad de dominio propio.
+- **Web:** el service worker pide el audio al Worker; si falla, a `r2.dev`, y si también falla, al propio origen. `vercel.json` redirige `/audio/:file` al Worker y la CSP `media-src` lo admite. `SHELL_VERSION = 30`.
+- **APK:** el audio va por el Worker (`ApiRoutes.audioBase`, derivado de `kWorkerApiBase`), con `r2.dev` y la web de respaldo tanto al descargar como al escuchar sin descargar. `kAudioBase` pasa a llamarse `kR2AudioBase`.
+- **`scripts/smoke_produccion.mjs`:** opción `--concurrencia=N` (6 por defecto), comprobación de un rango e informe de cuánto audio sirve el Worker; pruebas nuevas en `tests/web-unit/smoke-produccion.test.mjs`. El Chrome de las pruebas E2E no resuelve `*.workers.dev`.
+- Pruebas: backend 1118; web 838 unitarias y 200 de extremo a extremo; Flutter 532; `flutter analyze` y `actionlint` sin avisos. Comprobado que la ejecución de las pruebas no tocó producción.
+
 ## Sin publicar: Worker de Cloudflare, portadas al instante y subida rápida (2026-11-06, rama `feature/plataforma-2`)
 
 - **Worker de Cloudflare `reminiscencia-api`** ([ADR-0029](docs/decisions/ADR-0029-worker-cloudflare-y-portadas.md)), en `worker/` y todavía sin desplegar:

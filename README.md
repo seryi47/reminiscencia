@@ -13,7 +13,7 @@ Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la 
 
 ## Cómo se usa la web
 
-https://reminiscencia.vercel.app abre directamente en **Inicio** con la música. No hay cuentas ni hay que elegir nada: todos ven la misma biblioteca pública. Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/`). El audio lo sirve Cloudflare R2: Vercel redirige `/audio/<id>.opus` al bucket ([ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md)).
+https://reminiscencia.vercel.app abre directamente en **Inicio** con la música. No hay cuentas ni hay que elegir nada: todos ven la misma biblioteca pública. Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/`). El audio lo sirve el Worker de Cloudflare desde el bucket de R2, con `r2.dev` de respaldo: Vercel redirige `/audio/<id>.opus` al Worker ([ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md) y [ADR-0031](docs/decisions/ADR-0031-audio-por-el-worker.md)).
 
 - **Inicio**: saludo, accesos rápidos y estantes con las carpetas, lo añadido y tus listas.
 - **Buscar**: por título, artista, álbum, año y etiquetas, sin tildes ni mayúsculas, con una errata permitida en palabras de 4 letras o más y lo más parecido primero (ADR-0028), con «Explorar todo»; si la canción no está, también en YouTube con «Escuchar» y «Descargar» (ADR-0021).
@@ -171,7 +171,7 @@ cd tests/web-e2e && npm ci && npm test
 Comprobador de la web pública tras cada cambio en `main` (antes, poner `main` al día con `origin/main`):
 
 ```
-node scripts/smoke_produccion.mjs [url]
+node scripts/smoke_produccion.mjs [url] [--concurrencia=N]
 ```
 
 ## Aviso
