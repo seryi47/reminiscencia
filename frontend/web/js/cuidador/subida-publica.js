@@ -1,16 +1,22 @@
 // Subida para todos desde la web (ADR-0017): cada archivo que se elige se convierte a Ogg Opus en este navegador
-// (convertToOpus de subida-local.js, sin límites de tamaño ni de duración) y se envía, de uno en uno y en orden, a la
-// función del propio origen POST /api/subir, en trozos de hasta 4 MB (Vercel admite 4,5 MB por petición). La función
-// lo guarda en el buzón del repositorio y el workflow buzon lo publica para todos. El título de la canción es el
+// (convertToOpus de subida-local.js, sin límites de tamaño ni de duración) y se envía, de uno en uno y en orden, a
+// POST /api/subir, en trozos de hasta 4 MB por la función de Vercel del propio origen (admite 4,5 MB por petición) o
+// de hasta 32 MB por el Worker de Cloudflare (ADR-0029). Quién recibe cada archivo lo decide js/api-config.js
+// (uploadTarget, en js/app.js): la dirección y el tamaño de trozo llegan en fetchImpl y chunkBytes. La función lo
+// guarda en el bucket privado y el workflow buzon lo publica para todos. El título de la canción es el
 // nombre del archivo sin extensión. Este módulo no conoce ningún token: solo habla con /api/subir.
 //
 // Las funciones puras (trozos, cabeceras, lectura de la respuesta) van exportadas para las pruebas
 // (tests/web-unit/subida-publica.test.mjs). Lo que usa el navegador se resuelve dentro de las funciones.
 
 import { convertToOpus, LocalAudioError, opusSupport, titleFromFileName, UNSUPPORTED_TEXT } from './subida-local.js';
+import { VERCEL_CHUNK_BYTES, WORKER_CHUNK_BYTES } from '../api-config.js';
 
+/** Ruta del contrato; la base (Worker o el propio origen) la pone el fetchImpl de js/api-config.js. */
 export const UPLOAD_ENDPOINT = '/api/subir';
-export const CHUNK_BYTES = 4 * 1024 * 1024;
+/** Trozo por defecto (Vercel). Con el Worker, WORKER_CHUNK_BYTES (32 MB). */
+export const CHUNK_BYTES = VERCEL_CHUNK_BYTES;
+export { WORKER_CHUNK_BYTES };
 export const PUBLIC_AUDIO_ACCEPT = 'audio/*,.wav,.mp3,.m4a,.flac,.ogg,.opus';
 export const RIGHTS_TEXT = 'Al subir, declaras que tienes derecho a publicar estos archivos.';
 export const DONE_TEXT = 'Subida: llegará a todos en un par de minutos.';

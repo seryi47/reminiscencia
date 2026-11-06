@@ -1,0 +1,11 @@
+{
+  "name": "reminiscencia-api",
+  "private": true,
+  "type": "module",
+  "description": "Worker de Cloudflare de Reminiscencia (ADR-0029). Sin dependencias en tiempo de ejecución; wrangler se usa con npx y versión fijada.",
+  "scripts": {
+    "deploy": "npx --yes wrangler@4.151.3 deploy",
+    "dev": "npx --yes wrangler@4.151.3 dev",
+    "check": "npx --yes wrangler@4.151.3 deploy --dry-run --outdir dist"
+  }
+}

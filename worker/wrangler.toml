@@ -1,0 +1,31 @@
+# Worker de Cloudflare «reminiscencia-api» (ADR-0029). Despliegue (desde esta carpeta, con la versión fijada):
+#   npx --yes wrangler@4.151.3 login
+#   npx --yes wrangler@4.151.3 secret put GITHUB_TOKEN
+#   npx --yes wrangler@4.151.3 deploy
+# La guía completa está en docs/decisions/ADR-0029-worker-cloudflare-y-portadas.md.
+#
+# Wrangler empaqueta src/index.js con sus importaciones relativas (también las de ../frontend/web/server/ y
+# ../frontend/web/js/, el código compartido con las funciones de Vercel). No hay dependencias en tiempo de ejecución.
+
+name = "reminiscencia-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+# Dirección pública https://reminiscencia-api.<subdominio>.workers.dev (el subdominio es el de la cuenta).
+workers_dev = true
+
+# Bucket privado: los trozos de las subidas (entrada/<UUID>/) y la fuente de verdad del audio (ADR-0024).
+[[r2_buckets]]
+binding = "PRIVATE_BUCKET"
+bucket_name = "reminiscencia-audio-privado"
+
+# Bucket público (r2.dev): el audio público y las portadas (portadas/<id>-<hash>.jpg y portadas/indice.json).
+[[r2_buckets]]
+binding = "PUBLIC_BUCKET"
+bucket_name = "reminiscencia-audio"
+
+[vars]
+# Orígenes extra con CORS, separados por comas (la web de producción y localhost ya están admitidos en el código).
+ALLOWED_ORIGINS = ""
+
+# Secreto (no va aquí): GITHUB_TOKEN, con «wrangler secret put GITHUB_TOKEN». El mismo tipo de token que Vercel:
+# grano fino, solo seryi47/reminiscencia, Contents e Issues en escritura.
