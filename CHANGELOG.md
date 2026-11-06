@@ -1,3 +1,27 @@
+## Sin publicar: Worker de Cloudflare, portadas al instante y subida rápida (2026-11-06, rama `feature/plataforma-2`)
+
+- **Worker de Cloudflare `reminiscencia-api`** ([ADR-0029](docs/decisions/ADR-0029-worker-cloudflare-y-portadas.md)), en `worker/` y todavía sin desplegar:
+  - tiene las mismas rutas que Vercel: `/api/subir` (con trozos de 32 MB), `/api/editar`, `/api/portada`, `/api/portadas` y `/api/salud`;
+  - accede a los buckets por binding, sin claves, y solo admite CORS desde la web;
+  - comparte el código con Vercel en `frontend/web/server/upload-core.js` y `edit-core.js`.
+- **Dirección del API:** una sola constante por plataforma, `js/api-config.js` en la web y `lib/api_config.dart` en la APK. Vacía significa Vercel, y si el Worker no responde se repite en Vercel automáticamente.
+- **Portadas al instante, sin GitHub:**
+  - van al bucket público como `portadas/<id>-<hash>.jpg`, con el índice `portadas/indice.json` escrito con condición;
+  - la web y la APK superponen el índice al catálogo, y una portada pendiente se confirma en segundos;
+  - para migrar las existentes: `scripts/migrar_portadas_r2.mjs` y el workflow `migrar-portadas.yml`.
+- **Subida rápida** ([ADR-0030](docs/decisions/ADR-0030-subida-rapida.md)):
+  - una ejecución de `buzon` publica todo lo pendiente, por orden de llegada, y cataloga en el orden de la cola de quien subió (UUID v7); las ejecuciones siguientes sin trabajo terminan tras `recoger`;
+  - checkout parcial (sparse) en `recoger` y `procesar`; `procesar` sin `pip install`; ffmpeg desde una caché de `.deb` comprobada; apt sin silenciar errores;
+  - la web y la APK convierten el siguiente archivo mientras envían el anterior, y envían hasta dos a la vez;
+  - 20 canciones hasta publicar la última: de unos 50 min a unos 3–5 min más el tiempo de envío.
+- `sonidos.entrada.MAX_PART_BYTES` pasa a 32 MiB, y la CSP admite el bucket y `*.workers.dev`.
+- `SHELL_VERSION = 28`.
+- Pruebas sobre la rama integrada:
+  - backend 1118;
+  - web 818 unitarias y 198 de extremo a extremo;
+  - Flutter 526;
+  - `flutter analyze` y `actionlint` sin avisos; `wrangler deploy --dry-run` empaqueta en 59 KB.
+
 ## Sin publicar: mejoras de plataforma (2026-11-05, rama `feature/mejoras-plataforma`)
 
 - **Todo el audio en R2** ([ADR-0024](docs/decisions/ADR-0024-audio-privado-en-r2.md)):
