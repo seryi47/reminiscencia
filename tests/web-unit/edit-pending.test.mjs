@@ -12,6 +12,7 @@ import {
   CLOSED_GRACE_MS,
   confirmedText,
   COVER_ASSUME_MS,
+  COVER_KEY_CHECK_MS,
   createEditTracker,
   describeEdit,
   duplicateText,
@@ -98,6 +99,7 @@ describe('contrato común (tests/contrato/ediciones-pendientes.json)', () => {
         createdAt: edicion.createdAtMin * MIN,
         closedAt: edicion.closedAtMin === null ? null : edicion.closedAtMin * MIN,
         hadCover: edicion.hadCover,
+        ...(edicion.coverKey ? { coverKey: edicion.coverKey } : {}),
       };
       const result = reviewEdit(edit, { now: caso.ahoraMin * MIN, status: caso.estado, reflected: caso.reflejada, catalogOk: caso.catalogoOk });
       assert.equal(result.outcome, caso.esperado);
@@ -208,7 +210,7 @@ function harness({ storage = memoryStorage(), songs, folders } = {}) {
     },
     sendCover: async (id, bytes) => {
       world.covers.push({ id, bytes });
-      return { message: 'Guardado: llegará a todos en un par de minutos.', issue: null };
+      return { message: 'Guardado: llegará a todos en un par de minutos.', issue: null, ...(world.coverKey ? { cover: world.coverKey(id) } : {}) };
     },
     fetchStatus: async (issue) => {
       if (!world.statuses.has(issue)) throw new Error('sin conexión');
@@ -403,6 +405,36 @@ describe('gestor', () => {
     assert.equal(world.covers.length, 2);
   });
 
+  test('portada por el Worker: guarda su fichero, se revisa a los 3 s y se confirma cuando el índice la refleja', async () => {
+    const { tracker, world, storage, pendingTimers } = harness();
+    const key = `portadas/${F1}-0123456789abcdef.jpg`;
+    world.coverKey = () => key;
+    const dataUrl = 'data:image/jpeg;base64,/9j/2Q==';
+    await tracker.submitCover({ id: F1, bytes: new Uint8Array([1]), dataUrl });
+    const [item] = tracker.items();
+    assert.deepEqual([item.hadCover, item.coverKey], [true, key]);
+    assert.deepEqual(pendingTimers().map((timer) => timer.ms), [COVER_KEY_CHECK_MS]);
+    assert.equal(COVER_KEY_CHECK_MS, 3000);
+    assert.equal(parseEdits(storage.data.get(STORAGE_KEY))[0].coverKey, key);
+    // A los 10 minutos no se supone nada: sigue pendiente mientras el índice no la tenga.
+    world.published = structuredClone(world.catalog);
+    world.clock = 10 * MIN;
+    await tracker.check();
+    assert.equal(tracker.items().length, 1);
+    // El catálogo con el índice encima ya apunta al fichero: confirmada.
+    world.published.folders = world.published.folders.map((folder) => (folder.id === F1 ? { ...folder, cover: `https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/${key}` } : folder));
+    await tracker.check();
+    assert.deepEqual(tracker.items(), []);
+    assert.equal(world.notices.at(-1).type, 'confirmed');
+  });
+
+  test('portada por el Worker: un fichero de otro id en el recibo no se guarda', async () => {
+    const { tracker, world } = harness();
+    world.coverKey = () => `portadas/${F2}-0123456789abcdef.jpg`;
+    await tracker.submitCover({ id: F1, bytes: new Uint8Array([1]), dataUrl: 'data:image/jpeg;base64,/9j/2Q==' });
+    assert.equal(tracker.items()[0].coverKey, undefined);
+  });
+
   test('create_folder recuerda los álbumes de antes y se confirma con el nuevo', async () => {
     const { tracker, world } = harness();
     await tracker.submit({ op: 'create_folder', name: 'Valses' });
@@ -426,9 +458,14 @@ describe('edit-remote: recibo y estado', () => {
   const reply = (status, body) => async () => new Response(JSON.stringify(body), { status });
 
   test('sendOrganize devuelve el mensaje y el número de incidencia; sendCover, sin número', async () => {
-    assert.deepEqual(await sendOrganize({ op: 'create_folder', name: 'A' }, reply(200, { ok: true, incidencia: 42, mensaje: 'Hecho.' })), { message: 'Hecho.', issue: 42 });
-    assert.deepEqual(await sendOrganize({ op: 'create_folder', name: 'A' }, reply(200, { ok: true, incidencia: 'x' })), { message: 'Guardado: llegará a todos en un par de minutos.', issue: null });
-    assert.deepEqual(await sendCover('S0000000000000001', new Uint8Array([1]), reply(200, { ok: true, mensaje: 'Hecho.' })), { message: 'Hecho.', issue: null });
+    assert.deepEqual(await sendOrganize({ op: 'create_folder', name: 'A' }, reply(200, { ok: true, incidencia: 42, mensaje: 'Hecho.' })), { message: 'Hecho.', issue: 42, cover: null });
+    assert.deepEqual(await sendOrganize({ op: 'create_folder', name: 'A' }, reply(200, { ok: true, incidencia: 'x' })), { message: 'Guardado: llegará a todos en un par de minutos.', issue: null, cover: null });
+    assert.deepEqual(await sendCover('S0000000000000001', new Uint8Array([1]), reply(200, { ok: true, mensaje: 'Hecho.' })), { message: 'Hecho.', issue: null, cover: null });
+    // Por el Worker: el fichero de R2, solo si es de esa portada.
+    const key = 'portadas/S0000000000000001-0123456789abcdef.jpg';
+    assert.equal((await sendCover('S0000000000000001', new Uint8Array([1]), reply(200, { ok: true, portada: key }))).cover, key);
+    assert.equal((await sendCover('S0000000000000002', new Uint8Array([1]), reply(200, { ok: true, portada: key }))).cover, null);
+    assert.equal((await sendCover('S0000000000000001', new Uint8Array([1]), reply(200, { ok: true, portada: '../x.jpg' }))).cover, null);
   });
 
   test('fetchEditStatus pide el estado sin caché y valida la respuesta', async () => {

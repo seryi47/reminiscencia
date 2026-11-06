@@ -3,6 +3,9 @@
 // cuando el catálogo ya lo refleja y se deshace con aviso si la incidencia acaba con la etiqueta «error» o si tarda
 // demasiado. Las reglas son las de tests/contrato/ediciones-pendientes.json, las mismas que lib/pending_edits.dart.
 //
+// Una portada guardada por el Worker (ADR-0029) trae su fichero de R2 (coverKey): se confirma en cuanto el catálogo con
+// el índice de portadas encima la refleja (js/cover-index.js, isCoverReflected), en segundos, sin suponer nada.
+//
 // Este módulo no toca el DOM: la lógica pura y el gestor (con sus dependencias inyectadas) se prueban en node
 // (tests/web-unit/edit-pending.test.mjs). Trabaja sobre los datos tal como vienen de data/songs.json y data/folders.json
 // (folder_id, track, name…), antes de buildCatalog.
@@ -11,8 +14,14 @@ export const CHECK_DELAYS_S = Object.freeze([20, 30, 45, 60, 90, 120, 180]);
 export const MAX_PENDING_MS = 30 * 60_000;
 export const CLOSED_GRACE_MS = 10 * 60_000;
 export const COVER_ASSUME_MS = 10 * 60_000;
+/** Primera revisión de una portada guardada por el Worker: el índice ya la tiene, así que se mira enseguida. */
+export const COVER_KEY_CHECK_MS = 3_000;
 export const STORAGE_KEY = 'reminiscencia.ediciones';
 const STORAGE_VERSION = 1;
+// El mismo formato que js/cover-index.js (COVER_KEY): portadas/<S|F + 16 hex>-<16 hex>.jpg.
+const COVER_KEY = /^portadas\/([SF][0-9a-f]{16})-[0-9a-f]{16}\.jpg$/;
+const validCoverKey = (key, id) => typeof key === 'string' && COVER_KEY.exec(key)?.[1] === id;
+const coverReflected = (cover, key) => typeof cover === 'string' && (cover === key || cover.endsWith(`/${key}`));
 // Vista previa de una portada (data:image/jpeg;base64,…): solo se guarda si cabe holgadamente en localStorage.
 export const MAX_STORED_PREVIEW_CHARS = 400_000;
 
@@ -211,6 +220,8 @@ export function isEditReflected(edit, songs, folders) {
   if (edit?.kind === 'cover') {
     const target = songById(edit.targetId) ?? folderById(edit.targetId);
     if (!target) return true;
+    // Por el Worker: reflejada cuando el catálogo (con el índice de portadas encima) apunta a ese fichero.
+    if (typeof edit.coverKey === 'string' && edit.coverKey !== '') return coverReflected(target.cover, edit.coverKey);
     return !edit.hadCover && typeof target.cover === 'string' && target.cover !== '';
   }
   const payload = edit?.payload ?? {};
@@ -267,7 +278,8 @@ export function reviewEdit(edit, { now, status = null, reflected = false, catalo
   const closedAt = edit.closedAt ?? (status === 'cerrada' ? now : null);
   const age = now - (edit.createdAt ?? now);
   if (closedAt !== null && now - closedAt >= CLOSED_GRACE_MS) return { outcome: OUTCOMES.CONFIRMED, closedAt };
-  if (edit.kind === 'cover' && edit.hadCover && age >= COVER_ASSUME_MS) return { outcome: OUTCOMES.CONFIRMED, closedAt };
+  // Una portada por GitHub sobre otra no se ve en el catálogo (mismo nombre): se da por guardada. Por el Worker, sí se ve.
+  if (edit.kind === 'cover' && edit.hadCover && !edit.coverKey && age >= COVER_ASSUME_MS) return { outcome: OUTCOMES.CONFIRMED, closedAt };
   if (catalogOk && closedAt === null && age >= MAX_PENDING_MS) return { outcome: OUTCOMES.FAILED, closedAt };
   return { outcome: OUTCOMES.PENDING, closedAt };
 }
@@ -334,7 +346,7 @@ export function indicatorText(items) {
 // Persistencia (localStorage)
 // ---------------------------------------------------------------------------------------------
 
-const PERSISTED_FIELDS = ['key', 'kind', 'payload', 'targetId', 'issue', 'label', 'action', 'createdAt', 'closedAt', 'state', 'error', 'hadCover', 'preview', 'knownFolderIds'];
+const PERSISTED_FIELDS = ['key', 'kind', 'payload', 'targetId', 'issue', 'label', 'action', 'createdAt', 'closedAt', 'state', 'error', 'hadCover', 'preview', 'coverKey', 'knownFolderIds'];
 
 /** Lo que se guarda. Una vista previa demasiado grande no se guarda (la edición sí). */
 export function serializeEdits(items) {
@@ -372,7 +384,14 @@ export function parseEdits(raw) {
       error: typeof item.error === 'string' ? item.error : null,
     };
     if (item.kind === 'cover' && typeof item.targetId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(item.targetId)) {
-      items.push({ ...base, kind: 'cover', targetId: item.targetId, hadCover: item.hadCover === true, preview: typeof item.preview === 'string' && PREVIEW.test(item.preview) ? item.preview : null });
+      items.push({
+        ...base,
+        kind: 'cover',
+        targetId: item.targetId,
+        hadCover: item.hadCover === true,
+        preview: typeof item.preview === 'string' && PREVIEW.test(item.preview) ? item.preview : null,
+        ...(validCoverKey(item.coverKey, item.targetId) ? { coverKey: item.coverKey } : {}),
+      });
     } else if (item.kind === 'organize' && item.payload && typeof item.payload === 'object' && typeof item.payload.op === 'string') {
       items.push({ ...base, kind: 'organize', payload: item.payload, ...(Array.isArray(item.knownFolderIds) ? { knownFolderIds: item.knownFolderIds.filter((id) => typeof id === 'string') } : {}) });
     }
@@ -411,7 +430,8 @@ const defaultKey = () => `e${Date.now().toString(36)}${Math.random().toString(36
 
 /**
  * Gestor de las ediciones pendientes. Dependencias (todas inyectables en las pruebas):
- * - sendOrganize(payload) → { message, issue }; sendCover(id, bytes) → { message }; lanzan Error con el motivo
+ * - sendOrganize(payload) → { message, issue }; sendCover(id, bytes) → { message, cover? } (cover: fichero de R2 si la
+ *   guardó el Worker); lanzan Error con el motivo
  * - fetchStatus(issue) → 'abierta' | 'cerrada' | 'error' (lanza si no se sabe)
  * - fetchCatalog() → { songs, folders } leídos sin caché (lanza si no se puede)
  * - catalog() → { songs, folders }: el catálogo real que tiene la app ahora
@@ -480,7 +500,7 @@ export function createEditTracker(deps = {}) {
     items.push(edit);
     rounds = 0;
     emit();
-    schedule();
+    schedule(edit.coverKey ? COVER_KEY_CHECK_MS : undefined);
     return edit;
   }
 
@@ -529,6 +549,7 @@ export function createEditTracker(deps = {}) {
       closedAt: null,
       error: null,
       hadCover: Boolean(target?.cover),
+      ...(validCoverKey(receipt?.cover, id) ? { coverKey: receipt.cover } : {}),
     });
     return receipt?.message;
   }
@@ -615,17 +636,23 @@ export function createEditTracker(deps = {}) {
     } else {
       receipt = await sendOrganize(item.payload);
     }
-    items = items.map((entry) => (entry.key === key ? {
-      ...entry,
-      state: STATES.PENDING,
-      error: null,
-      issue: item.kind === 'cover' ? null : (Number.isInteger(receipt?.issue) && receipt.issue > 0 ? receipt.issue : null),
-      createdAt: now(),
-      closedAt: null,
-    } : entry));
+    const coverKey = item.kind === 'cover' && validCoverKey(receipt?.cover, item.targetId) ? receipt.cover : null;
+    items = items.map((entry) => {
+      if (entry.key !== key) return entry;
+      const { coverKey: _old, ...rest } = entry;
+      return {
+        ...rest,
+        state: STATES.PENDING,
+        error: null,
+        issue: item.kind === 'cover' ? null : (Number.isInteger(receipt?.issue) && receipt.issue > 0 ? receipt.issue : null),
+        createdAt: now(),
+        closedAt: null,
+        ...(coverKey ? { coverKey } : {}),
+      };
+    });
     rounds = 0;
     emit();
-    schedule();
+    schedule(coverKey ? COVER_KEY_CHECK_MS : undefined);
     return receipt?.message;
   }
 

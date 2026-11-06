@@ -1,5 +1,5 @@
 {
-  "_comentario": "Contrato común de las ediciones pendientes (ADR-0027). Lo pasan la web (js/edit-pending.js; tests/web-unit/edit-pending.test.mjs) y la APK (lib/pending_edits.dart; test/pending_edits_test.dart). Las ediciones van en orden de envío. «cambios» parchea el catálogo base (canciones y álbumes por id; los campos se sustituyen tal cual) y «albumesNuevos» añade álbumes. Tiempos en minutos (las esperas, en segundos).",
+  "_comentario": "Contrato común de las ediciones pendientes (ADR-0027). Lo pasan la web (js/edit-pending.js; tests/web-unit/edit-pending.test.mjs) y la APK (lib/pending_edits.dart; test/pending_edits_test.dart). Las ediciones van en orden de envío. «cambios» parchea el catálogo base (canciones y álbumes por id; los campos se sustituyen tal cual) y «albumesNuevos» añade álbumes. Tiempos en minutos (las esperas, en segundos). Las portadas guardadas por el Worker (ADR-0029) llevan «coverKey», el fichero de R2 (portadas/<id>-<hash>.jpg): se dan por reflejadas cuando el «cover» del catálogo, con el índice de portadas encima, es ese fichero (solo o con la dirección del bucket delante), y nunca se dan por guardadas sin verlas.",
   "constantes": {
     "esperasSegundos": [
       20,
@@ -1137,6 +1137,114 @@
       },
       "cambios": {},
       "esperado": true
+    },
+    {
+      "nombre": "portada por el Worker: reflejada cuando el índice apunta a su fichero (con la dirección del bucket)",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "S0000000000000004",
+        "hadCover": false,
+        "preview": "AAA",
+        "coverKey": "portadas/S0000000000000004-0123456789abcdef.jpg",
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000004": {
+            "cover": "https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/portadas/S0000000000000004-0123456789abcdef.jpg"
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "portada por el Worker: también vale el fichero solo",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "S0000000000000004",
+        "hadCover": false,
+        "preview": "AAA",
+        "coverKey": "portadas/S0000000000000004-0123456789abcdef.jpg",
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000004": {
+            "cover": "portadas/S0000000000000004-0123456789abcdef.jpg"
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "portada por el Worker sobre una que ya había: reflejada cuando cambia al fichero nuevo",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "F0000000000000001",
+        "hadCover": true,
+        "preview": "AAA",
+        "coverKey": "portadas/F0000000000000001-fedcba9876543210.jpg",
+        "state": "pendiente"
+      },
+      "cambios": {
+        "albumes": {
+          "F0000000000000001": {
+            "cover": "https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/portadas/F0000000000000001-fedcba9876543210.jpg"
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "portada por el Worker sobre una que ya había: aún con la de antes",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "F0000000000000001",
+        "hadCover": true,
+        "preview": "AAA",
+        "coverKey": "portadas/F0000000000000001-fedcba9876543210.jpg",
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "portada por el Worker: otro fichero (otra portada posterior) no la refleja",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "S0000000000000004",
+        "hadCover": false,
+        "preview": "AAA",
+        "coverKey": "portadas/S0000000000000004-0123456789abcdef.jpg",
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000004": {
+            "cover": "https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/portadas/S0000000000000004-1111111111111111.jpg"
+          }
+        }
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "portada por el Worker: la del repositorio (covers/) no la refleja",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "S0000000000000004",
+        "hadCover": false,
+        "preview": "AAA",
+        "coverKey": "portadas/S0000000000000004-0123456789abcdef.jpg",
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000004": {
+            "cover": "covers/S0000000000000004.jpg"
+          }
+        }
+      },
+      "esperado": false
     }
   ],
   "duplicado": [
@@ -1888,6 +1996,57 @@
       "reflejada": false,
       "catalogoOk": true,
       "esperado": "fallida",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "portada por el Worker sobre una que ya había: a los 10 minutos sigue pendiente (no se supone)",
+      "edicion": {
+        "kind": "cover",
+        "issue": null,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": true,
+        "coverKey": "portadas/F0000000000000001-fedcba9876543210.jpg"
+      },
+      "ahoraMin": 10,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "pendiente",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "portada por el Worker que no aparece en el índice en 30 minutos: fallida",
+      "edicion": {
+        "kind": "cover",
+        "issue": null,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": true,
+        "coverKey": "portadas/F0000000000000001-fedcba9876543210.jpg"
+      },
+      "ahoraMin": 30,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "fallida",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "portada por el Worker reflejada: confirmada al momento",
+      "edicion": {
+        "kind": "cover",
+        "issue": null,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": true,
+        "coverKey": "portadas/F0000000000000001-fedcba9876543210.jpg"
+      },
+      "ahoraMin": 0,
+      "estado": null,
+      "reflejada": true,
+      "catalogoOk": true,
+      "esperado": "confirmada",
       "closedAtMin": null
     }
   ]

@@ -6,11 +6,15 @@ on:
       - "frontend/web/**"
       - "tests/web-e2e/**"
       - "tests/fixtures/**"
+      - "worker/**"
+      - "tests/web-unit/r2-falso.mjs"
   pull_request:
     paths:
       - "frontend/web/**"
       - "tests/web-e2e/**"
       - "tests/fixtures/**"
+      - "worker/**"
+      - "tests/web-unit/r2-falso.mjs"
 
 permissions:
   contents: read
