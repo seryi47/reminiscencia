@@ -119,3 +119,9 @@ Por ADR-0023 y ADR-0026, `organize` admite dos operaciones más; lo demás sigue
 - **`move_songs`** (ADR-0023): `{"op":"move_songs","song_ids":[…],"folder_id":"F…"|null}`, de 1 a 100 canciones sin repetir, atómica.
 - **`order_album`** (ADR-0026): `{"op":"order_album","folder_id":"F…","song_ids":[…]}`, de 1 a 190 canciones sin repetir. La lista tiene que ser exactamente la de las canciones del álbum, en el orden nuevo; si no, se rechaza sin cambiar nada. Asigna el campo `track` (1..n) de cada canción.
 - `edit_song` no admite `track`: el número de pista solo cambia con `order_album` o al entrar y salir de un álbum.
+
+## Actualización (2026-11-06): títulos limpios
+
+Por [ADR-0032](ADR-0032-titulos-limpios.md), `organize` admite una operación más; lo demás sigue vigente.
+
+- **`clean_titles`**: `{"op":"clean_titles"}` limpia el título y el artista de todas las canciones con la regla común de `sonidos.titulos`; `{"op":"clean_titles","song_ids":[…]}`, solo las de la lista (de 1 a 100, sin repetir). Solo cambian las canciones cuyo título o artista cambia; es atómica (si falta una canción de la lista, no cambia nada) e idempotente (repetirla no cambia nada). Nunca cambia el id ni el audio. También la admite `/api/editar`.

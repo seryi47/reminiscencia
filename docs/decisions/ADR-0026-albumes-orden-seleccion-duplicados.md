@@ -115,3 +115,7 @@
   - Pruebas de extremo a extremo (`funcional.e2e.mjs`): seleccionar y quitar, mover, ordenar, orden por pista y aviso de duplicado.
   - Pantallas nuevas en `a11y.e2e.mjs`.
 - **APK:** `duplicates_test.dart`, `album_tools_test.dart` y `upload_review_test.dart`.
+
+## Nota (2026-11-06): títulos limpios
+
+Desde [ADR-0032](ADR-0032-titulos-limpios.md), el buzón crea cada canción con el título limpio («Tema (Official Video)» pasa a «Tema») y el aviso de posible duplicado del buzón compara ese título. La regla de duplicados no cambia. El aviso de «Subir canciones» en la web y la APK compara el nombre del archivo con los títulos del catálogo: un archivo «Artista - Tema.mp3» ya no se parece a una canción que quedó como «Tema» con artista «Artista» (ver «Consecuencias» de ADR-0032).
