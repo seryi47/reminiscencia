@@ -197,5 +197,6 @@ class ApiRoutes {
   }
 }
 
-/// Rutas comunes de la app (con [kWorkerApiBase]).
-final ApiRoutes apiRoutes = ApiRoutes();
+/// Rutas comunes de la app (con [kWorkerApiBase]). No es final solo para las pruebas: test/flutter_test_config.dart la
+/// cambia por unas sin Worker, para que ninguna prueba hable con el Worker real.
+ApiRoutes apiRoutes = ApiRoutes();

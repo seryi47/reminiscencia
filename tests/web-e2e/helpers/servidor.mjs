@@ -116,6 +116,18 @@ async function readBody(request) {
  * helpers/worker.mjs, que escucha en otro puerto: otro origen, como el Worker real en workers.dev).
  * Devuelve { url, port, close() }.
  */
+/** js/api-config.js de la web con WORKER_API_BASE = [base], sea cual sea la dirección de producción (ADR-0029). */
+export function apiConfigWithBase(base) {
+  const source = readFileSync(join(WEB_ROOT, "js", "api-config.js"), "utf8");
+  const replaced = source.replace(/^export const WORKER_API_BASE = '[^'\n]*';$/m, `export const WORKER_API_BASE = '${base}';`);
+  if (!/^export const WORKER_API_BASE = '[^'\n]*';$/m.test(source)) throw new Error("No se ha encontrado WORKER_API_BASE en js/api-config.js.");
+  return { body: replaced, type: "text/javascript; charset=utf-8" };
+}
+
+// Las pruebas nunca hablan con el Worker real: sin una sustitución propia, la web se sirve sin Worker (solo /api/* del
+// servidor de pruebas), aunque js/api-config.js tenga la dirección de producción.
+const NO_WORKER_API_CONFIG = apiConfigWithBase("");
+
 export async function startStaticServer({ root = WEB_ROOT, overrides = new Map(), functions = new Map(), extraConnectSrc = [] } = {}) {
   const absoluteRoot = resolve(root);
   const rootInfo = await stat(absoluteRoot).catch(() => null);
@@ -140,7 +152,7 @@ export async function startStaticServer({ root = WEB_ROOT, overrides = new Map()
         return response.end(JSON.stringify(json));
       }
 
-      const override = overrides.get(decoded);
+      const override = overrides.get(decoded) ?? (decoded === "/js/api-config.js" ? NO_WORKER_API_CONFIG : undefined);
       if (override) {
         if (override.file && !(await isFile(override.file))) {
           return sendText(response, 404, "No encontrado", request.method, csp);

@@ -43,7 +43,7 @@ function setup({ env = {}, githubStatus = 204 } = {}) {
     if (target.pathname.endsWith('/issues/77')) return reply(200, { number: 77, state: 'closed', state_reason: 'completed', body: 'action: organize\npayload: {}', labels: [] });
     return reply(404, {});
   };
-  const fullEnv = { GITHUB_TOKEN: TOKEN, PRIVATE_BUCKET: privateBucket, PUBLIC_BUCKET: publicBucket, ...env };
+  const fullEnv = { GITHUB_TOKEN: TOKEN, PRIVATE_BUCKET: privateBucket, PUBLIC_BUCKET: publicBucket, ALLOW_LOCALHOST: '1', ...env };
   const call = (path, init = {}) => handleRequest(new Request(`https://reminiscencia-api.prueba.workers.dev${path}`, init), fullEnv, { fetchImpl });
   return { privateBucket, publicBucket, github, call, setDispatch: (status) => { dispatchStatus = status; } };
 }
@@ -101,10 +101,13 @@ describe('salud y CORS', () => {
     assert.equal(github.length, 0);
   });
 
-  test('localhost y 127.0.0.1 (pruebas) y ALLOWED_ORIGINS se admiten; sin Origin (APK, curl) también', () => {
-    assert.ok(isAllowedOrigin('http://localhost:5173'));
-    assert.ok(isAllowedOrigin('http://127.0.0.1:41234'));
-    assert.ok(!isAllowedOrigin('https://localhost:5173'));
+  test('localhost y 127.0.0.1 solo con ALLOW_LOCALHOST="1" (nunca en producción) y ALLOWED_ORIGINS se admiten', () => {
+    // Producción (sin la variable): el navegador de unas pruebas en localhost no puede hablar con el Worker real.
+    assert.ok(!isAllowedOrigin('http://localhost:5173'));
+    assert.ok(!isAllowedOrigin('http://127.0.0.1:41234', { ALLOW_LOCALHOST: '0' }));
+    assert.ok(isAllowedOrigin('http://localhost:5173', { ALLOW_LOCALHOST: '1' }));
+    assert.ok(isAllowedOrigin('http://127.0.0.1:41234', { ALLOW_LOCALHOST: '1' }));
+    assert.ok(!isAllowedOrigin('https://localhost:5173', { ALLOW_LOCALHOST: '1' }));
     assert.ok(isAllowedOrigin('https://otra.example', { ALLOWED_ORIGINS: 'https://otra.example, https://mas.example' }));
     assert.ok(!isAllowedOrigin('https://otra.example', { ALLOWED_ORIGINS: '' }));
   });

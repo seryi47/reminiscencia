@@ -26,6 +26,8 @@ binding = "PUBLIC_BUCKET"
 bucket_name = "reminiscencia-audio"
 
 [vars]
+# ALLOW_LOCALHOST no va aquí NUNCA: en producción el Worker no admite localhost (incidente del 2026-11-06). Para
+# desarrollar en local: «npx --yes wrangler@4.151.3 dev --var ALLOW_LOCALHOST:1».
 # Orígenes extra con CORS, separados por comas (la web de producción y localhost ya están admitidos en el código).
 ALLOWED_ORIGINS = ""
 

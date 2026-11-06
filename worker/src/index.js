@@ -11,8 +11,10 @@
 //   POST /api/portada               solo portadas (lo mismo que la portada de /api/editar).
 //   GET  /api/portadas              el índice de portadas leído del bucket, sin caché.
 //
-// CORS solo para el origen de la web (https://reminiscencia.vercel.app; más los de ALLOWED_ORIGINS) y para localhost y
-// 127.0.0.1 en cualquier puerto (pruebas). Una petición con otro Origin se rechaza con 403 sin hacer nada. Sin Origin
+// CORS solo para el origen de la web (https://reminiscencia.vercel.app; más los de ALLOWED_ORIGINS). localhost y
+// 127.0.0.1 solo con ALLOW_LOCALHOST="1" (el Worker simulado de las pruebas o «wrangler dev»), NUNCA en producción: el
+// 2026-11-06 el navegador de las pruebas habló con el Worker real por esa puerta y abrió incidencias y subidas reales.
+// Una petición con otro Origin se rechaza con 403 sin hacer nada. Sin Origin
 // (la APK, curl) se atiende. Todas las respuestas llevan X-Reminiscencia-Api: así los clientes distinguen una respuesta
 // del Worker de una página de error de Cloudflare y saben cuándo volver a Vercel.
 //
@@ -37,9 +39,11 @@ export const COVER_DONE_MESSAGE = 'Portada guardada: ya la ven todos.';
 const NOT_CONFIGURED_UPLOAD = 'La subida no está configurada en el servidor (falta GITHUB_TOKEN o el bucket privado). Avisa a quien mantiene la web.';
 const NOT_CONFIGURED_COVER = 'Las portadas no están configuradas en el servidor (falta el bucket público). Avisa a quien mantiene la web.';
 
-/** Orígenes admitidos: la web, los de env.ALLOWED_ORIGINS (separados por comas) y localhost para las pruebas. */
+/** Orígenes admitidos: la web, los de env.ALLOWED_ORIGINS (separados por comas) y, solo con env.ALLOW_LOCALHOST
+ *  === "1", localhost y 127.0.0.1 (pruebas y desarrollo local; nunca en producción). */
 export function isAllowedOrigin(origin, env = {}) {
-  if (origin === WEB_ORIGIN || LOCAL_ORIGIN.test(origin)) return true;
+  if (origin === WEB_ORIGIN) return true;
+  if (LOCAL_ORIGIN.test(origin)) return env.ALLOW_LOCALHOST === '1';
   const extra = typeof env.ALLOWED_ORIGINS === 'string' ? env.ALLOWED_ORIGINS.split(',').map((item) => item.trim()) : [];
   return extra.includes(origin);
 }
