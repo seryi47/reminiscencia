@@ -12,6 +12,8 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 # Dirección pública https://reminiscencia-api.<subdominio>.workers.dev (el subdominio es el de la cuenta).
 workers_dev = true
+# Sin direcciones de vista previa por versión: solo la dirección principal sirve el API.
+preview_urls = false
 
 # Bucket privado: los trozos de las subidas (entrada/<UUID>/) y la fuente de verdad del audio (ADR-0024).
 [[r2_buckets]]

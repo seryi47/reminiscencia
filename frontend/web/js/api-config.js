@@ -8,7 +8,7 @@
 //
 // Lógica pura (fetch inyectable): tests/web-unit/api-config.test.mjs.
 
-export const WORKER_API_BASE = '';
+export const WORKER_API_BASE = 'https://reminiscencia-api.reminiscencia-app.workers.dev';
 
 /**
  * Tamaño de trozo de /api/subir (y máximo que admite cada servidor; server/upload-core.js los usa): 4 MB en Vercel
