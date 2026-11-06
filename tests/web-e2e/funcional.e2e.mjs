@@ -63,17 +63,29 @@ async function fakeUploadFunction({ headers, body }) {
   };
 }
 
-// Función /api/editar simulada (frontend/web/api/editar.js): guarda lo que recibe la web, sin tocar GitHub.
+// Función /api/editar simulada (frontend/web/api/editar.js): guarda lo que recibe la web, sin tocar GitHub. Cada
+// petición de organizar recibe un número de incidencia; GET /api/editar?incidencia=N responde su estado (ADR-0027):
+// 'abierta' salvo que la prueba ponga otro en estadosEdicion.
 const ediciones = [];
-async function fakeEditFunction({ headers, body }) {
+const estadosEdicion = new Map();
+const consultasEstado = [];
+let ultimaIncidencia = 500;
+async function fakeEditFunction({ method, headers, body, query }) {
+  if (method === "GET") {
+    const numero = Number(query.get("incidencia"));
+    consultasEstado.push(numero);
+    return { json: { ok: true, incidencia: numero, estado: estadosEdicion.get(numero) ?? "abierta" } };
+  }
   const type = headers["content-type"] ?? "";
   if (type.startsWith("image/")) {
     ediciones.push({ kind: "portada", id: headers["x-portada-id"], type, bytes: body.length, jpeg: body[0] === 0xff && body[1] === 0xd8 });
-  } else {
-    ediciones.push({ kind: "organizar", ...JSON.parse(body.toString("utf8")) });
+    return { json: { ok: true, mensaje: "Guardado: llegará a todos en un par de minutos." } };
   }
-  return { json: { ok: true, mensaje: "Guardado: llegará a todos en un par de minutos." } };
+  ediciones.push({ kind: "organizar", ...JSON.parse(body.toString("utf8")) });
+  ultimaIncidencia += 1;
+  return { json: { ok: true, incidencia: ultimaIncidencia, mensaje: "Guardado: llegará a todos en un par de minutos." } };
 }
+fakeEditFunction.acceptsGet = true;
 
 // El catálogo de prueba se puede cambiar durante una prueba: así se simula que el workflow publica una subida.
 let catalogo;
@@ -687,6 +699,10 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await waitVisible(page, "move-album");
       await page.$$eval('[data-testid="move-album-option"]', (labels) => labels.find((label) => /Álbum de prueba B/.test(label.textContent)).click());
       await saveEdit(page, "move-album-save");
+      // Se ve al momento (ADR-0027): la canción sale del álbum A y entra en el B, con la marca «Pendiente».
+      await page.waitForFunction(() => !document.querySelector('[data-testid="track-row"][data-song-id="S0000000000000004"]'));
+      await openCollection(page, FOLDER_B);
+      await page.waitForSelector('[data-testid="track-row"][data-song-id="S0000000000000004"] [data-testid="track-edit-pending"]');
       await openRowMenu(page, "S0000000000000004");
       await pickMenu(page, "menu-move-album");
       await waitVisible(page, "move-album");
@@ -705,7 +721,7 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await openApp(page, server.url);
       await openCollection(page, FOLDER_A);
       const opciones = await openCollectionMenu(page);
-      assert.deepEqual(opciones, ["Añadir a la cola", "Editar detalles", "Cambiar portada"]);
+      assert.deepEqual(opciones, ["Añadir a la cola", "Añadir canciones", "Seleccionar canciones", "Ordenar canciones", "Editar detalles", "Cambiar portada"]);
       await page.keyboard.press("Escape");
       await clickTestid(page, "collection-edit", "Editar detalles desde la portada");
       await waitVisible(page, "edit-album");
@@ -728,6 +744,9 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await (await page.$('[data-testid="cover-file"]')).uploadFile(foto);
       await saveEdit(page, "cover-save");
       assert.deepEqual(ediciones.map(({ kind, id, type, jpeg }) => ({ kind, id, type, jpeg })), [{ kind: "portada", id: ALBUM_A_ID, type: "image/jpeg", jpeg: true }]);
+      // La portada nueva se ve al momento (vista previa en data:) y el álbum lleva la marca «Pendiente» (ADR-0027).
+      await page.waitForFunction(() => document.querySelector('[data-testid="collection-header"] .collection-cover img')?.src.startsWith("data:image/jpeg;base64,"));
+      await waitVisible(page, "collection-edit-pending");
       // Crear un álbum.
       await createMenu(page, VIEWPORTS.escritorio, "album");
       await waitVisible(page, "create-album");
@@ -735,6 +754,100 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await fillField(await waitVisible(page, "create-album-artist"), "Orquesta ficticia");
       await saveEdit(page, "create-album-save");
       assert.deepEqual(ediciones.at(-1).payload, { op: "create_folder", name: "Valses de prueba", artist: "Orquesta ficticia" });
+    }),
+  );
+
+  prueba("«Quitar de este álbum» pide confirmación y guarda edit_song con folder_id null, sin borrar la canción", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      // Fuera de un álbum (todas las canciones) no se ofrece.
+      await openCollection(page, "#/canciones");
+      assert.equal((await openRowMenu(page, "S0000000000000005")).includes("Quitar de este álbum"), false);
+      await page.keyboard.press("Escape");
+      // En su álbum, sí: la canción 10 está en el álbum B.
+      await openCollection(page, FOLDER_B);
+      assert.equal((await openRowMenu(page, "S0000000000000010")).includes("Quitar de este álbum"), true);
+      await page.keyboard.press("Escape");
+      await openCollection(page, FOLDER_A);
+      const opciones = await openRowMenu(page, "S0000000000000005");
+      assert.ok(opciones.includes("Quitar de este álbum"), opciones.join(", "));
+      assert.ok(opciones.includes("Añadir a un álbum"), "Sigue estando «Añadir a un álbum».");
+      // Cancelar no envía nada.
+      await pickMenu(page, "menu-remove-from-album");
+      await waitVisible(page, "remove-from-album");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "remove-from-album-cancel", "El foco empieza en «Cancelar».");
+      await clickTestid(page, "remove-from-album-cancel", "Cancelar");
+      await page.waitForFunction(() => !document.querySelector('[data-testid="remove-from-album"]'));
+      assert.equal(ediciones.length, 0);
+      // Confirmar envía la operación de siempre, con folder_id null.
+      await openRowMenu(page, "S0000000000000005");
+      await pickMenu(page, "menu-remove-from-album");
+      await waitVisible(page, "remove-from-album");
+      assert.equal(
+        await textOf(page, "remove-from-album-text"),
+        "¿Quitar «Canción de prueba 05» de «Álbum de prueba A»? La canción sigue en la biblioteca; solo deja de estar en este álbum.",
+      );
+      assert.equal(await page.$eval('[data-testid="remove-from-album-save"]', (b) => b.textContent), "Quitar");
+      await saveEdit(page, "remove-from-album-save");
+      assert.deepEqual(ediciones, [{ kind: "organizar", action: "organize", payload: { op: "edit_song", song_id: "S0000000000000005", folder_id: null } }]);
+      // La canción no se borra: sigue en la biblioteca y no se ha pedido nada más.
+      await openCollection(page, "#/canciones");
+      await page.waitForSelector('[data-testid="track-row"][data-song-id="S0000000000000005"]', { timeout: 5000 });
+      assert.equal(ediciones.length, 1);
+    }),
+  );
+
+  prueba("«Añadir canciones» a un álbum: busca, marca varias en búsquedas distintas y envía UNA petición move_songs", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_B);
+      await clickTestid(page, "album-add-songs", "botón Añadir canciones");
+      await waitVisible(page, "album-add");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "album-add-search", "El foco empieza en el buscador.");
+      assert.equal(await page.$eval('[data-testid="album-add-search"]', (el) => el.type), "search");
+      const boton = () => page.$eval('[data-testid="album-add-save"]', (b) => ({ text: b.textContent, disabled: b.getAttribute("aria-disabled") }));
+      assert.deepEqual(await boton(), { text: "Añadir (0)", disabled: "true" }, "Sin canciones elegidas no se puede añadir.");
+      // Solo canciones que no están ya en el álbum B (9 a 16): las del álbum A (1 a 8) y las sin álbum (17 a 20).
+      const visibles = () => page.$$eval('[data-testid="album-add-option"]', (rows) => rows.map((row) => row.dataset.songId));
+      const todas = await visibles();
+      assert.equal(todas.length, 12, todas.join(", "));
+      assert.ok(todas.every((id) => Number(id.slice(1)) < 9 || Number(id.slice(1)) > 16), todas.join(", "));
+      // Busca sin acentos ni mayúsculas (por título) y marca una.
+      const buscador = await waitVisible(page, "album-add-search");
+      await fillField(buscador, "CANCION DE PRUEBA 03");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="album-add-option"]').length === 1);
+      assert.deepEqual(await visibles(), ["S0000000000000003"]);
+      await page.click('[data-testid="album-add-option"][data-song-id="S0000000000000003"]');
+      assert.deepEqual(await boton(), { text: "Añadir (1)", disabled: "false" });
+      // Otra búsqueda, por el nombre de su álbum actual: la selección anterior se mantiene.
+      await fillField(buscador, "album de prueba a");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="album-add-option"]').length === 8);
+      await fillField(buscador, "prueba 18");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="album-add-option"]').length === 1);
+      await page.click('[data-testid="album-add-option"][data-song-id="S0000000000000018"]');
+      assert.deepEqual(await boton(), { text: "Añadir (2)", disabled: "false" });
+      assert.equal(await textOf(page, "album-add-count"), "2 canciones elegidas.");
+      // Al volver a la primera búsqueda, sigue marcada.
+      await fillField(buscador, "prueba 03");
+      await page.waitForFunction(() => document.querySelector('[data-testid="album-add-check"][data-song-id="S0000000000000003"]')?.checked === true);
+      // Una búsqueda sin resultados lo dice.
+      await fillField(buscador, "zzz");
+      await waitVisible(page, "album-add-empty");
+      // Dos pulsaciones seguidas: una sola petición (el botón se desactiva mientras envía).
+      await page.$eval('[data-testid="album-add-save"]', (b) => { b.click(); b.click(); });
+      await page.waitForFunction(() => !document.querySelector('[data-testid="album-add"]'), { timeout: 5000 });
+      assert.deepEqual(ediciones, [{
+        kind: "organizar",
+        action: "organize",
+        payload: { op: "move_songs", song_ids: ["S0000000000000003", "S0000000000000018"], folder_id: "F0000000000000002" },
+      }]);
+      // También se abre desde «···» del álbum.
+      await openCollectionMenu(page);
+      await pickMenu(page, "menu-album-add-songs");
+      await waitVisible(page, "album-add");
+      assert.deepEqual(await boton(), { text: "Añadir (0)", disabled: "true" });
     }),
   );
 
@@ -748,6 +861,276 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       const opciones = await openRowMenu(page, "L0011223344556677");
       for (const opcion of ["Editar detalles", "Añadir a un álbum", "Cambiar portada"]) assert.equal(opciones.includes(opcion), false, opcion);
       assert.ok(opciones.includes("Borrar de este navegador"));
+    }),
+  );
+});
+
+describe("Ediciones pendientes (ADR-0027): se ven al momento, se confirman o se deshacen con aviso", () => {
+  const SONG_3 = "S0000000000000003";
+  const avisoEs = (page, text) => page.waitForFunction((t) => document.querySelector('[data-testid="toast"]')?.textContent === t, { timeout: 10000 }, text);
+  // Revisa ya (como al volver la conexión) en lugar de esperar los 20 s de la primera revisión.
+  const revisarAhora = (page) => page.evaluate(() => window.dispatchEvent(new Event("online")));
+  const filaDe = (id) => `[data-testid="track-row"][data-song-id="${id}"]`;
+  const tituloDe = (page, id) => page.$eval(`${filaDe(id)} .track-title`, (el) => el.textContent);
+
+  prueba("Pendiente → confirmada: el título nuevo se ve con «Pendiente», sigue tras recargar y se confirma al llegar al catálogo", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      consultasEstado.length = 0;
+      const base = catalogo.get("/data/songs.json");
+      try {
+        await openApp(page, server.url);
+        await openCollection(page, FOLDER_A);
+        await openRowMenu(page, SONG_3);
+        await pickMenu(page, "menu-edit-song");
+        await waitVisible(page, "edit-song");
+        await fillField(await waitVisible(page, "edit-song-title"), "Charleston pendiente");
+        await saveEdit(page, "edit-song-save");
+        const numero = ultimaIncidencia;
+        // Al momento: título nuevo con la marca «Pendiente» (texto) y el botón de Tu biblioteca.
+        await page.waitForSelector(`${filaDe(SONG_3)} [data-testid="track-edit-pending"]`);
+        assert.equal(await tituloDe(page, SONG_3), "Charleston pendiente");
+        assert.equal(await page.$eval(`${filaDe(SONG_3)} [data-testid="track-edit-pending"]`, (el) => el.textContent), "Pendiente");
+        assert.equal(await page.$eval(`${filaDe(SONG_3)} [data-testid="track-title"]`, (el) => el.getAttribute("aria-label")), "Reproducir Charleston pendiente (cambio pendiente de guardar)");
+        assert.equal(await textOf(page, "sidebar-edits"), "1 cambio pendiente");
+        // Tras recargar sigue pendiente (localStorage).
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.waitForSelector('html[data-ready="true"]');
+        await openCollection(page, FOLDER_A);
+        await page.waitForSelector(`${filaDe(SONG_3)} [data-testid="track-edit-pending"]`);
+        assert.equal(await tituloDe(page, SONG_3), "Charleston pendiente");
+        // Mientras el catálogo no lo refleja y el servidor dice «abierta», sigue pendiente.
+        await revisarAhora(page);
+        for (let espera = 0; espera < 50 && !consultasEstado.includes(numero); espera += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.ok(consultasEstado.includes(numero), `Se pregunta el estado de la incidencia ${numero}.`);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        assert.ok(await page.$(`${filaDe(SONG_3)} [data-testid="track-edit-pending"]`));
+        // El workflow lo publica: el catálogo nuevo lo refleja y la marca desaparece con un aviso.
+        const songs = JSON.parse(base.body).map((song) => (song.id === SONG_3 ? { ...song, title: "Charleston pendiente" } : song));
+        catalogo.set("/data/songs.json", { body: JSON.stringify(songs), type: "application/json; charset=utf-8" });
+        await revisarAhora(page);
+        await avisoEs(page, "Ya está guardado: «Charleston pendiente».");
+        await page.waitForFunction((sel) => document.querySelector(sel) && !document.querySelector(`${sel} [data-testid="track-edit-pending"]`), {}, filaDe(SONG_3));
+        assert.equal(await tituloDe(page, SONG_3), "Charleston pendiente");
+        assert.equal(await page.$('[data-testid="sidebar-edits"]'), null, "Sin pendientes no hay botón.");
+        assert.equal(await page.evaluate(() => localStorage.getItem("reminiscencia.ediciones")), null);
+        assert.equal(ediciones.length, 1);
+      } finally {
+        catalogo.set("/data/songs.json", base);
+      }
+    }),
+  );
+
+  prueba("Pendiente → error → deshecha: vuelve el nombre de antes, se avisa y «Reintentar» la reenvía", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_A);
+      await clickTestid(page, "collection-edit", "Editar detalles del álbum");
+      await waitVisible(page, "edit-album");
+      await fillField(await waitVisible(page, "edit-album-name"), "Álbum que falla");
+      await saveEdit(page, "edit-album-save");
+      const numero = ultimaIncidencia;
+      await page.waitForFunction(() => document.querySelector('[data-testid="collection-title"]')?.textContent === "Álbum que falla");
+      await waitVisible(page, "collection-edit-pending");
+      assert.match(await textOf(page, "collection-edit-pending"), /^Pendiente/);
+      // El workflow falla: la incidencia queda con la etiqueta «error».
+      estadosEdicion.set(numero, "error");
+      await revisarAhora(page);
+      await avisoEs(page, "No se ha podido guardar «Álbum que falla». Inténtalo de nuevo.");
+      await page.waitForFunction(() => document.querySelector('[data-testid="collection-title"]')?.textContent === "Álbum de prueba A");
+      assert.equal(await page.$('[data-testid="collection-edit-pending"]'), null, "Se quita la vista optimista.");
+      assert.equal(await textOf(page, "sidebar-edits"), "No se ha podido guardar 1 cambio");
+      // La lista dice qué falló y deja reintentar.
+      await clickTestid(page, "sidebar-edits", "cambios pendientes");
+      await waitVisible(page, "edits-sheet");
+      assert.equal(await page.$eval('[data-testid="edits-item"]', (el) => el.dataset.state), "error");
+      assert.match(await textOf(page, "edits-item"), /«Álbum que falla».*Detalles del álbum.*No se ha podido guardar/);
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "edits-retry", "El foco empieza en «Reintentar».");
+      await clickTestid(page, "edits-retry", "Reintentar");
+      await page.waitForFunction(() => document.querySelector('[data-testid="edits-item"]')?.dataset.state === "pendiente");
+      assert.equal(ediciones.length, 2);
+      assert.deepEqual(ediciones[1].payload, ediciones[0].payload, "Reintentar envía la misma operación.");
+      assert.notEqual(ultimaIncidencia, numero);
+      await clickTestid(page, "edits-sheet-close", "Cerrar");
+      await page.waitForFunction(() => document.querySelector('[data-testid="collection-title"]')?.textContent === "Álbum que falla");
+      assert.equal(await textOf(page, "sidebar-edits"), "1 cambio pendiente");
+    }),
+  );
+
+  prueba("Una edición igual a otra pendiente no se reenvía: «Ya está pendiente»", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      for (let vez = 0; vez < 2; vez += 1) {
+        await createMenu(page, VIEWPORTS.escritorio, "album");
+        await waitVisible(page, "create-album");
+        await fillField(await waitVisible(page, "create-album-name"), "Valses repetidos");
+        await saveEdit(page, "create-album-save");
+      }
+      await avisoEs(page, "Ya está pendiente: «Valses repetidos».");
+      assert.equal(ediciones.length, 1);
+      // Crear un álbum no se puede previsualizar: sale en la lista de cambios pendientes.
+      assert.equal(await textOf(page, "sidebar-edits"), "1 cambio pendiente");
+      await clickTestid(page, "sidebar-edits", "cambios pendientes");
+      await waitVisible(page, "edits-sheet");
+      assert.match(await textOf(page, "edits-item"), /«Valses repetidos».*Álbum nuevo.*Pendiente/);
+      assert.equal(await page.$('[data-testid="edits-retry"]'), null, "Una pendiente no se reintenta.");
+    }),
+  );
+});
+
+describe("Álbumes: seleccionar varias y ordenar (ADR-0026)", () => {
+  const casillas = (page) => page.$$eval('[data-testid="album-select-check"]', (boxes) => boxes.map((box) => [box.dataset.songId, box.checked]));
+  const marcar = (page, songId) => page.click(`[data-testid="album-select-option"][data-song-id="${songId}"]`);
+  const estado = (page, testid) => page.$eval(`[data-testid="${testid}"]`, (b) => b.getAttribute("aria-disabled"));
+
+  prueba("Seleccionar: casillas, contador, todo o ninguna y «Quitar del álbum» con confirmación en UNA petición", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_B);
+      await clickTestid(page, "album-select", "Seleccionar");
+      await waitVisible(page, "album-select-panel");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "album-select-all", "El foco va a «Seleccionar todo».");
+      assert.equal(await page.$('[data-testid="track-table"]'), null, "La tabla se cambia por la lista con casillas.");
+      assert.equal(await textOf(page, "album-select-count"), "Ninguna canción elegida.");
+      assert.equal(await estado(page, "album-select-remove"), "true");
+      assert.equal(await estado(page, "album-select-move"), "true");
+      const ids = (await casillas(page)).map(([id]) => id);
+      assert.deepEqual(ids, Array.from({ length: 8 }, (_, i) => `S${String(i + 9).padStart(16, "0")}`));
+      // Se marcan en desorden: la petición va en el orden del álbum.
+      await marcar(page, "S0000000000000012");
+      await marcar(page, "S0000000000000010");
+      assert.equal(await textOf(page, "album-select-count"), "2 canciones elegidas.");
+      assert.equal(await estado(page, "album-select-remove"), "false");
+      await clickTestid(page, "album-select-all", "Seleccionar todo");
+      assert.equal(await textOf(page, "album-select-count"), "8 canciones elegidas.");
+      assert.ok((await casillas(page)).every(([, on]) => on));
+      assert.equal(await estado(page, "album-select-all"), "true");
+      await clickTestid(page, "album-select-none", "Ninguna");
+      assert.equal(await textOf(page, "album-select-count"), "Ninguna canción elegida.");
+      assert.ok((await casillas(page)).every(([, on]) => !on));
+      await marcar(page, "S0000000000000012");
+      await marcar(page, "S0000000000000010");
+      // Cancelar en la confirmación no envía nada y la selección sigue.
+      await clickTestid(page, "album-select-remove", "Quitar del álbum");
+      await waitVisible(page, "album-remove-many");
+      assert.equal(await textOf(page, "album-remove-many-text"),
+        "¿Quitar 2 canciones de «Álbum de prueba B»? Siguen en la biblioteca; solo dejan de estar en este álbum.");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "album-remove-many-cancel");
+      await clickTestid(page, "album-remove-many-cancel", "Cancelar");
+      await page.waitForFunction(() => !document.querySelector('[data-testid="album-remove-many"]'));
+      assert.equal(ediciones.length, 0);
+      assert.equal(await textOf(page, "album-select-count"), "2 canciones elegidas.");
+      // Confirmar: una sola petición move_songs con folder_id null y se sale del modo.
+      await clickTestid(page, "album-select-remove", "Quitar del álbum");
+      await waitVisible(page, "album-remove-many");
+      await saveEdit(page, "album-remove-many-save");
+      assert.deepEqual(ediciones, [{
+        kind: "organizar", action: "organize",
+        payload: { op: "move_songs", song_ids: ["S0000000000000010", "S0000000000000012"], folder_id: null },
+      }]);
+      await waitVisible(page, "album-select");
+      assert.equal(await page.$('[data-testid="album-select-panel"]'), null);
+    }),
+  );
+
+  prueba("Seleccionar: «Mover a otro álbum» elige el álbum y envía UNA petición; «Cancelar» sale sin enviar", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_B);
+      // También desde «···».
+      await openCollectionMenu(page);
+      await pickMenu(page, "menu-album-select");
+      await waitVisible(page, "album-select-panel");
+      await clickTestid(page, "album-select-cancel", "Cancelar");
+      await waitVisible(page, "album-select");
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "album-select", "El foco vuelve a «Seleccionar».");
+      await clickTestid(page, "album-select", "Seleccionar");
+      await marcar(page, "S0000000000000015");
+      await marcar(page, "S0000000000000009");
+      await clickTestid(page, "album-select-move", "Mover a otro álbum");
+      await waitVisible(page, "album-move-many");
+      // El álbum actual no se ofrece.
+      const destinos = await page.$$eval('[data-testid="album-move-many-option"]', (rows) => rows.map((row) => row.dataset.folderId));
+      assert.deepEqual(destinos.sort(), ["F0000000000000001", "F0000000000000003"]);
+      assert.equal(await estado(page, "album-move-many-save"), "true", "Sin álbum elegido no se puede mover.");
+      await page.click('[data-testid="album-move-many-option"][data-folder-id="F0000000000000001"]');
+      await saveEdit(page, "album-move-many-save");
+      assert.deepEqual(ediciones, [{
+        kind: "organizar", action: "organize",
+        payload: { op: "move_songs", song_ids: ["S0000000000000009", "S0000000000000015"], folder_id: "F0000000000000001" },
+      }]);
+      assert.equal(await page.$('[data-testid="album-select-panel"]'), null);
+      // Al cambiar de página no se queda en modo Seleccionar.
+      await clickTestid(page, "album-select", "Seleccionar");
+      await openCollection(page, FOLDER_A);
+      await openCollection(page, FOLDER_B);
+      assert.equal(await page.$('[data-testid="album-select-panel"]'), null);
+    }),
+  );
+
+  prueba("Ordenar canciones: subir y bajar con el teclado, se anuncia y «Guardar orden» envía UNA petición order_album completa", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      ediciones.length = 0;
+      await openApp(page, server.url);
+      await openCollection(page, FOLDER_A);
+      const opciones = await openCollectionMenu(page);
+      assert.ok(opciones.includes("Ordenar canciones"), opciones.join(", "));
+      await pickMenu(page, "menu-album-order");
+      await waitVisible(page, "album-order");
+      const orden = () => page.$$eval('[data-testid="album-order-row"]', (rows) => rows.map((row) => row.dataset.songId));
+      const ids = Array.from({ length: 8 }, (_, i) => `S${String(i + 1).padStart(16, "0")}`);
+      assert.deepEqual(await orden(), ids);
+      assert.equal(await estado(page, "album-order-save"), "true", "Sin cambios no se guarda.");
+      assert.equal(await textOf(page, "album-order-save-status"), "Sube o baja alguna canción para cambiar el orden.");
+      // El primer «Subir» está desactivado; el foco empieza en «Bajar» de la primera.
+      assert.equal(await page.$eval('[data-testid="album-order-up"]', (b) => b.getAttribute("aria-disabled")), "true");
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Bajar «Canción de prueba 01»");
+      await page.keyboard.press("Enter");
+      assert.deepEqual((await orden()).slice(0, 2), [ids[1], ids[0]]);
+      assert.equal(await textOf(page, "album-order-live"), "«Canción de prueba 01» ahora es la 2 de 8.");
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Bajar «Canción de prueba 01»", "El foco sigue en el mismo botón.");
+      // La séptima baja al final; en el borde, el foco pasa al otro botón.
+      await page.click(`[data-testid="album-order-down"][data-song-id="${ids[6]}"]`);
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Subir «Canción de prueba 07»");
+      // Un botón desactivado no mueve nada.
+      await page.click(`[data-testid="album-order-down"][data-song-id="${ids[6]}"]`);
+      const nuevo = [ids[1], ids[0], ids[2], ids[3], ids[4], ids[5], ids[7], ids[6]];
+      assert.deepEqual(await orden(), nuevo);
+      await saveEdit(page, "album-order-save");
+      assert.deepEqual(ediciones, [{ kind: "organizar", action: "organize", payload: { op: "order_album", folder_id: ALBUM_A_ID, song_ids: nuevo } }]);
+      // En el álbum vacío no hay «Seleccionar».
+      await openCollection(page, "#/album/F0000000000000003");
+      assert.equal(await page.$('[data-testid="album-select"]'), null);
+    }),
+  );
+
+  prueba("Un álbum con números de pista se ve en ese orden, también en «Ordenar canciones»", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      const base = catalogo.get("/data/songs.json");
+      const songs = JSON.parse(base.body).map((song) => {
+        const index = Number(song.id.slice(1));
+        // Álbum A al revés (8 → 1); la 3, sin número (catálogo a medias): va al final.
+        if (song.folder_id === ALBUM_A_ID && index !== 3) return { ...song, track: 9 - index };
+        return song;
+      });
+      catalogo.set("/data/songs.json", { body: JSON.stringify(songs), type: "application/json; charset=utf-8" });
+      try {
+        await openApp(page, server.url);
+        await openCollection(page, FOLDER_A);
+        const filas = await page.$$eval('[data-testid="track-row"]', (rows) => rows.map((row) => row.dataset.songId.slice(-2)));
+        assert.deepEqual(filas, ["08", "07", "06", "05", "04", "02", "01", "03"]);
+        await openCollectionMenu(page);
+        await pickMenu(page, "menu-album-order");
+        await waitVisible(page, "album-order");
+        const orden = await page.$$eval('[data-testid="album-order-row"]', (rows) => rows.map((row) => row.dataset.songId.slice(-2)));
+        assert.deepEqual(orden, filas, "«Ordenar canciones» parte del orden que se ve.");
+      } finally {
+        catalogo.set("/data/songs.json", base);
+      }
     }),
   );
 });
@@ -1424,6 +1807,37 @@ describe("Subir canciones", () => {
       // Vuelve a la subida.
       await clickTestid(page, "upload-back", "Volver a Subir canciones");
       await waitVisible(page, "upload-panel", { context: "panel de subida" });
+    }),
+  );
+
+  prueba("Posible duplicado (ADR-0026): antes de la cola avisa de lo que parece estar ya en la biblioteca o repetido en la tanda", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      subidas.length = 0;
+      // En la biblioteca hay «Tema repetido» de 1,5 s (como los WAV de prueba).
+      publicar({ id: "S00000000000000aa", title: "Tema repetido" });
+      try {
+        await prepararPagina(page);
+        await openApp(page, server.url);
+        await openUpload(page, VIEWPORTS.escritorio);
+        await uploadWavs(page, ["Tema repetido (Letra).wav", "Otra nueva.wav", "Otra nueva [HD].wav"], { wait: false });
+        // Primero, el que se parece a la biblioteca: el foco va a «Subir igualmente».
+        await waitVisible(page, "duplicate-dialog");
+        assert.equal(await textOf(page, "duplicate-file"), "Tema repetido (Letra).wav");
+        assert.equal(await textOf(page, "duplicate-message"), "Parece que ya está en la biblioteca: «Tema repetido» (0:01). ¿Subirla igualmente?");
+        assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), "duplicate-keep");
+        assert.equal(subidas.length, 0, "Nada se envía mientras se pregunta.");
+        await clickTestid(page, "duplicate-drop", "Quitar de la cola");
+        // Después, el repetido dentro de la misma tanda.
+        await page.waitForFunction(() => document.querySelector('[data-testid="duplicate-file"]')?.textContent === "Otra nueva [HD].wav", { timeout: 10000 });
+        assert.equal(await textOf(page, "duplicate-message"), "Parece repetida en esta subida: «Otra nueva» (0:01). ¿Subirla igualmente?");
+        await clickTestid(page, "duplicate-keep", "Subir igualmente");
+        await waitRows(page, 2);
+        assert.deepEqual((await filas(page)).map(([, name]) => name), ["Otra nueva.wav", "Otra nueva [HD].wav"]);
+        assert.deepEqual(subidas.map((item) => item.name), ["Otra nueva.wav", "Otra nueva [HD].wav"]);
+        assert.equal(await page.$('[data-testid="duplicate-dialog"]'), null);
+      } finally {
+        restaurarCatalogo();
+      }
     }),
   );
 });

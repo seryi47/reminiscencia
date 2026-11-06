@@ -47,6 +47,12 @@ el manifiesto. Si este push no trae el manifiesto (otra ejecución de la cola ll
 que la función declara siempre (WEB_LICENSE): esas carpetas solo las escribe la función de la web.
 - Un manifiesto que no es válido (forma, nombre o número de partes) se rechaza y se borra la carpeta.
 - Se dejan para revisar: un id que no es un UUID, enlaces simbólicos, elementos que no son partes y partes que faltan.
+
+Desde ADR-0024, /api/subir ya no escribe en .partes de main: guarda los trozos y el manifiesto en el bucket privado de
+R2 (entrada/<UUID>/) y lanza el workflow con repository_dispatch. El job 'recoger' los baja a una carpeta que llega a
+'procesar' como artefacto (parámetro 'entrada' de procesar_buzon) y se unen igual que los de .partes, siempre con la
+licencia de la web. Lo que no se puede unir se rechaza (no se queda para revisar: 'publicar' borra del bucket todo lo
+recogido). El código de .partes se mantiene para las subidas que quedaran a medias en main al cambiar.
 """
 
 from __future__ import annotations
@@ -61,7 +67,7 @@ import zlib
 from collections.abc import Mapping
 from pathlib import Path
 
-from sonidos import catalog
+from sonidos import catalog, duplicados
 from sonidos.compression import TranscodeError, transcode
 from sonidos.hashing import sha256_file
 from sonidos.limits import GIT_BLOCK_FILE_BYTES
@@ -261,9 +267,15 @@ def _archivos_a_procesar(event: Mapping, buzon: Path) -> dict[str, str]:
     return files
 
 
-def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path | None = None) -> dict:
+def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path | None = None,
+                   entrada: Path | None = None, solo_entrada: bool = False) -> dict:
     """Procesa las subidas del push (ver el docstring del módulo). Deja en el repositorio el catálogo y el audio nuevos,
-    la parte pública regenerada y los archivos borrados del buzón; no confirma nada."""
+    la parte pública regenerada y los archivos borrados del buzón; no confirma nada.
+
+    entrada: carpeta con las subidas de la web y la APK que el job 'recoger' bajó del bucket privado de R2
+    (<UUID>/<índice>.part y <UUID>/manifiesto.json; sonidos.entrada). Se unen y se procesan como las de .partes, con la
+    licencia de la web (WEB_LICENSE). solo_entrada: no se mira el buzón de main (lanzamiento por repository_dispatch,
+    que no trae commits: así los archivos que otra cuenta subió por la página de GitHub no entran sin su licencia)."""
     actor = actor_valido(actor)
     buzon = _check_no_links(repo)
     catalog_path = repo / "audio-library" / "indexes" / "catalog.json"
@@ -279,17 +291,20 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     data = catalog.load(catalog_path)
     result: dict = {
         "accion": "buzon", "actor": actor,
-        "publicas": [], "privadas": [], "duplicadas": [], "portadas": [], "zips": [], "rechazados": [],
-        "revisar": [], "ya_no_estan": [],
+        "publicas": [], "privadas": [], "duplicadas": [], "posibles_duplicados": [], "portadas": [], "zips": [],
+        "rechazados": [], "revisar": [], "ya_no_estan": [], "subidas_web": [],
     }
-    changed = False
+    # Migra el catálogo anterior a los números de pista (ADR-0026); si ya está migrado, no cambia nada.
+    changed = catalog.normalize_tracks(data)
     source = UPLOADED_BY + actor
     prefix = BUZON_DIRECTORY + "/"
     portadas_prefix = PORTADAS_DIRECTORY + "/"
-    archivos = _archivos_a_procesar(event, buzon)
+    archivos = {} if solo_entrada else _archivos_a_procesar(event, buzon)
     del_evento = archivos_del_evento(event) if isinstance(event, Mapping) and "commits" in event else {}
     albumes: dict[str, dict] = {}
     archivos.update(_unir_partes(buzon, result, del_evento, albumes=albumes))
+    if entrada is not None:
+        archivos.update(_unir_partes(buzon, result, {}, albumes=albumes, origen=entrada))
     portadas = {path: message for path, message in archivos.items() if path.startswith(portadas_prefix)}
     try:
         for path, message in sorted(archivos.items()):
@@ -410,48 +425,61 @@ def _nombre_libre(buzon: Path, nombre: str) -> str:
 
 
 def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str], *,
-                  albumes: dict[str, dict] | None = None) -> dict[str, str]:
-    """Une las subidas por trozos completas de audio-library/buzon/.partes/ (ver el docstring del módulo). Devuelve las
-    rutas del buzón de los archivos unidos con el mensaje de commit del que se lee su licencia."""
-    directory = buzon / PARTES_SUBDIRECTORY
+                  albumes: dict[str, dict] | None = None, origen: Path | None = None) -> dict[str, str]:
+    """Une las subidas por trozos completas de audio-library/buzon/.partes/ (ver el docstring del módulo) o, con
+    'origen', las que el job 'recoger' bajó del bucket privado de R2 (origen/<UUID>/; ADR-0024). Devuelve las rutas del
+    buzón de los archivos unidos con el mensaje de commit del que se lee su licencia (las de 'origen', siempre la de la
+    web: solo /api/subir escribe en entrada/ del bucket)."""
+    directory = buzon / PARTES_SUBDIRECTORY if origen is None else origen
+    label = PARTES_DIRECTORY if origen is None else "entrada"
     if directory.is_symlink():
-        result["revisar"].append({"ruta": PARTES_DIRECTORY, "motivo": "enlace simbólico"})
+        result["revisar"].append({"ruta": label, "motivo": "enlace simbólico"})
         return {}
     if not directory.is_dir():
         return {}
     unidas: dict[str, str] = {}
+
+    def revisar(ruta: str, motivo: str) -> None:
+        # Las de .partes se quedan en main para revisarlas. Las del bucket se borran tras publicar (sonidos.entrada):
+        # para ellas es un rechazo.
+        if origen is None:
+            result["revisar"].append({"ruta": ruta, "motivo": motivo})
+        else:
+            result["rechazados"].append({"archivo": ruta, "motivo": motivo})
+
     for entry in sorted(directory.iterdir()):
         if entry.name in PLACEHOLDERS:
             continue
-        ruta = f"{PARTES_DIRECTORY}/{entry.name}"
+        ruta = f"{label}/{entry.name}"
         if entry.is_symlink() or not entry.is_dir():
-            result["revisar"].append({"ruta": ruta, "motivo": "no es una carpeta de partes"})
+            revisar(ruta, "no es una carpeta de partes")
             continue
         if not _UPLOAD_ID.fullmatch(entry.name):
-            result["revisar"].append({"ruta": ruta, "motivo": "carpeta de partes con un id que no es un UUID"})
+            revisar(ruta, "carpeta de partes con un id que no es un UUID")
             continue
         manifest = entry / PARTES_MANIFEST
         if not manifest.exists() and not manifest.is_symlink():
             continue  # subida en curso: faltan trozos por llegar
         children = sorted(entry.iterdir())
-        if any(child.is_symlink() or not child.is_file() or not ruta_de_partes(f"{ruta}/{child.name}")
+        if any(child.is_symlink() or not child.is_file()
+               or not (child.name == PARTES_MANIFEST or _PART_NAME.fullmatch(child.name))
                for child in children):
-            result["revisar"].append({"ruta": ruta, "motivo": "la carpeta de partes tiene elementos que no son partes"})
+            revisar(ruta, "la carpeta de partes tiene elementos que no son partes")
             continue
         spec = _leer_manifiesto(manifest)
         if spec is None:
-            result["rechazados"].append({"archivo": f"{PARTES_SUBDIRECTORY}/{entry.name}",
-                                         "motivo": "el manifiesto de partes no es válido"})
+            shown = f"{PARTES_SUBDIRECTORY}/{entry.name}" if origen is None else ruta
+            result["rechazados"].append({"archivo": shown, "motivo": "el manifiesto de partes no es válido"})
             shutil.rmtree(entry)
             continue
         nombre, total, album, artist = spec
         names = {child.name for child in children} - {PARTES_MANIFEST}
         expected = {f"{index}.part" for index in range(total)}
         if expected - names:
-            result["revisar"].append({"ruta": ruta, "motivo": f"faltan {len(expected - names)} de {total} partes"})
+            revisar(ruta, f"faltan {len(expected - names)} de {total} partes")
             continue
         if names - expected:
-            result["revisar"].append({"ruta": ruta, "motivo": "hay más partes de las que dice el manifiesto"})
+            revisar(ruta, "hay más partes de las que dice el manifiesto")
             continue
         final = _nombre_libre(buzon, nombre)
         with (buzon / final).open("xb") as joined:
@@ -461,6 +489,8 @@ def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str], *,
         shutil.rmtree(entry)
         final_path = f"{BUZON_DIRECTORY}/{final}"
         unidas[final_path] = del_evento.get(f"{ruta}/{PARTES_MANIFEST}", f"Licencia: {WEB_LICENSE}")
+        if origen is not None:
+            result["subidas_web"].append(entry.name)
         if (album is not None or artist) and albumes is not None:
             albumes[final_path] = {"album": album, "artist": artist}
     return unidas
@@ -560,8 +590,26 @@ def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: s
     if motivo is not None:
         result["rechazados"].append({"archivo": archivo, "motivo": motivo})
         return False
-    result[entry.pop("lista")].append(entry)
+    lista = entry.pop("lista")
+    result[lista].append(entry)
+    if lista == "privadas" or (lista == "publicas" and entry.get("nueva")):
+        _anotar_posible_duplicado(data, result, archivo=archivo, song_id=entry["song_id"])
     return song_changed
+
+
+def _anotar_posible_duplicado(data: dict, result: dict, *, archivo: str, song_id: str) -> None:
+    """Una canción nueva que parece otra que ya está (sonidos.duplicados, ADR-0026) se anota en el resultado. No se
+    bloquea: el aviso sale en el resumen del job. Las canciones anteriores de la misma subida ya están en data."""
+    song = catalog.find_song(data, song_id)
+    parecidas = duplicados.possible_duplicates(song, data["songs"])
+    if not parecidas:
+        return
+    otra = parecidas[0]
+    result["posibles_duplicados"].append({
+        "archivo": archivo, "song_id": song_id, "titulo": song.get("title"),
+        "parecida_a": otra.get("id"), "titulo_parecida": otra.get("title"),
+        "duracion_parecida": duplicados.format_duration(otra.get("duration_s")),
+    })
 
 
 def _nombre_de_entrada(info: zipfile.ZipInfo) -> str:
@@ -765,6 +813,11 @@ def resumen_markdown(result: Mapping) -> str:
             f"{count} {ZIP_IGNORED.get(key, key)}" for key, count in item["ignorados"].items()))
         for item in result.get("zips", [])
     ])
+    block("Posibles duplicados (se han añadido igualmente; revisa si sobran)", [
+        f"{_quoted(item['archivo'])} -> {item['song_id']} · parece {_quoted(str(item.get('titulo_parecida') or ''))} "
+        f"({item['parecida_a']}, {item.get('duracion_parecida', '—')})"
+        for item in result.get("posibles_duplicados", [])
+    ])
     block("Ya estaban en el catálogo (sin cambios)", [
         f"{_quoted(item['archivo'])} -> {item['song_id']}" for item in result.get("duplicadas", [])
     ])
@@ -775,6 +828,7 @@ def resumen_markdown(result: Mapping) -> str:
         f"{_quoted(item['ruta'], ascii_only=True)}: {item['motivo']}" for item in result.get("revisar", [])
     ])
     block("Ya no estaban en el buzón", [_quoted(name) for name in result.get("ya_no_estan", [])])
+    block("Subidas de la web y la APK recogidas del bucket privado", list(result.get("subidas_web", [])))
     if len(lines) == 4:
         lines.append("Este push no trae archivos nuevos para el buzón.")
     return "\n".join(lines) + "\n"

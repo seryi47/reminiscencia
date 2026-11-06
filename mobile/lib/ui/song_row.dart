@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../upload_tracker.dart';
 import 'common.dart';
 import 'library_edit.dart';
+import 'pending_edits_panel.dart';
 import 'playlist_flows.dart';
 
 /// Fila de una canción: portada de 40 px, título, artista y menú. La que suena va en verde.
@@ -19,6 +20,7 @@ class SongRow extends StatelessWidget {
     required this.services,
     required this.onTap,
     this.playlistId,
+    this.albumId,
   });
 
   final Song song;
@@ -27,6 +29,9 @@ class SongRow extends StatelessWidget {
 
   /// Lista desde la que se muestra, para ofrecer «Quitar de esta lista».
   final String? playlistId;
+
+  /// Álbum de la biblioteca común desde el que se muestra, para ofrecer «Quitar de este álbum».
+  final String? albumId;
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +49,7 @@ class SongRow extends StatelessWidget {
           selected: current,
           label: [
             song.title,
+            if (song.pendingEdit) 'cambio pendiente',
             if (details.isNotEmpty) details,
             formatDuration(song.durationS),
             if (current) now.playing ? 'sonando' : 'en pausa',
@@ -80,6 +86,10 @@ class SongRow extends StatelessWidget {
                             ),
                             Row(
                               children: [
+                                if (song.pendingEdit) ...[
+                                  const PendingEditBadge(),
+                                  const SizedBox(width: 6),
+                                ],
                                 if (song.local) ...[
                                   Icon(
                                     song.provisional
@@ -132,6 +142,7 @@ class SongRow extends StatelessWidget {
                         services,
                         song,
                         playlistId: playlistId,
+                        albumId: albumId,
                       ),
                     ),
                   ],
@@ -164,12 +175,14 @@ String songDetails(Song song) {
 }
 
 /// Menú de una canción en una hoja inferior: «Me gusta», añadir a una lista, quitar de la lista y borrar.
-/// Las canciones de la biblioteca común añaden las acciones de edición, que se piden en GitHub.
+/// Las canciones de la biblioteca común añaden las acciones de edición, que se guardan para todos.
+/// Desde la página de un álbum ([albumId]) se ofrece además «Quitar de este álbum».
 Future<void> showSongMenu(
   BuildContext context,
   AppServices services,
   Song song, {
   String? playlistId,
+  String? albumId,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -179,6 +192,7 @@ Future<void> showSongMenu(
       services: services,
       song: song,
       playlistId: playlistId,
+      albumId: albumId,
       hostContext: context,
     ),
   );
@@ -189,12 +203,14 @@ class _SongMenu extends StatelessWidget {
     required this.services,
     required this.song,
     required this.playlistId,
+    required this.albumId,
     required this.hostContext,
   });
 
   final AppServices services;
   final Song song;
   final String? playlistId;
+  final String? albumId;
 
   /// Contexto de la página que abrió el menú: los diálogos y avisos se muestran ahí.
   final BuildContext hostContext;
@@ -319,6 +335,24 @@ class _SongMenu extends StatelessWidget {
                       addSongToAlbumFlow(hostContext, services, song),
                   coverId: song.id,
                   coverWhat: 'la canción',
+                ),
+              if (albumId != null &&
+                  isEditableSong(song) &&
+                  song.folderId == albumId)
+                ListTile(
+                  key: const ValueKey('remove-from-album'),
+                  leading: const Icon(Icons.remove_circle_outline_rounded),
+                  title: const Text('Quitar de este álbum'),
+                  onTap: () {
+                    close();
+                    removeSongFromAlbumFlow(
+                      hostContext,
+                      services,
+                      song,
+                      albumName:
+                          services.library.folderOrNull(albumId!)?.name ?? '',
+                    );
+                  },
                 ),
             ],
             if (song.license.isNotEmpty)

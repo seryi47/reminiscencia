@@ -1,4 +1,6 @@
 import 'fuzzy_search.dart';
+
+export 'fuzzy_search.dart' show foldForSearch;
 import 'dart:async';
 import 'dart:io';
 
@@ -7,9 +9,11 @@ import 'package:http/http.dart' as http;
 
 import 'app_error.dart';
 import 'covers.dart';
+import 'edit_remote.dart' show EditStatusFetcher;
 import 'library_store.dart';
 import 'local_audio.dart';
 import 'offline_choice.dart';
+import 'pending_edits.dart';
 import 'playback.dart';
 import 'playback_plan.dart';
 import 'shared_upload.dart';
@@ -32,6 +36,9 @@ class LibraryController extends ChangeNotifier {
     UploadsStore? uploadsStore,
     PeriodicTimerFactory? pollTimer,
     DateTime Function()? clock,
+    EditStatusFetcher? editStatus,
+    PendingEditsStore? editsStore,
+    EditTimerFactory? editTimer,
   }) : _clock = clock ?? DateTime.now {
     _lastSongId = playback.nowPlaying.value.songId;
     playback.nowPlaying.addListener(_onNowPlayingChanged);
@@ -46,6 +53,28 @@ class LibraryController extends ChangeNotifier {
       onPublished: (_) => unawaited(load()),
     );
     uploads.addListener(_onUploadsChanged);
+    // Ediciones enviadas que aún no están en el catálogo (ADR-0027): se ven encima del catálogo real.
+    edits = PendingEditsController(
+      fetchStatus: editStatus,
+      store: editsStore,
+      clock: _clock,
+      timer: editTimer,
+    );
+    edits.currentCatalog = () =>
+        (songs: _catalog, folders: _catalogFolders, ok: _catalogKnown);
+    edits.loadCatalog = () async {
+      await load();
+      return (
+        songs: _catalog,
+        folders: _catalogFolders,
+        ok: _online && _loadError == null,
+      );
+    };
+    edits.onCoverConfirmed = (path) {
+      final store = covers;
+      if (store != null) unawaited(store.revalidate({path}).catchError((_) {}));
+    };
+    edits.addListener(_onUploadsChanged);
   }
 
   final LibrarySource source;
@@ -68,12 +97,17 @@ class LibraryController extends ChangeNotifier {
   /// Estado de cada subida hasta que se publica. Sus canciones provisionales están en [songs] y [recentSongs].
   late final UploadTracker uploads;
 
+  /// Ediciones de la biblioteca común enviadas desde este teléfono que aún no están en el catálogo (ADR-0027).
+  /// [songs] y [folders] ya las muestran; [catalogSongs] y [catalogFolders] son el catálogo real.
+  late final PendingEditsController edits;
+
   final DateTime Function() _clock;
 
   List<Song> _songs = const [];
   List<Song> _catalog = const [];
   List<Song> _localSongs = const [];
   List<Folder> _folders = const [];
+  List<Folder> _catalogFolders = const [];
   bool _started = false;
   bool _loading = false;
   bool _online = false;
@@ -122,15 +156,19 @@ class LibraryController extends ChangeNotifier {
     return '${_songs.length} canciones · $connection';
   }
 
-  /// Canciones del catálogo de la web (iguales para todos).
+  /// Canciones del catálogo de la web (iguales para todos), sin las ediciones pendientes.
   List<Song> get catalogSongs => _catalog;
+
+  /// Álbumes del catálogo de la web, sin las ediciones pendientes.
+  List<Folder> get catalogFolders => _catalogFolders;
 
   /// Canciones subidas desde este teléfono, en el orden en que se añadieron.
   List<Song> get localSongs => _localSongs;
 
-  /// Canciones de un álbum del catálogo, en el orden del catálogo.
+  /// Canciones de un álbum del catálogo, por su número de pista (ADR-0026); las que no lo tienen, al final y en el
+  /// orden del catálogo.
   List<Song> songsInFolder(String folderId) =>
-      _songs.where((song) => song.folderId == folderId).toList();
+      sortByTrack(_songs.where((song) => song.folderId == folderId));
 
   /// Canción por id (también las locales), o null si ya no está. Una subida ya publicada da la canción pública.
   Song? songOrNull(String? id) {
@@ -147,7 +185,7 @@ class LibraryController extends ChangeNotifier {
   Set<String> get referencedCovers => {
     for (final song in _catalog)
       if (song.cover != null) song.cover!,
-    for (final folder in _folders)
+    for (final folder in _catalogFolders)
       if (folder.cover != null) folder.cover!,
   };
 
@@ -169,7 +207,9 @@ class LibraryController extends ChangeNotifier {
   );
 
   void _rebuildSongs() {
-    _songs = [..._catalog, ..._localSongs, ..._provisional()];
+    final view = edits.apply(_catalog, _catalogFolders);
+    _folders = view.folders;
+    _songs = [...view.songs, ..._localSongs, ..._provisional()];
   }
 
   void _onUploadsChanged() {
@@ -177,31 +217,26 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Canciones cuyo título, artista, año o etiquetas contienen [query] (sin distinguir mayúsculas ni tildes).
+  /// Canciones que coinciden con [query] por título, artista, álbum, año o etiquetas, de más a menos relevantes (la
+  /// regla común de búsqueda, ADR-0028). Sin texto, ninguna.
   List<Song> searchSongs(String query) {
-    final needle = foldForSearch(query);
-    if (needle.isEmpty) return const [];
-    return _songs.where((song) {
-      final haystack = foldForSearch(
-        [
-          song.title,
-          song.artist,
-          if (song.year != null) '${song.year}',
-          ...song.tags,
-        ].join(' '),
-      );
-      return haystack.contains(needle) || fuzzyMatches(haystack, needle);
-    }).toList();
+    if (foldForSearch(query).isEmpty) return const [];
+    return searchRank(
+      _songs,
+      query,
+      (song) => songSearchFields(song, _albumNameOf(song)),
+    );
   }
 
-  /// Álbumes cuyo nombre o artista contiene [query].
+  /// Álbumes que coinciden con [query] por nombre o artista, de más a menos relevantes. Sin texto, ninguno.
   List<Folder> searchFolders(String query) {
-    final needle = foldForSearch(query);
-    if (needle.isEmpty) return const [];
-    return _folders.where((folder) {
-      final text = '${folder.name} ${folder.artist}';
-      return foldForSearch(text).contains(needle) || fuzzyMatches(text, needle);
-    }).toList();
+    if (foldForSearch(query).isEmpty) return const [];
+    return searchRank(_folders, query, folderSearchFields);
+  }
+
+  String _albumNameOf(Song song) {
+    final id = song.folderId;
+    return id == null ? '' : folderOrNull(id)?.name ?? '';
   }
 
   /// Álbum por id, o null si ya no existe.
@@ -218,6 +253,7 @@ class LibraryController extends ChangeNotifier {
     _started = true;
     // Lo que quedó por publicar vuelve a la biblioteca y se sigue comprobando. No retrasa la carga.
     unawaited(uploads.restore());
+    unawaited(edits.restore());
     return load();
   }
 
@@ -276,7 +312,9 @@ class LibraryController extends ChangeNotifier {
     }
     _catalogKnown = true;
     _catalog = data.songs;
-    _folders = data.folders;
+    _catalogFolders = data.folders;
+    // Lo que ya está en el catálogo deja de verse como pendiente.
+    if (data.fromNetwork) edits.reconcile(data.songs, data.folders);
     _online = data.fromNetwork;
     if (data.fromNetwork) _lastSync = _clock();
     _rebuildSongs();
@@ -426,8 +464,11 @@ class LibraryController extends ChangeNotifier {
 
   /// Convierte y sube a la biblioteca común los archivos elegidos, de uno en uno y en trozos, y sigue cada uno
   /// hasta que se publica ([uploads]). Sin red lanza AppException sin intentar nada.
-  Future<SharedUploadResult> uploadShared(List<PickedAudioFile> files) =>
-      uploads.start(files);
+  /// [review] puede quitar canciones de la tanda antes de que entren en la cola (aviso de duplicados, ADR-0026).
+  Future<SharedUploadResult> uploadShared(
+    List<PickedAudioFile> files, {
+    UploadReview? review,
+  }) => uploads.start(files, review: review);
 
   /// Vuelve a subir un archivo con error.
   Future<void> retryUpload(String key) => uploads.retry(key);
@@ -507,6 +548,8 @@ class LibraryController extends ChangeNotifier {
     playback.nowPlaying.removeListener(_onNowPlayingChanged);
     uploads.removeListener(_onUploadsChanged);
     uploads.dispose();
+    edits.removeListener(_onUploadsChanged);
+    edits.dispose();
     super.dispose();
   }
 }
@@ -533,16 +576,3 @@ bool _isConnectionError(Object error) =>
     error is SocketException ||
     error is TimeoutException ||
     error is http.ClientException;
-
-/// Texto normalizado para buscar: minúsculas, sin tildes ni diéresis y sin espacios repetidos.
-String foldForSearch(String text) {
-  const from = 'áàäâãéèëêíìïîóòöôõúùüûñç';
-  const to = 'aaaaaeeeeiiiiooooouuuunc';
-  final lower = text.toLowerCase();
-  final buffer = StringBuffer();
-  for (final char in lower.split('')) {
-    final index = from.indexOf(char);
-    buffer.write(index < 0 ? char : to[index]);
-  }
-  return buffer.toString().trim().replaceAll(RegExp(r'\s+'), ' ');
-}

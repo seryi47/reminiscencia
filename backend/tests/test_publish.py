@@ -23,14 +23,15 @@ def _catalog_with(tmp_path, public_flags):
     return path, audio
 
 
-def test_only_public_songs_are_copied_and_listed(tmp_path):
+def test_only_public_songs_are_listed_and_no_audio_is_copied_to_the_web(tmp_path):
     path, audio = _catalog_with(tmp_path, [True, False])
     web = tmp_path / "web"
 
     result = sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
 
     assert result["public"] == 1
-    assert len(list((web / "audio").glob("*.opus"))) == 1
+    # El audio público lo sirve R2 (ADR-0020, fase 3): la web solo lleva los datos.
+    assert not (web / "audio").exists()
     listed = json.loads((web / "data" / "songs.json").read_text(encoding="utf-8"))
     assert len(listed) == 1 and listed[0]["audio"].startswith("audio/") and listed[0]["tags"] == ["jazz"]
     folders = json.loads((web / "data" / "folders.json").read_text(encoding="utf-8"))
@@ -62,7 +63,11 @@ def test_catalog_json_lists_only_public_songs_and_every_folder_without_audio_pat
     assert [song["title"] for song in view["songs"]] == ["Tema 0"]
     assert all(song["public"] is True for song in view["songs"])
     for song in view["songs"]:
-        assert set(song) == {"id", "title", "artist", "year", "tags", "folder_id", "license", "source", "duration_s", "public"}
+        # La canción está en el álbum «Jazz»: lleva su número de pista (ADR-0026).
+        assert set(song) == {
+            "id", "title", "artist", "year", "tags", "folder_id", "license", "source", "duration_s", "public", "track",
+        }
+        assert song["track"] == 1
     assert [folder["name"] for folder in view["folders"]] == ["Jazz"]
     assert view["folders"] == json.loads((web / "data" / "folders.json").read_text(encoding="utf-8"))
     text = (web / "data" / "catalog.json").read_text(encoding="utf-8")
@@ -94,17 +99,28 @@ def test_public_flag_must_be_a_json_boolean(tmp_path):
     assert list((web / "audio").glob("*.opus")) == []
 
 
-def test_public_audio_with_the_same_size_but_other_content_is_copied_again(tmp_path):
+def test_audio_left_in_the_web_from_before_r2_is_removed(tmp_path):
     path, audio = _catalog_with(tmp_path, [True])
     web = tmp_path / "web"
-    sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
     song_id = catalog.load(path)["songs"][0]["id"]
-    real = (audio / f"{song_id}.opus").read_bytes()
-    (web / "audio" / f"{song_id}.opus").write_bytes(b"x" * len(real))  # mismo tamaño, otro contenido
+    (web / "audio").mkdir(parents=True)
+    (web / "audio" / f"{song_id}.opus").write_bytes((audio / f"{song_id}.opus").read_bytes())
 
     sync_public(catalog_path=path, audio_dir=audio, web_dir=web)
 
-    assert (web / "audio" / f"{song_id}.opus").read_bytes() == real
+    assert list((web / "audio").glob("*.opus")) == []
+
+
+def test_a_public_song_without_local_audio_is_still_published(tmp_path):
+    # ADR-0024: el audio está en el bucket privado de R2, no en la copia local. Que una canción pública tenga audio lo
+    # comprueba scripts/sync_r2.py en 'publicar', antes de subir a main (pruebas en test_r2.py).
+    path, audio = _catalog_with(tmp_path, [True])
+    song_id = catalog.load(path)["songs"][0]["id"]
+    (audio / f"{song_id}.opus").unlink()
+
+    result = sync_public(catalog_path=path, audio_dir=audio, web_dir=tmp_path / "web")
+
+    assert result["public"] == 1
 
 
 def test_public_song_id_that_is_not_a_library_id_is_refused(tmp_path):

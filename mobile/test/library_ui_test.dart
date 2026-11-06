@@ -5,6 +5,7 @@ import 'package:reminiscencia/collections.dart';
 import 'package:reminiscencia/song.dart';
 import 'package:reminiscencia/ui/cards.dart';
 import 'package:reminiscencia/ui/common.dart';
+import 'package:reminiscencia/ui/library_edit.dart';
 import 'package:reminiscencia/ui/player.dart';
 import 'package:reminiscencia/ui/song_row.dart';
 
@@ -198,6 +199,11 @@ void main() {
         ]) {
           expect(find.text(label), findsOneWidget, reason: label);
         }
+        expect(
+          find.byKey(const ValueKey('remove-from-album')),
+          findsNothing,
+          reason: 'solo se ofrece desde la página del álbum',
+        );
         Navigator.of(tester.element(find.text('Editar detalles'))).pop();
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Más opciones de «Canción s-local»'));
@@ -371,35 +377,211 @@ void main() {
       },
     );
 
+    Future<void> openAddSongsSheet(WidgetTester tester) async {
+      await tester.tap(find.text('Jazz de los años 20').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Más opciones de «Jazz de los años 20»'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Añadir canciones a este álbum'));
+      await tester.pumpAndSettle();
+    }
+
+    const besameId = 'S00000000000000b1';
+    const pagaId = 'S00000000000000b2';
+    final pickerSongs = [
+      ...songs,
+      const Song(
+        id: besameId,
+        title: 'Bésame mucho',
+        artist: 'Consuelo Velázquez',
+        year: 1940,
+        tags: [],
+        folderId: oldAlbumId,
+        durationS: 180,
+        license: 'Dominio público',
+        audio: 'audio/$besameId.opus',
+      ),
+      const Song(
+        id: pagaId,
+        title: 'La bien pagá',
+        artist: 'Miguel de Molina',
+        year: 1936,
+        tags: [],
+        folderId: oldAlbumId,
+        durationS: 190,
+        license: 'Dominio público',
+        audio: 'audio/$pagaId.opus',
+      ),
+      fakeSong('s-local'),
+    ];
+
     testWidgets(
-      '«Añadir canciones a este álbum» abre edit_song hacia ese álbum',
+      '«Añadir canciones a este álbum» busca sin tildes y no lista las que ya están ni las del teléfono',
+      (tester) async {
+        setWindow(tester, const Size(400, 1000));
+        final t = buildTestServices(songs: pickerSongs, folders: folders);
+        await pumpApp(tester, t.services);
+        await openAddSongsSheet(tester);
+        final sheet = find.byType(BottomSheet);
+        Finder inSheet(String text) =>
+            find.descendant(of: sheet, matching: find.text(text));
+
+        expect(inSheet('Charleston'), findsNothing, reason: 'ya está');
+        expect(inSheet('Canción s-local'), findsNothing, reason: 'local');
+        expect(inSheet('Canción $otherId'), findsOneWidget);
+        expect(inSheet('Bésame mucho'), findsOneWidget);
+        expect(inSheet('La bien pagá'), findsOneWidget);
+        final submit = find.byKey(const ValueKey('add-songs-submit'));
+        expect(tester.widget<FilledButton>(submit).onPressed, isNull);
+        expect(inSheet('Añadir (0)'), findsOneWidget);
+
+        final search = find.byKey(const ValueKey('add-songs-search'));
+        expect(tester.widget<TextField>(search).autofocus, isTrue);
+        await tester.enterText(search, 'BESAME');
+        await tester.pumpAndSettle();
+        expect(inSheet('Bésame mucho'), findsOneWidget);
+        expect(inSheet('La bien pagá'), findsNothing);
+        expect(inSheet('Canción $otherId'), findsNothing);
+
+        // Por el nombre del álbum en el que está ahora.
+        await tester.enterText(search, 'coplas');
+        await tester.pumpAndSettle();
+        expect(inSheet('Bésame mucho'), findsOneWidget);
+        expect(inSheet('La bien pagá'), findsOneWidget);
+        expect(inSheet('Canción $otherId'), findsNothing);
+
+        await tester.enterText(search, 'zzzz');
+        await tester.pumpAndSettle();
+        expect(inSheet('Ninguna canción coincide con «zzzz».'), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('add-songs-search-clear')));
+        await tester.pumpAndSettle();
+        expect(inSheet('Canción $otherId'), findsOneWidget);
+        expect(t.submitted, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'marca varias en búsquedas distintas y envía UNA petición move_songs',
+      (tester) async {
+        setWindow(tester, const Size(400, 1000));
+        final t = buildTestServices(songs: pickerSongs, folders: folders);
+        await pumpApp(tester, t.services);
+        await openAddSongsSheet(tester);
+        final search = find.byKey(const ValueKey('add-songs-search'));
+
+        await tester.enterText(search, 'molina');
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('add-song-$pagaId')));
+        await tester.pumpAndSettle();
+        expect(find.text('1 seleccionada'), findsOneWidget);
+
+        await tester.enterText(search, 'bessie');
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('add-song-$pagaId')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('add-song-$otherId')));
+        await tester.pumpAndSettle();
+        expect(find.text('2 seleccionadas'), findsOneWidget);
+        expect(find.text('Añadir (2)'), findsOneWidget);
+
+        // La selección se mantiene al cambiar la búsqueda.
+        await tester.enterText(search, '');
+        await tester.pumpAndSettle();
+        bool checked(String id) => tester
+            .widget<CheckboxListTile>(find.byKey(ValueKey('add-song-$id')))
+            .value!;
+        expect(checked(pagaId), isTrue);
+        expect(checked(otherId), isTrue);
+        expect(checked(besameId), isFalse);
+
+        await tester.tap(find.byKey(const ValueKey('add-songs-submit')));
+        await tester.pumpAndSettle();
+        expect(t.submitted, hasLength(1));
+        expect(t.submitted.single.payload, {
+          'op': 'move_songs',
+          'song_ids': [otherId, pagaId],
+          'folder_id': albumId,
+        });
+        expect(
+          t.submitted.single.title,
+          'Añadir 2 canciones al álbum «Jazz de los años 20»',
+        );
+        expect(find.byType(BottomSheet), findsNothing);
+        expect(find.text('Guardado.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '«Quitar de este álbum» solo en el álbum; confirma y envía edit_song con folder_id null',
       (tester) async {
         setWindow(tester, const Size(400, 1000));
         final t = buildTestServices(songs: songs, folders: folders);
         await pumpApp(tester, t.services);
         await tester.tap(find.text('Jazz de los años 20').last);
         await tester.pumpAndSettle();
-        await tester.tap(
-          find.byTooltip('Más opciones de «Jazz de los años 20»'),
-        );
+        await tester.tap(find.byTooltip('Más opciones de «Charleston»'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Añadir canciones a este álbum'));
+        final remove = find.byKey(const ValueKey('remove-from-album'));
+        expect(remove, findsOneWidget);
+        expect(find.text('Quitar de este álbum'), findsOneWidget);
+
+        // Cancelar no envía nada.
+        await tester.tap(remove);
         await tester.pumpAndSettle();
-        final sheet = find.byType(BottomSheet);
         expect(
-          find.descendant(of: sheet, matching: find.text('Charleston')),
-          findsNothing,
-          reason: 'ya está en el álbum',
+          find.text(
+            '¿Quitar «Charleston» de «Jazz de los años 20»? La canción sigue en la biblioteca; solo deja de estar en este álbum.',
+          ),
+          findsOneWidget,
         );
-        await tester.tap(
-          find.descendant(of: sheet, matching: find.text('Canción $otherId')),
-        );
+        await tester.tap(find.text('Cancelar'));
+        await tester.pumpAndSettle();
+        expect(t.submitted, isEmpty);
+
+        await tester.tap(find.byTooltip('Más opciones de «Charleston»'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('remove-from-album')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Quitar'));
         await tester.pumpAndSettle();
         expect(t.submitted.single.payload, {
           'op': 'edit_song',
-          'song_id': otherId,
-          'folder_id': albumId,
+          'song_id': songId,
+          'folder_id': null,
         });
+      },
+    );
+  });
+
+  group('filtro de «Añadir canciones a este álbum»', () {
+    final albums = {albumId: 'Jazz de los años 20', oldAlbumId: 'Coplas'};
+    String albumOf(Song song) => albums[song.folderId] ?? '';
+    List<String> ids(String query) => filterSongsForAlbumPicker(
+      songs,
+      query,
+      albumName: albumOf,
+    ).map((song) => song.id).toList();
+
+    test('sin texto devuelve todas, en el mismo orden', () {
+      expect(ids(''), [songId, otherId]);
+      expect(ids('   '), [songId, otherId]);
+    });
+
+    test('por título, artista y álbum, sin tildes ni mayúsculas', () {
+      expect(ids('CHARLESTON'), [songId]);
+      expect(ids('bessie'), [otherId]);
+      expect(ids('anos 20'), [songId], reason: 'álbum, sin tilde');
+      expect(ids('orquesta jazz'), [songId], reason: 'cada palabra');
+    });
+
+    test(
+      'la regla común de búsqueda: año, etiquetas y una errata (ADR-0028)',
+      () {
+        expect(ids('1925'), [songId]);
+        expect(ids('jazz'), [songId, otherId], reason: 'etiqueta de las dos');
+        expect(ids('charlestom'), [songId]);
+        expect(ids('1926'), isEmpty, reason: 'los números no admiten erratas');
+        expect(ids('ton'), isEmpty, reason: 'no busca en mitad de una palabra');
       },
     );
   });

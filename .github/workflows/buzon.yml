@@ -1,17 +1,25 @@
 name: buzon
 
-# Buzón de canciones (ADR-0014). Quien tiene permiso de escritura sube audio (WAV, MP3, M4A, FLAC u OGG) a
-# audio-library/buzon/ desde la página de subida de GitHub. Este workflow convierte cada archivo a Opus, lo añade al
-# catálogo con el nombre del archivo como título, regenera la parte pública y lo borra del buzón.
-# Licencia: una línea 'Licencia: <texto>' en el mensaje del commit. Con ella la canción entra pública; sin ella,
-# privada, y queda anotado en el resumen del job. Quien sube responde de lo que declara.
+# Buzón de canciones (ADR-0014). Dos entradas:
+# - Quien tiene permiso de escritura sube audio (WAV, MP3, M4A, FLAC u OGG) a audio-library/buzon/ desde la página de
+#   subida de GitHub (push a main). Licencia: una línea 'Licencia: <texto>' en el mensaje del commit. Con ella la
+#   canción entra pública; sin ella, privada, y queda anotado en el resumen del job. Quien sube responde de lo que
+#   declara.
+# - La web y la APK suben por /api/subir (ADR-0017): los trozos van al bucket privado de R2 (entrada/<UUID>/, ADR-0024)
+#   y, al completarse, la función lanza este workflow con un repository_dispatch («subida-web»). Entran públicas con la
+#   licencia de la web.
+# Este workflow convierte cada archivo a Opus, lo añade al catálogo con el nombre del archivo como título, regenera la
+# parte pública y lo borra del buzón.
 # Portadas (ADR-0016): audio-library/buzon/portadas/<ID>.<jpg|jpeg|png|webp>, con el id de una canción o de una
 # carpeta, hasta 10 MiB. 'procesar' la convierte con ffmpeg a JPEG de 640x640 en audio-library/covers/<ID>.jpg y el
 # catálogo apunta a ella; 'publicar' copia a frontend/web/covers/ las de canciones públicas y carpetas. Sin licencia.
-# Los mismos tres jobs que biblioteca.yml (ADR-0008, ADR-0010, ADR-0011). 'autorizar' comprueba el permiso de quien
-# hizo el push. 'procesar' convierte sin token ni credenciales y deja un paquete con el catálogo, el audio y los
-# borrados del buzón. 'publicar' valida el paquete, lo aplica, regenera la parte pública desde el catálogo, confirma y
-# sube a main; el token solo llega al paso que sube. Publicar no ejecuta ffmpeg ni código del procesado.
+# Jobs (ADR-0008, ADR-0010, ADR-0011, ADR-0024): 'autorizar' comprueba el permiso de quien hizo el push o el dispatch.
+# 'recoger' baja del bucket privado las subidas completas de la web (credenciales de R2, solo lectura de entrada/, sin
+# token de GitHub) y se las pasa a 'procesar' como artefacto. 'procesar' convierte sin token ni credenciales y deja un
+# paquete con el catálogo, el audio y los borrados del buzón. 'publicar' valida el paquete, lo aplica, regenera la
+# parte pública desde el catálogo, confirma, sube el audio a R2, sube a main y borra de entrada/ lo recogido; el token
+# de GitHub solo llega al paso que sube a main y las credenciales de R2 solo a los pasos de R2. Publicar no ejecuta
+# ffmpeg ni código del procesado.
 # El push del bot no vuelve a lanzar este workflow: GitHub no lanza workflows con pushes hechos con GITHUB_TOKEN.
 # Ningún nombre de archivo ni mensaje de commit se interpola en un script: el procesado los lee del evento.
 
@@ -23,9 +31,12 @@ on:
       - "!audio-library/buzon/README.md"
       - "!audio-library/buzon/.gitkeep"
       - "!audio-library/buzon/portadas/.gitkeep"
-      # Los trozos intermedios de una subida desde la web no lanzan nada: solo el commit con el manifiesto.
+      # Subidas por trozos que quedaran en main de antes de ADR-0024: solo el commit con el manifiesto lanza algo.
       - "!audio-library/buzon/.partes/**/*.part"
-  # A mano, para reprocesar lo que quede en el buzón (entra privado si no hay línea «Licencia:»).
+  # Lo lanza /api/subir cuando una subida de la web o la APK está completa en el bucket privado (ADR-0024).
+  repository_dispatch:
+    types: [subida-web]
+  # A mano, para reprocesar lo que quede en el buzón (entra privado si no hay línea «Licencia:») y en el bucket.
   workflow_dispatch:
 
 # El mismo grupo que biblioteca.yml: una escritura al catálogo cada vez. Con queue: max, una subida en espera no se
@@ -37,7 +48,8 @@ concurrency:
 
 jobs:
   autorizar:
-    # Quien hizo el push (y quien relanza una ejecución) debe tener permiso de escritura (admin, maintain o write).
+    # Quien hizo el push (y quien relanza una ejecución) debe tener permiso de escritura (admin, maintain o write). En
+    # un repository_dispatch es la cuenta del token de /api/subir.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -77,7 +89,8 @@ jobs:
 
       # Cada subida lanza un run, pero el primero ya procesa todo lo que hay en main. Los runs que llegan después
       # de que el buzón se vaciara no tienen nada que hacer: se omiten procesar y publicar (sin ffmpeg ni commits).
-      # Se mira main ahora, no el evento. Se cuentan los archivos del buzón y los manifiestos de partes.
+      # Se mira main ahora, no el evento. Se cuentan los archivos del buzón y los manifiestos de partes. Lo pendiente
+      # en el bucket privado lo cuenta 'recoger'.
       - name: Comprobar si queda algo pendiente en el buzón
         id: pendiente
         env:
@@ -99,12 +112,72 @@ jobs:
             echo "pendiente=true" >> "$GITHUB_OUTPUT"
           else
             echo "pendiente=false" >> "$GITHUB_OUTPUT"
-            echo "El buzón ya está vacío: un run anterior procesó esta subida." >> "$GITHUB_STEP_SUMMARY"
+            echo "El buzón de main ya está vacío." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  procesar:
+  recoger:
+    # Baja del bucket privado de R2 las subidas completas de la web y la APK (entrada/<UUID>/ con manifiesto; ADR-0024)
+    # y las deja en un artefacto para 'procesar', que no tiene secretos. Solo en un repository_dispatch o a mano: un push
+    # de la página de GitHub no las toca (cada subida de la web lanza su propio run). Ejecuta solo código de main, con
+    # la biblioteca estándar de Python: no instala nada. Sin token de GitHub. Solo lee del bucket.
     needs: autorizar
-    if: needs.autorizar.outputs.permitido == 'true' && needs.autorizar.outputs.pendiente == 'true'
+    if: needs.autorizar.outputs.permitido == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      cantidad: ${{ steps.recoger.outputs.cantidad }}
+      ids: ${{ steps.recoger.outputs.ids }}
+    steps:
+      - name: Obtener main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Preparar Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Recoger las subidas de la web del bucket privado
+        id: recoger
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "Las subidas solo se recogen desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "Un push de la página de GitHub no recoge las subidas de la web."
+            echo "cantidad=0" >> "$GITHUB_OUTPUT"
+            echo "ids=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python scripts/entrada_r2.py recoger --salida "$RUNNER_TEMP/entrada"
+
+      - name: Pasar las subidas a procesar
+        if: steps.recoger.outputs.cantidad != '0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: buzon-entrada
+          path: ${{ runner.temp }}/entrada
+          retention-days: 1
+          if-no-files-found: error
+
+  procesar:
+    needs: [autorizar, recoger]
+    if: >-
+      needs.autorizar.outputs.permitido == 'true' &&
+      (needs.autorizar.outputs.pendiente == 'true' || needs.recoger.outputs.cantidad != '0')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -129,6 +202,14 @@ jobs:
             exit 1
           fi
 
+      # Las subidas de la web que bajó 'recoger' (trozos y manifiesto de cada una), fuera del repositorio.
+      - name: Descargar las subidas de la web
+        if: needs.recoger.outputs.cantidad != '0'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: buzon-entrada
+          path: ${{ runner.temp }}/entrada
+
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -136,7 +217,7 @@ jobs:
       - name: Instalar ffmpeg
         # apt a veces se cuelga en el runner y bloquea la cola `library-catalog` entera: cada intento tiene 120 s y hay tres.
         run: |
-          for intento in 1 2 3; do
+          for _ in 1 2 3; do
             timeout 120 sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null 2>&1 && break
             timeout 120 sudo apt-get update -qq > /dev/null 2>&1 || true
           done
@@ -146,11 +227,12 @@ jobs:
         run: pip install -q -e backend
 
       # Lee los archivos del push en el evento (GITHUB_EVENT_PATH) y escribe el resumen del job: canciones públicas,
-      # privadas por falta de licencia, duplicadas, portadas, rechazadas y lo que hay que revisar a mano.
+      # privadas por falta de licencia, duplicadas, portadas, rechazadas y lo que hay que revisar a mano. En un
+      # repository_dispatch solo procesa las subidas de la web (GITHUB_EVENT_NAME).
       - name: Procesar el buzón
         env:
           ACTOR: ${{ github.actor }}
-        run: python scripts/buzon.py --resultado "$RUNNER_TEMP/paquete/resultado.json"
+        run: python scripts/buzon.py --resultado "$RUNNER_TEMP/paquete/resultado.json" --entrada "$RUNNER_TEMP/entrada"
 
       - name: Empaquetar los cambios
         env:
@@ -166,21 +248,27 @@ jobs:
           if-no-files-found: error
 
   publicar:
-    needs: [autorizar, procesar]
-    if: needs.autorizar.outputs.permitido == 'true' && needs.autorizar.outputs.pendiente == 'true'
+    needs: [autorizar, recoger, procesar]
+    if: >-
+      needs.autorizar.outputs.permitido == 'true' &&
+      (needs.autorizar.outputs.pendiente == 'true' || needs.recoger.outputs.cantidad != '0')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: write
     defaults:
       run:
         shell: bash
     steps:
+      # Con el historial de commits y árboles (sin el contenido de los ficheros antiguos): hace falta para comprobar si la
+      # base del paquete es un antecesor de main y qué cambió desde entonces (ADR-0025).
       - name: Obtener main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
 
       - name: Preparar Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -194,8 +282,8 @@ jobs:
           path: ${{ runner.temp }}/paquete
 
       # El paquete se valida antes de tocar el repositorio (rutas de la biblioteca y de sus portadas, borrados solo
-      # del buzón, sin enlaces simbólicos, base igual a main), y la parte pública (datos, audio y portadas) se
-      # regenera desde el catálogo.
+      # del buzón, sin enlaces simbólicos, base igual a main o un antecesor compatible; ADR-0025), y la parte pública
+      # (datos y portadas) se regenera desde el catálogo.
       - name: Validar, aplicar y regenerar la parte pública
         id: aplicar_paquete
         run: python scripts/aplicar_paquete.py --paquete "$RUNNER_TEMP/paquete"
@@ -213,7 +301,33 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -q -m "buzón: canciones y portadas subidas por $ACTOR"
 
-      # El token solo llega a este paso, y solo para subir. Solo main escribe en el catálogo.
+      # El audio nuevo va al bucket privado (la fuente de verdad, ADR-0024) y el de las canciones públicas al público
+      # (el único que lo sirve, ADR-0020) antes de que main (y con él la web y la APK) las anuncie; se borra del público
+      # el de las despublicadas. Si una canción pública no tiene audio en ningún sitio, o R2 falla, no se sube nada a
+      # main. Las credenciales de R2 solo llegan a los pasos de R2, que no tienen el token de GitHub ni instalan nada
+      # (sync_r2 usa solo la biblioteca estándar de Python).
+      - name: Subir el audio a R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "R2 solo se actualiza desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" = "$BASE" ]; then
+            echo "Sin cambios: R2 no se toca."
+            exit 0
+          fi
+          python scripts/sync_r2.py --aplicar --borrar-sobrantes
+
+      # El token solo llega a este paso, y solo para traer main y subir. Solo main escribe en el catálogo. Si main avanzó
+      # desde que se aplicó el paquete (otra subida), se trae, se rebasa el commit encima y se reintenta, hasta tres
+      # veces, siempre que lo nuevo de main no toque lo que cambia este commit ni lo que la publicación lee o regenera
+      # (las rutas de sonidos.paquete.ruta_de_publicacion; ADR-0025). Si lo toca o el rebase choca, no sube nada.
       - name: Subir a main
         id: guardar
         env:
@@ -227,5 +341,59 @@ jobs:
             echo "Sin cambios que guardar."
             exit 0
           fi
-          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
-          echo "Canciones del buzón guardadas en main." >> "$GITHUB_STEP_SUMMARY"
+          REMOTO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          PUBLICACION='^(audio-library/indexes/catalog\.json$|audio-library/(audio|covers)/|frontend/web/(audio|data|covers)/)'
+          for intento in 1 2 3 4; do
+            if git push -q "$REMOTO" HEAD:main; then
+              echo "Canciones del buzón guardadas en main." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            if [ "$intento" -eq 4 ]; then
+              echo "main no deja de cambiar: no se ha subido tras tres reintentos. Relanza la ejecución." >&2
+              exit 1
+            fi
+            git fetch -q --no-tags "$REMOTO" main
+            if [ "$(git rev-parse FETCH_HEAD)" = "$BASE" ]; then
+              echo "La subida a main ha fallado y main no ha cambiado: no se reintenta." >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$BASE" FETCH_HEAD; then
+              echo "main se ha reescrito desde que se aplicó el paquete: no se sube nada. Relanza la ejecución." >&2
+              exit 1
+            fi
+            PROPIAS=$(git diff --name-only --no-renames "$BASE" HEAD)
+            AJENAS=$(git diff --name-only --no-renames "$BASE" FETCH_HEAD)
+            CHOQUE=$(grep -E "$PUBLICACION" <<<"$AJENAS" | head -n 1 || true)
+            if [ -z "$CHOQUE" ]; then
+              CHOQUE=$(grep -Fx -f <(printf '%s\n' "$PROPIAS") <<<"$AJENAS" | head -n 1 || true)
+            fi
+            if [ -n "$CHOQUE" ]; then
+              echo "main cambió mientras se publicaba y el cambio toca $CHOQUE: no se sube nada. Relanza la ejecución." >&2
+              exit 1
+            fi
+            if ! git rebase -q FETCH_HEAD; then
+              git rebase --abort || true
+              echo "El rebase sobre main choca: no se sube nada. Relanza la ejecución." >&2
+              exit 1
+            fi
+            echo "main había avanzado sin tocar la biblioteca: commit rebasado encima (reintento $intento de 3)."
+            BASE=$(git rev-parse FETCH_HEAD)
+          done
+
+      # Las subidas de la web que recogió 'recoger' ya están publicadas o rechazadas (ver el resumen de 'procesar'): se
+      # borran de entrada/ del bucket privado, solo después de subir a main y sin el token de GitHub. El script solo
+      # acepta UUID en IDS y solo borra dentro de entrada/<UUID>/.
+      - name: Borrar del bucket privado las subidas ya procesadas
+        if: needs.recoger.outputs.cantidad != '0'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}
+          IDS: ${{ needs.recoger.outputs.ids }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "El bucket solo se limpia desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+          python scripts/entrada_r2.py limpiar

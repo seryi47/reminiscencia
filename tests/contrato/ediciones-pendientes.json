@@ -1,0 +1,1894 @@
+{
+  "_comentario": "Contrato común de las ediciones pendientes (ADR-0027). Lo pasan la web (js/edit-pending.js; tests/web-unit/edit-pending.test.mjs) y la APK (lib/pending_edits.dart; test/pending_edits_test.dart). Las ediciones van en orden de envío. «cambios» parchea el catálogo base (canciones y álbumes por id; los campos se sustituyen tal cual) y «albumesNuevos» añade álbumes. Tiempos en minutos (las esperas, en segundos).",
+  "constantes": {
+    "esperasSegundos": [
+      20,
+      30,
+      45,
+      60,
+      90,
+      120,
+      180
+    ],
+    "maxPendienteMin": 30,
+    "graciaCerradaMin": 10,
+    "portadaSupuestaMin": 10
+  },
+  "catalogo": {
+    "songs": [
+      {
+        "id": "S0000000000000001",
+        "title": "Uno",
+        "artist": "Artista",
+        "year": null,
+        "tags": [],
+        "folder_id": "F0000000000000001",
+        "duration_s": 101.0,
+        "license": "Prueba",
+        "audio": "audio/S0000000000000001.opus",
+        "track": 1
+      },
+      {
+        "id": "S0000000000000002",
+        "title": "Dos",
+        "artist": "Artista",
+        "year": null,
+        "tags": [],
+        "folder_id": "F0000000000000001",
+        "duration_s": 102.0,
+        "license": "Prueba",
+        "audio": "audio/S0000000000000002.opus",
+        "track": 2
+      },
+      {
+        "id": "S0000000000000003",
+        "title": "Tres",
+        "artist": "Artista",
+        "year": null,
+        "tags": [],
+        "folder_id": "F0000000000000001",
+        "duration_s": 103.0,
+        "license": "Prueba",
+        "audio": "audio/S0000000000000003.opus",
+        "track": 3
+      },
+      {
+        "id": "S0000000000000004",
+        "title": "Cuatro",
+        "artist": "Artista",
+        "year": null,
+        "tags": [],
+        "folder_id": null,
+        "duration_s": 104.0,
+        "license": "Prueba",
+        "audio": "audio/S0000000000000004.opus"
+      },
+      {
+        "id": "S0000000000000005",
+        "title": "Cinco",
+        "artist": "Artista",
+        "year": null,
+        "tags": [],
+        "folder_id": "F0000000000000002",
+        "duration_s": 105.0,
+        "license": "Prueba",
+        "audio": "audio/S0000000000000005.opus"
+      }
+    ],
+    "folders": [
+      {
+        "id": "F0000000000000001",
+        "name": "Álbum A",
+        "parent_id": null,
+        "artist": "Artista A",
+        "cover": "covers/F0000000000000001.jpg"
+      },
+      {
+        "id": "F0000000000000002",
+        "name": "Álbum B",
+        "parent_id": null
+      }
+    ]
+  },
+  "aplicar": [
+    {
+      "nombre": "edit_song cambia título y artista",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000001",
+            "title": "Uno nuevo",
+            "artist": "Otra"
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000001": {
+          "title": "Uno nuevo",
+          "artist": "Otra",
+          "folder_id": "F0000000000000001",
+          "track": 1
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000001"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "edit_song con año y etiquetas normalizadas",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000004",
+            "year": 1950,
+            "tags": [
+              " Baile",
+              "baile",
+              "Swing "
+            ]
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000004": {
+          "title": "Cuatro",
+          "year": 1950,
+          "tags": [
+            "baile",
+            "swing"
+          ],
+          "folder_id": null,
+          "track": null
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000004"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "edit_song mete una canción en un álbum con números: recibe el siguiente",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000004",
+            "folder_id": "F0000000000000001"
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000004": {
+          "folder_id": "F0000000000000001",
+          "track": 4
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000004"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "edit_song saca una canción de su álbum: pierde el número y las demás no cambian",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000002",
+            "folder_id": null
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000002": {
+          "folder_id": null,
+          "track": null
+        },
+        "S0000000000000003": {
+          "folder_id": "F0000000000000001",
+          "track": 3
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000002"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "move_songs a un álbum con números, en el orden de la petición",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "move_songs",
+            "song_ids": [
+              "S0000000000000005",
+              "S0000000000000004"
+            ],
+            "folder_id": "F0000000000000001"
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000005": {
+          "folder_id": "F0000000000000001",
+          "track": 4
+        },
+        "S0000000000000004": {
+          "folder_id": "F0000000000000001",
+          "track": 5
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000004",
+          "S0000000000000005"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "move_songs a un álbum sin números: entran sin número",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "move_songs",
+            "song_ids": [
+              "S0000000000000001"
+            ],
+            "folder_id": "F0000000000000002"
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000001": {
+          "folder_id": "F0000000000000002",
+          "track": null
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000001"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "move_songs con canciones que ya están en ese álbum: no cambia su número",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "move_songs",
+            "song_ids": [
+              "S0000000000000002",
+              "S0000000000000001"
+            ],
+            "folder_id": "F0000000000000001"
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000001": {
+          "folder_id": "F0000000000000001",
+          "track": 1
+        },
+        "S0000000000000002": {
+          "folder_id": "F0000000000000001",
+          "track": 2
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000001",
+          "S0000000000000002"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "move_songs fuera de su álbum (folder_id null) e ids que no existen",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "move_songs",
+            "song_ids": [
+              "S0000000000000003",
+              "S0000000000000009"
+            ],
+            "folder_id": null
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000003": {
+          "folder_id": null,
+          "track": null
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000003"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "order_album numera 1..n en el orden nuevo y marca el álbum",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "order_album",
+            "folder_id": "F0000000000000001",
+            "song_ids": [
+              "S0000000000000003",
+              "S0000000000000001",
+              "S0000000000000002"
+            ]
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000003": {
+          "track": 1
+        },
+        "S0000000000000001": {
+          "track": 2
+        },
+        "S0000000000000002": {
+          "track": 3
+        }
+      },
+      "marcadas": {
+        "canciones": [],
+        "albumes": [
+          "F0000000000000001"
+        ]
+      }
+    },
+    {
+      "nombre": "order_album con una canción que no está en el álbum: se salta",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "order_album",
+            "folder_id": "F0000000000000001",
+            "song_ids": [
+              "S0000000000000003",
+              "S0000000000000004",
+              "S0000000000000002",
+              "S0000000000000001"
+            ]
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000003": {
+          "track": 1
+        },
+        "S0000000000000002": {
+          "track": 2
+        },
+        "S0000000000000001": {
+          "track": 3
+        },
+        "S0000000000000004": {
+          "folder_id": null,
+          "track": null
+        }
+      },
+      "marcadas": {
+        "canciones": [],
+        "albumes": [
+          "F0000000000000001"
+        ]
+      }
+    },
+    {
+      "nombre": "edit_folder cambia nombre y artista",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_folder",
+            "folder_id": "F0000000000000001",
+            "name": "Álbum A2",
+            "artist": ""
+          },
+          "state": "pendiente"
+        }
+      ],
+      "albumes": {
+        "F0000000000000001": {
+          "name": "Álbum A2",
+          "artist": ""
+        }
+      },
+      "marcadas": {
+        "canciones": [],
+        "albumes": [
+          "F0000000000000001"
+        ]
+      }
+    },
+    {
+      "nombre": "rename_folder cambia solo el nombre",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "rename_folder",
+            "folder_id": "F0000000000000002",
+            "name": "Nuevo B"
+          },
+          "state": "pendiente"
+        }
+      ],
+      "albumes": {
+        "F0000000000000002": {
+          "name": "Nuevo B",
+          "artist": ""
+        }
+      },
+      "marcadas": {
+        "canciones": [],
+        "albumes": [
+          "F0000000000000002"
+        ]
+      }
+    },
+    {
+      "nombre": "create_folder no se puede previsualizar",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "create_folder",
+            "name": "Valses"
+          },
+          "state": "pendiente",
+          "knownFolderIds": [
+            "F0000000000000001",
+            "F0000000000000002"
+          ]
+        }
+      ],
+      "albumes": {
+        "F0000000000000001": {
+          "name": "Álbum A"
+        },
+        "F0000000000000002": {
+          "name": "Álbum B"
+        }
+      },
+      "marcadas": {
+        "canciones": [],
+        "albumes": []
+      },
+      "totalAlbumes": 2
+    },
+    {
+      "nombre": "portada de una canción y de un álbum: se marcan",
+      "ediciones": [
+        {
+          "kind": "cover",
+          "targetId": "S0000000000000002",
+          "hadCover": false,
+          "preview": "AAA",
+          "state": "pendiente"
+        },
+        {
+          "kind": "cover",
+          "targetId": "F0000000000000002",
+          "hadCover": false,
+          "preview": "AAA",
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000002": {
+          "title": "Dos"
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000002"
+        ],
+        "albumes": [
+          "F0000000000000002"
+        ]
+      }
+    },
+    {
+      "nombre": "una edición fallida no se aplica",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000001",
+            "title": "Fallida"
+          },
+          "state": "error"
+        }
+      ],
+      "canciones": {
+        "S0000000000000001": {
+          "title": "Uno"
+        }
+      },
+      "marcadas": {
+        "canciones": [],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "varias ediciones se aplican en orden de envío: gana la última",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000001",
+            "title": "X"
+          },
+          "state": "pendiente"
+        },
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000001",
+            "title": "Y"
+          },
+          "state": "pendiente"
+        },
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000001",
+            "folder_id": "F0000000000000002"
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {
+        "S0000000000000001": {
+          "title": "Y",
+          "folder_id": "F0000000000000002",
+          "track": null
+        }
+      },
+      "marcadas": {
+        "canciones": [
+          "S0000000000000001"
+        ],
+        "albumes": []
+      }
+    },
+    {
+      "nombre": "una canción que no existe no se marca",
+      "ediciones": [
+        {
+          "kind": "organize",
+          "payload": {
+            "op": "edit_song",
+            "song_id": "S0000000000000009",
+            "title": "Nada"
+          },
+          "state": "pendiente"
+        }
+      ],
+      "canciones": {},
+      "marcadas": {
+        "canciones": [],
+        "albumes": []
+      }
+    }
+  ],
+  "reflejada": [
+    {
+      "nombre": "edit_song aún no reflejada",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "Uno nuevo",
+          "artist": "Otra"
+        },
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "edit_song reflejada (espacios sobrantes no cuentan)",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "Uno nuevo",
+          "artist": "Otra"
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000001": {
+            "title": " Uno  nuevo ",
+            "artist": "Otra"
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "edit_song con un campo distinto no está reflejada",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "Uno nuevo",
+          "artist": "Otra"
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000001": {
+            "title": "Uno nuevo"
+          }
+        }
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "edit_song con etiquetas normalizadas y año",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000004",
+          "year": 1950,
+          "tags": [
+            " Baile",
+            "baile",
+            "Swing "
+          ]
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000004": {
+            "year": 1950,
+            "tags": [
+              "baile",
+              "swing"
+            ]
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "edit_song fuera del álbum",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000002",
+          "folder_id": null
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000002": {
+            "folder_id": null
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "edit_song de una canción que ya no existe: nada que esperar",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000009",
+          "title": "Nada"
+        },
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": true
+    },
+    {
+      "nombre": "move_songs a medias",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "move_songs",
+          "song_ids": [
+            "S0000000000000004",
+            "S0000000000000005"
+          ],
+          "folder_id": "F0000000000000001"
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000004": {
+            "folder_id": "F0000000000000001"
+          }
+        }
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "move_songs completa",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "move_songs",
+          "song_ids": [
+            "S0000000000000004",
+            "S0000000000000005"
+          ],
+          "folder_id": "F0000000000000001"
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000004": {
+            "folder_id": "F0000000000000001"
+          },
+          "S0000000000000005": {
+            "folder_id": "F0000000000000001"
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "move_songs fuera del álbum",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "move_songs",
+          "song_ids": [
+            "S0000000000000001",
+            "S0000000000000002"
+          ],
+          "folder_id": null
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000001": {
+            "folder_id": null
+          },
+          "S0000000000000002": {
+            "folder_id": null
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "order_album aún no reflejado",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000001",
+          "song_ids": [
+            "S0000000000000003",
+            "S0000000000000001",
+            "S0000000000000002"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "order_album reflejado",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000001",
+          "song_ids": [
+            "S0000000000000003",
+            "S0000000000000001",
+            "S0000000000000002"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000003": {
+            "track": 1
+          },
+          "S0000000000000001": {
+            "track": 2
+          },
+          "S0000000000000002": {
+            "track": 3
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "order_album con canciones sin número no está reflejado",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000002",
+          "song_ids": [
+            "S0000000000000005"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "order_album reflejado aunque una canción ya no esté en el álbum",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000001",
+          "song_ids": [
+            "S0000000000000003",
+            "S0000000000000001",
+            "S0000000000000002"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000002": {
+            "folder_id": null,
+            "track": null
+          },
+          "S0000000000000003": {
+            "track": 1
+          },
+          "S0000000000000001": {
+            "track": 2
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "order_album de un álbum que ya no existe",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000009",
+          "song_ids": [
+            "S0000000000000001"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": true
+    },
+    {
+      "nombre": "edit_folder aún no reflejado",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_folder",
+          "folder_id": "F0000000000000001",
+          "name": "Álbum A2",
+          "artist": ""
+        },
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "edit_folder reflejado (sin artista)",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_folder",
+          "folder_id": "F0000000000000001",
+          "name": "Álbum A2",
+          "artist": ""
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "albumes": {
+          "F0000000000000001": {
+            "name": "Álbum A2",
+            "artist": null
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "rename_folder reflejado",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "rename_folder",
+          "folder_id": "F0000000000000002",
+          "name": "Nuevo B"
+        },
+        "state": "pendiente"
+      },
+      "cambios": {
+        "albumes": {
+          "F0000000000000002": {
+            "name": "Nuevo B"
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "edit_folder de un álbum que ya no existe",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_folder",
+          "folder_id": "F0000000000000009",
+          "name": "X"
+        },
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": true
+    },
+    {
+      "nombre": "create_folder aún no reflejado",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "create_folder",
+          "name": "Valses",
+          "artist": "Orquesta"
+        },
+        "state": "pendiente",
+        "knownFolderIds": [
+          "F0000000000000001",
+          "F0000000000000002"
+        ]
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "create_folder reflejado con un álbum nuevo de ese nombre y artista",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "create_folder",
+          "name": "Valses",
+          "artist": "Orquesta"
+        },
+        "state": "pendiente",
+        "knownFolderIds": [
+          "F0000000000000001",
+          "F0000000000000002"
+        ]
+      },
+      "cambios": {
+        "albumesNuevos": [
+          {
+            "id": "F0000000000000003",
+            "name": "Valses",
+            "parent_id": null,
+            "artist": "Orquesta"
+          }
+        ]
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "create_folder: un álbum nuevo con otro artista no vale",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "create_folder",
+          "name": "Valses",
+          "artist": "Orquesta"
+        },
+        "state": "pendiente",
+        "knownFolderIds": [
+          "F0000000000000001",
+          "F0000000000000002"
+        ]
+      },
+      "cambios": {
+        "albumesNuevos": [
+          {
+            "id": "F0000000000000003",
+            "name": "Valses",
+            "parent_id": null,
+            "artist": "Otra"
+          }
+        ]
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "create_folder: un álbum que ya existía con ese nombre no vale",
+      "edicion": {
+        "kind": "organize",
+        "payload": {
+          "op": "create_folder",
+          "name": "Álbum B"
+        },
+        "state": "pendiente",
+        "knownFolderIds": [
+          "F0000000000000001",
+          "F0000000000000002"
+        ]
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "portada de algo sin portada: reflejada cuando el catálogo la trae",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "S0000000000000004",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "cambios": {
+        "canciones": {
+          "S0000000000000004": {
+            "cover": "covers/S0000000000000004.jpg"
+          }
+        }
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "portada de algo sin portada: aún no",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "S0000000000000004",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "portada de algo que ya tenía portada: nunca se ve en el catálogo",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "F0000000000000001",
+        "hadCover": true,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": false
+    },
+    {
+      "nombre": "portada de un álbum que ya no existe",
+      "edicion": {
+        "kind": "cover",
+        "targetId": "F0000000000000009",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "cambios": {},
+      "esperado": true
+    }
+  ],
+  "duplicado": [
+    {
+      "nombre": "misma operación y mismos datos",
+      "a": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X",
+          "artist": "Y"
+        },
+        "state": "pendiente"
+      },
+      "b": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X",
+          "artist": "Y"
+        },
+        "state": "pendiente"
+      },
+      "igual": true
+    },
+    {
+      "nombre": "mismos datos en otro orden de claves",
+      "a": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X",
+          "artist": "Y"
+        },
+        "state": "pendiente"
+      },
+      "b": {
+        "kind": "organize",
+        "payload": {
+          "artist": "Y",
+          "title": "X",
+          "song_id": "S0000000000000001",
+          "op": "edit_song"
+        },
+        "state": "pendiente"
+      },
+      "igual": true
+    },
+    {
+      "nombre": "otro título",
+      "a": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X"
+        },
+        "state": "pendiente"
+      },
+      "b": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "Z"
+        },
+        "state": "pendiente"
+      },
+      "igual": false
+    },
+    {
+      "nombre": "move_songs con otro orden es otra petición",
+      "a": {
+        "kind": "organize",
+        "payload": {
+          "op": "move_songs",
+          "song_ids": [
+            "S0000000000000001",
+            "S0000000000000002"
+          ],
+          "folder_id": "F0000000000000002"
+        },
+        "state": "pendiente"
+      },
+      "b": {
+        "kind": "organize",
+        "payload": {
+          "op": "move_songs",
+          "song_ids": [
+            "S0000000000000002",
+            "S0000000000000001"
+          ],
+          "folder_id": "F0000000000000002"
+        },
+        "state": "pendiente"
+      },
+      "igual": false
+    },
+    {
+      "nombre": "folder_id null frente a otro álbum",
+      "a": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "folder_id": null
+        },
+        "state": "pendiente"
+      },
+      "b": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "folder_id": "F0000000000000002"
+        },
+        "state": "pendiente"
+      },
+      "igual": false
+    },
+    {
+      "nombre": "misma portada del mismo elemento",
+      "a": {
+        "kind": "cover",
+        "targetId": "S0000000000000001",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "b": {
+        "kind": "cover",
+        "targetId": "S0000000000000001",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "igual": true
+    },
+    {
+      "nombre": "otra imagen para el mismo elemento",
+      "a": {
+        "kind": "cover",
+        "targetId": "S0000000000000001",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "b": {
+        "kind": "cover",
+        "targetId": "S0000000000000001",
+        "hadCover": false,
+        "preview": "BBB",
+        "state": "pendiente"
+      },
+      "igual": false
+    },
+    {
+      "nombre": "portada frente a texto",
+      "a": {
+        "kind": "cover",
+        "targetId": "S0000000000000001",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "b": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X"
+        },
+        "state": "pendiente"
+      },
+      "igual": false
+    }
+  ],
+  "sustituye": [
+    {
+      "nombre": "dos «Editar detalles» de la misma canción",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X",
+          "artist": "A"
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "Y",
+          "artist": "A"
+        },
+        "state": "pendiente"
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "la nueva no cambia todos los campos de la anterior",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X",
+          "artist": "A"
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "Y"
+        },
+        "state": "pendiente"
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "álbum de una canción frente a sus detalles",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "folder_id": "F0000000000000002"
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "Y",
+          "artist": "A"
+        },
+        "state": "pendiente"
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "otra canción",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X"
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000002",
+          "title": "X"
+        },
+        "state": "pendiente"
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "dos órdenes del mismo álbum",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000001",
+          "song_ids": [
+            "S0000000000000002",
+            "S0000000000000001",
+            "S0000000000000003"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000001",
+          "song_ids": [
+            "S0000000000000003",
+            "S0000000000000001",
+            "S0000000000000002"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "órdenes de álbumes distintos",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000001",
+          "song_ids": [
+            "S0000000000000001"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "order_album",
+          "folder_id": "F0000000000000002",
+          "song_ids": [
+            "S0000000000000005"
+          ]
+        },
+        "state": "pendiente"
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "rename_folder sustituido por edit_folder con nombre y artista",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "rename_folder",
+          "folder_id": "F0000000000000001",
+          "name": "X"
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_folder",
+          "folder_id": "F0000000000000001",
+          "name": "Y",
+          "artist": "Z"
+        },
+        "state": "pendiente"
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "edit_folder con nombre y artista no lo sustituye un rename_folder",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_folder",
+          "folder_id": "F0000000000000001",
+          "name": "Y",
+          "artist": "Z"
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "rename_folder",
+          "folder_id": "F0000000000000001",
+          "name": "X"
+        },
+        "state": "pendiente"
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "dos portadas del mismo elemento",
+      "anterior": {
+        "kind": "cover",
+        "targetId": "S0000000000000001",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "cover",
+        "targetId": "S0000000000000001",
+        "hadCover": false,
+        "preview": "BBB",
+        "state": "pendiente"
+      },
+      "esperado": true
+    },
+    {
+      "nombre": "portadas de elementos distintos",
+      "anterior": {
+        "kind": "cover",
+        "targetId": "S0000000000000001",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "cover",
+        "targetId": "S0000000000000002",
+        "hadCover": false,
+        "preview": "AAA",
+        "state": "pendiente"
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "move_songs nunca sustituye",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "move_songs",
+          "song_ids": [
+            "S0000000000000001"
+          ],
+          "folder_id": "F0000000000000002"
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "move_songs",
+          "song_ids": [
+            "S0000000000000001"
+          ],
+          "folder_id": "F0000000000000002"
+        },
+        "state": "pendiente"
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "create_folder nunca sustituye",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "create_folder",
+          "name": "A"
+        },
+        "state": "pendiente"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "create_folder",
+          "name": "A"
+        },
+        "state": "pendiente"
+      },
+      "esperado": false
+    },
+    {
+      "nombre": "una fallida no se sustituye (se reintenta o se descarta)",
+      "anterior": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "X"
+        },
+        "state": "error"
+      },
+      "nueva": {
+        "kind": "organize",
+        "payload": {
+          "op": "edit_song",
+          "song_id": "S0000000000000001",
+          "title": "Y"
+        },
+        "state": "pendiente"
+      },
+      "esperado": false
+    }
+  ],
+  "revisar": [
+    {
+      "nombre": "recién enviada, abierta",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 1,
+      "estado": "abierta",
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "pendiente",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "reflejada en el catálogo: confirmada aunque siga abierta",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 1,
+      "estado": "abierta",
+      "reflejada": true,
+      "catalogoOk": true,
+      "esperado": "confirmada",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "el servidor dice error: fallida",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 1,
+      "estado": "error",
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "fallida",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "reflejada gana a error (ya está en el catálogo)",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 1,
+      "estado": "error",
+      "reflejada": true,
+      "catalogoOk": true,
+      "esperado": "confirmada",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "cerrada pero aún no en el catálogo: sigue pendiente y anota la hora",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 3,
+      "estado": "cerrada",
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "pendiente",
+      "closedAtMin": 3
+    },
+    {
+      "nombre": "cerrada hace 10 minutos sin reflejarse: confirmada",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": 3,
+        "hadCover": false
+      },
+      "ahoraMin": 13,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "confirmada",
+      "closedAtMin": 3
+    },
+    {
+      "nombre": "cerrada hace 9 minutos: pendiente",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": 3,
+        "hadCover": false
+      },
+      "ahoraMin": 12,
+      "estado": "cerrada",
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "pendiente",
+      "closedAtMin": 3
+    },
+    {
+      "nombre": "30 minutos abierta y con conexión: fallida",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 30,
+      "estado": "abierta",
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "fallida",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "30 minutos sin poder leer el catálogo (sin conexión): pendiente",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 30,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": false,
+      "esperado": "pendiente",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "29 minutos abierta: pendiente",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 29,
+      "estado": "abierta",
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "pendiente",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "30 minutos con el estado desconocido pero el catálogo leído: fallida",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 30,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "fallida",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "cerrada a los 25 minutos: a los 31 no caduca",
+      "edicion": {
+        "kind": "organize",
+        "issue": 7,
+        "createdAtMin": 0,
+        "closedAtMin": 25,
+        "hadCover": false
+      },
+      "ahoraMin": 31,
+      "estado": "cerrada",
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "pendiente",
+      "closedAtMin": 25
+    },
+    {
+      "nombre": "sin número de incidencia: solo cuenta el catálogo",
+      "edicion": {
+        "kind": "organize",
+        "issue": null,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 5,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "pendiente",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "sin número de incidencia, 30 minutos: fallida",
+      "edicion": {
+        "kind": "organize",
+        "issue": null,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 30,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "fallida",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "portada de algo que ya tenía portada: a los 10 minutos se da por guardada",
+      "edicion": {
+        "kind": "cover",
+        "issue": null,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": true
+      },
+      "ahoraMin": 10,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": false,
+      "esperado": "confirmada",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "portada de algo que ya tenía portada: a los 9 minutos, pendiente",
+      "edicion": {
+        "kind": "cover",
+        "issue": null,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": true
+      },
+      "ahoraMin": 9,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "pendiente",
+      "closedAtMin": null
+    },
+    {
+      "nombre": "portada nueva que no aparece en 30 minutos: fallida",
+      "edicion": {
+        "kind": "cover",
+        "issue": null,
+        "createdAtMin": 0,
+        "closedAtMin": null,
+        "hadCover": false
+      },
+      "ahoraMin": 30,
+      "estado": null,
+      "reflejada": false,
+      "catalogoOk": true,
+      "esperado": "fallida",
+      "closedAtMin": null
+    }
+  ]
+}

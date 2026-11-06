@@ -8,7 +8,7 @@ Revisado con el código el 2026-11-02. Las constantes se toman del código. Lo q
 
 Este documento cubre dos piezas:
 
-1. **Procesado en GitHub Actions** (`main`): de una URL con licencia a `audio-library/audio/<id>.opus`, y la publicación de las canciones públicas en `frontend/web/audio/`.
+1. **Procesado en GitHub Actions** (`main`): de una URL con licencia a `audio-library/audio/<id>.opus`, y la publicación de las canciones públicas en Cloudflare R2 (ADR-0020).
 2. **Motor de reproducción en la web** (feat/ui-publica): cola, volumen con GainNode, temporizador de apagado, Media Session y Screen Wake Lock.
 
 Las reglas de producto están en [DESIGN.md](../user-experience/DESIGN.md), secciones 8.1 y 8.2. La elección del perfil de compresión está en [COMPRESSION.md](COMPRESSION.md). Las decisiones de arquitectura están en `docs/decisions/` (ADR-0002, ADR-0003, ADR-0005, ADR-0006 y ADR-0007). ADR-0008 solo existe en feat/gestion-backend. El contrato del reproductor, caso por caso, está en `docs/user-experience/PLAYER.md`, y el modelo de datos en `docs/datos/DATABASE.md`. Este documento describe el código.
@@ -132,9 +132,9 @@ Los valores son los que declara `limits.py`, que indica haberlos verificado en d
 
 `sync_public` se ejecuta al final de cada acción de `ci_library.py`, también cuando el catálogo no cambia.
 
-- Copia a `frontend/web/audio/<id>.opus` solo las canciones con `public: true`. Copia si el destino no existe o si su tamaño es distinto (compara tamaños, no contenido).
-- Borra de `frontend/web/audio/` los `.opus` que ya no son públicos.
-- Si falta el `.opus` de una canción pública en `audio-library/audio/`, lanza `FileNotFoundError`.
+- No mira el audio (ADR-0024): ya no lo copia a la web (ADR-0020, fase 3). En el job `publicar`, `scripts/sync_r2.py` sube el audio nuevo al bucket privado de R2, copia al público el de las canciones públicas (desde la copia local o desde el privado) y borra del público el de las despublicadas.
+- Borra de `frontend/web/audio/` cualquier `.opus` que quede de antes.
+- Si una canción pública no tiene audio ni en la copia local ni en ningún bucket, es `sync_r2.py` el que se detiene, antes de escribir nada y de subir a `main` (ADR-0024).
 - `frontend/web/data/songs.json`: solo las públicas, ordenadas por título sin distinguir mayúsculas. Campos: `id`, `title`, `artist`, `year`, `tags`, `folder_id`, `duration_s`, `license` y `audio` (`audio/<id>.opus`).
 - `frontend/web/data/folders.json`: todas las carpetas (`id`, `name`, `parent_id`).
 - Según el docstring, Vercel sirve solo `frontend/web`. Los `.opus` privados sí quedan versionados en `audio-library/audio/` (ver `.gitignore`), pero no se copian a la web.

@@ -8,12 +8,16 @@ scripts/empaquetar_cambios.py (ACTION=buzon) y 'publicar' los valida y los aplic
 Entradas, solo por variables de entorno (nunca por la línea de comandos):
   ACTOR                 la cuenta de GitHub que hizo el push (github.actor)
   GITHUB_EVENT_PATH     el evento del push (lo pone GitHub Actions)
+  GITHUB_EVENT_NAME     con repository_dispatch (una subida de la web o la APK, ADR-0024) solo se procesan las
+                        subidas de --entrada, no el buzón de main
   GITHUB_STEP_SUMMARY   opcional: aquí se escribe el resumen del job, con las canciones privadas y los rechazos
+--entrada <carpeta>: las subidas de la web que el job 'recoger' bajó del bucket privado (<UUID>/...). Si no existe, no
+hay ninguna.
 Salida: --resultado <ruta> guarda el resultado en JSON (el paquete lo lleva como resultado.json). Lo imprime también,
 en la última línea. Ante cualquier error el resultado es {"error": "..."} y sale con código 1.
 
 Uso dentro de buzon.yml:
-  python scripts/buzon.py --resultado "$RUNNER_TEMP/paquete/resultado.json"
+  python scripts/buzon.py --resultado "$RUNNER_TEMP/paquete/resultado.json" --entrada "$RUNNER_TEMP/entrada"
 """
 
 from __future__ import annotations
@@ -46,8 +50,14 @@ def _event(env: Mapping[str, str]) -> dict:
     return data
 
 
-def run(env: Mapping[str, str], *, root: Path = ROOT) -> dict:
-    return procesar_buzon(repo=root, event=_event(env), actor=env.get("ACTOR", ""))
+def run(env: Mapping[str, str], *, root: Path = ROOT, entrada: Path | None = None) -> dict:
+    if entrada is not None and entrada.is_symlink():
+        raise BuzonError("la carpeta de subidas de la web es un enlace simbólico")
+    return procesar_buzon(
+        repo=root, event=_event(env), actor=env.get("ACTOR", ""),
+        entrada=entrada if entrada is not None and entrada.is_dir() else None,
+        solo_entrada=env.get("GITHUB_EVENT_NAME", "") == "repository_dispatch",
+    )
 
 
 def _summary(env: Mapping[str, str], result: dict) -> None:
@@ -67,10 +77,11 @@ def _write(path: Path | None, result: dict) -> None:
 def main(argv: list[str] | None = None, *, env: Mapping[str, str] | None = None, root: Path = ROOT) -> int:
     parser = argparse.ArgumentParser(description="Procesa las subidas al buzón de canciones.")
     parser.add_argument("--resultado", type=Path, default=None)
+    parser.add_argument("--entrada", type=Path, default=None)
     args = parser.parse_args(argv)
     env = os.environ if env is None else env
     try:
-        result = run(env, root=root)
+        result = run(env, root=root, entrada=args.entrada)
     except Exception as error:  # cualquier fallo sale como JSON; el workflow no publica nada si falla
         result = {"error": str(error) or type(error).__name__, "actor": env.get("ACTOR", "")}
         _write(args.resultado, result)
@@ -83,6 +94,9 @@ def main(argv: list[str] | None = None, *, env: Mapping[str, str] | None = None,
         # Texto fijo: los nombres de archivo no van a los comandos de GitHub Actions, solo al resumen escapado.
         print(f"::warning title=Buzón::{len(result['privadas'])} canción(es) sin línea «Licencia:» entran como "
               "privadas; ver el resumen del job.")
+    if result.get("posibles_duplicados"):
+        print(f"::warning title=Buzón::{len(result['posibles_duplicados'])} canción(es) nueva(s) parecen estar ya en la "
+              "biblioteca (mismo título y duración parecida); se han añadido igualmente. Ver el resumen del job.")
     if result["revisar"]:
         print(f"::warning title=Buzón::{len(result['revisar'])} elemento(s) del buzón hay que revisarlos a mano; "
               "ver el resumen del job.")

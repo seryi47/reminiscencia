@@ -108,8 +108,9 @@ async function readBody(request) {
 /**
  * Arranca el servidor en un puerto libre de 127.0.0.1.
  * overrides: Map de ruta (por ejemplo "/data/songs.json") a { body, type } o a { file, type }.
- * functions: Map de ruta (por ejemplo "/api/subir") a una función async ({ method, headers, body }) que devuelve
- * { status, json }: simula una función de Vercel para cualquier método que no sea GET ni HEAD.
+ * functions: Map de ruta (por ejemplo "/api/subir") a una función async ({ method, headers, body, query }) que devuelve
+ * { status, json }: simula una función de Vercel para cualquier método que no sea GET ni HEAD. Si la función tiene
+ * acceptsGet = true, también atiende GET (por ejemplo, GET /api/editar?incidencia=N; query es un URLSearchParams).
  * Devuelve { url, port, close() }.
  */
 export async function startStaticServer({ root = WEB_ROOT, overrides = new Map(), functions = new Map() } = {}) {
@@ -122,13 +123,13 @@ export async function startStaticServer({ root = WEB_ROOT, overrides = new Map()
   const csp = readCsp(absoluteRoot);
   const server = createServer(async (request, response) => {
     try {
-      const { pathname } = new URL(request.url ?? "/", "http://127.0.0.1");
+      const { pathname, searchParams } = new URL(request.url ?? "/", "http://127.0.0.1");
       const decoded = decodeURIComponent(pathname);
 
       const handler = functions.get(decoded);
-      if (handler && request.method !== "GET" && request.method !== "HEAD") {
+      if (handler && ((request.method !== "GET" && request.method !== "HEAD") || (request.method === "GET" && handler.acceptsGet === true))) {
         const body = await readBody(request);
-        const { status = 200, json = {} } = await handler({ method: request.method, headers: request.headers, body });
+        const { status = 200, json = {} } = await handler({ method: request.method, headers: request.headers, body, query: searchParams });
         response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...(csp ? { "Content-Security-Policy": csp } : {}) });
         return response.end(JSON.stringify(json));
       }

@@ -172,8 +172,11 @@ export const viaDialog = (open) => () => {
   return false;
 };
 
-/** Opciones de una canción. playlistId: la lista en la que está la fila (para «Quitar de esta lista»). */
-export function songMenuItems(ctx, song, { playlistId = null } = {}) {
+/**
+ * Opciones de una canción. playlistId: la lista en la que está la fila (para «Quitar de esta lista»); albumId: el álbum
+ * que se está viendo (para «Quitar de este álbum», solo si la canción es editable y está en ese álbum).
+ */
+export function songMenuItems(ctx, song, { playlistId = null, albumId = null } = {}) {
   const liked = ctx.isLiked(song.id);
   const editable = ctx.isEditableSong(song);
   const playlistItems = () => [
@@ -184,7 +187,7 @@ export function songMenuItems(ctx, song, { playlistId = null } = {}) {
       testid: 'menu-playlist',
       action: () => ctx.addToPlaylist(list.id, [song.id]),
     })),
-    { label: 'Atrás', icon: 'chevron-left', action: () => songMenuItems(ctx, song, { playlistId }) },
+    { label: 'Atrás', icon: 'chevron-left', action: () => songMenuItems(ctx, song, { playlistId, albumId }) },
   ];
   return [
     { label: 'Añadir a una lista', icon: 'plus', testid: 'menu-add-playlist', action: () => playlistItems() },
@@ -194,13 +197,16 @@ export function songMenuItems(ctx, song, { playlistId = null } = {}) {
     song.folderId ? { label: 'Ir al álbum', icon: 'album', testid: 'menu-album', action: () => { ctx.navigate(`#/album/${encodeURIComponent(song.folderId)}`); return false; } } : null,
     editable ? { label: 'Editar detalles', icon: 'pencil', testid: 'menu-edit-song', action: viaDialog(() => ctx.editSong(song)) } : null,
     editable ? { label: 'Añadir a un álbum', icon: 'album', testid: 'menu-move-album', action: viaDialog(() => ctx.moveSongToAlbum(song)) } : null,
+    editable && albumId && song.folderId === albumId
+      ? { label: 'Quitar de este álbum', icon: 'close', testid: 'menu-remove-from-album', action: viaDialog(() => ctx.removeSongFromAlbum(song, albumId)) }
+      : null,
     editable ? { label: 'Cambiar portada', icon: 'image', testid: 'menu-song-cover', action: viaDialog(() => ctx.changeCover({ kind: 'song', id: song.id, name: song.title })) } : null,
     song.local && !song.pending ? { label: 'Borrar de este navegador', icon: 'trash', testid: 'menu-delete-local', action: viaDialog(() => ctx.deleteLocalSong(song)) } : null,
   ].filter(Boolean);
 }
 
 /** Botón «Más opciones» de una canción, que abre su menú. */
-export function songMoreButton(ctx, song, { playlistId = null, key, testid = 'row-more', size = 20, className = 'row-more' } = {}) {
+export function songMoreButton(ctx, song, { playlistId = null, albumId = null, key, testid = 'row-more', size = 20, className = 'row-more' } = {}) {
   const more = iconButton('more', `Más opciones para ${song.title}`, {
     class: className,
     'aria-haspopup': 'menu',
@@ -210,7 +216,7 @@ export function songMoreButton(ctx, song, { playlistId = null, key, testid = 'ro
   }, size);
   more.addEventListener('click', (event) => {
     event.stopPropagation();
-    openMenu(more, songMenuItems(ctx, song, { playlistId }), { label: `Opciones de ${song.title}` });
+    openMenu(more, songMenuItems(ctx, song, { playlistId, albumId }), { label: `Opciones de ${song.title}` });
   });
   return more;
 }
@@ -234,10 +240,11 @@ export function likeButton(ctx, song, { testid = 'like-button', size = 16, extra
 /**
  * Tabla de canciones de una colección: cabecera fija (#, Título, Álbum y reloj) y filas de 56 px; la que suena va en
  * verde (syncPlaying en app.js). Pulsar la fila (o el título, que es un botón) reproduce la colección desde esa canción.
- * showAlbum: columna «Álbum» (no en la página de un álbum). showCover: portada de 40 px en la fila.
+ * showAlbum: columna «Álbum» (no en la página de un álbum). showCover: portada de 40 px en la fila. albumId: el álbum
+ * que se está viendo (el menú de la fila ofrece «Quitar de este álbum»).
  */
 export function trackTable(ctx, songs, {
-  contextId, playlistId = null, showAlbum = true, showCover = true, testid = 'track-table', caption, queue = songs, offset = 0,
+  contextId, playlistId = null, albumId = null, showAlbum = true, showCover = true, testid = 'track-table', caption, queue = songs, offset = 0,
 }) {
   const head = el('thead', {},
     el('tr', {},
@@ -270,7 +277,7 @@ export function trackTable(ctx, songs, {
         el('button', {
           type: 'button',
           class: 'track-text track-play',
-          'aria-label': `Reproducir ${song.title}`,
+          'aria-label': song.pendingEdit ? `Reproducir ${song.title} (cambio pendiente de guardar)` : `Reproducir ${song.title}`,
           'data-testid': 'track-title',
           'data-key': `title:${contextId}:${position}`,
           on: { click: (event) => { event.stopPropagation(); play(); } },
@@ -281,6 +288,8 @@ export function trackTable(ctx, songs, {
           song.pending
             ? el('span', { class: 'badge badge-pending', 'data-testid': 'track-pending' }, ctx.uploadLabel(song))
             : (song.local ? el('span', { class: 'badge' }, 'En este navegador') : null),
+          // Un cambio enviado que aún no ha llegado al catálogo (ADR-0027): se ve ya, con la marca «Pendiente».
+          song.pendingEdit && !song.pending ? el('span', { class: 'badge badge-edit', 'data-testid': 'track-edit-pending' }, 'Pendiente') : null,
           song.pending ? '' : (song.artist || (song.local ? '' : 'Artista desconocido')),
           playable ? null : el('span', { class: 'track-offline' }, ' · No disponible sin conexión'))))),
     showAlbum ? el('td', { class: 'col-album' },
@@ -289,7 +298,7 @@ export function trackTable(ctx, songs, {
       el('div', { class: 'track-actions' },
         likeButton(ctx, song, { testid: 'row-like' }),
         el('span', { class: 'track-duration' }, formatDuration(song.durationS ?? NaN)),
-        songMoreButton(ctx, song, { playlistId, key: `more:${contextId}:${position}` }))));
+        songMoreButton(ctx, song, { playlistId, albumId, key: `more:${contextId}:${position}` }))));
     body.append(row);
   });
   return el('table', { class: `track-table${showAlbum ? ' has-album' : ''}`, 'data-testid': testid },

@@ -4,6 +4,8 @@
 - Fecha: 2026-10-31
 - Modifica: ADR-0003 (solo para el audio que se publica en la web)
 
+> **Nota (2026-11-05):** desde la fase 3 de [ADR-0020](ADR-0020-audio-en-r2.md), `frontend/web/audio/` ya no existe: el audio público lo sirve Cloudflare R2 y Vercel redirige `/audio/<id>.opus` al bucket.
+
 ## Contexto
 
 El despliegue de Vercel sale de GitHub (Git integration). Vercel solo sirve lo que está en el repositorio, y el audio de `frontend/web/audio/` estaba fuera de Git, así que la web devolvía 404 en cada pista.

@@ -79,7 +79,7 @@ Al subir una etiqueta `android-v*`, el workflow `android`:
 3. Compila el APK de producción con la clave de los secretos y comprueba que su huella coincide con la de referencia. Si no coincide, no publica nada. Hoy la CI omite este paso porque los secretos de firma no están cargados en GitHub (ver el estado al principio).
 4. Crea la release `android-v1.2.4` con `reminiscencia-1.2.4-arm64-v8a.apk`, `reminiscencia-1.2.4-armeabi-v7a.apk`, `reminiscencia-1.2.4-x86_64.apk`, `reminiscencia-1.2.4-debug.apk` y `SHA256SUMS.txt`. Cada teléfono descarga solo el suyo.
 
-Para probar sin publicar, lanza el workflow a mano desde la pestaña Actions de GitHub (botón Run workflow). Compila y verifica, pero no crea ninguna release. Sin secretos de firma, esa ejecución solo avisa y omite el APK de producción.
+Cada push a `main` y cada pull request que toque `mobile/`, `scripts/android/` o el workflow ya analiza, prueba y compila el APK de depuración (sin APK de producción). Para probar también el de producción sin publicar, lanza el workflow a mano desde la pestaña Actions de GitHub (botón Run workflow). Compila y verifica, pero no crea ninguna release. Sin secretos de firma, esa ejecución solo avisa y omite el APK de producción.
 
 ## 7. Comprobar la release
 

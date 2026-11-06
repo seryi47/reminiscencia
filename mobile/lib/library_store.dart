@@ -125,7 +125,8 @@ class LibraryStore implements LibrarySource {
 
   Uri audioUri(Song song) => Uri.parse('$kAudioBase${song.audio}');
 
-  /// El mismo audio en la web (Vercel), de respaldo si R2 falla o aún no tiene la canción.
+  /// El mismo audio pedido a la web, de respaldo si falla la petición directa a R2: Vercel lo redirige al bucket
+  /// (ADR-0020, fase 3), así que es un segundo intento por otro camino, no una copia aparte.
   Uri fallbackAudioUri(Song song) => Uri.parse('$kLibraryBase${song.audio}');
 
   /// Fichero local de una canción de la web (puede no existir todavía).

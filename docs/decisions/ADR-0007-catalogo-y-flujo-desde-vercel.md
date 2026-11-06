@@ -6,6 +6,10 @@
 - Nota de estado (2026-10-31): **administración retirada.** Los puntos 4 y 5 (administración en Vercel, funciones `api/*` y el workflow `library.yml`) quedan sustituidos por ADR-0008: toda escritura es una petición en una incidencia del propietario y el workflow es `biblioteca.yml`. Siguen vigentes el catálogo versionado, el audio en el repositorio, la publicación por `public` y el límite de los ficheros de GitHub (puntos 1 a 3 y 6).
 - Nota de estado (2026-11-02): en main ya no hay administración. No existen `frontend/web/admin`, `api/` ni `frontend/web/lib`, y ningún código lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. El punto 6 (la app Android) está implementado.
 
+> **Nota (2026-11-05):** desde la fase 3 de [ADR-0020](ADR-0020-audio-en-r2.md), `frontend/web/audio/` ya no existe: el audio público lo sirve Cloudflare R2 y Vercel redirige `/audio/<id>.opus` al bucket.
+
+> **Nota (2026-11-05, ADR-0024):** el catálogo sigue siendo la fuente de verdad en Git, pero el audio ya no: está en un bucket privado de Cloudflare R2. Ver [ADR-0024](ADR-0024-audio-privado-en-r2.md).
+
 ## Contexto
 
 Quieres que todo funcione desde la web de Vercel y desde la APK, sin depender de tu equipo. Vercel no puede descargar ni convertir audio (límites de tiempo, memoria y ausencia de ffmpeg, y tu regla de no meter procesado pesado allí). GitHub Actions sí puede.

@@ -8,6 +8,10 @@
 >
 > **Nota (2026-11-02):** `backend/sonidos/release.py` prepara lotes para Releases, pero ningún workflow lo invoca; solo lo usan sus pruebas. Las releases que sí se usan son las de los APK de la app Android (`docs/android/RELEASE.md`). Cómo se guarda hoy la biblioteca está descrito en `docs/arquitectura/GITHUB_STORAGE.md`.
 
+> **Nota (2026-11-05):** desde la fase 3 de [ADR-0020](ADR-0020-audio-en-r2.md), `frontend/web/audio/` ya no existe: el audio público lo sirve Cloudflare R2 y Vercel redirige `/audio/<id>.opus` al bucket.
+
+> **Nota (2026-11-05, ADR-0024):** el audio de la biblioteca deja de versionarse en Git: su fuente de verdad es un bucket privado de Cloudflare R2. Ver [ADR-0024](ADR-0024-audio-privado-en-r2.md).
+
 ## Contexto
 
 El proyecto quiere que GitHub sea el centro de control. Pero una biblioteca musical no cabe bien en git:

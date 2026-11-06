@@ -6,7 +6,8 @@ name: biblioteca
 # Tres jobs con distintos permisos. 'autorizar' comprueba el permiso del autor. 'procesar' descarga y convierte sin
 # token ni permisos de escritura, y deja en un artefacto solo los ficheros de la biblioteca que cambió (el catálogo y
 # el audio, sin la parte pública). 'publicar' valida ese artefacto (rutas de la biblioteca, sin enlaces simbólicos,
-# base igual a main), lo aplica, regenera la parte pública desde el catálogo, confirma, sube a main y responde a la
+# base igual a main o un antecesor compatible, ADR-0025), lo aplica, regenera la parte pública desde el catálogo,
+# confirma, sube el audio a R2 (ADR-0020 y ADR-0024), sube a main y responde a la
 # incidencia. Publicar no ejecuta ffmpeg ni código del árbol de trabajo del procesado.
 # Ningún texto de la incidencia ni de los campos se interpola en un script: todo pasa por variables de entorno.
 
@@ -132,7 +133,7 @@ jobs:
       - name: Instalar ffmpeg
         # apt a veces se cuelga en el runner y bloquea la cola `library-catalog` entera: cada intento tiene 120 s y hay tres.
         run: |
-          for intento in 1 2 3; do
+          for _ in 1 2 3; do
             timeout 120 sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null 2>&1 && break
             timeout 120 sudo apt-get update -qq > /dev/null 2>&1 || true
           done
@@ -193,7 +194,7 @@ jobs:
       always() && !cancelled() &&
       (github.event_name == 'workflow_dispatch' || needs.autorizar.outputs.permitido == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: write
       issues: write
@@ -201,12 +202,16 @@ jobs:
       run:
         shell: bash
     steps:
+      # Con el historial de commits y árboles (sin el contenido de los ficheros antiguos): hace falta para comprobar si la
+      # base del paquete es un antecesor de main y qué cambió desde entonces (ADR-0025).
       - name: Obtener main
         if: always()
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
 
       - name: Preparar Python
         if: always()
@@ -242,8 +247,35 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -q -m "biblioteca: $ACCION"
 
-      # El token solo llega a este paso, y solo para subir. Solo main escribe en el catálogo: un lanzamiento
-      # manual desde otra rama no empuja su código a main.
+      # El audio nuevo va al bucket privado (la fuente de verdad, ADR-0024) y el de las canciones públicas al público
+      # (el único que lo sirve, ADR-0020) antes de que main (y con él la web y la APK) las anuncie; se borra del público
+      # el de las despublicadas. Si una canción pública no tiene audio en ningún sitio, o R2 falla, no se sube nada a
+      # main. Las credenciales de R2 solo llegan a este paso, que no tiene el token de GitHub ni instala nada (sync_r2
+      # usa solo la biblioteca estándar de Python).
+      - name: Subir el audio a R2
+        if: steps.aplicar_paquete.outcome == 'success'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "R2 solo se actualiza desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" = "$BASE" ]; then
+            echo "Sin cambios: R2 no se toca."
+            exit 0
+          fi
+          python scripts/sync_r2.py --aplicar --borrar-sobrantes
+
+      # El token solo llega a este paso, y solo para traer main y subir. Solo main escribe en el catálogo: un lanzamiento
+      # manual desde otra rama no empuja su código a main. Si main avanzó desde que se aplicó el paquete (una subida, por
+      # ejemplo), se trae, se rebasa el commit encima y se reintenta, hasta tres veces, siempre que lo nuevo de main no
+      # toque lo que cambia este commit ni lo que la publicación lee o regenera (las rutas de
+      # sonidos.paquete.ruta_de_publicacion; ADR-0025). Si lo toca o el rebase choca, no sube nada.
       - name: Subir a main
         id: guardar
         if: steps.aplicar_paquete.outcome == 'success'
@@ -258,7 +290,43 @@ jobs:
             echo "Sin cambios que guardar."
             exit 0
           fi
-          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+          REMOTO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          PUBLICACION='^(audio-library/indexes/catalog\.json$|audio-library/(audio|covers)/|frontend/web/(audio|data|covers)/)'
+          for intento in 1 2 3 4; do
+            if git push -q "$REMOTO" HEAD:main; then
+              exit 0
+            fi
+            if [ "$intento" -eq 4 ]; then
+              echo "main no deja de cambiar: no se ha subido tras tres reintentos. Hay que reenviar la petición." >&2
+              exit 1
+            fi
+            git fetch -q --no-tags "$REMOTO" main
+            if [ "$(git rev-parse FETCH_HEAD)" = "$BASE" ]; then
+              echo "La subida a main ha fallado y main no ha cambiado: no se reintenta." >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$BASE" FETCH_HEAD; then
+              echo "main se ha reescrito desde que se aplicó el paquete: no se sube nada. Hay que reenviar la petición." >&2
+              exit 1
+            fi
+            PROPIAS=$(git diff --name-only --no-renames "$BASE" HEAD)
+            AJENAS=$(git diff --name-only --no-renames "$BASE" FETCH_HEAD)
+            CHOQUE=$(grep -E "$PUBLICACION" <<<"$AJENAS" | head -n 1 || true)
+            if [ -z "$CHOQUE" ]; then
+              CHOQUE=$(grep -Fx -f <(printf '%s\n' "$PROPIAS") <<<"$AJENAS" | head -n 1 || true)
+            fi
+            if [ -n "$CHOQUE" ]; then
+              echo "main cambió mientras se publicaba y el cambio toca $CHOQUE: no se sube nada. Hay que reenviar la petición." >&2
+              exit 1
+            fi
+            if ! git rebase -q FETCH_HEAD; then
+              git rebase --abort || true
+              echo "El rebase sobre main choca: no se sube nada. Hay que reenviar la petición." >&2
+              exit 1
+            fi
+            echo "main había avanzado sin tocar la biblioteca: commit rebasado encima (reintento $intento de 3)."
+            BASE=$(git rev-parse FETCH_HEAD)
+          done
 
       - name: Responder
         if: always() && github.event_name == 'issues'

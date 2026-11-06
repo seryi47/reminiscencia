@@ -2,6 +2,9 @@
 // ningún fallo de gravedad «serious» ni «critical». Además: html lang="es", un único H1 visible por pantalla,
 // enlace de salto como primer foco, foco visible, foco en el H1 al cambiar de pantalla y movimiento reducido.
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { createTestCatalogOverrides } from "./helpers/catalogo-prueba.mjs";
 import { clickTestid, focusRingWidth, focusWithKeyboardMode, TEST_TIMEOUT_MS, waitVisible, wcagViolations } from "./helpers/elementos.mjs";
@@ -38,6 +41,48 @@ after(async () => {
 
 const prueba = (nombre, fn) => it(nombre, { timeout: TEST_TIMEOUT_MS }, fn);
 const FOLDER_A = "#/album/F0000000000000001";
+
+// WAV de silencio (PCM de 16 bits, mono, 48 kHz) de la duración indicada: para el aviso de posible duplicado al subir.
+async function silentWavs(names, seconds = 1) {
+  const dir = await mkdtemp(join(tmpdir(), "reminiscencia-a11y-"));
+  const samples = Math.round(48000 * seconds);
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + samples * 2, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(48000, 24);
+  wav.writeUInt32LE(96000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(samples * 2, 40);
+  const paths = [];
+  for (const name of names) {
+    const path = join(dir, name);
+    await writeFile(path, wav);
+    paths.push(path);
+  }
+  return paths;
+}
+
+// Ediciones pendientes (ADR-0027) guardadas en este navegador: una pendiente (título de una canción y nombre del
+// álbum A) y otra fallida, para pintar la marca «Pendiente» y la lista de cambios pendientes.
+async function seedPendingEdits(page) {
+  await page.evaluate(() => {
+    const now = Date.now();
+    const items = [
+      { key: "e1", kind: "organize", payload: { op: "edit_song", song_id: "S0000000000000002", title: "Canción de prueba 02 bis", artist: "Artista" }, issue: 901, label: "Canción de prueba 02 bis", action: "Detalles de la canción", createdAt: now, closedAt: null, state: "pendiente", error: null },
+      { key: "e2", kind: "organize", payload: { op: "edit_folder", folder_id: "F0000000000000001", name: "Álbum de prueba A", artist: "Otro artista" }, issue: 902, label: "Álbum de prueba A", action: "Detalles del álbum", createdAt: now, closedAt: null, state: "pendiente", error: null },
+      { key: "e3", kind: "organize", payload: { op: "create_folder", name: "Valses" }, issue: 903, label: "Valses", action: "Álbum nuevo", createdAt: now, closedAt: null, state: "error", error: "El servidor no ha podido aplicar el cambio." },
+    ];
+    localStorage.setItem("reminiscencia.ediciones", JSON.stringify({ version: 1, items }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector('html[data-ready="true"]');
+}
 
 // Cada pantalla: cómo prepararla (page, viewport) y, si solo aplica a algunos anchos, en cuáles.
 const PANTALLAS = [
@@ -113,6 +158,70 @@ const PANTALLAS = [
     },
   },
   {
+    nombre: "Hoja Quitar de este álbum",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openRowMenu(page, "S0000000000000002");
+      await pickMenu(page, "menu-remove-from-album");
+      await waitVisible(page, "remove-from-album");
+    },
+  },
+  {
+    nombre: "Hoja Añadir canciones a un álbum, con dos elegidas",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openCollectionMenu(page);
+      await pickMenu(page, "menu-album-add-songs");
+      await waitVisible(page, "album-add");
+      const checks = await page.$$('[data-testid="album-add-check"]');
+      await checks[0].click();
+      await checks[1].click();
+      await page.waitForFunction(() => document.querySelector('[data-testid="album-add-save"]')?.textContent === "Añadir (2)");
+    },
+  },
+  {
+    nombre: "Álbum en modo Seleccionar, con dos elegidas",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await clickTestid(page, "album-select", "Seleccionar");
+      await waitVisible(page, "album-select-panel");
+      // Clic por DOM: en el teléfono, la barra inferior puede tapar una fila recién desplazada.
+      await page.$$eval('[data-testid="album-select-check"]', (boxes) => { boxes[0].click(); boxes[2].click(); });
+      await page.waitForFunction(() => document.querySelector('[data-testid="album-select-count"]')?.textContent === "2 canciones elegidas.");
+    },
+  },
+  {
+    nombre: "Hoja Quitar del álbum (selección múltiple)",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await clickTestid(page, "album-select", "Seleccionar");
+      await clickTestid(page, "album-select-all", "Seleccionar todo");
+      await clickTestid(page, "album-select-remove", "Quitar del álbum");
+      await waitVisible(page, "album-remove-many");
+    },
+  },
+  {
+    nombre: "Hoja Mover a otro álbum (selección múltiple)",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await clickTestid(page, "album-select", "Seleccionar");
+      await clickTestid(page, "album-select-all", "Seleccionar todo");
+      await clickTestid(page, "album-select-move", "Mover a otro álbum");
+      await waitVisible(page, "album-move-many");
+    },
+  },
+  {
+    nombre: "Hoja Ordenar canciones, con una canción bajada",
+    preparar: async (page) => {
+      await openCollection(page, FOLDER_A);
+      await openCollectionMenu(page);
+      await pickMenu(page, "menu-album-order");
+      await waitVisible(page, "album-order");
+      await page.$eval('[data-testid="album-order-down"]', (button) => button.click());
+      await page.waitForFunction(() => document.querySelector('[data-testid="album-order-save"]')?.getAttribute("aria-disabled") === "false");
+    },
+  },
+  {
     nombre: "Hoja Editar detalles de un álbum",
     preparar: async (page) => {
       await openCollection(page, FOLDER_A);
@@ -146,11 +255,43 @@ const PANTALLAS = [
   },
   { nombre: "Hoja Subir canciones", preparar: (page, vp) => openUpload(page, vp) },
   {
+    nombre: "Subir: aviso de posible duplicado",
+    preparar: async (page, vp) => {
+      await openUpload(page, vp);
+      const input = await page.$('[data-testid="upload-file-input"]');
+      await input.uploadFile(...await silentWavs(["Tono de prueba.wav", "Tono de prueba (Letra).wav"]));
+      await waitVisible(page, "duplicate-dialog");
+    },
+  },
+  {
     nombre: "Subir: importar desde Internet Archive, con error",
     preparar: async (page, vp) => {
       await openUpload(page, vp, "archive");
       await fillField(await page.$('[data-testid="archive-url"]'), "https://youtu.be/abc");
       await page.waitForSelector('[data-testid="upload-panel-archive"] .field-error:not([hidden])');
+    },
+  },
+  {
+    nombre: "Álbum con cambios pendientes (marca «Pendiente»)",
+    preparar: async (page) => {
+      await seedPendingEdits(page);
+      await openCollection(page, FOLDER_A);
+      await waitVisible(page, "track-edit-pending");
+      await waitVisible(page, "collection-edit-pending");
+    },
+  },
+  {
+    nombre: "Lista de cambios pendientes, con uno fallido",
+    preparar: async (page, vp) => {
+      await seedPendingEdits(page);
+      if (isPhone(vp)) {
+        await goSection(page, "biblioteca", vp);
+        await clickTestid(page, "library-page-edits", "cambios pendientes");
+      } else {
+        await clickTestid(page, "sidebar-edits", "cambios pendientes");
+      }
+      await waitVisible(page, "edits-sheet");
+      await waitVisible(page, "edits-retry");
     },
   },
   {

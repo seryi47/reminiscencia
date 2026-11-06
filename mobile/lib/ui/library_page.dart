@@ -8,7 +8,9 @@ import '../theme.dart';
 import 'collection_page.dart';
 import 'collection_ref.dart';
 import 'common.dart';
+import 'duplicate_review.dart';
 import 'homeostasia.dart';
+import 'pending_edits_panel.dart';
 import 'playlist_flows.dart';
 import 'uploads_panel.dart';
 
@@ -113,6 +115,7 @@ class _LibraryPageState extends State<LibraryPage> {
               ),
             ),
             SliverToBoxAdapter(child: UploadsPanel(services: services)),
+            SliverToBoxAdapter(child: PendingEditsButton(services: services)),
             SliverToBoxAdapter(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -259,7 +262,7 @@ class _LibraryRow extends StatelessWidget {
 }
 
 /// «Subir canciones»: sin hojas ni confirmaciones. Comprueba la red, elige uno o varios archivos (canciones
-/// sueltas o ZIP con canciones) y los sube a la biblioteca común (convertidos a Opus, de uno en uno). Cada
+/// sueltas o ZIP con canciones), avisa de las que parecen estar ya en la biblioteca y los sube a la biblioteca común (convertidos a Opus, de uno en uno). Cada
 /// canción tiene su fila en «Tu biblioteca» hasta que se publica, y las de un ZIP van agrupadas (ver UploadsPanel).
 Future<void> uploadSongs(BuildContext context, AppServices services) async {
   final messenger = ScaffoldMessenger.of(context);
@@ -283,7 +286,13 @@ Future<void> uploadSongs(BuildContext context, AppServices services) async {
   }
   if (files.isEmpty) return;
   try {
-    await library.uploadShared(files);
+    await library.uploadShared(
+      files,
+      // Aviso de duplicados antes de ponerlas en la cola (ADR-0026).
+      review: (songs) => context.mounted
+          ? reviewUploadDuplicates(context, services, songs)
+          : Future.value(const <int>{}),
+    );
   } catch (error) {
     messenger.showSnackBar(
       SnackBar(

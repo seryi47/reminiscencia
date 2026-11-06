@@ -1,3 +1,68 @@
+## Sin publicar: mejoras de plataforma (2026-11-05, rama `feature/mejoras-plataforma`)
+
+- **Todo el audio en R2** ([ADR-0024](docs/decisions/ADR-0024-audio-privado-en-r2.md)):
+  - el bucket privado es la fuente de verdad de todo el audio; `publicar` sube allí el audio nuevo y copia al público, desde local o desde el privado, el de las canciones públicas, y se detiene si a una pública le falta audio;
+  - `/api/subir` guarda los trozos en el bucket privado (`entrada/<UUID>/`, sin sobrescribir) y lanza `buzon.yml` con un `repository_dispatch`; ya no hace commits en `main`. El contrato no cambia para la web ni la APK;
+  - job nuevo `recoger` (credenciales de R2, sin token); `procesar` sigue sin secretos; `publicar` borra lo recogido tras el push;
+  - workflow manual `migrar-audio-privado.yml`. Sacar `audio-library/audio/` de Git va en la rama aparte `feature/audio-fuera-de-git`, que se fusiona después de migrar (el historial no encoge);
+  - firma SigV4 en Node comprobada con los mismos vectores que la de Python, incluido el ejemplo oficial de AWS. Las E2E usan un Opus de prueba de 16 KB (`tests/fixtures/tono-prueba.opus`).
+- **`publicar` robusto** ([ADR-0025](docs/decisions/ADR-0025-publicar-robusto.md)):
+  - ya no falla si `main` avanzó sin tocar la biblioteca: aplica el paquete sobre el HEAD nuevo cuando la base es un antecesor y nada nuevo toca el paquete, el catálogo, el audio, las portadas ni la parte pública;
+  - «Subir a main» rebasa y reintenta hasta tres veces con la misma regla;
+  - antes fallaron así 21 ejecuciones de `buzon` y 7 de `biblioteca`, y otras 2 por push rechazado.
+- **Álbumes** ([ADR-0026](docs/decisions/ADR-0026-albumes-orden-seleccion-duplicados.md)), igual en la web y la APK:
+  - «Seleccionar» con «Quitar del álbum» y «Mover a otro álbum», una sola petición `move_songs` por acción;
+  - «Ordenar canciones», que envía una sola petición `order_album` (de 1 a 190, atómica, con la lista exacta del álbum);
+  - número de pista `track`: cada canción con álbum tiene uno, de 1 a n; al entrar recibe el siguiente y al salir se renumeran las demás; el catálogo se migra solo en la primera escritura;
+  - aviso de posible duplicado al subir (título normalizado y duración a ±2 s, o el mismo artista si falta la duración), con la regla común en `tests/contrato/duplicados.json`; el buzón avisa con `::warning`, sin bloquear.
+- **Contrato común y una sola búsqueda** ([ADR-0028](docs/decisions/ADR-0028-contrato-comun-y-busqueda.md)):
+  - `tests/contrato/peticiones.json`: 111 casos de organize, 18 incidencias completas, límites, espacios e ids; lo ejecutan pytest, `node --test` y `flutter test`, y pytest comprueba que el backend acepta el cuerpo exacto que generan la web y la APK;
+  - corregido hacia el backend: la web aceptaba `edit_folder` sin `name`; la APK limitaba el artista de una canción a 80 caracteres (son 200); la web y la APK rechazaban textos con un tabulador o un salto al final que el backend acepta; la web envía ahora el payload normalizado;
+  - una sola regla de búsqueda en la web y la APK (DESIGN §9.1, `tests/contrato/busqueda.json`): todas las palabras, sin mayúsculas, tildes ni signos, por el principio de la palabra; una errata en palabras de 4 letras o más, nunca en números; orden por relevancia. «Añadir canciones» deja de ser estricto, y el buscador de la APK busca también por álbum. `fuzzyScore` se sustituye por `searchRank` y `searchScore`.
+- **Ediciones pendientes** ([ADR-0027](docs/decisions/ADR-0027-ediciones-pendientes.md)), igual en la web y la APK:
+  - cada cambio enviado a `/api/editar` queda **pendiente**, con su número de incidencia. Se guarda en el localStorage `reminiscencia.ediciones` de la web y en `biblioteca-local/ediciones_pendientes.json` de la APK;
+  - **se ve al momento** encima del catálogo real, con la marca «Pendiente» en texto: títulos, artistas, canciones que entran o salen de un álbum, orden nuevo, nombre y artista del álbum y portada nueva. Crear un álbum aparece en la lista de cambios pendientes;
+  - **se confirma** cuando el catálogo lo refleja («Ya está guardado: «X».»);
+  - **se deshace con aviso** si la incidencia acaba con la etiqueta `error`, o si pasan 30 minutos sin confirmarse teniendo conexión («No se ha podido guardar «X». Inténtalo de nuevo.»). La lista de Tu biblioteca ofrece «Reintentar» y «Descartar». Sin conexión no caduca;
+  - lo que ya está pendiente no se reenvía («Ya está pendiente»);
+  - `GET /api/editar?incidencia=N` devuelve el estado (`abierta`, `cerrada` o `error`), con el token del servidor, el número validado estrictamente y solo para incidencias de edición;
+  - reglas comunes en `tests/contrato/ediciones-pendientes.json`.
+- **CI fiable:**
+  - `android.yml` analiza, prueba y compila el APK de depuración con cada push a `main` y cada pull request que toque `mobile/`, `scripts/android/` o el workflow; antes solo se lanzaba a mano o con etiqueta. `backend.yml` ya no ejecuta Flutter, que repetía en cada subida;
+  - pruebas estables: los gestores de subidas de la APK y de la web tienen `idle()` para esperar el trabajo en segundo plano, en vez de dormir un tiempo fijo (con carga, 22 fallos de 40 antes y 0 de 40 después);
+  - `.github/actionlint.yaml` ignora solo el aviso de `concurrency.queue`, que es válido en GitHub desde 2026-05-07; además se quita una variable sin usar (SC2034).
+- `SHELL_VERSION = 27`.
+- Pruebas sobre la rama integrada: backend 1097; web 754 unitarias y 194 de extremo a extremo; Flutter 495; `flutter analyze` y `actionlint` sin avisos.
+
+## Sin publicar: el audio público solo en R2 y reintento del streaming en la APK (2026-11-05, rama `feature/audio-solo-r2`)
+
+- Fase 3 de [ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md): la web ya no lleva audio. Se borra `frontend/web/audio/` (205 canciones, unos 347 MB, ya comprobadas en R2 con el mismo tamaño) y `publish.py` deja de copiarlo; cada canción ocupa ahora una sola copia en el repositorio (`audio-library/audio/`).
+- `buzon.yml` y `biblioteca.yml`: el job `publicar` ejecuta `sync_r2.py --aplicar --borrar-sobrantes` antes de subir a main, así una canción nunca aparece en la web sin su audio y una despublicada se borra del bucket. Si R2 falla, no se sube nada. Nunca vacía el bucket.
+- `sync_r2.py` toma las canciones públicas de `data/songs.json` y su audio de `audio-library/audio/`, y usa un cliente S3 propio con firma SigV4 (sin boto3): ningún paso con credenciales instala paquetes. Firma comprobada con el ejemplo oficial de AWS y, en local, idéntica a botocore.
+- `vercel.json`: redirección temporal de `/audio/:file` a R2 (primera visita sin service worker, respaldo del service worker y de la APK); se quita la cabecera del tipo del audio, que ya no sirve Vercel.
+- APK: si una canción en streaming falla desde R2, se reintenta una vez desde la web antes de pasar a la siguiente (`shouldRetryFromFallback`, `_retryFromFallback`).
+- Pruebas: backend 756, web 458 unitarias y 148 de extremo a extremo (los audios de prueba salen de `audio-library/audio/`), Flutter 260 y `flutter analyze` sin avisos.
+## Sin publicar: quitar canciones de un álbum y añadir varias con buscador (2026-11-05, rama `feature/albumes-quitar-y-buscar`)
+
+- Web y APK, con el mismo comportamiento ([ADR-0023](docs/decisions/ADR-0023-canciones-de-un-album.md)):
+  - **«Quitar de este álbum»:** está en el menú de cada canción, solo dentro de su álbum. Pide confirmación y envía `edit_song` con `folder_id: null`. La canción y su audio siguen en la biblioteca.
+  - **«Añadir canciones» en un álbum:**
+    - buscador sin distinguir acentos ni mayúsculas, por título, artista y álbum actual;
+    - casillas para elegir varias, que se mantienen al cambiar la búsqueda;
+    - botón «Añadir (N)», hasta 100 canciones;
+    - se envía una sola petición.
+  - La web no tenía esta opción; la APK la tenía sin buscador y con una petición por canción.
+- **Operación nueva `move_songs`** (`{"op":"move_songs","song_ids":[…],"folder_id":…|null}`, de 1 a 100 canciones):
+  - es atómica: o se mueven todas o ninguna;
+  - una sola incidencia y un solo commit, en vez de una por canción, que fallaban si main cambiaba entre `procesar` y `publicar`;
+  - la validan con las mismas reglas el backend (`issue_request.py`, `ci_library.py`), la web (`incidencias.js`, `/api/editar`) y la APK (`LibraryRequest.moveSongs`);
+  - se ha comprobado que el backend acepta tal cual la petición que generan la web y la APK.
+- `SHELL_VERSION = 25`.
+- Pruebas:
+  - backend: 748;
+  - web: 465 unitarias y 158 de extremo a extremo, con dos pantallas nuevas de accesibilidad sin fallos;
+  - Flutter: 267, y `flutter analyze` sin avisos.
+
 ## Sin publicar: «Escuchar» por Dart y apt con reintentos (2026-11-05)
 
 - APK: el audio de YouTube lo descarga Dart por rangos y se lo sirve al reproductor en local (`YoutubeAudioSource`).

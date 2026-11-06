@@ -78,7 +78,7 @@ Anchos de referencia de las pruebas: 390 (teléfono), 820 (tableta), 1024 y 1440
 
 - **Cabecera:** «Tu biblioteca» (H2, enlace a `#/biblioteca`) y el botón **«+ Crear»** (32 px, `#1f1f1f`), que abre un menú con «Lista» (crea «Mi lista n.º N» y abre su página), «Álbum» (hoja «Crear álbum», §11) y «Subir canciones» (§12), cada opción con una línea de descripción.
 - **Chips** «Listas» y «Álbumes» (32 px; el activo en blanco con texto negro, `aria-pressed`; pulsar el activo lo quita).
-- **Herramientas:** buscador pequeño (la lupa lo abre; filtra por nombre y por artista; Escape lo cierra) y el orden: «Recientes» (lo último que ha sonado primero; se guarda en `localStorage`, `reminiscencia.recientes`), «Orden alfabético» o «Creador». «Me gusta» queda fijada arriba en todos los órdenes.
+- **Herramientas:** buscador pequeño (la lupa lo abre; filtra por nombre y por creador con la regla de búsqueda de §9.1, sin cambiar el orden elegido; Escape lo cierra) y el orden: «Recientes» (lo último que ha sonado primero; se guarda en `localStorage`, `reminiscencia.recientes`), «Orden alfabético» o «Creador». «Me gusta» queda fijada arriba en todos los órdenes.
 - **Elemento:** 64 px de alto, portada de 48 px (radio 4; serían circulares solo los artistas, que no hay), título de 16 px y subtítulo de 14 px en `#b3b3b3`: «Lista • Reminiscencia», «Álbum • <artista>» (o «Álbum • Reminiscencia» sin artista), «Lista • 3 canciones» en «Me gusta». Hover `#1f1f1f`; el abierto en `#2a2a2a` con `aria-current="page"`; el que suena, con el título en verde y un altavoz verde.
 - En el teléfono, lo mismo está en la página «Tu biblioteca» (`#/biblioteca`), con el título como H1.
 
@@ -105,9 +105,22 @@ Anchos de referencia de las pruebas: 390 (teléfono), 820 (tableta), 1024 y 1440
 ## 9. Buscar
 
 - En escritorio y tableta se escribe en el buscador de la barra superior; la página no repite el campo y su H1 «Buscar» es solo para lectores de pantalla. En el teléfono, la página tiene su H1 y un campo de 48 px.
-- Busca en título, artista, álbum (nombre y artista), etiquetas y año, sin distinguir mayúsculas, tildes ni diéresis (`searchCatalog` en `js/catalog.js`).
+- Busca canciones (título, artista, álbum, año y etiquetas), álbumes (nombre y artista) y listas propias (nombre) con la regla de §9.1 (`searchCatalog` en `js/catalog.js`).
 - **Con texto:** chips «Todo», «Canciones», «Álbumes» y «Listas»; en «Todo», «Resultado principal» (tarjeta `#181818`, hover `#282828`, portada de 92 px, título de 32 px, «Álbum • artista» y botón verde que sube), «Canciones» (las cuatro primeras), «Más canciones», «Álbumes» y «Tus listas». Sin resultados: «No se ha encontrado nada para «…»». El número de resultados se anuncia en una región de estado.
 - **Sin texto:** «Explorar todo», tarjetas de color con el nombre y la portada girada en la esquina.
+
+### 9.1 Regla de búsqueda (todos los buscadores)
+
+Una sola regla para todos los buscadores de la web y de la APK ([ADR-0028](../decisions/ADR-0028-contrato-comun-y-busqueda.md)): Buscar, «Buscar en esta colección», «Añadir canciones» de un álbum, «Busquemos algo para tu lista» y el filtro de Tu biblioteca. Está pensada para personas mayores que escriben con erratas, sin llenar la lista de ruido.
+
+- **Sin mayúsculas, tildes ni signos.** «¡CORAZÓN!» busca lo mismo que «corazon»; «ñandu» encuentra «Ñandú»; los signos (apóstrofos, barras, comas) separan palabras.
+- **Todas las palabras.** Cada palabra escrita tiene que aparecer en algún campo, en cualquier orden: «rosendo mimbre» encuentra «Corazón de mimbre» de Rosendo; «rock and roll» no encuentra «Rock'n'roll» porque falta «and».
+- **Por el principio de la palabra.** «superstar» encuentra «SUPERSTARS» y «195» encuentra los años 1950 a 1959; «ton» no encuentra «Charleston» (no se busca en mitad de una palabra).
+- **Una errata, desde 4 letras.** En palabras de 4 o más caracteres con alguna letra se perdona una errata (una letra de más, de menos, cambiada o dos seguidas intercambiadas) frente a la palabra o frente a su principio: «charlston», «orqeusta», «castilos». En las palabras cortas y en los números, no: «kxo» no encuentra «Keo» y «1952» no encuentra 1953.
+- **Campos.** Canción: título, artista, nombre de su álbum, año y etiquetas. Álbum: nombre y artista. Lista: nombre. Tu biblioteca: título y creador.
+- **Orden por relevancia.** Palabra igual, 3 puntos; principio de palabra, 2; con errata, 1. Se multiplican por el peso del campo (título o nombre ×3, artista o creador ×2, el resto ×1) y se suman; si el título entero es la consulta, +100, y si empieza por ella, +50. De más a menos puntos y, con los mismos, en el orden de la lista. Así, «mimbre» pone primero la canción que se llama «Mimbre» y «casa» pone «Casa» antes que «Castillos en el aire». Tu biblioteca es la excepción: conserva el orden elegido (Recientes, alfabético o creador).
+- **Sin texto.** Los filtros enseñan todo en su orden; Buscar enseña «Explorar todo».
+- **Código y pruebas.** Web: `searchRank`, `searchScore` y `normalizeText` en `js/catalog.js`. APK: `searchRank`, `searchScore` y `foldForSearch` en `lib/fuzzy_search.dart`. Los casos comunes están en `tests/contrato/busqueda.json` y los ejecutan `tests/web-unit/busqueda-contrato.test.mjs` y `mobile/test/busqueda_contrato_test.dart`.
 
 ## 10. Reproductor y «Reproduciendo»
 
@@ -136,11 +149,17 @@ Anchos de referencia de las pruebas: 390 (teléfono), 820 (tableta), 1024 y 1440
 |---|---|---|
 | Editar detalles (canción) | «Más opciones» de la fila | `{"op":"edit_song","song_id":…,"title":…,"artist":…}` |
 | Añadir a un álbum | «Más opciones» de la fila | `{"op":"edit_song","song_id":…,"folder_id":…}` (`null`: «Sin álbum») |
+| Quitar de este álbum | «Más opciones» de una fila, dentro de un álbum (pide confirmación) | `{"op":"edit_song","song_id":…,"folder_id":null}`: la canción sigue en la biblioteca (ADR-0023) |
+| Añadir canciones (álbum) | «···» del álbum | Buscador con casillas; varias canciones en una petición: `{"op":"move_songs","song_ids":[…],"folder_id":…}` (ADR-0023) |
+| Seleccionar (álbum) | Botón «Seleccionar» de la barra del álbum o «···» › «Seleccionar canciones» | Casillas, contador, «Seleccionar todo»/«Ninguna». «Quitar del álbum» (confirma): `{"op":"move_songs","song_ids":[…],"folder_id":null}`; «Mover a otro álbum»: `{"op":"move_songs",…,"folder_id":"F…"}` (ADR-0026) |
+| Ordenar canciones (álbum) | «···» del álbum (dos canciones o más) | Lista con «Subir»/«Bajar» (44 px; se anuncia «X ahora es la N de M»); «Guardar orden»: `{"op":"order_album","folder_id":…,"song_ids":[…lista completa…]}` (ADR-0026). Las canciones de un álbum se ordenan por su número de pista `track`. |
 | Editar detalles (álbum) | «···» del álbum o su portada | `{"op":"edit_folder","folder_id":…,"name":…,"artist":…}` |
 | Crear álbum | «+ Crear» › «Álbum» | `{"op":"create_folder","name":…,"artist":…}` (`artist` solo si se escribe) |
 | Cambiar portada | «Más opciones», «···» o la hoja de detalles | Abre `https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas` |
 
 «Cambiar portada» muestra el ID que hay que usar como nombre del archivo (con «Copiar el ID») y las reglas: JPG, PNG o WebP de hasta 10 MB; se recorta al centro a 640 × 640.
+
+**Ediciones pendientes (ADR-0027).** Al guardar, el cambio se ve al momento con la etiqueta «Pendiente» (texto gris, `badge-edit`) en la fila (`track-edit-pending`; el nombre accesible añade «(cambio pendiente de guardar)») y en la cabecera del álbum (`collection-edit-pending`). Una portada nueva se ve con su vista previa (`data:`). En Tu biblioteca, el botón `sidebar-edits` / `library-page-edits` («1 cambio pendiente», «No se ha podido guardar 1 cambio», con borde rojo si algo falló) abre «Cambios pendientes» (`edits-sheet`, `edits-list`, `edits-item` con `data-state`, `edits-state`, `edits-retry`, `edits-discard`, `edits-status`, `edits-empty`); el foco empieza en el primer «Reintentar». Avisos: «Ya está guardado: «X».», «No se ha podido guardar «X». Inténtalo de nuevo.» y «Ya está pendiente: «X».».
 
 **Listas propias** (solo en este navegador): «Editar detalles» desde la portada o «···»: «Elegir foto» (JPG, PNG o WebP del dispositivo, hasta 20 MB; se recorta en cuadrado y se reduce a 640 px en el navegador, `js/cover-image.js`, y se guarda en la lista como JPEG en `data:`, porque la CSP admite imágenes de `'self'` y `data:`, no `blob:`), «Quitar foto», nombre (hasta 100 caracteres) y descripción opcional (una línea, hasta 300). «Guardar» en blanco.
 
@@ -159,6 +178,8 @@ Anchos de referencia de las pruebas: 390 (teléfono), 820 (tableta), 1024 y 1440
 - **Importar desde Internet Archive:** dirección, licencia (solo en un fichero directo) y título opcional, validados por `incidencias.js` e `intake.js` con la lista de bloqueo de 42 plataformas (ADR-0008); abre la incidencia en GitHub.
 
 Quien tiene permiso de escritura puede seguir subiendo desde la página de GitHub del buzón con una línea «Licencia: …» (ADR-0014); la hoja ya no la abre.
+
+Antes de la cola, cada archivo se compara con la biblioteca y con los de la misma tanda; si parece repetido (regla común de `tests/contrato/duplicados.json`), el diálogo «Posible duplicado» pregunta «Subir igualmente» / «Quitar de la cola» (ADR-0026).
 
 ## 13. Sin conexión
 
@@ -189,6 +210,10 @@ Quien tiene permiso de escritura puede seguir subiendo desde la página de GitHu
 | Reproductor | `player-bar`, `player-cover`, `player-title`, `player-artist`, `player-like`, `player-shuffle`, `player-prev`, `player-play`, `player-next`, `player-repeat`, `player-time`, `player-progress`, `player-progress-track`, `player-duration`, `player-now`, `player-lyrics`, `player-queue`, `player-device`, `player-mute`, `player-volume`, `player-fullscreen`, `now-panel-title`, `now-panel-body`, `now-close`, `now-track`, `now-like`, `now-next`, `now-open-queue`, `queue-added`, `queue-next`, `queue-item`, `queue-dialog`, `mini-player`, `mini-open`, `mini-title`, `mini-like`, `mini-play`, `full-player`, `full-play`, `full-prev`, `full-next`, `full-shuffle`, `full-repeat`, `full-like`, `full-progress`, `full-queue` |
 | Edición | `edit-song`, `edit-song-title`, `edit-song-artist`, `edit-song-cover`, `edit-song-link`, `edit-album`, `edit-album-name`, `edit-album-artist`, `edit-album-cover`, `edit-album-link`, `create-album`, `create-album-name`, `create-album-artist`, `create-album-link`, `move-album`, `move-album-option`, `move-album-link`, `<hoja>-link-status`, `edit-note`, `cover-sheet`, `cover-id`, `cover-copy`, `cover-rules`, `cover-github-link`, `playlist-edit`, `playlist-edit-choose`, `playlist-edit-file`, `playlist-edit-remove-photo`, `playlist-edit-name`, `playlist-edit-description`, `playlist-edit-status`, `playlist-edit-save` |
 | Subir | `upload-sheet`, `upload-panel`, `upload-pick`, `upload-file-input`, `upload-rights`, `upload-support`, `upload-status`, `upload-summary`, `upload-items`, `upload-group`, `upload-group-title`, `upload-group-note`, `upload-item` (con `data-state`), `upload-item-name`, `upload-item-status`, `upload-item-progress`, `upload-item-play`, `upload-item-retry`, `upload-live`, `upload-indicator`, `track-pending`, `upload-local`, `upload-local-list`, `upload-delete`, `upload-open-archive`, `upload-back`, `upload-panel-archive`, `archive-url`, `archive-license`, `archive-title`, `archive-status`, `archive-issue-link` |
+| Álbumes (ADR-0023) | Quitar: `menu-remove-from-album`, `remove-from-album`, `remove-from-album-text`, `remove-from-album-cancel`, `remove-from-album-save`, `remove-from-album-save-status`, `remove-from-album-close`. Añadir: `album-add-songs`, `menu-album-add-songs`, `album-add`, `album-add-search`, `album-add-count`, `album-add-results`, `album-add-option` y `album-add-check` (con `data-song-id`), `album-add-empty`, `album-add-save`, `album-add-save-status`, `album-add-close` |
+| Álbumes, selección y orden (ADR-0026) | `album-select`, `album-select-panel`, `album-select-count`, `album-select-all`, `album-select-none`, `album-select-remove`, `album-select-move`, `album-select-cancel`, `album-select-list`, `album-select-option`, `album-select-check`, `menu-album-select`, `menu-album-order`, `album-remove-many(-text/-save/-cancel)`, `album-move-many(-option/-save)`, `album-order`, `album-order-list`, `album-order-row`, `album-order-up`, `album-order-down`, `album-order-live`, `album-order-save(-status)`, `album-order-too-many` |
+| Duplicados (ADR-0026) | `duplicate-dialog`, `duplicate-file`, `duplicate-message`, `duplicate-keep`, `duplicate-drop` |
+| Ediciones pendientes (ADR-0027) | `badge-edit`, `track-edit-pending`, `collection-edit-pending`, `sidebar-edits`, `library-page-edits`, `edits-sheet`, `edits-list`, `edits-item`, `edits-state`, `edits-retry`, `edits-discard`, `edits-status`, `edits-empty` |
 | Diálogos | `confirm`, `confirm-ok`, `confirm-cancel`, `prompt`, `prompt-input`, `prompt-ok`, `<diálogo>-close` |
 
 ## 16. Medidas comprobadas

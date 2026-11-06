@@ -393,18 +393,18 @@ def test_publishing_reports_the_public_files_the_package_did_not_bring(main_publ
     assert result["parte_publica"]["sustituidos_del_paquete"] == []
 
 
-def test_publishing_replaces_a_forged_public_audio_of_the_same_size(main_publicado, tmp_path):
+def test_publishing_drops_public_audio_that_a_package_brings_to_the_web(main_publicado, tmp_path):
+    # La web ya no publica audio (lo sirve R2, ADR-0020): si un paquete forjado lo trae, la regeneración lo quita.
     repo = main_publicado
     head = paquete.head_commit(repo)
-    real = (repo / SONG_WEB_AUDIO).read_bytes()
-    forjado = b"X" * len(real)
     package = _package(
-        tmp_path, files={SONG_WEB_AUDIO: forjado}, changes=[{"ruta": SONG_WEB_AUDIO, "estado": "M"}], base=head,
+        tmp_path, files={SONG_WEB_AUDIO: b"X" * 64}, changes=[{"ruta": SONG_WEB_AUDIO, "estado": "A"}], base=head,
     )
 
     result = paquete.publish_package(package, repo, head=head)
 
-    assert _index_bytes(repo, SONG_WEB_AUDIO) == real
+    assert not (repo / SONG_WEB_AUDIO).exists()
+    assert SONG_WEB_AUDIO not in _git_output(repo, "diff", "--cached", "--name-only")
     assert result["parte_publica"]["sustituidos_del_paquete"] == [SONG_WEB_AUDIO]
 
 
@@ -439,3 +439,163 @@ def test_publishing_refuses_a_catalog_whose_song_id_is_not_a_library_id(main_pub
         paquete.publish_package(package, repo, head=head)
 
     assert not (repo / "frontend" / "escape.opus").exists()
+
+
+# --- main avanza entre el procesado y la publicación (ADR-0025) ------------------------------------------------------
+
+PARTE_AJENA = "audio-library/buzon/.partes/0f8fad5b-d9cb-469f-a165-70867728950e/0.part"
+
+
+def _commit_ajeno(repo: Path, files: dict[str, bytes], message: str = "otra subida") -> str:
+    for ruta, data in files.items():
+        (repo / ruta).parent.mkdir(parents=True, exist_ok=True)
+        (repo / ruta).write_bytes(data)
+    _git(repo, "add", "-A", "--", *files)
+    _git(repo, "-c", "user.name=otra", "-c", "user.email=otra@example.invalid", "commit", "-q", "-m", message)
+    return paquete.head_commit(repo)
+
+
+def _processed_package(repo: Path, tmp_path: Path) -> tuple[str, Path]:
+    """Lo que hace 'procesar': cambia la biblioteca sobre el HEAD actual y la empaqueta. Deja limpia la copia."""
+    base = paquete.head_commit(repo)
+    _change_like_the_processing_job(repo)
+    package = tmp_path / "paquete"
+    paquete.package_processing_changes(repo, package, action="import")
+    _git(repo, "checkout", "-q", "--", ".")
+    _git(repo, "clean", "-fdq")
+    return base, package
+
+
+def test_a_commit_that_only_touches_upload_parts_no_longer_breaks_publishing(library_repo, tmp_path):
+    # El caso real: /api/subir guardó un trozo en main mientras otra petición se procesaba.
+    base, package = _processed_package(library_repo, tmp_path)
+    head = _commit_ajeno(library_repo, {PARTE_AJENA: b"trozo"})
+    assert head != base
+
+    result = paquete.apply_package(package, library_repo, head=head)
+
+    assert result["accion"] == "import"
+    staged = _git_output(library_repo, "diff", "--cached", "--name-only").split("\n")
+    assert CATALOG in staged and "audio-library/audio/S1111111111111111.opus" in staged
+    assert PARTE_AJENA not in staged
+    assert (library_repo / PARTE_AJENA).read_bytes() == b"trozo"  # el cambio ajeno sigue en main
+
+
+def test_unrelated_code_changes_on_main_do_not_invalidate_the_package(library_repo, tmp_path):
+    base, package = _processed_package(library_repo, tmp_path)
+    head = _commit_ajeno(library_repo, {"frontend/web/app.js": b"// otra version\n", "docs/nota.md": b"nota\n"})
+
+    paquete.check_base(library_repo, base, head, {CATALOG})
+    paquete.apply_package(package, library_repo, head=head)
+
+
+@pytest.mark.parametrize("ruta", [
+    CATALOG,
+    "audio-library/audio/S2222222222222222.opus",
+    "audio-library/covers/F0123456789abcdef.jpg",
+    "frontend/web/data/songs.json",
+    "frontend/web/covers/S0123456789abcdef.jpg",
+    "frontend/web/audio/S2222222222222222.opus",
+])
+def test_a_commit_that_touches_what_publishing_reads_or_regenerates_still_breaks(library_repo, tmp_path, ruta):
+    _, package = _processed_package(library_repo, tmp_path)
+    head = _commit_ajeno(library_repo, {ruta: b"cambio ajeno"})
+
+    with pytest.raises(PaqueteError, match="main cambió") as raised:
+        paquete.apply_package(package, library_repo, head=head)
+
+    assert ruta in str(raised.value)
+    assert _git_output(library_repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_a_commit_that_touches_a_path_of_the_package_still_breaks(library_repo, tmp_path):
+    archivo = "audio-library/buzon/Mi cancion.mp3"
+    _commit_ajeno(library_repo, {archivo: b"subida"})
+    base = paquete.head_commit(library_repo)
+    package = _package(tmp_path, changes=[{"ruta": archivo, "estado": "D"}], base=base, accion="buzon")
+    head = _commit_ajeno(library_repo, {archivo: b"otra version"})
+
+    with pytest.raises(PaqueteError, match="main cambió.*Mi cancion"):
+        paquete.apply_package(package, library_repo, head=head)
+
+
+def test_a_base_that_is_not_an_ancestor_of_main_is_refused(library_repo, tmp_path):
+    inicial = paquete.head_commit(library_repo)
+    _git(library_repo, "checkout", "-q", "-b", "otra")
+    otra = _commit_ajeno(library_repo, {"docs/otra.md": b"x"})
+    _git(library_repo, "checkout", "-q", "-")
+    package = _package(tmp_path, changes=[], base=otra)
+
+    with pytest.raises(PaqueteError, match="ya no está en el historial"):
+        paquete.apply_package(package, library_repo, head=inicial)
+
+
+def test_a_base_that_is_not_in_the_checkout_is_refused_clearly(library_repo, tmp_path):
+    package = _package(tmp_path, changes=[], base="f" * 40)
+
+    with pytest.raises(PaqueteError, match="no está en esta copia"):
+        paquete.apply_package(package, library_repo, head=paquete.head_commit(library_repo))
+
+
+def test_without_a_repository_a_different_base_is_refused_as_before(tmp_path):
+    package = _package(tmp_path, changes=[], base="f" * 40)
+
+    with pytest.raises(PaqueteError, match="main cambió"):
+        paquete.read_manifest(package, head=HEAD_SHA)
+
+
+# --- Audio fuera de Git (ADR-0024): audio-library/audio/ en .gitignore --------------------------------------------------
+
+NUEVO = "audio-library/audio/S1111111111111111.opus"
+
+
+def _audio_fuera_de_git(repo: Path) -> None:
+    (repo / ".gitignore").write_text("audio-library/audio/\n.DS_Store\n", encoding="utf-8")
+    _git(repo, "rm", "-r", "-q", "--cached", "audio-library/audio")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "-c", "user.name=prueba", "-c", "user.email=prueba@example.invalid", "commit", "-q", "-m", "fuera")
+    (repo / SONG).unlink()  # como en el runner: el checkout de main ya no trae audio
+
+
+def test_processing_packages_new_audio_that_git_ignores(library_repo, tmp_path):
+    _audio_fuera_de_git(library_repo)
+    (library_repo / CATALOG).write_text('{"songs": 1}\n', encoding="utf-8")
+    (library_repo / NUEVO).write_bytes(b"dos")
+    (library_repo / "audio-library" / "audio" / ".DS_Store").write_bytes(b"x")
+    package = tmp_path / "paquete"
+
+    paquete.package_processing_changes(library_repo, package, action="import")
+
+    manifest = json.loads((package / "manifiesto.json").read_text(encoding="utf-8"))
+    assert {(entry["ruta"], entry["estado"]) for entry in manifest["cambios"]} == {(CATALOG, "M"), (NUEVO, "A")}
+    assert (package / "cambios" / NUEVO).read_bytes() == b"dos"
+
+
+def test_publishing_leaves_ignored_audio_in_the_working_copy_and_out_of_the_commit(library_repo, tmp_path):
+    _audio_fuera_de_git(library_repo)
+    head = paquete.head_commit(library_repo)
+    package = _package(
+        tmp_path, files={CATALOG: b'{"songs": 2}\n', NUEVO: b"dos"},
+        changes=[{"ruta": CATALOG, "estado": "M"}, {"ruta": NUEVO, "estado": "A"}], base=head,
+    )
+
+    result = paquete.apply_package(package, library_repo, head=head)
+
+    assert result == {"accion": "import", "aplicados": 2, "eliminados": 0}
+    assert _git_output(library_repo, "diff", "--cached", "--name-only") == f"{CATALOG}\n"
+    assert (library_repo / NUEVO).read_bytes() == b"dos"  # lo sube sync_r2 al bucket privado
+
+
+@pytest.mark.parametrize("ruta, esperado", [
+    (CATALOG, True),
+    ("audio-library/audio/S0123456789abcdef.opus", True),
+    ("frontend/web/data/folders.json", True),
+    ("frontend/web/covers/F0123456789abcdef.jpg", True),
+    (PARTE_AJENA, False),
+    ("audio-library/buzon/cancion.mp3", False),
+    ("audio-library/indexes/otro.json", False),
+    ("audio-library/audio-extra/x.opus", False),
+    ("frontend/web/js/app.js", False),
+])
+def test_publishing_inputs_and_outputs(ruta, esperado):
+    assert paquete.ruta_de_publicacion(ruta) is esperado

@@ -1,13 +1,18 @@
 """Sincroniza lo que se publica en la web pública (frontend/web) con el catálogo (ADR-0007, ADR-0008).
 
-- Copia el audio de las canciones con public=true a frontend/web/audio/.
-- Borra de frontend/web/audio/ lo que ya no está publicado.
+- No mira el audio: el público lo sirve Cloudflare R2 (ADR-0020, fase 3) y la fuente de verdad de todo el audio es el
+  bucket privado (ADR-0024). scripts/sync_r2.py, en el job 'publicar', sube el audio nuevo al bucket privado, copia al
+  público el de las canciones públicas y se detiene antes de subir a main si a alguna le falta el audio.
+- Borra de frontend/web/audio/ cualquier audio que quede de antes (la carpeta ya no se usa).
 - Regenera frontend/web/data/songs.json (solo públicas), folders.json (todas las carpetas)
   y catalog.json (solo las canciones públicas y todas las carpetas, sin rutas de audio ni huellas SHA-256).
 - Copia a frontend/web/covers/ las portadas de las canciones públicas y de todas las carpetas (ADR-0016), desde
   audio-library/covers/, y borra las que sobran. Las canciones y carpetas con portada llevan "cover": "covers/<id>.jpg";
   las carpetas con artista, "artist". Los dos campos solo aparecen cuando tienen valor.
-Vercel sirve solo frontend/web; el audio privado de audio-library/ nunca llega al público.
+- Las canciones con número de pista en su álbum llevan "track" (entero desde 1) en songs.json y catalog.json; las que
+  no lo tienen, no llevan el campo (ADR-0026). La web y la APK ordenan cada álbum por "track".
+Vercel sirve solo frontend/web (y redirige /audio/<id>.opus a R2); el audio privado nunca llega al bucket público,
+porque sync_r2 solo copia allí las canciones de data/songs.json.
 Los metadatos de las canciones no publicadas (título, artista, origen...) tampoco salen de audio-library/:
 la web es pública y catalog.json forma parte de ella (ADR-0008).
 """
@@ -46,6 +51,14 @@ def _cover_of(item: dict) -> str | None:
     return cover
 
 
+def _track_of(song: dict) -> int | None:
+    """El número de pista de una canción con álbum, o None (sin álbum, o un valor que no es un entero desde 1)."""
+    track = song.get("track")
+    if song.get("folder_id") is None or isinstance(track, bool) or not isinstance(track, int) or track < 1:
+        return None
+    return track
+
+
 def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_dir: Path | None = None) -> dict:
     """covers_dir: las portadas de la biblioteca; por defecto, la carpeta covers junto a audio_dir
     (audio-library/covers)."""
@@ -54,25 +67,17 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
     web_audio = web_dir / "audio"
     web_data = web_dir / "data"
     web_covers = web_dir / "covers"
-    web_audio.mkdir(parents=True, exist_ok=True)
     web_data.mkdir(parents=True, exist_ok=True)
 
     public = [song for song in data["songs"] if song.get("public") is True]
     for song in public:
         if not isinstance(song.get("id"), str) or not SONG_ID.fullmatch(song["id"]):
             raise ValueError(f"identificador de canción no válido en la parte pública: {song.get('id')!r}")
-    public_names = {f"{song['id']}.opus" for song in public}
-
-    for name in public_names:
-        source = audio_dir / name
-        if not source.exists():
-            raise FileNotFoundError(f"falta el audio de {name} en {audio_dir}")
-        target = web_audio / name
-        # Se compara el contenido y no solo el tamaño: un audio de otro contenido y mismo tamaño se vuelve a copiar.
-        if not target.exists() or not filecmp.cmp(source, target, shallow=False):
-            shutil.copyfile(source, target)
-    for stale in web_audio.glob("*.opus"):
-        if stale.name not in public_names:
+    # El audio no se mira aquí (ADR-0024): su fuente de verdad es el bucket privado de R2, y el job 'publicar'
+    # (scripts/sync_r2.py) se detiene antes de subir a main si una canción pública no tiene audio en ningún sitio.
+    # El audio público lo sirve R2: lo que quede en frontend/web/audio/ es de antes de la fase 3 y se borra.
+    if web_audio.is_dir() and not web_audio.is_symlink():
+        for stale in web_audio.glob("*.opus"):
             stale.unlink()
 
     song_covers = {song["id"]: _cover_of(song) for song in public}
@@ -101,6 +106,8 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         entry["audio"] = f"audio/{song['id']}.opus"
         if song_covers[song["id"]]:
             entry["cover"] = song_covers[song["id"]]
+        if _track_of(song) is not None:
+            entry["track"] = _track_of(song)
         songs.append(entry)
     songs.sort(key=lambda item: item["title"].lower())
 
@@ -122,6 +129,8 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         entry["tags"] = list(song.get("tags") or [])
         if song_covers[song["id"]]:
             entry["cover"] = song_covers[song["id"]]
+        if _track_of(song) is not None:
+            entry["track"] = _track_of(song)
         catalog_songs.append(entry)
     catalog_songs.sort(key=lambda item: ((item["title"] or "").lower(), item["id"]))
     catalog_view = {"songs": catalog_songs, "folders": folders}

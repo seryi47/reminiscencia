@@ -312,7 +312,7 @@ describe('edición de canciones y álbumes', () => {
       assert.deepEqual(payloadOf(buildOrganizeIssueUrl(payload)), payload);
       assert.equal(buildIssueTitle({ action: 'organize', payload }), `Editar el álbum ${folderId}`);
     }
-    assert.match(validateOperation({ op: 'edit_folder', folder_id: NEW_FOLDER }), /al menos un campo que cambiar en el álbum/);
+    assert.match(validateOperation({ op: 'edit_folder', folder_id: NEW_FOLDER }), /Falta el campo name/);
     assert.match(validateOperation({ op: 'edit_folder', name: 'Valses' }), /Falta el campo folder_id/);
     assert.match(validateOperation({ op: 'edit_folder', folder_id: NEW_FOLDER, name: 'x', cover: 'covers/x.jpg' }), /no está permitido/);
   });
@@ -358,5 +358,53 @@ describe('edición de canciones y álbumes', () => {
   test('el aviso de las hojas pide permiso de escritura y dice cuándo llega el cambio', () => {
     assert.match(EDIT_NOTE, /permiso de escritura en el repositorio/);
     assert.match(EDIT_NOTE, /llega a todos en un par de minutos/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// move_songs: varias canciones a un álbum (o fuera de su álbum) en una sola petición
+// ---------------------------------------------------------------------------------------------
+
+describe('move_songs (validate_payload del backend)', () => {
+  const NEW_FOLDER = 'F0123456789abcdef';
+  const songId = (n) => `S${n.toString(16).padStart(16, '0')}`;
+
+  test('acepta de 1 a 100 canciones distintas con un álbum en cualquiera de los dos formatos, o null', () => {
+    for (const folderId of [NEW_FOLDER, FOLDER, null]) {
+      assert.equal(validateOperation({ op: 'move_songs', song_ids: [SONG], folder_id: folderId }), null, String(folderId));
+    }
+    const cien = Array.from({ length: REQUEST_LIMITS.moveSongs }, (_, index) => songId(index + 1));
+    assert.equal(REQUEST_LIMITS.moveSongs, 100);
+    const payload = { op: 'move_songs', song_ids: cien, folder_id: NEW_FOLDER };
+    assert.equal(validateOperation(payload), null);
+    // Cabe en una incidencia: el payload de 100 canciones no pasa del límite.
+    assert.equal(validateRequest({ action: 'organize', payload }), null);
+    const fields = parseLikeBackend(buildIssueBody({ action: 'organize', payload }));
+    assert.deepEqual(JSON.parse(fields.payload), payload);
+  });
+
+  test('rechaza listas vacías, de más de 100, repetidas, con ids no válidos o que no son listas', () => {
+    const mas = Array.from({ length: 101 }, (_, index) => songId(index + 1));
+    const casos = [
+      [{ op: 'move_songs', song_ids: [], folder_id: NEW_FOLDER }, /al menos una canción/],
+      [{ op: 'move_songs', song_ids: mas, folder_id: NEW_FOLDER }, /Como mucho 100/],
+      [{ op: 'move_songs', song_ids: [SONG, OTHER_SONG, SONG], folder_id: NEW_FOLDER }, /repetidas/],
+      [{ op: 'move_songs', song_ids: [SONG, 'L0011223344556677'], folder_id: NEW_FOLDER }, /identificador de la canción/],
+      [{ op: 'move_songs', song_ids: [SONG, 7], folder_id: NEW_FOLDER }, /identificador de la canción/],
+      [{ op: 'move_songs', song_ids: SONG, folder_id: NEW_FOLDER }, /deben ser una lista/],
+      [{ op: 'move_songs', song_ids: [SONG], folder_id: 'F12' }, /identificador del álbum/],
+      [{ op: 'move_songs', song_ids: [SONG] }, /Falta el campo folder_id/],
+      [{ op: 'move_songs', folder_id: NEW_FOLDER }, /Falta el campo song_ids/],
+      [{ op: 'move_songs', song_ids: [SONG], folder_id: NEW_FOLDER, title: 'x' }, /no está permitido/],
+    ];
+    for (const [payload, motivo] of casos) assert.match(validateOperation(payload) ?? '', motivo, JSON.stringify(payload).slice(0, 80));
+  });
+
+  test('título de la incidencia: «Añadir N canciones al álbum …» o «Quitar N canciones de su álbum»', () => {
+    const title = (payload) => buildIssueTitle({ action: 'organize', payload });
+    assert.equal(title({ op: 'move_songs', song_ids: [SONG], folder_id: NEW_FOLDER }), `Añadir 1 canción al álbum ${NEW_FOLDER}`);
+    assert.equal(title({ op: 'move_songs', song_ids: [SONG, OTHER_SONG], folder_id: FOLDER }), `Añadir 2 canciones al álbum ${FOLDER}`);
+    assert.equal(title({ op: 'move_songs', song_ids: [SONG], folder_id: null }), 'Quitar 1 canción de su álbum');
+    assert.equal(title({ op: 'move_songs', song_ids: [SONG, OTHER_SONG], folder_id: null }), 'Quitar 2 canciones de su álbum');
   });
 });

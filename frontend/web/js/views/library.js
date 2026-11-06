@@ -3,7 +3,7 @@
 // elementos de 64 px. Se pinta en el panel izquierdo (escritorio y tableta) y en la página #/biblioteca (teléfono).
 // También las páginas «Mostrar todo» de los estantes de Inicio.
 
-import { normalizeText, recentSongs } from '../catalog.js';
+import { normalizeText, recentSongs, searchScore } from '../catalog.js';
 import { el, iconButton, openMenu } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { chips, collectionCard, libraryItem, songCard, viaDialog } from './components.js';
@@ -35,8 +35,8 @@ function libraryEntries(ctx) {
   let items = ctx.libraryContexts();
   if (filter === 'listas') items = items.filter((item) => item.kind === 'playlist' || item.kind === 'liked');
   if (filter === 'albumes') items = items.filter((item) => item.kind === 'album');
-  const text = normalizeText(query);
-  if (text !== '') items = items.filter((item) => normalizeText(`${item.title} ${item.owner ?? ''}`).includes(text));
+  // La regla de búsqueda común (ADR-0028), pero en el orden que ha elegido la persona (Recientes, alfabético o creador).
+  if (normalizeText(query) !== '') items = items.filter((item) => searchScore([item.title, item.owner ?? ''], query) > 0);
   return ctx.sortContexts(items, sort);
 }
 
@@ -124,6 +124,8 @@ export function libraryPanel(ctx, prefix, { page = false } = {}) {
   renderLibraryList(list, ctx, prefix);
   return [
     header(ctx, prefix, { page }),
+    // Cambios enviados a la biblioteca común que aún no se han confirmado, o que han fallado (ADR-0027).
+    ctx.pendingEditsButton?.(prefix) ?? null,
     chips({
       label: 'Filtrar Tu biblioteca',
       options: FILTERS,
@@ -134,7 +136,7 @@ export function libraryPanel(ctx, prefix, { page = false } = {}) {
     }),
     tools(ctx, prefix),
     list,
-  ];
+  ].filter(Boolean);
 }
 
 /** Página «Tu biblioteca» (destino de la barra inferior del teléfono). */

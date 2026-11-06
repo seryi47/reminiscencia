@@ -1,0 +1,85 @@
+{
+  "descripcion": "Vectores de la firma AWS SigV4, los mismos para backend/sonidos/r2.py (sign_v4) y frontend/web/api/subir.js (signV4). El primero es el ejemplo oficial de AWS; los demás los generó sign_v4 y los comprueban las dos implementaciones.",
+  "casos": [
+    {
+      "nombre": "Ejemplo oficial de AWS: GET Object con Range",
+      "method": "GET",
+      "host": "examplebucket.s3.amazonaws.com",
+      "path": "/test.txt",
+      "query": "",
+      "payload_b64": "",
+      "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+      "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "region": "us-east-1",
+      "service": "s3",
+      "when": "2013-05-24T00:00:00Z",
+      "extra_headers": {
+        "range": "bytes=0-9"
+      },
+      "esperado": {
+        "x-amz-date": "20130524T000000Z",
+        "x-amz-content-sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "Authorization": "AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41"
+      }
+    },
+    {
+      "nombre": "R2: ListObjectsV2 de entrada/<UUID>/",
+      "method": "GET",
+      "host": "0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com",
+      "path": "/reminiscencia-audio-privado",
+      "query": "list-type=2&prefix=entrada%2F0f8fad5b-d9cb-469f-a165-70867728950e%2F",
+      "payload_b64": "",
+      "access_key_id": "AKPRUEBA",
+      "secret_access_key": "secreto/de+prueba",
+      "region": "auto",
+      "service": "s3",
+      "when": "2026-11-05T21:38:16Z",
+      "extra_headers": {},
+      "esperado": {
+        "x-amz-date": "20261105T213816Z",
+        "x-amz-content-sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "Authorization": "AWS4-HMAC-SHA256 Credential=AKPRUEBA/20261105/auto/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=3cf9ebdf3af384759762404e581a4f360fd566f192be0e07f9b48a6c79d0883d"
+      }
+    },
+    {
+      "nombre": "R2: PutObject de un trozo con If-None-Match",
+      "method": "PUT",
+      "host": "0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com",
+      "path": "/reminiscencia-audio-privado/entrada/0f8fad5b-d9cb-469f-a165-70867728950e/0.part",
+      "query": "",
+      "payload_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/wABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj9AQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8AAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4/QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl9gYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr/AwcLDxMXGx8jJysvMzc7P0NHS09TV1tfY2drb3N3e3+Dh4uPk5ebn6Onq6+zt7u/w8fLz9PX29/j5+vv8/f7/",
+      "access_key_id": "AKPRUEBA",
+      "secret_access_key": "secreto/de+prueba",
+      "region": "auto",
+      "service": "s3",
+      "when": "2026-11-05T21:38:17Z",
+      "extra_headers": {
+        "if-none-match": "*"
+      },
+      "esperado": {
+        "x-amz-date": "20261105T213817Z",
+        "x-amz-content-sha256": "f3a25aa93aa2fbba28d79260535bbd6a5eb0fc1c24a8b0f04e12b484c1dfe363",
+        "Authorization": "AWS4-HMAC-SHA256 Credential=AKPRUEBA/20261105/auto/s3/aws4_request, SignedHeaders=host;if-none-match;x-amz-content-sha256;x-amz-date, Signature=4990f22f320a568e0a52137954a15a87dac527893576bc8aef75fc687c505a28"
+      }
+    },
+    {
+      "nombre": "R2: DeleteObject con un nombre que hay que codificar",
+      "method": "DELETE",
+      "host": "0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com",
+      "path": "/reminiscencia-audio-privado/entrada/canci%C3%B3n%20%282%29.opus",
+      "query": "",
+      "payload_b64": "",
+      "access_key_id": "AKPRUEBA",
+      "secret_access_key": "secreto/de+prueba",
+      "region": "auto",
+      "service": "s3",
+      "when": "2026-12-31T23:59:59Z",
+      "extra_headers": {},
+      "esperado": {
+        "x-amz-date": "20261231T235959Z",
+        "x-amz-content-sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "Authorization": "AWS4-HMAC-SHA256 Credential=AKPRUEBA/20261231/auto/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=bc9ffff723efdfabaf00fe2f76b4d7c039a0b107c9df6703b33edb9ef60657ae"
+      }
+    }
+  ]
+}

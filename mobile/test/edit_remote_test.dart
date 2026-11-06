@@ -15,9 +15,14 @@ void main() {
     late http.Request seen;
     final client = MockClient((r) async {
       seen = r;
-      return http.Response(jsonEncode({'ok': true, 'mensaje': 'Hecho'}), 200);
+      return http.Response(
+        jsonEncode({'ok': true, 'mensaje': 'Hecho', 'incidencia': 42}),
+        200,
+      );
     });
-    expect(await submitLibraryEdit(request, client: client), 'Hecho');
+    final receipt = await submitLibraryEdit(request, client: client);
+    expect(receipt.message, 'Hecho');
+    expect(receipt.issue, 42);
     expect(seen.url, kEditEndpoint);
     expect(seen.method, 'POST');
     expect(jsonDecode(seen.body), {
@@ -28,7 +33,9 @@ void main() {
 
   test('sin mensaje usa el texto por defecto', () async {
     final client = MockClient((_) async => http.Response('{"ok":true}', 200));
-    expect(await submitLibraryEdit(request, client: client), kEditSavedText);
+    final receipt = await submitLibraryEdit(request, client: client);
+    expect(receipt.message, kEditSavedText);
+    expect(receipt.issue, isNull);
   });
 
   test('un rechazo lanza el motivo; sin motivo, el código', () async {
@@ -78,4 +85,43 @@ void main() {
     expect(seen.headers['X-Portada-Id'], 'S0000000000000004');
     expect(seen.bodyBytes, jpeg);
   });
+
+  test(
+    'el estado de una edición se pide con GET y el número de incidencia',
+    () async {
+      late http.Request seen;
+      final client = MockClient((r) async {
+        seen = r;
+        return http.Response(
+          jsonEncode({'ok': true, 'incidencia': 7, 'estado': 'cerrada'}),
+          200,
+        );
+      });
+      expect(await fetchEditStatus(7, client: client), 'cerrada');
+      expect(seen.method, 'GET');
+      expect(seen.url.path, '/api/editar');
+      expect(seen.url.queryParameters, {'incidencia': '7'});
+    },
+  );
+
+  test(
+    'un estado desconocido, un código de error o un fallo de red lanzan',
+    () async {
+      final odd = MockClient(
+        (_) async => http.Response('{"ok":true,"estado":"rara"}', 200),
+      );
+      await expectLater(
+        fetchEditStatus(7, client: odd),
+        throwsA(isA<AppException>()),
+      );
+      final missing = MockClient((_) async => http.Response('{}', 404));
+      await expectLater(
+        fetchEditStatus(7, client: missing),
+        throwsA(isA<AppException>()),
+      );
+      final offline = MockClient((_) async => throw http.ClientException('x'));
+      await expectLater(fetchEditStatus(7, client: offline), throwsA(anything));
+      await expectLater(fetchEditStatus(0), throwsArgumentError);
+    },
+  );
 }

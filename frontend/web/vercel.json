@@ -8,11 +8,14 @@
       "maxDuration": 30
     }
   },
-  "headers": [
+  "redirects": [
     {
-      "source": "/audio/(.*)\\.opus",
-      "headers": [{ "key": "Content-Type", "value": "audio/ogg; codecs=opus" }]
-    },
+      "source": "/audio/:file",
+      "destination": "https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/audio/:file",
+      "permanent": false
+    }
+  ],
+  "headers": [
     {
       "source": "/(.*)",
       "headers": [

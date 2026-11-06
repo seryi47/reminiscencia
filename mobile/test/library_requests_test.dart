@@ -132,7 +132,7 @@ void main() {
       );
     });
 
-    test('artista de 0 a 80 caracteres', () {
+    test('artista del álbum de 0 a 80 caracteres; de la canción, de 0 a 200', () {
       expect(
         LibraryRequest.createAlbum(
           name: 'x',
@@ -148,9 +148,18 @@ void main() {
         () => LibraryRequest.editSong(
           songId: songId,
           title: 't',
-          artist: 'z' * 81,
+          artist: 'z' * 201,
         ),
         throwsA(isA<AppException>()),
+      );
+      // Como en el backend (catalog.SONG_ARTIST_MAX_CHARS): antes la APK cortaba el de la canción en 80.
+      expect(
+        LibraryRequest.editSong(
+          songId: songId,
+          title: 't',
+          artist: 'z' * 200,
+        ).payload['artist'],
+        'z' * 200,
       );
     });
 
@@ -162,31 +171,34 @@ void main() {
       );
     });
 
-    test(
-      'una sola línea: sin saltos, separadores ni caracteres de control',
-      () {
-        for (final bad in [
-          'dos\nlíneas',
-          'retorno\r',
-          'tab\tulador',
-          'sep ',
-          'par ',
-          'ancho​cero',
-          'nulo\u0000',
-        ]) {
-          expect(
-            () => LibraryRequest.createAlbum(name: bad, artist: ''),
-            throwsA(isA<AppException>()),
-            reason: jsonEncode(bad),
-          );
-          expect(
-            () => LibraryRequest.createAlbum(name: 'x', artist: bad),
-            throwsA(isA<AppException>()),
-            reason: jsonEncode(bad),
-          );
-        }
-      },
-    );
+    test('una sola línea: sin saltos, separadores ni caracteres de control', () {
+      for (final bad in [
+        'dos\nlíneas',
+        'retorno\rde carro',
+        'tab\tulador',
+        'sep arador',
+        'par rafo',
+        'ancho​cero',
+        'nulo\u0000',
+      ]) {
+        expect(
+          () => LibraryRequest.createAlbum(name: bad, artist: ''),
+          throwsA(isA<AppException>()),
+          reason: jsonEncode(bad),
+        );
+        expect(
+          () => LibraryRequest.createAlbum(name: 'x', artist: bad),
+          throwsA(isA<AppException>()),
+          reason: jsonEncode(bad),
+        );
+      }
+      // Como en el backend, los espacios de los lados (también un salto de línea o un tabulador) se quitan antes de
+      // mirar los caracteres de control.
+      expect(
+        LibraryRequest.createAlbum(name: 'Valses\t', artist: ' x\r\n').payload,
+        {'op': 'create_folder', 'name': 'Valses', 'artist': 'x'},
+      );
+    });
 
     test('el título de la canción no puede quedar vacío', () {
       expect(
@@ -226,6 +238,105 @@ void main() {
       expect(canChangeCatalogCover(oldAlbumId), isFalse);
       expect(canChangeCatalogCover('L0123456789abcdef'), isFalse);
     });
+  });
+
+  group('move_songs (varias canciones de una vez)', () {
+    const otherId = 'S0000000000000001';
+
+    test('payload exacto y título al añadir a un álbum', () {
+      final request = LibraryRequest.moveSongs(
+        songIds: [songId, otherId],
+        folderId: albumId,
+        albumName: '  Jazz  ',
+      );
+      expect(payloadOf(request.body), {
+        'op': 'move_songs',
+        'song_ids': [songId, otherId],
+        'folder_id': albumId,
+      });
+      expect(
+        request.body,
+        'action: organize\npayload: {"op":"move_songs","song_ids":["$songId","$otherId"],"folder_id":"$albumId"}',
+      );
+      expect(request.title, 'Añadir 2 canciones al álbum «Jazz»');
+      expect(
+        LibraryRequest.moveSongs(
+          songIds: [songId],
+          folderId: albumId,
+          albumName: 'Jazz',
+        ).title,
+        'Añadir 1 canción al álbum «Jazz»',
+      );
+      expect(
+        LibraryRequest.moveSongs(songIds: [songId], folderId: oldAlbumId).title,
+        'Añadir 1 canción al álbum $oldAlbumId',
+      );
+    });
+
+    test('folder_id null las deja sin álbum', () {
+      final one = LibraryRequest.moveSongs(songIds: [songId], folderId: null);
+      expect(
+        one.body,
+        'action: organize\npayload: {"op":"move_songs","song_ids":["$songId"],"folder_id":null}',
+      );
+      expect(one.title, 'Quitar 1 canción de su álbum');
+      expect(
+        LibraryRequest.moveSongs(
+          songIds: [songId, otherId],
+          folderId: null,
+        ).title,
+        'Quitar 2 canciones de su álbum',
+      );
+    });
+
+    test('admite hasta 100 IDs', () {
+      final ids = [
+        for (var i = 0; i < kMaxMoveSongs; i++)
+          'S${i.toRadixString(16).padLeft(16, '0')}',
+      ];
+      final request = LibraryRequest.moveSongs(songIds: ids, folderId: albumId);
+      expect(payloadOf(request.body)['song_ids'], ids);
+      expect(request.title, 'Añadir 100 canciones al álbum $albumId');
+    });
+
+    test(
+      'rechaza lista vacía, más de 100, repetidas, IDs y álbum no válidos',
+      () {
+        Matcher fails(String text) => throwsA(
+          isA<AppException>().having((e) => e.message, 'message', text),
+        );
+        expect(
+          () => LibraryRequest.moveSongs(songIds: const [], folderId: albumId),
+          fails('Elige al menos una canción.'),
+        );
+        final tooMany = [
+          for (var i = 0; i <= kMaxMoveSongs; i++)
+            'S${i.toRadixString(16).padLeft(16, '0')}',
+        ];
+        expect(
+          () => LibraryRequest.moveSongs(songIds: tooMany, folderId: albumId),
+          fails('Se pueden mover 100 canciones como mucho de una vez.'),
+        );
+        expect(
+          () => LibraryRequest.moveSongs(
+            songIds: [songId, otherId, songId],
+            folderId: albumId,
+          ),
+          fails('Hay canciones repetidas en la selección.'),
+        );
+        expect(
+          () => LibraryRequest.moveSongs(
+            songIds: [songId, 'L0123456789abcdef'],
+            folderId: albumId,
+          ),
+          fails('Solo se pueden editar las canciones de la biblioteca común.'),
+        );
+        expect(
+          () => LibraryRequest.moveSongs(songIds: [songId], folderId: 'xyz'),
+          fails('El álbum no es un álbum de la biblioteca común.'),
+        );
+      },
+    );
   });
 
   group('título', () {

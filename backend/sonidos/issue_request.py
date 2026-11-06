@@ -13,8 +13,10 @@ Este módulo la valida antes de tocar la red o el catálogo:
   de casos. No admite payload.
 - action organize: payload obligatorio, un objeto JSON en una sola línea. No admite url, license ni title.
   Operaciones: create_folder (name, parent_id y artist opcionales), rename_folder, edit_folder (name obligatorio y
-  artist opcional, ADR-0016), delete_folder, edit_song y organize_youtube_playlist (reparar un álbum y los artistas
-  de todas sus canciones en una petición).
+  artist opcional, ADR-0016), delete_folder, edit_song, move_songs (pasar de 1 a 100 canciones a un álbum, o sacarlas
+  de su álbum con folder_id null, en una sola petición atómica; ADR-0023), order_album (el orden nuevo de las canciones
+  de un álbum: la lista completa y exacta de sus canciones, de 1 a 190; ADR-0026) y organize_youtube_playlist (reparar
+  un álbum y los artistas de todas sus canciones en una petición).
 
 Las URL se validan con sonidos.sources (classify, resolve_direct_file, ia_identifier): la misma
 lógica que usa la importación.
@@ -63,11 +65,20 @@ OPERATIONS = {
         frozenset({"song_id"}),
         frozenset({"title", "artist", "year", "tags", "folder_id", "public"}),
     ),
+    "move_songs": (frozenset({"song_ids", "folder_id"}), frozenset()),
+    "order_album": (frozenset({"folder_id", "song_ids"}), frozenset()),
     "organize_youtube_playlist": (
         frozenset({"playlist_id", "name", "songs"}),
         frozenset(),
     ),
 }
+# Canciones por petición de move_songs: 100 ids caben de sobra en los 4000 caracteres del payload.
+MAX_MOVE_SONGS = 100
+# Canciones de un álbum que se pueden ordenar en una petición de order_album (ADR-0026): con ids de álbum F + 16
+# hexadecimales, el payload normalizado ocupa 65 + 20 × n caracteres; 190 dan 3865, dentro de los 4000.
+MAX_ORDER_SONGS = 190
+# Canciones de una playlist de YouTube que se reparan en una petición de organize_youtube_playlist.
+MAX_PLAYLIST_SONGS = 200
 
 # Claves de la petición manual y la variable de entorno de la que se leen.
 _MANUAL_FIELDS = (
@@ -80,7 +91,16 @@ _MANUAL_FIELDS = (
 
 
 class RequestError(ValueError):
-    """La petición no es válida. El mensaje se publica en la incidencia."""
+    """La petición no es válida. El mensaje se publica en la incidencia.
+
+    code es el motivo estable (en inglés, sin espacios) y field, el campo del payload que falla, si lo hay. Son los que
+    comparan los casos comunes de tests/contrato/peticiones.json con la web y la APK; el mensaje puede cambiar.
+    """
+
+    def __init__(self, message: str, code: str = "invalid", field: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.field = field
 
 
 def parse_request(body: str | None) -> dict:
@@ -91,13 +111,13 @@ def parse_request(body: str | None) -> dict:
     """
     text = "" if body is None else body
     if len(text) > MAX_REQUEST_CHARS:
-        raise RequestError(f"la petición supera los {MAX_REQUEST_CHARS} caracteres")
+        raise RequestError(f"la petición supera los {MAX_REQUEST_CHARS} caracteres", "request_too_long")
     fields = _read_fields(text)
     action = fields.get("action", "")
     if not action:
-        raise RequestError("falta la clave action (import u organize)")
+        raise RequestError("falta la clave action (import u organize)", "missing_action")
     if action not in ACTIONS:
-        raise RequestError(f"acción desconocida: {_shown(action)}; usa import u organize")
+        raise RequestError(f"acción desconocida: {_shown(action)}; usa import u organize", "unknown_action")
     if action == "import":
         return _import_request(fields)
     return _organize_request(fields)
@@ -112,7 +132,7 @@ def request_from_env(env: Mapping[str, str]) -> dict:
         if not value:
             continue
         if _has_control(value):
-            raise RequestError(f"{name} contiene un salto de línea o un carácter de control")
+            raise RequestError(f"{name} contiene un salto de línea o un carácter de control", "control_chars")
         lines.append(f"{key}: {value}")
     return parse_request("\n".join(lines))
 
@@ -120,19 +140,19 @@ def request_from_env(env: Mapping[str, str]) -> dict:
 def validate_payload(data: object) -> dict:
     """Valida y normaliza el objeto JSON de una operación de organize (contrato C de ADR-0008)."""
     if not isinstance(data, dict):
-        raise RequestError("el payload debe ser un objeto JSON")
+        raise RequestError("el payload debe ser un objeto JSON", "payload_not_object")
     if "op" not in data:
-        raise RequestError("falta el campo op en el payload")
+        raise RequestError("falta el campo op en el payload", "missing_op")
     operation = data["op"]
     if not isinstance(operation, str) or operation not in OPERATIONS:
-        raise RequestError(f"operación desconocida: {_shown(str(operation))}")
+        raise RequestError(f"operación desconocida: {_shown(str(operation))}", "unknown_op")
     required, optional = OPERATIONS[operation]
     unknown = sorted(set(data) - {"op"} - required - optional)
     if unknown:
-        raise RequestError(f"campo desconocido en {operation}: {', '.join(unknown)}")
+        raise RequestError(f"campo desconocido en {operation}: {', '.join(unknown)}", "unknown_field", unknown[0])
     missing = sorted(required - set(data))
     if missing:
-        raise RequestError(f"falta el campo {', '.join(missing)} en {operation}")
+        raise RequestError(f"falta el campo {', '.join(missing)} en {operation}", "missing_field", missing[0])
 
     if operation == "create_folder":
         result = {
@@ -160,21 +180,35 @@ def validate_payload(data: object) -> dict:
         }
     if operation == "delete_folder":
         return {"op": operation, "folder_id": _folder_id(data["folder_id"], field="folder_id")}
+    if operation == "move_songs":
+        return {
+            "op": operation,
+            "song_ids": _song_ids(data["song_ids"], MAX_MOVE_SONGS),
+            "folder_id": _folder_id(data["folder_id"], field="folder_id", nullable=True),
+        }
+    if operation == "order_album":
+        # La lista tiene que ser exactamente la de las canciones del álbum; eso lo comprueba quien la aplica
+        # (catalog.order_album), porque aquí no se conoce el catálogo.
+        return {
+            "op": operation,
+            "folder_id": _folder_id(data["folder_id"], field="folder_id"),
+            "song_ids": _song_ids(data["song_ids"], MAX_ORDER_SONGS),
+        }
     if operation == "organize_youtube_playlist":
         playlist_id = data["playlist_id"]
         if not isinstance(playlist_id, str) or not YOUTUBE_PLAYLIST_ID_RE.fullmatch(playlist_id):
-            raise RequestError("playlist_id no es válido")
+            raise RequestError("playlist_id no es válido", "invalid_playlist_id", "playlist_id")
         raw_songs = data["songs"]
-        if not isinstance(raw_songs, list) or not 1 <= len(raw_songs) <= 200:
-            raise RequestError("songs debe contener entre 1 y 200 canciones")
+        if not isinstance(raw_songs, list) or not 1 <= len(raw_songs) <= MAX_PLAYLIST_SONGS:
+            raise RequestError(f"songs debe contener entre 1 y {MAX_PLAYLIST_SONGS} canciones", "songs_count", "songs")
         songs = []
         seen = set()
         for entry in raw_songs:
             if not isinstance(entry, dict) or set(entry) != {"song_id", "artist"}:
-                raise RequestError("cada canción debe incluir solo song_id y artist")
-            song_id = _song_id(entry["song_id"])
+                raise RequestError("cada canción debe incluir solo song_id y artist", "invalid_song_entry", "songs")
+            song_id = _song_id(entry["song_id"], "songs")
             if song_id in seen:
-                raise RequestError(f"song_id repetido en songs: {song_id}")
+                raise RequestError(f"song_id repetido en songs: {song_id}", "duplicate_song_ids", "songs")
             seen.add(song_id)
             songs.append({
                 "song_id": song_id,
@@ -206,11 +240,11 @@ def write_github_env(path: str | Path, env: Mapping[str, str]) -> None:
     lines = []
     for name, value in env.items():
         if not isinstance(name, str) or not ENV_NAME_RE.fullmatch(name):
-            raise RequestError(f"nombre de variable no válido: {name!r}")
+            raise RequestError(f"nombre de variable no válido: {name!r}", "invalid_env")
         if not isinstance(value, str):
-            raise RequestError(f"el valor de {name} debe ser texto")
+            raise RequestError(f"el valor de {name} debe ser texto", "invalid_env")
         if "\n" in value or "\r" in value or _has_control(value):
-            raise RequestError(f"el valor de {name} contiene un salto de línea o un carácter de control")
+            raise RequestError(f"el valor de {name} contiene un salto de línea o un carácter de control", "control_chars")
         lines.append(f"{name}={value}\n")
     with Path(path).open("a", encoding="utf-8") as handle:
         handle.writelines(lines)
@@ -240,25 +274,25 @@ def _read_fields(text: str) -> dict[str, str]:
         key, _, value = line.partition(":")
         key = key.strip()
         if key not in ALLOWED_KEYS:
-            raise RequestError(f"clave desconocida: {_shown(key) or '(vacía)'}")
+            raise RequestError(f"clave desconocida: {_shown(key) or '(vacía)'}", "unknown_key")
         if key in fields:
-            raise RequestError(f"clave repetida: {key}")
+            raise RequestError(f"clave repetida: {key}", "duplicate_key")
         value = value.strip()
         if _has_control(value):
-            raise RequestError(f"el valor de {key} contiene caracteres de control")
+            raise RequestError(f"el valor de {key} contiene caracteres de control", "control_chars")
         fields[key] = value
     return fields
 
 
 def _import_request(fields: dict[str, str]) -> dict:
     if fields.get("payload"):
-        raise RequestError("import no admite payload")
+        raise RequestError("import no admite payload", "key_not_allowed")
     url = fields.get("url", "")
     if not url:
-        raise RequestError("import necesita la clave url")
+        raise RequestError("import necesita la clave url", "missing_url")
     _check_length(url, MAX_URL_CHARS, "url")
     if any(char.isspace() for char in url):
-        raise RequestError("la url no puede contener espacios")
+        raise RequestError("la url no puede contener espacios", "invalid_url")
     license_text = _optional(fields, "license", MAX_LICENSE_CHARS)
     title = _optional(fields, "title", MAX_TITLE_CHARS)
     if _checked(classify, url) == "internet-archive":
@@ -271,14 +305,14 @@ def _import_request(fields: dict[str, str]) -> dict:
 def _organize_request(fields: dict[str, str]) -> dict:
     for key in ("url", "license", "title"):
         if fields.get(key):
-            raise RequestError(f"organize no admite la clave {key}")
+            raise RequestError(f"organize no admite la clave {key}", "key_not_allowed")
     raw = fields.get("payload", "")
     if not raw:
-        raise RequestError("organize necesita la clave payload (un objeto JSON en una sola línea)")
+        raise RequestError("organize necesita la clave payload (un objeto JSON en una sola línea)", "missing_payload")
     _check_length(raw, MAX_PAYLOAD_CHARS, "payload")
     payload = validate_payload(_load_json_object(raw))
     if len(_compact_json(payload)) > MAX_PAYLOAD_CHARS:
-        raise RequestError(f"payload supera los {MAX_PAYLOAD_CHARS} caracteres una vez normalizado")
+        raise RequestError(f"payload supera los {MAX_PAYLOAD_CHARS} caracteres una vez normalizado", "payload_too_long")
     return {"action": "organize", "url": None, "license": None, "title": None, "payload": payload}
 
 
@@ -288,9 +322,9 @@ def _load_json_object(raw: str) -> dict:
     except RequestError:
         raise
     except (ValueError, RecursionError) as error:
-        raise RequestError("payload no es JSON válido") from error
+        raise RequestError("payload no es JSON válido", "invalid_json") from error
     if not isinstance(data, dict):
-        raise RequestError("payload debe ser un objeto JSON entre llaves, no una lista ni un valor suelto")
+        raise RequestError("payload debe ser un objeto JSON entre llaves, no una lista ni un valor suelto", "payload_not_object")
     return data
 
 
@@ -298,7 +332,7 @@ def _object_without_duplicates(pairs: list[tuple[str, object]]) -> dict:
     result: dict = {}
     for key, value in pairs:
         if key in result:
-            raise RequestError(f"clave repetida en el payload: {_shown(key)}")
+            raise RequestError(f"clave repetida en el payload: {_shown(key)}", "duplicate_payload_key")
         result[key] = value
     return result
 
@@ -321,20 +355,20 @@ def _edit_song(data: dict) -> dict:
     if "public" in data:
         result["public"] = _strict_bool(data["public"], "public")
     if not [key for key in result if key not in ("op", "song_id")]:
-        raise RequestError("edit_song necesita al menos un campo que cambiar")
+        raise RequestError("edit_song necesita al menos un campo que cambiar", "no_changes")
     return result
 
 
 def _text(value: object, field: str, minimum: int, maximum: int) -> str:
     if not isinstance(value, str):
-        raise RequestError(f"{field} debe ser texto")
+        raise RequestError(f"{field} debe ser texto", "not_text", field)
     clean = value.strip()
     if _has_control(clean):
-        raise RequestError(f"{field} contiene caracteres de control")
+        raise RequestError(f"{field} contiene caracteres de control", "control_chars", field)
     if len(clean) < minimum:
-        raise RequestError(f"{field} no puede estar vacío")
+        raise RequestError(f"{field} no puede estar vacío", "empty_text", field)
     if len(clean) > maximum:
-        raise RequestError(f"{field} supera los {maximum} caracteres")
+        raise RequestError(f"{field} supera los {maximum} caracteres", "too_long", field)
     return clean
 
 
@@ -344,43 +378,64 @@ def _folder_id(value: object, *, field: str, nullable: bool = False) -> str | No
     if not isinstance(value, str) or not FOLDER_ID_RE.fullmatch(value):
         raise RequestError(
             f"{field} no es un id de carpeta válido (F seguida de 16 caracteres hexadecimales en minúscula, o 10 "
-            "hexadecimales en minúscula en las carpetas anteriores)"
+            "hexadecimales en minúscula en las carpetas anteriores)",
+            "invalid_folder_id",
+            field,
         )
     return value
 
 
-def _song_id(value: object) -> str:
+def _song_id(value: object, field: str = "song_id") -> str:
     if not isinstance(value, str) or not SONG_ID_RE.fullmatch(value):
-        raise RequestError("song_id no es un id de canción válido (S seguida de 16 caracteres hexadecimales en minúscula)")
+        raise RequestError(
+            "song_id no es un id de canción válido (S seguida de 16 caracteres hexadecimales en minúscula)",
+            "invalid_song_id",
+            field,
+        )
     return value
+
+
+def _song_ids(value: object, maximum: int) -> list[str]:
+    """Lista de 1 a maximum ids de canción válidos y sin repetir (move_songs y order_album)."""
+    message = f"song_ids debe contener entre 1 y {maximum} canciones"
+    if not isinstance(value, list):
+        raise RequestError(message, "song_ids_not_list", "song_ids")
+    if not value:
+        raise RequestError(message, "song_ids_empty", "song_ids")
+    if len(value) > maximum:
+        raise RequestError(message, "song_ids_too_many", "song_ids")
+    song_ids = [_song_id(item, "song_ids") for item in value]
+    if len(set(song_ids)) != len(song_ids):
+        raise RequestError("song_ids tiene canciones repetidas", "duplicate_song_ids", "song_ids")
+    return song_ids
 
 
 def _year(value: object) -> int | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int) or not YEAR_MIN <= value <= YEAR_MAX:
-        raise RequestError(f"year debe ser un entero entre {YEAR_MIN} y {YEAR_MAX}, o null")
+        raise RequestError(f"year debe ser un entero entre {YEAR_MIN} y {YEAR_MAX}, o null", "invalid_year", "year")
     return value
 
 
 def _tags(value: object) -> list[str]:
     if not isinstance(value, list):
-        raise RequestError("tags debe ser una lista de cadenas")
+        raise RequestError("tags debe ser una lista de cadenas", "tags_not_list", "tags")
     if len(value) > MAX_TAGS:
-        raise RequestError(f"tags admite como máximo {MAX_TAGS} etiquetas")
+        raise RequestError(f"tags admite como máximo {MAX_TAGS} etiquetas", "too_many_tags", "tags")
     for item in value:
         if not isinstance(item, str):
-            raise RequestError("cada etiqueta de tags debe ser una cadena")
+            raise RequestError("cada etiqueta de tags debe ser una cadena", "not_text", "tags")
         if _has_control(item):
-            raise RequestError("una etiqueta contiene caracteres de control")
+            raise RequestError("una etiqueta contiene caracteres de control", "control_chars", "tags")
         if len(item.strip().lower()) > MAX_TAG_CHARS:
-            raise RequestError(f"cada etiqueta admite como máximo {MAX_TAG_CHARS} caracteres")
+            raise RequestError(f"cada etiqueta admite como máximo {MAX_TAG_CHARS} caracteres", "too_long", "tags")
     return catalog.normalize_tags(value)
 
 
 def _strict_bool(value: object, field: str) -> bool:
     if not isinstance(value, bool):
-        raise RequestError(f"{field} debe ser true o false (booleano JSON, no texto)")
+        raise RequestError(f"{field} debe ser true o false (booleano JSON, no texto)", "not_bool", field)
     return value
 
 
@@ -397,7 +452,7 @@ def _optional(fields: dict[str, str], key: str, limit: int) -> str | None:
 
 def _check_length(value: str, limit: int, name: str) -> None:
     if len(value) > limit:
-        raise RequestError(f"{name} supera los {limit} caracteres")
+        raise RequestError(f"{name} supera los {limit} caracteres", f"{name}_too_long")
 
 
 def _checked(function, *args):
@@ -405,7 +460,7 @@ def _checked(function, *args):
     try:
         return function(*args)
     except SourceError as error:
-        raise RequestError(str(error)) from error
+        raise RequestError(str(error), "invalid_url") from error
 
 
 def _compact_json(payload: Mapping) -> str:

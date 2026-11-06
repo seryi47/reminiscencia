@@ -38,6 +38,9 @@ import {
 } from './cuidador/subida-local.js';
 import { sendOpus } from './cuidador/subida-publica.js';
 import { expandSelection } from './cuidador/subida-zip.js';
+import { duplicateMessage, findUploadDuplicates } from './duplicates.js';
+import { applyPendingEdits, createEditTracker, indicatorText as editsIndicatorText, STATES as EDIT_STATES } from './edit-pending.js';
+import { dataUrlToBytes, fetchEditStatus, sendCover, sendOrganize } from './edit-remote.js';
 import {
   activeCount,
   createUploadTracker,
@@ -46,7 +49,7 @@ import {
   songsFetcher,
   STATES as UPLOAD_STATES,
 } from './cuidador/subida-estado.js';
-import { closeMenu, confirmDialog, el, toast } from './ui/dom.js';
+import { closeMenu, confirmDialog, el, openDialog, toast } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { DOT, likeButton, setPlayButtonState } from './views/components.js';
 import {
@@ -54,15 +57,20 @@ import {
   openCreateAlbumSheet,
   openEditAlbumSheet,
   openEditSongSheet,
+  openAddSongsToAlbumSheet,
+  openMoveSongsToAlbumSheet,
   openMoveToAlbumSheet,
+  openOrderAlbumSheet,
   openPlaylistEditor,
+  openRemoveFromAlbumSheet,
+  openRemoveSongsFromAlbumSheet,
 } from './views/edit.js';
 import { renderHome } from './views/home.js';
 import { refreshSearchResults, renderSearch } from './views/search.js';
 import { renderCollection } from './views/collection.js';
 import { libraryPanel, renderLibraryPage, renderSection } from './views/library.js';
 import { mountPlayerUi } from './views/player-ui.js';
-import { openUploadSheet } from './views/upload.js';
+import { askDuplicate, openUploadSheet } from './views/upload.js';
 import { openHomeostasiaSheet } from './views/homeostasia.js';
 
 const DATA_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
@@ -121,6 +129,8 @@ const state = {
   searchQuery: '',
   searchFilter: 'todo',
   addQuery: '',
+  // Modo «Seleccionar» de un álbum: { folderId, ids: Set } o null.
+  albumSelection: null,
   route: { name: 'inicio', id: null },
   ready: false,
 };
@@ -134,13 +144,34 @@ let persistenceRequested = false;
 let lastSync = '';
 let uploads = null;
 let uploadSignature = '';
+// Ediciones de la biblioteca común enviadas desde aquí y aún no confirmadas (js/edit-pending.js, ADR-0027).
+let edits = null;
 // Copias locales de subidas ya publicadas que se borran en cuanto dejan de sonar (id → URL de su audio).
 const retiredCopies = new Map();
 
 const dom = {};
 
+/**
+ * Catálogo que se pinta: el real (state.publicSongs y state.publicFolders, que no se tocan) con las ediciones pendientes
+ * encima (ADR-0027). Lo editado lleva pendingEdit (marca «Pendiente») y una portada pendiente se ve con su vista previa.
+ */
 function rebuildCatalog() {
-  state.catalog = buildCatalog(state.publicSongs, state.publicFolders, state.localSongs);
+  const pendingEdits = edits?.items() ?? [];
+  const view = applyPendingEdits(state.publicSongs, state.publicFolders, pendingEdits);
+  state.catalog = buildCatalog(view.songs, view.folders, state.localSongs);
+  for (const id of view.songIds) {
+    const song = state.catalog.songById.get(id);
+    if (song) song.pendingEdit = true;
+  }
+  for (const id of view.folderIds) {
+    const folder = state.catalog.folderById.get(id);
+    if (folder) folder.pendingEdit = true;
+  }
+  for (const edit of pendingEdits) {
+    if (edit.kind !== 'cover' || edit.state === EDIT_STATES.ERROR || !edit.preview) continue;
+    const target = state.catalog.songById.get(edit.targetId) ?? state.catalog.folderById.get(edit.targetId);
+    if (target) target.cover = edit.preview;
+  }
 }
 
 function savePlayerPrefs(playerState) {
@@ -750,6 +781,8 @@ function renderSidebar() {
 /** Pinta la pantalla activa y «Tu biblioteca», conservando el foco y el desplazamiento si la ruta no cambia. */
 function render({ routeChanged = false } = {}) {
   closeMenu({ restoreFocus: false });
+  // El modo «Seleccionar» de un álbum no sobrevive a un cambio de página.
+  if (routeChanged) state.albumSelection = null;
   const active = document.activeElement;
   const focusKey = active?.closest?.('[data-key]')?.dataset.key ?? null;
   const selection = active && 'selectionStart' in active && typeof active.selectionStart === 'number'
@@ -936,8 +969,32 @@ const ctx = {
   toggleDownload,
   editSong: (song) => openEditSongSheet(ctx, song),
   moveSongToAlbum: (song) => openMoveToAlbumSheet(ctx, song),
+  removeSongFromAlbum: (song, folderId) => {
+    const folder = state.catalog.folderById.get(folderId);
+    return folder ? openRemoveFromAlbumSheet(ctx, song, folder) : null;
+  },
+  addSongsToAlbum: (folder) => openAddSongsToAlbumSheet(ctx, folder),
+  // Modo «Seleccionar» de la página de un álbum (ADR-0026).
+  startAlbumSelection: (folderId) => {
+    state.albumSelection = { folderId, ids: new Set() };
+    render();
+    focusByKey('album-select-all');
+  },
+  endAlbumSelection: () => {
+    state.albumSelection = null;
+    render();
+    focusByKey('album-select');
+  },
+  removeSongsFromAlbum: (folder, songIds) => openRemoveSongsFromAlbumSheet(ctx, folder, songIds, { onDone: () => ctx.endAlbumSelection() }),
+  moveSongsToAlbum: (folder, songIds) => openMoveSongsToAlbumSheet(ctx, folder, songIds, { onDone: () => ctx.endAlbumSelection() }),
+  orderAlbum: (folder) => openOrderAlbumSheet(ctx, folder),
   createAlbum: () => openCreateAlbumSheet(ctx),
   editAlbum: (folder) => openEditAlbumSheet(ctx, folder),
+  // Ediciones de la biblioteca común (ADR-0027): se envían, quedan pendientes y se ven al momento.
+  saveEdit: (payload) => edits.submit(payload),
+  saveCoverEdit: (cover) => edits.submitCover(cover),
+  pendingEditsButton: (prefix) => pendingEditsButton(prefix),
+  openPendingEdits: () => openPendingEditsSheet(),
   changeCover: (target) => openCoverSheet(ctx, target),
   openUpload: () => openUploadSheet(ctx),
   openHomeostasia: () => openHomeostasiaSheet(ctx),
@@ -1095,12 +1152,182 @@ let pendingSelection = Promise.resolve();
  * Archivos elegidos en la hoja: a la cola de subidas, con el título del nombre del archivo. Cada ZIP se abre aquí (solo
  * su directorio) y cada canción suya entra como una subida de su grupo (subida-zip.js); el ZIP no se sube.
  */
-function addUploads(files, { album = null, trackArtists = [] } = {}) {
+function addUploads(files, { album = null, trackArtists = [], checkDuplicates = false } = {}) {
   requestPersistence();
   const list = Array.from(files ?? []);
-  const run = pendingSelection.then(async () => uploads.addSources(await expandSelection(list), { album, trackArtists }));
+  const run = pendingSelection.then(async () => {
+    const sources = await expandSelection(list);
+    if (!checkDuplicates) return uploads.addSources(sources, { album, trackArtists });
+    const keep = await reviewDuplicates(sources);
+    const artists = trackArtists.length === sources.length ? trackArtists.filter((_, index) => keep[index]) : [];
+    return uploads.addSources(sources.filter((_, index) => keep[index]), { album, trackArtists: artists });
+  });
   pendingSelection = run.catch((error) => console.error('Reminiscencia: fallo al preparar la selección de archivos.', error));
   return run;
+}
+
+// Archivos más grandes no se decodifican solo para saber su duración (la conversión los rechaza igual).
+const PROBE_MAX_BYTES = 60 * 1024 * 1024;
+const PROBE_TIMEOUT_MS = 8000;
+
+/**
+ * Duración en segundos de un archivo de audio elegido, o null si no se sabe. Se decodifica con Web Audio (sin URL
+ * blob:, que la política de contenido no admite en media-src). Las canciones de un ZIP no se abren aquí: sin duración,
+ * la regla de duplicados compara el título y el artista.
+ */
+async function probeDurationS(file) {
+  const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
+  if (!AudioContextClass || typeof Blob === 'undefined' || !(file instanceof Blob) || file.size > PROBE_MAX_BYTES) return null;
+  let audioContext = null;
+  try {
+    audioContext = new AudioContextClass();
+    const decoded = await Promise.race([
+      file.arrayBuffer().then((data) => audioContext.decodeAudioData(data)),
+      new Promise((resolve) => { setTimeout(() => resolve(null), PROBE_TIMEOUT_MS); }),
+    ]);
+    return decoded && Number.isFinite(decoded.duration) && decoded.duration > 0 ? decoded.duration : null;
+  } catch {
+    return null;
+  } finally {
+    audioContext?.close?.().catch(() => {});
+  }
+}
+
+/**
+ * Aviso de posibles duplicados antes de poner archivos en la cola (ADR-0026): cada archivo se compara con la
+ * biblioteca y con los anteriores de la misma tanda (js/duplicates.js). Por cada parecido se pregunta «Subir
+ * igualmente» o «Quitar de la cola». Devuelve, por posición, si el archivo se sube.
+ */
+async function reviewDuplicates(sources) {
+  const keep = sources.map(() => true);
+  const positions = [];
+  const batch = [];
+  for (const [index, source] of sources.entries()) {
+    if (source?.error || !source?.file) continue;
+    positions.push(index);
+    batch.push({ title: source.title ?? '', artist: source.artist ?? '', durationS: await probeDurationS(source.file) });
+  }
+  const library = state.catalog.songs.map((song) => ({ title: song.title, artist: song.artist, durationS: song.durationS }));
+  for (const found of findUploadDuplicates(batch, library)) {
+    const index = positions[found.index];
+    keep[index] = await askDuplicate({ name: sources[index].name, message: duplicateMessage(found) });
+  }
+  return keep;
+}
+
+// ---------------------------------------------------------------------------
+// Ediciones pendientes (js/edit-pending.js, ADR-0027)
+// ---------------------------------------------------------------------------
+
+function createEdits() {
+  return createEditTracker({
+    sendOrganize: (payload) => sendOrganize(payload),
+    sendCover: (id, bytes) => sendCover(id, bytes),
+    fetchStatus: (issue) => fetchEditStatus(issue),
+    fetchCatalog: async () => {
+      const [songs, folders] = await Promise.all([
+        fetchJson(DATA_URLS.songs, { cache: 'no-store' }),
+        fetchJson(DATA_URLS.folders, { cache: 'no-store' }),
+      ]);
+      if (!Array.isArray(songs) || !Array.isArray(folders)) throw new Error('El catálogo no es una lista.');
+      return { songs, folders };
+    },
+    catalog: () => ({ songs: state.publicSongs, folders: state.publicFolders }),
+    previewBytes: (dataUrl) => dataUrlToBytes(dataUrl),
+    // Lo leído al revisar es el catálogo real más reciente: la biblioteca se pone al día con él.
+    onCatalog: (songs, folders) => {
+      state.publicSongs = songs;
+      state.publicFolders = folders;
+    },
+    onNotice: ({ type, text }) => toast(text, { ms: type === 'failed' ? 8000 : 4000 }),
+    storage: safeLocalStorage(),
+  });
+}
+
+function onEditsChange() {
+  rebuildCatalog();
+  if (state.ready) render();
+}
+
+/** Botón de Tu biblioteca: «2 cambios pendientes» o «No se ha podido guardar 1 cambio». Abre la lista. Null sin nada. */
+function pendingEditsButton(prefix) {
+  const items = edits?.items() ?? [];
+  const text = editsIndicatorText(items);
+  if (!text) return null;
+  const failed = items.some((item) => item.state === EDIT_STATES.ERROR);
+  return el('button', {
+    type: 'button',
+    class: `edits-indicator${failed ? ' has-error' : ''}`,
+    'data-testid': `${prefix}-edits`,
+    'data-key': `${prefix}-edits`,
+    'aria-label': `${text}. Ver los cambios`,
+    on: { click: () => openPendingEditsSheet() },
+  }, icon(failed ? 'alert' : 'clock', { size: 16 }), el('span', { class: 'edits-indicator-text' }, text));
+}
+
+/** Lista de cambios pendientes y fallidos, con «Reintentar» y «Descartar» en los fallidos. Se pone al día sola. */
+function openPendingEditsSheet() {
+  let unsubscribe = () => {};
+  const done = openDialog({
+    title: 'Cambios pendientes',
+    testid: 'edits-sheet',
+    className: 'dialog-edit',
+    render: (body) => {
+      const list = el('ul', { class: 'edits-list', 'data-testid': 'edits-list' });
+      const status = el('p', { class: 'edit-status', role: 'status', 'data-testid': 'edits-status' });
+      const act = async (button, run) => {
+        if (button.getAttribute('aria-disabled') === 'true') return;
+        button.setAttribute('aria-disabled', 'true');
+        status.textContent = 'Guardando…';
+        try {
+          status.textContent = (await run()) ?? '';
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : 'No se ha podido guardar.';
+          button.setAttribute('aria-disabled', 'false');
+        }
+      };
+      const paint = (items) => {
+        const rows = items.map((item) => {
+          const failed = item.state === EDIT_STATES.ERROR;
+          const retry = failed ? el('button', {
+            type: 'button',
+            class: 'button button-light button-small',
+            'data-testid': 'edits-retry',
+            'aria-label': `Reintentar «${item.label}»`,
+          }, 'Reintentar') : null;
+          retry?.addEventListener('click', () => act(retry, () => edits.retry(item.key)));
+          return el('li', { class: `edits-row${failed ? ' is-error' : ''}`, 'data-testid': 'edits-item', 'data-state': item.state },
+            el('span', { class: 'edits-text' },
+              el('span', { class: 'edits-label' }, `«${item.label}»`),
+              el('span', { class: 'edits-detail' }, item.action),
+              el('span', { class: `badge ${failed ? 'badge-error' : 'badge-edit'}`, 'data-testid': 'edits-state' }, failed ? 'No se ha podido guardar' : 'Pendiente')),
+            failed ? el('span', { class: 'edits-actions' },
+              retry,
+              el('button', {
+                type: 'button',
+                class: 'button button-secondary button-small',
+                'data-testid': 'edits-discard',
+                'aria-label': `Descartar «${item.label}»`,
+                on: { click: () => edits.discard(item.key) },
+              }, 'Descartar')) : null);
+        });
+        if (rows.length === 0) rows.push(el('li', { class: 'empty-text', 'data-testid': 'edits-empty' }, 'No hay cambios pendientes.'));
+        // Si el foco estaba en la lista (en un botón que desaparece al pintar), pasa al primer «Reintentar» o a «Cerrar».
+        const hadFocus = list.contains(document.activeElement);
+        list.replaceChildren(...rows);
+        if (hadFocus) (list.querySelector('[data-testid="edits-retry"]') ?? list.closest('dialog')?.querySelector('.dialog-close'))?.focus();
+      };
+      paint(edits.items());
+      unsubscribe = edits.subscribe(paint);
+      body.append(
+        el('p', { class: 'dialog-text' }, 'Los cambios enviados desde aquí se ven al momento y llegan a todos en un par de minutos. Esta lista se pone al día sola.'),
+        list,
+        status);
+    },
+    initialFocus: (dialog) => dialog.querySelector('[data-testid="edits-retry"]') ?? dialog.querySelector('.dialog-close'),
+  });
+  done.finally(() => unsubscribe());
+  return done;
 }
 
 // ---------------------------------------------------------------------------
@@ -1134,6 +1361,10 @@ async function start() {
   dom.uploadIndicatorText = indicator.text;
   uploads = createUploads();
   uploads.subscribe(onUploadsChange);
+  edits = createEdits();
+  edits.subscribe(onEditsChange);
+  // Lo enviado antes de recargar sigue pendiente (y se ve) hasta que se confirme o falle.
+  edits.restore();
   // Cerrar la página con un archivo convirtiéndose o subiéndose lo perdería: el navegador lo pregunta antes.
   window.addEventListener('beforeunload', (event) => {
     if (!uploads.busy()) return;
@@ -1179,9 +1410,15 @@ async function start() {
     state.online = navigator.onLine !== false;
     render();
     playerUi.update(player.getState());
+    // Al volver la conexión, las ediciones pendientes se revisan enseguida (ADR-0027).
+    if (state.online) edits.check();
   };
   window.addEventListener('online', setOnline);
   window.addEventListener('offline', setOnline);
+  // Y también al volver a la pestaña.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') edits.check();
+  });
 
   state.route = parseRoute(location.hash);
   render();
@@ -1191,6 +1428,8 @@ async function start() {
   const [, localSongs, cached] = await Promise.all([loadPublicCatalog(), loadLocalSongs(), cachedAudioPaths()]);
   state.localSongs = localSongs;
   state.cached = cached;
+  // Lo que el catálogo recién cargado ya refleja deja de estar pendiente.
+  if (!state.loadError) edits.reconcile(state.publicSongs, state.publicFolders);
   rebuildCatalog();
   state.playlists = await library.listPlaylists();
   state.likes = await library.listLikes();

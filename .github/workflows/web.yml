@@ -6,11 +6,13 @@ on:
     paths:
       - "frontend/web/**"
       - "tests/web-unit/**"
+      - "tests/fixtures/**"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "frontend/web/**"
       - "tests/web-unit/**"
+      - "tests/fixtures/**"
       - ".github/workflows/web.yml"
 
 # Solo lectura: este flujo solo comprueba la web, no escribe nada en el repositorio.

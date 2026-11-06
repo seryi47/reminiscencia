@@ -24,6 +24,7 @@ import {
   songCountText,
   songCover,
   songsInFolder,
+  songsToAddToAlbum,
   titleSize,
   totalDuration,
 } from '../../frontend/web/js/catalog.js';
@@ -62,6 +63,7 @@ describe('lectura del catálogo', () => {
       local: false,
       pending: false,
       addedAt: null,
+      track: null,
       order: 0,
     });
   });
@@ -267,5 +269,39 @@ describe('álbumes y portadas publicadas (contrato con el backend)', () => {
     const catalog = buildCatalog([song(1)], [{ id: 'aaaaaaaaaa', name: 'Valses', artist: 'Orquesta Imaginaria' }]);
     const found = searchCatalog(catalog, 'imaginaria');
     assert.deepEqual(found.folders.map((folder) => folder.id), ['aaaaaaaaaa']);
+  });
+});
+
+describe('«Añadir canciones» a un álbum (songsToAddToAlbum)', () => {
+  const catalog = buildCatalog(
+    [
+      song(1, { title: 'Canción de cuna', artist: 'Banda Ficticia', folder_id: 'aaaaaaaaaa' }),
+      song(2, { title: 'Vals de la montaña', artist: 'Orquesta Única' }),
+      song(3, { title: 'Otra', folder_id: 'bbbbbbbbbb' }),
+      song(4, { title: 'Pasodoble', artist: 'Banda Ficticia', folder_id: 'bbbbbbbbbb' }),
+    ],
+    FOLDERS,
+  );
+  const albumNameOf = (item) => (item.folderId ? catalog.folderById.get(item.folderId)?.name ?? '' : '');
+  const ids = (list) => list.map((item) => item.id);
+
+  test('sin texto, todas las que no están ya en el álbum, en su orden', () => {
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'bbbbbbbbbb', '', { albumNameOf })), ['S0000000000000001', 'S0000000000000002']);
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'aaaaaaaaaa', '   ', { albumNameOf })), ['S0000000000000002', 'S0000000000000003', 'S0000000000000004']);
+  });
+
+  test('filtra sin acentos ni mayúsculas por título, artista y nombre del álbum actual', () => {
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'aaaaaaaaaa', 'MONTANA', { albumNameOf })), ['S0000000000000002']);
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'aaaaaaaaaa', 'unica', { albumNameOf })), ['S0000000000000002']);
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'cccccccccc', 'ficticia', { albumNameOf })), ['S0000000000000001', 'S0000000000000004']);
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'cccccccccc', 'años veinte', { albumNameOf })), ['S0000000000000001']);
+    // Cada palabra tiene que aparecer en algún campo.
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'cccccccccc', 'banda valses', { albumNameOf })), ['S0000000000000004']);
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'cccccccccc', 'zzz', { albumNameOf })), []);
+  });
+
+  test('solo las editables (isEditable)', () => {
+    const editable = (item) => item.id !== 'S0000000000000002';
+    assert.deepEqual(ids(songsToAddToAlbum(catalog.songs, 'aaaaaaaaaa', '', { isEditable: editable, albumNameOf })), ['S0000000000000003', 'S0000000000000004']);
   });
 });

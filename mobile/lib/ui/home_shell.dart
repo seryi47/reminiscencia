@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../layout.dart';
+import '../pending_edits.dart';
 import '../services.dart';
 import '../theme.dart';
 import '../playback.dart';
@@ -12,6 +13,7 @@ import '../youtube_embed.dart';
 import 'common.dart';
 import 'home_page.dart';
 import 'library_page.dart';
+import 'pending_edits_panel.dart';
 import 'player.dart';
 import 'search_page.dart';
 import 'youtube_embed_dock.dart';
@@ -38,6 +40,7 @@ class _HomeShellState extends State<HomeShell> {
   };
   late final AppLifecycleListener _lifecycle;
   StreamSubscription<UploadNotice>? _notices;
+  StreamSubscription<PendingEditNotice>? _editNotices;
   late final ValueListenable<NowPlaying> _nowPlaying;
 
   // La música y el vídeo incrustado no suenan a la vez.
@@ -69,6 +72,10 @@ class _HomeShellState extends State<HomeShell> {
     _nowPlaying.addListener(_closeEmbedWhenMusicPlays);
     // Aviso en cualquier pestaña cuando se publica una subida.
     _notices = library.uploads.notices.listen(_showNotice);
+    // Aviso cuando un cambio enviado llega a todos o no se ha podido guardar (ADR-0027).
+    _editNotices = library.edits.notices.listen((notice) {
+      if (mounted) showPendingEditNotice(context, widget.services, notice);
+    });
   }
 
   void _showNotice(UploadNotice notice) {
@@ -92,6 +99,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void dispose() {
     _notices?.cancel();
+    _editNotices?.cancel();
     _nowPlaying.removeListener(_closeEmbedWhenMusicPlays);
     _lifecycle.dispose();
     super.dispose();

@@ -63,6 +63,9 @@ enum UploadStage {
   failed,
 }
 
+/// Revisa las canciones de una tanda antes de ponerlas en la cola y devuelve las posiciones que no se suben.
+typedef UploadReview = Future<Set<int>> Function(List<PickedAudioFile> songs);
+
 /// Temporizador periódico. Se sustituye en pruebas.
 typedef PeriodicTimerFactory =
     Timer Function(Duration period, void Function() onTick);
@@ -508,7 +511,25 @@ class UploadTracker extends ChangeNotifier {
   bool _disposed = false;
   Timer? _timer;
 
+  /// Trabajo lanzado sin esperar (comprobaciones de publicación y escrituras del estado) que no ha terminado.
+  final Set<Future<void>> _background = {};
+
   List<UploadEntry> get entries => List.unmodifiable(_entries);
+
+  /// Termina cuando no queda trabajo en segundo plano, también el que lance ese mismo trabajo. Después, el estado
+  /// guardado refleja lo que se ve. Las pruebas lo esperan en vez de dormir un tiempo fijo.
+  Future<void> idle() async {
+    while (_background.isNotEmpty) {
+      await Future.wait(
+        List.of(_background),
+      ).then<void>((_) {}, onError: (Object _) {});
+    }
+  }
+
+  void _inBackground(Future<void> work) {
+    _background.add(work);
+    unawaited(work.whenComplete(() => _background.remove(work)));
+  }
 
   /// La lista agrupada: cada ZIP con sus canciones, en el orden en que se eligieron.
   List<UploadSection> get sections {
@@ -568,7 +589,13 @@ class UploadTracker extends ChangeNotifier {
   /// Un ZIP no se sube: se leen sus canciones (también las de subcarpetas) y cada una se sube como si se hubiera
   /// elegida suelta, con su nombre base como título. Si un ZIP está dañado o cifrado, su grupo lleva el error y
   /// las demás siguen.
-  Future<SharedUploadResult> start(List<PickedAudioFile> files) async {
+  ///
+  /// [review] (opcional) recibe las canciones de la tanda, ya sacadas de los ZIP, antes de ponerlas en la cola, y
+  /// devuelve las posiciones que no se suben (por ejemplo, las que parecen repetidas y la persona quita; ADR-0026).
+  Future<SharedUploadResult> start(
+    List<PickedAudioFile> files, {
+    UploadReview? review,
+  }) async {
     final shared = uploader;
     if (shared == null) {
       throw const AppException(
@@ -605,6 +632,33 @@ class UploadTracker extends ChangeNotifier {
         layout.add(entry.key);
         batch.add(entry);
         songs.add(file);
+      }
+      if (review != null && songs.isNotEmpty) {
+        final dropped = await review(List.unmodifiable(songs));
+        if (dropped.isNotEmpty) {
+          final droppedKeys = {
+            for (final index in dropped)
+              if (index >= 0 && index < batch.length) batch[index].key,
+          };
+          final keptGroups = <String>{};
+          final emptiedGroups = <String>{};
+          for (var i = batch.length - 1; i >= 0; i--) {
+            final group = batch[i].groupKey;
+            if (droppedKeys.contains(batch[i].key)) {
+              if (group != null) emptiedGroups.add(group);
+              batch.removeAt(i);
+              songs.removeAt(i);
+            } else if (group != null) {
+              keptGroups.add(group);
+            }
+          }
+          // Un ZIP al que no le queda ninguna canción no deja un grupo vacío en la lista.
+          emptiedGroups.removeAll(keptGroups);
+          layout.removeWhere(
+            (key) => droppedKeys.contains(key) || emptiedGroups.contains(key),
+          );
+          emptiedGroups.forEach(_groups.remove);
+        }
       }
     } finally {
       _busy = false;
@@ -742,7 +796,7 @@ class UploadTracker extends ChangeNotifier {
             ..opusPath = opus.path
             ..durationS = audio.durationS;
           _changed();
-          unawaited(_persist());
+          _inBackground(_persist());
         },
         onItemDone: (index, item) => _applyResult(batch[index], item, baseline),
       );
@@ -778,7 +832,7 @@ class UploadTracker extends ChangeNotifier {
         ..error = null
         ..savedAt = _clock();
       _changed();
-      unawaited(
+      _inBackground(
         baseline.then((ids) {
           entry.baseline = ids;
           _ensurePolling();
@@ -792,7 +846,7 @@ class UploadTracker extends ChangeNotifier {
       ..stage = UploadStage.failed
       ..error = failureReason(item.message);
     _changed();
-    unawaited(_persist());
+    _inBackground(_persist());
   }
 
   /// Ids publicados antes de subir. Si la web no responde, los del catálogo que ya conoce la app.
@@ -813,7 +867,7 @@ class UploadTracker extends ChangeNotifier {
     if (_foreground == foreground) return;
     _foreground = foreground;
     if (foreground && _entries.any((e) => e.matchable)) {
-      unawaited(checkNow());
+      _inBackground(checkNow());
     }
     _ensurePolling();
   }
@@ -829,7 +883,10 @@ class UploadTracker extends ChangeNotifier {
     final needed =
         _foreground && published != null && _entries.any((e) => e.matchable);
     if (needed && _timer == null) {
-      _timer = _timerFactory(kPublishPollInterval, () => unawaited(checkNow()));
+      _timer = _timerFactory(
+        kPublishPollInterval,
+        () => _inBackground(checkNow()),
+      );
     } else if (!needed && _timer != null) {
       _timer!.cancel();
       _timer = null;
@@ -888,7 +945,7 @@ class UploadTracker extends ChangeNotifier {
     ]);
     _changed();
     _ensurePolling();
-    unawaited(_persist());
+    _inBackground(_persist());
   }
 
   /// Id de contenido de la copia Opus (el buzón nombra la canción `S` + SHA-256[:16]).
@@ -1105,9 +1162,9 @@ class UploadTracker extends ChangeNotifier {
     }
     _changed();
     if (_foreground && _entries.any((e) => e.awaitingPublication)) {
-      unawaited(checkNow());
+      _inBackground(checkNow());
     }
-    unawaited(_resolveFailed());
+    _inBackground(_resolveFailed());
     _ensurePolling();
   }
 

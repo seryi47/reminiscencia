@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reminiscencia/image_picker.dart';
 import 'package:reminiscencia/layout.dart';
 import 'package:reminiscencia/library_controller.dart';
-import 'package:reminiscencia/library_requests.dart';
 import 'package:reminiscencia/local_audio.dart';
 import 'package:reminiscencia/playback.dart';
 import 'package:reminiscencia/services.dart';
@@ -422,19 +419,7 @@ void main() {
       retryDelay: Duration.zero,
     );
 
-    ({
-      AppServices services,
-      FakeLibrarySource source,
-      FakePlaybackPort playback,
-      MemoryCollectionsRepository repository,
-      List<Uri> openedUrls,
-      List<LibraryRequest> submitted,
-      List<({String id, Uint8List jpeg})> submittedCovers,
-      FakeCoverImages covers,
-      FakeCoverStore coverStore,
-      MemoryPlaylistCoverStore playlistCovers,
-    })
-    servicesWith({
+    TestServices servicesWith({
       required SharedUploader uploader,
       AudioFilesPicker? pickAudio,
     }) => buildTestServices(

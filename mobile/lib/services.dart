@@ -9,6 +9,11 @@ import 'url_opener.dart';
 import 'youtube_importer.dart';
 import 'youtube_stream.dart';
 
+/// Duración en segundos de un archivo de audio del teléfono, o null si no se sabe (aviso de duplicados, ADR-0026).
+typedef AudioDurationProbe = Future<double?> Function(String path);
+
+Future<double?> _unknownDuration(String path) async => null;
+
 /// Servicios que usa la interfaz. En pruebas se sustituyen por versiones falsas.
 /// No hay usuarios ni modos: todos ven el mismo catálogo; las listas y «Me gusta» viven solo en este teléfono.
 class AppServices {
@@ -17,29 +22,36 @@ class AppServices {
     required this.playback,
     required this.collections,
     required this.settings,
-    this.covers = const NoCoverImages(),
+    CoverImages covers = const NoCoverImages(),
     this.openUrl = openInBrowser,
     this.submitEdit = submitLibraryEdit,
     this.submitCover = submitCatalogCover,
     this.pickImage = pickImageFromDevice,
     this.pickAudio = pickAudioFromDevice,
+    this.probeDuration = _unknownDuration,
     this.youtube,
     this.streamResolver,
     this.clock = DateTime.now,
-  });
+    // El campo es privado: el getter [covers] lo envuelve con las vistas previas pendientes.
+    // ignore: prefer_initializing_formals
+  }) : _covers = covers;
 
   final LibraryController library;
   final PlaybackPort playback;
   final CollectionsController collections;
   final SettingsController settings;
 
-  /// Portadas de la web guardadas en el teléfono.
-  final CoverImages covers;
+  final CoverImages _covers;
+
+  /// Portadas de la web guardadas en el teléfono. Las portadas enviadas que aún no han llegado al catálogo se ven ya
+  /// con su vista previa (ADR-0027).
+  CoverImages get covers => library.edits.coverImages(_covers);
 
   /// Abre direcciones en el navegador (peticiones a la biblioteca común).
   final UrlOpener openUrl;
 
-  /// Guarda cambios de la biblioteca común por /api/editar (ADR-0022).
+  /// Guarda cambios de la biblioteca común por /api/editar (ADR-0022). La interfaz los envía por
+  /// `library.edits` (ADR-0027), que evita duplicados y los deja pendientes.
   final EditSubmitter submitEdit;
 
   /// Guarda la portada de una canción o un álbum del catálogo.
@@ -50,6 +62,9 @@ class AppServices {
 
   /// Elige archivos de audio del teléfono («Subir canciones»).
   final AudioFilesPicker pickAudio;
+
+  /// Lee la duración de un archivo elegido antes de subirlo, para el aviso de duplicados. En la app, con FFprobe.
+  final AudioDurationProbe probeDuration;
 
   /// Importador de playlists para Homeostasia. Es opcional en pruebas y en
   /// construcciones que no necesitan la conexión de YouTube.

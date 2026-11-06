@@ -7,7 +7,10 @@
 // interfaz: solo https, y en Internet Archive solo la forma archive.org/details/<identificador> (el backend
 // también acepta download/<identificador>). Este módulo no toca el DOM: la hoja «Subir canciones» (js/views/upload.js)
 // usa evaluateImportForm y buildIssueUrl, y las hojas de edición (js/views/edit.js) usan buildOrganizeIssueUrl para
-// «Editar detalles» de una canción o de un álbum, «Añadir a un álbum» y «Crear álbum». Las carpetas del catálogo se
+// «Editar detalles» de una canción o de un álbum, «Añadir a un álbum», «Quitar de este álbum», «Añadir canciones» a
+// un álbum y «Quitar del álbum» o «Mover a otro álbum» de la selección múltiple (move_songs, varias canciones en una
+// sola petición), «Ordenar canciones» (order_album, la lista completa del álbum en el orden nuevo; ADR-0026) y
+// «Crear álbum». Las carpetas del catálogo se
 // llaman «Álbumes» en toda la interfaz; el contrato conserva sus nombres (create_folder, edit_folder, folder_id).
 // La carpeta js/cuidador/ conserva su nombre por las referencias de la documentación (CLAUDE.md, ADR-0005 y
 // ADR-0008); ya no hay modo cuidador (ADR-0015).
@@ -37,6 +40,11 @@ export const REQUEST_LIMITS = Object.freeze({
   yearMin: 1000,
   yearMax: 2100,
   issueTitle: 120,
+  // move_songs: canciones distintas por petición (de 1 a 100).
+  moveSongs: 100,
+  // order_album: canciones de un álbum que se pueden ordenar en una petición (de 1 a 190; caben en los 4000
+  // caracteres del payload, ADR-0026).
+  orderSongs: 190,
 });
 
 // Copia de BLOCKED_HOSTS en backend/sonidos/sources.py (ADR-0005), la misma lista que intake.js de main. Cada entrada
@@ -84,16 +92,39 @@ const URL_SPACE_OR_CONTROL = /[\p{Zs}\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
 // línea, surrogates y de formato (Cf).
 const CONTROL = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
 
+// Espacios que el backend quita al principio y al final de un texto (str.strip de Python). No es lo mismo que trim()
+// de JavaScript: Python quita además U+001C a U+001F y no quita U+FEFF. Lo comprueba tests/contrato/peticiones.json.
+const BACKEND_SPACES = new Set([
+  0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x85, 0xa0, 0x1680,
+  0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a,
+  0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+].map((code) => String.fromCharCode(code)));
+
+/** El texto sin los espacios que quita el backend al principio y al final (str.strip de Python). */
+export function stripLikeBackend(text) {
+  const chars = [...String(text ?? '')];
+  let start = 0;
+  let end = chars.length;
+  while (start < end && BACKEND_SPACES.has(chars[start])) start += 1;
+  while (end > start && BACKEND_SPACES.has(chars[end - 1])) end -= 1;
+  return chars.slice(start, end).join('');
+}
+
 // Operaciones de organize: campos obligatorios y opcionales, además de «op» (igual que OPERATIONS del backend).
 const OPERATIONS = Object.freeze({
   create_folder: Object.freeze({ required: Object.freeze(['name']), optional: Object.freeze(['parent_id', 'artist']) }),
-  edit_folder: Object.freeze({ required: Object.freeze(['folder_id']), optional: Object.freeze(['name', 'artist']) }),
+  // Como en el backend, «Editar detalles» de un álbum lleva siempre el nombre; el artista es opcional.
+  edit_folder: Object.freeze({ required: Object.freeze(['folder_id', 'name']), optional: Object.freeze(['artist']) }),
   rename_folder: Object.freeze({ required: Object.freeze(['folder_id', 'name']), optional: Object.freeze([]) }),
   delete_folder: Object.freeze({ required: Object.freeze(['folder_id']), optional: Object.freeze([]) }),
   edit_song: Object.freeze({
     required: Object.freeze(['song_id']),
     optional: Object.freeze(['title', 'artist', 'year', 'tags', 'folder_id', 'public']),
   }),
+  // Varias canciones a un álbum (o fuera de su álbum, con folder_id null) en una sola incidencia.
+  move_songs: Object.freeze({ required: Object.freeze(['song_ids', 'folder_id']), optional: Object.freeze([]) }),
+  // El orden nuevo de un álbum: la lista completa y exacta de sus canciones (el backend lo comprueba al aplicarla).
+  order_album: Object.freeze({ required: Object.freeze(['folder_id', 'song_ids']), optional: Object.freeze([]) }),
 });
 
 // Textos de validación. Van junto al campo que los produce; ninguno repite lo que escribió la persona.
@@ -114,7 +145,6 @@ const MESSAGES = Object.freeze({
   tagLength: `Cada etiqueta admite como máximo ${REQUEST_LIMITS.tag} caracteres.`,
   tagsControl: 'Las etiquetas no pueden tener caracteres de control.',
   noChanges: 'Indica al menos un campo que cambiar en la canción.',
-  noFolderChanges: 'Indica al menos un campo que cambiar en el álbum.',
   unknownAction: 'La acción no es válida: usa importar u organizar.',
   requestInvalid: 'La petición no es válida.',
   requestTooLong: `La petición no puede tener más de ${REQUEST_LIMITS.request} caracteres.`,
@@ -288,21 +318,46 @@ export function buildImportRequest({ url, license, title } = {}) {
   };
 }
 
-function folderRefProblem(value, { nullable = false } = {}) {
+// Problemas de una operación de organize: { code, field, message }. code y field son los del backend (RequestError de
+// issue_request.py) y los que comparan los casos comunes de tests/contrato/peticiones.json; message es el texto en
+// español que ve la persona.
+const issue = (code, field, message) => ({ code, field: field ?? null, message });
+
+const FOLDER_ID_MESSAGE = 'El identificador del álbum no es válido (F seguida de 16 caracteres hexadecimales en minúscula, o 10 hexadecimales).';
+const SONG_ID_MESSAGE = 'El identificador de la canción no es válido (S seguida de 16 caracteres hexadecimales en minúscula).';
+
+function folderRefIssue(value, field, { nullable = false } = {}) {
   if (value === null && nullable) return null;
-  return isFolderId(value) ? null : 'El identificador del álbum no es válido (F seguida de 16 caracteres hexadecimales en minúscula, o 10 hexadecimales).';
+  return isFolderId(value) ? null : issue('invalid_folder_id', field, FOLDER_ID_MESSAGE);
 }
 
-function songRefProblem(value) {
-  return isSongId(value) ? null : 'El identificador de la canción no es válido (S seguida de 16 caracteres hexadecimales en minúscula).';
+function songRefIssue(value, field = 'song_id') {
+  return isSongId(value) ? null : issue('invalid_song_id', field, SONG_ID_MESSAGE);
 }
 
-// Normaliza las etiquetas como el catálogo: minúsculas, sin vacías ni repetidas.
+// Texto de una operación, como _text del backend: se quitan los espacios de los lados (stripLikeBackend), y lo que
+// queda no puede tener caracteres de control, ni quedar vacío si es obligatorio, ni pasar de max caracteres.
+function textIssue(value, { field, name, max, required = false }) {
+  if (typeof value !== 'string') return issue('not_text', field, `${name} debe ser texto.`);
+  const clean = stripLikeBackend(value);
+  if (CONTROL.test(clean)) return issue('control_chars', field, `${name} no puede tener saltos de línea ni caracteres de control.`);
+  if (required && clean === '') return issue('empty_text', field, `${name} no puede quedar en blanco.`);
+  if (lengthOf(clean) > max) return issue('too_long', field, `${name} no puede tener más de ${max} caracteres.`);
+  return null;
+}
+
+const folderNameIssue = (value) => textIssue(value, { field: 'name', name: 'El nombre del álbum', max: REQUEST_LIMITS.folderName, required: true });
+const folderArtistIssue = (value) => textIssue(value, { field: 'artist', name: 'El artista del álbum', max: REQUEST_LIMITS.folderArtist });
+const songTitleIssue = (value) => textIssue(value, { field: 'title', name: 'El título', max: REQUEST_LIMITS.title, required: true });
+const songArtistIssue = (value) => textIssue(value, { field: 'artist', name: 'El artista', max: REQUEST_LIMITS.artist });
+
+// Normaliza las etiquetas como el catálogo (catalog.normalize_tags): sin espacios a los lados, minúsculas, sin vacías
+// ni repetidas.
 export function normalizeTags(items) {
   const seen = new Set();
   const tags = [];
   for (const item of Array.isArray(items) ? items : []) {
-    const tag = String(item ?? '').trim().toLowerCase();
+    const tag = stripLikeBackend(String(item ?? '')).toLowerCase();
     if (tag !== '' && !seen.has(tag)) {
       seen.add(tag);
       tags.push(tag);
@@ -313,97 +368,134 @@ export function normalizeTags(items) {
 
 // Campos de texto de las operaciones, por separado para marcar el campo que falla en las hojas de edición.
 // Álbum: nombre de 1 a 80 caracteres y artista de 0 a 80; canción: título de 1 a 200 y artista de 0 a 200. Una línea.
-export const folderNameProblem = (value) => textProblem(value, { name: 'El nombre del álbum', max: REQUEST_LIMITS.folderName, required: true });
-export const folderArtistProblem = (value) => textProblem(value, { name: 'El artista del álbum', max: REQUEST_LIMITS.folderArtist });
-export const songTitleProblem = (value) => textProblem(value, { name: 'El título', max: REQUEST_LIMITS.title, required: true });
-export const songArtistProblem = (value) => textProblem(value, { name: 'El artista', max: REQUEST_LIMITS.artist });
+export const folderNameProblem = (value) => folderNameIssue(value)?.message ?? null;
+export const folderArtistProblem = (value) => folderArtistIssue(value)?.message ?? null;
+export const songTitleProblem = (value) => songTitleIssue(value)?.message ?? null;
+export const songArtistProblem = (value) => songArtistIssue(value)?.message ?? null;
 
-// Comprobación de una operación de organize (validate_payload del backend). Devuelve el motivo o null.
-export function validateOperation(payload) {
-  if (!isObject(payload)) return 'Los datos deben ser un objeto JSON.';
-  if (!('op' in payload)) return 'Falta la operación (op).';
+// Lista de ids de canción de move_songs y order_album (_song_ids del backend): de 1 a max, válidos y sin repetir.
+function songIdsIssue(ids, max, { emptyMessage, tooManyMessage, repeatedMessage }) {
+  if (!Array.isArray(ids)) return issue('song_ids_not_list', 'song_ids', 'Las canciones (song_ids) deben ser una lista.');
+  if (ids.length === 0) return issue('song_ids_empty', 'song_ids', emptyMessage);
+  if (ids.length > max) return issue('song_ids_too_many', 'song_ids', tooManyMessage);
+  for (const id of ids) {
+    const problem = songRefIssue(id, 'song_ids');
+    if (problem) return problem;
+  }
+  return new Set(ids).size === ids.length ? null : issue('duplicate_song_ids', 'song_ids', repeatedMessage);
+}
+
+function tagsIssue(tags) {
+  if (!Array.isArray(tags)) return issue('tags_not_list', 'tags', 'Las etiquetas deben ser una lista.');
+  if (tags.length > REQUEST_LIMITS.tags) return issue('too_many_tags', 'tags', MESSAGES.tagsCount);
+  for (const tag of tags) {
+    if (typeof tag !== 'string') return issue('not_text', 'tags', 'Cada etiqueta debe ser texto.');
+    if (CONTROL.test(tag)) return issue('control_chars', 'tags', MESSAGES.tagsControl);
+    if (lengthOf(stripLikeBackend(tag).toLowerCase()) > REQUEST_LIMITS.tag) return issue('too_long', 'tags', MESSAGES.tagLength);
+  }
+  return null;
+}
+
+/**
+ * Comprobación de una operación de organize, en el mismo orden que validate_payload del backend. Devuelve
+ * { code, field, message } o null.
+ */
+export function operationIssue(payload) {
+  if (!isObject(payload)) return issue('payload_not_object', null, 'Los datos deben ser un objeto JSON.');
+  if (!('op' in payload)) return issue('missing_op', null, 'Falta la operación (op).');
   const op = payload.op;
-  if (typeof op !== 'string' || !Object.prototype.hasOwnProperty.call(OPERATIONS, op)) return 'Operación desconocida.';
+  if (typeof op !== 'string' || !Object.prototype.hasOwnProperty.call(OPERATIONS, op)) return issue('unknown_op', null, 'Operación desconocida.');
   const spec = OPERATIONS[op];
   const allowed = new Set([...spec.required, ...spec.optional]);
-  for (const key of Object.keys(payload)) {
-    if (key !== 'op' && !allowed.has(key)) return `El campo «${key}» no está permitido en esta operación.`;
-  }
-  const missing = spec.required.find((key) => !(key in payload));
-  if (missing) return `Falta el campo ${missing} en ${op}.`;
+  const unknown = Object.keys(payload).filter((key) => key !== 'op' && !allowed.has(key)).sort();
+  if (unknown.length > 0) return issue('unknown_field', unknown[0], `El campo «${unknown[0]}» no está permitido en esta operación.`);
+  const missing = spec.required.filter((key) => !(key in payload)).sort();
+  if (missing.length > 0) return issue('missing_field', missing[0], `Falta el campo ${missing[0]} en ${op}.`);
 
   switch (op) {
-    case 'create_folder': {
-      const problem = folderNameProblem(payload.name)
-        ?? ('artist' in payload ? folderArtistProblem(payload.artist) : null);
-      if (problem) return problem;
-      return 'parent_id' in payload ? folderRefProblem(payload.parent_id, { nullable: true }) : null;
-    }
-    case 'edit_folder': {
-      const problem = folderRefProblem(payload.folder_id);
-      if (problem) return problem;
-      if (!spec.optional.some((key) => key in payload)) return MESSAGES.noFolderChanges;
-      if ('name' in payload) {
-        const nameProblem = folderNameProblem(payload.name);
-        if (nameProblem) return nameProblem;
-      }
-      return 'artist' in payload ? folderArtistProblem(payload.artist) : null;
-    }
+    case 'create_folder':
+      return folderNameIssue(payload.name)
+        ?? ('parent_id' in payload ? folderRefIssue(payload.parent_id, 'parent_id', { nullable: true }) : null)
+        ?? ('artist' in payload ? folderArtistIssue(payload.artist) : null);
+    case 'edit_folder':
+      return folderRefIssue(payload.folder_id, 'folder_id')
+        ?? folderNameIssue(payload.name)
+        ?? ('artist' in payload ? folderArtistIssue(payload.artist) : null);
     case 'rename_folder':
-      return folderRefProblem(payload.folder_id) ?? folderNameProblem(payload.name);
+      return folderRefIssue(payload.folder_id, 'folder_id') ?? folderNameIssue(payload.name);
     case 'delete_folder':
-      return folderRefProblem(payload.folder_id);
+      return folderRefIssue(payload.folder_id, 'folder_id');
+    case 'move_songs':
+      return songIdsIssue(payload.song_ids, REQUEST_LIMITS.moveSongs, {
+        emptyMessage: 'Elige al menos una canción.',
+        tooManyMessage: `Como mucho ${REQUEST_LIMITS.moveSongs} canciones en cada petición.`,
+        repeatedMessage: 'Hay canciones repetidas en la lista.',
+      }) ?? folderRefIssue(payload.folder_id, 'folder_id', { nullable: true });
+    case 'order_album':
+      return folderRefIssue(payload.folder_id, 'folder_id')
+        ?? songIdsIssue(payload.song_ids, REQUEST_LIMITS.orderSongs, {
+          emptyMessage: 'El álbum no tiene canciones que ordenar.',
+          tooManyMessage: `Se pueden ordenar ${REQUEST_LIMITS.orderSongs} canciones como mucho.`,
+          repeatedMessage: 'Hay canciones repetidas en el orden.',
+        });
     default: {
-      const problem = songRefProblem(payload.song_id);
+      const problem = songRefIssue(payload.song_id)
+        ?? ('title' in payload ? songTitleIssue(payload.title) : null)
+        ?? ('artist' in payload ? songArtistIssue(payload.artist) : null);
       if (problem) return problem;
-      if (!spec.optional.some((key) => key in payload)) return MESSAGES.noChanges;
-      if ('title' in payload) {
-        const titleProblem = songTitleProblem(payload.title);
-        if (titleProblem) return titleProblem;
-      }
-      if ('artist' in payload) {
-        const artistProblem = songArtistProblem(payload.artist);
-        if (artistProblem) return artistProblem;
-      }
       if ('year' in payload) {
         const year = payload.year;
         if (year !== null && !(Number.isInteger(year) && year >= REQUEST_LIMITS.yearMin && year <= REQUEST_LIMITS.yearMax)) {
-          return MESSAGES.yearFormat;
+          return issue('invalid_year', 'year', MESSAGES.yearFormat);
         }
       }
-      if ('tags' in payload) {
-        const tags = payload.tags;
-        if (!Array.isArray(tags)) return 'Las etiquetas deben ser una lista.';
-        if (tags.length > REQUEST_LIMITS.tags) return MESSAGES.tagsCount;
-        for (const tag of tags) {
-          if (typeof tag !== 'string') return 'Cada etiqueta debe ser texto.';
-          if (CONTROL.test(tag)) return MESSAGES.tagsControl;
-          if (lengthOf(tag.trim().toLowerCase()) > REQUEST_LIMITS.tag) return MESSAGES.tagLength;
-        }
-      }
-      if ('folder_id' in payload) {
-        const folderProblem = folderRefProblem(payload.folder_id, { nullable: true });
-        if (folderProblem) return folderProblem;
-      }
-      if ('public' in payload && typeof payload.public !== 'boolean') return 'El campo «public» debe ser true o false.';
-      return null;
+      const rest = ('tags' in payload ? tagsIssue(payload.tags) : null)
+        ?? ('folder_id' in payload ? folderRefIssue(payload.folder_id, 'folder_id', { nullable: true }) : null);
+      if (rest) return rest;
+      if ('public' in payload && typeof payload.public !== 'boolean') return issue('not_bool', 'public', 'El campo «public» debe ser true o false.');
+      return spec.optional.some((key) => key in payload) ? null : issue('no_changes', null, MESSAGES.noChanges);
     }
   }
 }
 
-// Comprobación completa de una petición (import u organize). Devuelve el motivo o null.
-export function validateRequest(request) {
-  if (!isObject(request)) return MESSAGES.requestInvalid;
+// Comprobación de una operación de organize (validate_payload del backend). Devuelve el motivo o null.
+export function validateOperation(payload) {
+  return operationIssue(payload)?.message ?? null;
+}
+
+/**
+ * La operación tal como la guarda el backend en sus campos de texto: título, nombre y artista sin espacios a los lados y
+ * etiquetas normalizadas. Es lo que va en el cuerpo de la incidencia. No comprueba nada: antes, operationIssue.
+ */
+export function normalizeOperation(payload) {
+  const clean = { ...payload };
+  for (const key of ['name', 'title', 'artist']) {
+    if (typeof clean[key] === 'string') clean[key] = stripLikeBackend(clean[key]);
+  }
+  if (Array.isArray(clean.tags)) clean.tags = normalizeTags(clean.tags);
+  return clean;
+}
+
+// Problema de una petición completa (import u organize): { code, field, message } o null.
+export function requestIssue(request) {
+  if (!isObject(request)) return issue('invalid', null, MESSAGES.requestInvalid);
   if (request.action === 'import') {
     const problem = validateImportRequest(request);
-    return problem ? problem.message : null;
+    return problem ? issue('invalid', problem.field, problem.message) : null;
   }
   if (request.action === 'organize') {
-    const problem = validateOperation(request.payload);
+    const problem = operationIssue(request.payload);
     if (problem) return problem;
-    return lengthOf(jsonLine(request.payload)) > REQUEST_LIMITS.payload ? MESSAGES.payloadTooLong : null;
+    return lengthOf(jsonLine(normalizeOperation(request.payload))) > REQUEST_LIMITS.payload
+      ? issue('payload_too_long', null, MESSAGES.payloadTooLong)
+      : null;
   }
-  return MESSAGES.unknownAction;
+  return issue('unknown_action', null, MESSAGES.unknownAction);
+}
+
+// Comprobación completa de una petición (import u organize). Devuelve el motivo o null.
+export function validateRequest(request) {
+  return requestIssue(request)?.message ?? null;
 }
 
 function finishBody(lines) {
@@ -413,6 +505,8 @@ function finishBody(lines) {
 }
 
 // Cuerpo de la incidencia: líneas «clave: valor» que lee el backend. Lanza un error con el motivo si la petición no vale.
+// En organize, el payload va normalizado (normalizeOperation), en JSON compacto y en una sola línea, como LibraryRequest.body
+// de la APK: «action: organize\npayload: {…}» (tests/contrato/peticiones.json).
 export function buildIssueBody(request) {
   if (isObject(request) && request.action === 'import') {
     const clean = buildImportRequest(request);
@@ -423,7 +517,7 @@ export function buildIssueBody(request) {
   }
   const problem = validateRequest(request);
   if (problem) throw new Error(problem);
-  return finishBody(['action: organize', `payload: ${jsonLine(request.payload)}`]);
+  return finishBody(['action: organize', `payload: ${jsonLine(normalizeOperation(request.payload))}`]);
 }
 
 // Título de la incidencia, según lo que pide.
@@ -453,6 +547,15 @@ export function buildIssueTitle(request) {
       }
       return cleanIssueTitle(`Editar la canción ${payload.song_id}`);
     }
+    case 'move_songs': {
+      const count = Array.isArray(payload.song_ids) ? payload.song_ids.length : 0;
+      const songs = `${count} ${count === 1 ? 'canción' : 'canciones'}`;
+      return cleanIssueTitle(payload.folder_id === null
+        ? `Quitar ${songs} de su álbum`
+        : `Añadir ${songs} al álbum ${payload.folder_id}`);
+    }
+    case 'order_album':
+      return cleanIssueTitle(`Ordenar el álbum ${payload.folder_id}`);
     default:
       return FALLBACK_TITLE;
   }

@@ -4,8 +4,9 @@ El procesado (job 'procesar') no tiene permisos de escritura ni token: ejecuta l
 los ficheros de la biblioteca que cambió (el catálogo y el audio, sin la parte pública) y lo sube como artefacto.
 La publicación (job 'publicar') descarga el paquete, lo valida, lo aplica sobre main y regenera la parte pública
 (datos de la web y audio publicado) desde el catálogo: no confía en la que pudiera traer el paquete. Validar
-significa: el manifiesto parte de la base que está en main, cada ruta es de la biblioteca, cada cambio es un
-fichero regular (sin enlaces simbólicos) y el índice de git resultante solo contiene esas rutas.
+significa: el manifiesto parte de la base que está en main (o de un antecesor de main cuyos cambios posteriores no
+tocan nada de lo que el paquete o la publicación leen y escriben; ADR-0025), cada ruta es de la biblioteca, cada cambio
+es un fichero regular (sin enlaces simbólicos) y el índice de git resultante solo contiene esas rutas.
 
 Estructura del paquete:
   peticion.json, resultado.json   salida de issue_request y ci_library (para responder a la incidencia)
@@ -58,6 +59,13 @@ COVER_DIRECTORIES = (COVERS_DIRECTORY, WEB_COVERS_DIRECTORY)
 AUDIO_NAME = re.compile(r"S[0-9a-f]{16}\.opus")
 STATES = ("A", "M", "D")
 MAX_CHANGES = 2000
+# Lo que la publicación lee o regenera además de las rutas del paquete (ADR-0011, ADR-0025): si main cambia alguna de
+# estas rutas entre el procesado y la publicación, el paquete ya no vale.
+PUBLISH_FILES = frozenset({CATALOG_FILE})
+PUBLISH_DIRECTORIES = (
+    SOURCE_AUDIO_DIRECTORY, COVERS_DIRECTORY, WEB_AUDIO_DIRECTORY, DATA_DIRECTORY, WEB_COVERS_DIRECTORY,
+)
+MAIN_CHANGED = "main cambió mientras se procesaba la petición; hay que reenviarla"
 
 _SHA = re.compile(r"[0-9a-f]{40}")
 _FILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -135,6 +143,44 @@ def head_commit(repo: Path) -> str:
     return _git(repo, "rev-parse", "HEAD").strip()
 
 
+def ruta_de_publicacion(ruta: str) -> bool:
+    """Lo que la publicación lee (el catálogo, el audio y las portadas de la biblioteca) o regenera (la parte pública).
+    Un cambio de main en estas rutas invalida un paquete procesado sobre una base anterior (ADR-0025)."""
+    if ruta in PUBLISH_FILES:
+        return True
+    return any(ruta.startswith(directory + "/") for directory in PUBLISH_DIRECTORIES)
+
+
+def changed_paths(repo: Path, base: str, head: str) -> list[str]:
+    """Rutas que cambian entre dos commits (sin detección de renombrados: un renombrado son dos rutas)."""
+    raw = _git(repo, "diff", "--name-only", "--no-renames", "-z", base, head)
+    return [ruta for ruta in raw.split("\x00") if ruta]
+
+
+def check_base(repo: Path | None, base: str, head: str, package_paths: set[str]) -> None:
+    """La base del paquete es el HEAD de main o, si main avanzó (ADR-0025), un antecesor suyo cuyos cambios posteriores
+    no tocan ninguna ruta del paquete ni nada de lo que la publicación lee o regenera. Así una subida a otra parte de
+    main (por ejemplo, a audio-library/buzon/) entre el procesado y la publicación ya no obliga a reenviar la petición,
+    y un cambio del catálogo sí, porque el paquete trae el catálogo entero."""
+    if base == head:
+        return
+    if repo is None:
+        raise PaqueteError(MAIN_CHANGED)
+    try:
+        ancestor = subprocess.run(
+            ["git", "-C", str(repo), "merge-base", "--is-ancestor", base, head], capture_output=True, text=True,
+        ).returncode
+    except OSError as error:
+        raise PaqueteError(f"git falló (merge-base): {error}") from error
+    if ancestor == 1:
+        raise PaqueteError(f"{MAIN_CHANGED} (la base del paquete ya no está en el historial de main)")
+    if ancestor != 0:
+        raise PaqueteError(f"{MAIN_CHANGED} (la base del paquete no está en esta copia de main)")
+    for ruta in changed_paths(repo, base, head):
+        if ruta in package_paths or ruta_de_publicacion(ruta):
+            raise PaqueteError(f"{MAIN_CHANGED} (el cambio toca {ruta})")
+
+
 def package_changes(repo: Path, package: Path, *, action: str, sin_derivados: bool = False) -> dict:
     """Lo que el procesado dejó en el repositorio, en un paquete. Falla si cambió una ruta fuera de la biblioteca
     o un elemento que no es un fichero regular (un enlace simbólico, por ejemplo). Con 'sin_derivados', deja fuera
@@ -143,7 +189,16 @@ def package_changes(repo: Path, package: Path, *, action: str, sin_derivados: bo
         raise PaqueteError("acción no admitida al empaquetar")
     head = head_commit(repo)
     changes = []
-    for code, path in _status_entries(repo):
+    # El audio de la biblioteca puede no estar versionado (ADR-0024: su fuente de verdad es el bucket privado de R2 y
+    # audio-library/audio/ está en .gitignore). Entonces el audio que deja el procesado no sale en 'git status' como
+    # nuevo, sino como ignorado: se empaqueta igual, como nuevo, para que 'publicar' lo suba al bucket.
+    entries = _status_entries(repo) + _ignored_entries(repo, SOURCE_AUDIO_DIRECTORY)
+    for code, path in entries:
+        if code == "!!":
+            directory, _, name = path.rpartition("/")
+            if directory != SOURCE_AUDIO_DIRECTORY or not AUDIO_NAME.fullmatch(name):
+                continue  # otro fichero ignorado (.DS_Store, por ejemplo): no es de la biblioteca
+            code = "??"
         if not ruta_permitida(path):
             if code == "??":
                 continue  # restos que no son de la biblioteca (una carpeta de compilación): no se publican
@@ -189,9 +244,9 @@ def package_processing_changes(repo: Path, package: Path, *, action: str) -> dic
     return package_changes(repo, package, action=action, sin_derivados=True)
 
 
-def read_manifest(package: Path, *, head: str) -> tuple[str, list[Change]]:
-    """Lee y valida el manifiesto: forma exacta, base igual al HEAD de main, acción conocida, rutas de la
-    biblioteca sin repetir y estados A, M o D."""
+def read_manifest(package: Path, *, head: str, repo: Path | None = None) -> tuple[str, list[Change]]:
+    """Lee y valida el manifiesto: forma exacta, base válida (check_base: igual al HEAD de main o, con 'repo', un
+    antecesor compatible), acción conocida, rutas de la biblioteca sin repetir y estados A, M o D."""
     try:
         data = json.loads((package / MANIFEST).read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
@@ -201,8 +256,8 @@ def read_manifest(package: Path, *, head: str) -> tuple[str, list[Change]]:
     base = data["base"]
     if not isinstance(base, str) or not _SHA.fullmatch(base):
         raise PaqueteError("el manifiesto no tiene una base válida")
-    if base != head:
-        raise PaqueteError("main cambió mientras se procesaba la petición; hay que reenviarla")
+    if base != head and repo is None:
+        raise PaqueteError(MAIN_CHANGED)
     action = data["accion"]
     if action not in ACTIONS:
         raise PaqueteError("acción no admitida en el paquete")
@@ -225,6 +280,7 @@ def read_manifest(package: Path, *, head: str) -> tuple[str, list[Change]]:
             raise PaqueteError(f"el paquete solo puede borrar archivos del buzón, y solo con la acción buzon: {ruta}")
         seen.add(ruta)
         changes.append(Change(ruta, state))
+    check_base(repo, base, head, seen)
     return action, changes
 
 
@@ -279,7 +335,7 @@ def check_index(raw: str, expected: set[str]) -> set[str]:
 
 def _apply(package: Path, repo: Path, *, head: str) -> tuple[str, list[Change]]:
     """Valida el paquete y lo copia sobre el checkout de main, dejando en el índice exactamente sus rutas."""
-    action, changes = read_manifest(package, head=head)
+    action, changes = read_manifest(package, head=head, repo=repo)
     check_package(package, changes)
     for change in changes:
         _no_links_above(repo, change.path)
@@ -300,6 +356,10 @@ def _apply(package: Path, repo: Path, *, head: str) -> tuple[str, list[Change]]:
     paths = {change.path for change in changes}
     added = [change.path for change in changes if change.state != "D"]
     removed = [change.path for change in changes if change.state == "D"]
+    # El audio ignorado por .gitignore (ADR-0024) se deja en la copia de trabajo, sin confirmar: 'publicar' lo sube al
+    # bucket privado de R2 con scripts/sync_r2.py.
+    unversioned = _ignored(repo, added)
+    added = [path for path in added if path not in unversioned]
     if added:
         _git(repo, "add", "-A", "--", *added)
     if removed:
@@ -420,6 +480,28 @@ def _status_entries(repo: Path) -> list[tuple[str, str]]:
             raise PaqueteError("no se admiten cambios de nombre en la biblioteca")
         entries.append((code, path))
     return entries
+
+
+def _ignored_entries(repo: Path, directory: str) -> list[tuple[str, str]]:
+    """Ficheros ignorados por .gitignore dentro de 'directory', con el código '!!' de 'git status'."""
+    raw = _git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored=traditional", "--", directory)
+    return [(record[:2], record[3:]) for record in raw.split("\x00") if record.startswith("!! ")]
+
+
+def _ignored(repo: Path, paths: list[str]) -> set[str]:
+    """Las rutas de 'paths' que .gitignore excluye (los ficheros ya versionados nunca lo están)."""
+    if not paths:
+        return set()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "check-ignore", "-z", "--stdin"], input="\x00".join(paths) + "\x00",
+            capture_output=True, text=True,
+        )
+    except OSError as error:
+        raise PaqueteError(f"git falló (check-ignore): {error}") from error
+    if result.returncode not in (0, 1):
+        raise PaqueteError(f"git falló (check-ignore): {result.stderr.strip()}")
+    return {path for path in result.stdout.split("\x00") if path}
 
 
 def _files_under(root: Path) -> set[str]:

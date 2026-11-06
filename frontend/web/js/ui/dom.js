@@ -73,7 +73,13 @@ export function openDialog({ title, render, className = '', testid = 'dialog', c
   dialog.append(head, body);
   dialog.addEventListener('close', () => {
     dialog.remove();
-    if (opener && typeof opener.focus === 'function' && opener.isConnected) opener.focus();
+    // Si la pantalla se volvió a pintar con el diálogo abierto (por ejemplo, al guardar un cambio que se ve al momento),
+    // el botón que lo abrió es otro nodo con la misma data-key: el foco vuelve a ese.
+    const key = opener?.dataset?.key;
+    const target = opener?.isConnected
+      ? opener
+      : (key ? [...document.querySelectorAll('[data-key]')].find((node) => node.dataset.key === key && node.getClientRects().length > 0) : null);
+    if (target && typeof target.focus === 'function') target.focus();
     resolvePromise(result);
   });
   // Un clic en el fondo (fuera de la caja) cierra el diálogo.

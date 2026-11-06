@@ -267,10 +267,10 @@ def test_step_summary_does_not_wrap_untrusted_json_in_a_code_fence():
 
 
 def test_backend_workflow_checkouts_do_not_persist_credentials():
-    # Tres checkouts: el job web-unit, duplicado con web.yml, sale de backend.yml.
+    # Dos checkouts: web-unit (duplicado con web.yml) y app-flutter (lo cubre android.yml) salieron de backend.yml.
     text = (ROOT / ".github" / "workflows" / "backend.yml").read_text(encoding="utf-8")
 
-    assert text.count("uses: actions/checkout") == text.count("persist-credentials: false") == 3
+    assert text.count("uses: actions/checkout") == text.count("persist-credentials: false") == 2
 
 
 # --- Parte pública: publicar la regenera antes de confirmar (ADR-0010, corrección de 2026-11-02) ----------

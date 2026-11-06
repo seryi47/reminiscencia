@@ -4,10 +4,8 @@
 // con ocho canciones cada una y uno vacío. Los álbumes tienen el identificador nuevo del backend (F + 16 hexadecimales).
 // Portadas (contrato "cover": "covers/<id>.jpg"): el álbum A y la canción 1 tienen una que se sirve; la canción 2
 // declara una que no existe (404), para comprobar que entonces se ve la portada generada.
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PORTADA_AZUL, PORTADA_NARANJA } from "./portadas.mjs";
-import { WEB_ROOT } from "./servidor.mjs";
 
 const SONG_COUNT = 20;
 
@@ -24,21 +22,14 @@ function folderFor(index) {
   return null;
 }
 
-// Audios reales de frontend/web/audio, reutilizados como fichero de cada canción ficticia
-// para que la reproducción funcione de verdad en Chrome. Si no hay ninguno, no se sustituye el audio.
-function listRealAudioFiles() {
-  try {
-    return readdirSync(join(WEB_ROOT, "audio"))
-      .filter((name) => name.endsWith(".opus"))
-      .sort();
-  } catch {
-    return [];
-  }
-}
+// Un Ogg Opus mínimo versionado en tests/fixtures (10 s de un tono de 440 Hz, mono, 12 kb/s; generado con
+// `ffmpeg -f lavfi -i sine=frequency=440:duration=10 -ac 1 -ar 48000 -c:a libopus -b:a 12k -map_metadata -1
+// -fflags +bitexact tono-prueba.opus`). Es el audio de todas las canciones ficticias, para que la reproducción funcione
+// de verdad en Chrome. No depende de audio-library/audio, que deja de estar en Git (ADR-0024).
+export const TEST_AUDIO_FILE = fileURLToPath(new URL("../../fixtures/tono-prueba.opus", import.meta.url));
 
 /** Devuelve el Map de sustituciones que espera startStaticServer({ overrides }). */
 export function createTestCatalogOverrides() {
-  const realAudio = listRealAudioFiles();
 
   const songs = Array.from({ length: SONG_COUNT }, (_, index) => {
     const id = `S${String(index + 1).padStart(16, "0")}`;
@@ -64,13 +55,8 @@ export function createTestCatalogOverrides() {
     ["/covers/F0000000000000001.jpg", { body: PORTADA_AZUL, type: "image/jpeg" }],
   ]);
 
-  if (realAudio.length > 0) {
-    songs.forEach((song, index) => {
-      overrides.set(`/${song.audio}`, {
-        file: join(WEB_ROOT, "audio", realAudio[index % realAudio.length]),
-        type: "audio/ogg; codecs=opus",
-      });
-    });
+  for (const song of songs) {
+    overrides.set(`/${song.audio}`, { file: TEST_AUDIO_FILE, type: "audio/ogg; codecs=opus" });
   }
 
   return overrides;

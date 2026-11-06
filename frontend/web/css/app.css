@@ -1584,6 +1584,120 @@ button:disabled {
   color: var(--accent);
 }
 
+/* «Añadir canciones» de un álbum: botón bajo la tabla y hoja con buscador y casillas. */
+.album-add {
+  margin-top: 24px;
+}
+
+.pick-search {
+  max-width: none;
+}
+
+.pick-count {
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: var(--text-s);
+}
+
+.pick-list {
+  max-height: min(360px, 45vh);
+  max-height: min(360px, 45dvh);
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.pick-row {
+  cursor: pointer;
+}
+
+.pick-row input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* Modo «Seleccionar» de un álbum (ADR-0026): barra con el contador y las acciones, y una casilla por canción. */
+.album-select-button {
+  margin-left: auto;
+}
+
+.select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 0;
+}
+
+.select-bar .select-count {
+  margin-top: 0;
+}
+
+.select-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.select-list {
+  margin-top: 8px;
+}
+
+/* «Ordenar canciones»: lista numerada con Subir y Bajar en cada fila. */
+.order-list {
+  max-height: min(420px, 50vh);
+  max-height: min(420px, 50dvh);
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-h);
+  padding: 4px 8px;
+  border-radius: var(--radius-small);
+}
+
+.order-row:hover {
+  background: var(--row-hover);
+}
+
+.order-row .track-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.order-num {
+  flex: none;
+  min-width: 2ch;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.order-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.order-move {
+  width: 44px;
+  height: 44px;
+}
+
+.order-move[aria-disabled='true'] {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Buscar                                                                     */
 /* ------------------------------------------------------------------------- */
@@ -3512,3 +3626,109 @@ button:disabled {
 .collection-filter-form .search-icon { position: absolute; left: 10px; display: flex; color: var(--text-2); pointer-events: none; }
 .collection-filter-input { width: 100%; height: 44px; padding: 0 12px 0 36px; border: 0; border-radius: 4px; background: rgba(255, 255, 255, 0.1); color: var(--text); font: inherit; }
 .collection-filter-input:focus-visible { outline: 2px solid var(--text); outline-offset: 0; }
+
+/* Ediciones pendientes (ADR-0027): marca «Pendiente» (texto, no solo color), botón de Tu biblioteca y lista. */
+.badge-edit {
+  background: var(--text-2);
+  color: var(--bg);
+}
+
+.badge-error {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.collection-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: var(--text-s);
+}
+
+.edits-indicator {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0 8px 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--highlight);
+  color: var(--text);
+  font-size: var(--text-s);
+  font-weight: 600;
+  text-align: left;
+}
+
+.edits-indicator:hover {
+  background: var(--card-hover);
+}
+
+.edits-indicator:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.edits-indicator.has-error {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.edits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.edits-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--highlight);
+}
+
+.edits-row.is-error {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.edits-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.edits-label {
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.edits-detail {
+  color: var(--text-2);
+  font-size: var(--text-s);
+}
+
+.edits-text .badge {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.edits-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.edits-actions .button {
+  min-height: 44px;
+}
