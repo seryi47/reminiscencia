@@ -5193,6 +5193,38 @@
       "size_bytes": 594240,
       "added_at": "2026-11-06T09:26:01+00:00",
       "public": true
+    },
+    {
+      "id": "S3c4e5791f1556467",
+      "title": "Metrika, D.Basto - TERROR EN LA DISCO",
+      "artist": "Madre Fundadora",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "3c4e5791f15564671efd74705a6aac2a2fcefe7da092769564d36fe0dee1168e",
+      "duration_s": 126.364,
+      "codec": "opus",
+      "size_bytes": 864678,
+      "added_at": "2026-11-06T20:08:58+00:00",
+      "public": true
+    },
+    {
+      "id": "S0eeeff531b7c16ab",
+      "title": "Metrika, Came Beats - DEMONIAS MUÑECAS",
+      "artist": "Madre Fundadora",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "0eeeff531b7c16ab03900b3dcb3d53bcc6e41b150d4aafb61e2ee5661b64d443",
+      "duration_s": 186.207,
+      "codec": "opus",
+      "size_bytes": 1236104,
+      "added_at": "2026-11-06T20:09:00+00:00",
+      "public": true
     }
   ]
 }
