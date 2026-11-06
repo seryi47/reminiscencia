@@ -42,6 +42,9 @@ def test_the_data_of_the_rule_is_exactly_the_shared_contract():
     assert list(titulos.PARTICLES) == CONTRATO["particulas"]
     assert list(titulos.ACRONYMS) == CONTRATO["siglas"]
     assert list(titulos.EXTENSIONS) == CONTRATO["extensiones"]
+    assert list(titulos.CHANNEL_WORDS) == CONTRATO["palabras_de_canal"]
+    assert list(titulos.CHANNEL_SUFFIXES) == CONTRATO["sufijos_de_canal"]
+    assert titulos.CHANNEL_MIN_LETTERS == CONTRATO["min_letras_canal_alfanumerico"]
     assert titulos.MAX_PREFIX_CHARS == CONTRATO["max_prefijo"]
     assert titulos.MIN_UPPER_LETTERS == CONTRATO["min_letras_mayusculas"]
     assert titulos.MAX_ROUNDS == CONTRATO["max_rondas"]
@@ -55,6 +58,38 @@ def test_the_exact_tags_are_the_ones_of_the_duplicates_rule_not_a_copy():
     # Las palabras de etiqueta no deben solaparse con las marcas de colaboración ni con las partículas.
     assert not set(titulos.TAG_WORDS) & set(titulos.COLLAB_MARKS)
     assert not set(titulos.TAG_WORDS) & set(titulos.PARTICLES)
+
+
+@pytest.mark.parametrize("pair", CONTRATO["parece_canal"], ids=lambda pair: pair[0])
+def test_which_artists_look_like_a_youtube_channel(pair):
+    name, channel = pair
+    assert titulos.looks_like_channel(name) is channel
+
+
+# Los artistas del catálogo de main (2026-11-06) que parecen un canal, revisados uno a uno. Si el catálogo cambia y
+# aparece otro, la prueba lo dice para revisarlo; ninguno de los demás (nombres de persona y de grupo) lo es.
+REAL_CHANNELS = {
+    "CantoYo Video Lyrics", "CarlinhosX7", "Disney Channel Animation", "Doble Music", "EuskalGazte778",
+    "IkonProducciones", "Imagine Dragons FAN", "KapitalMusicTv", "Luxury Life Music", "OmarMontesVEVO",
+    "Warner Music Spain Archivos", "YouMoreTv - Espectáculo", "antifa93cat", "gigatr0n", "ra29597",
+}
+
+
+def test_the_channels_of_the_real_catalog_are_the_reviewed_ones():
+    data = json.loads(REAL_CATALOG.read_text(encoding="utf-8"))
+    artists = {song["artist"] for song in data["songs"] if song.get("artist")}
+    artists |= {folder["artist"] for folder in data["folders"] if folder.get("artist")}
+    # Subconjunto, no igualdad: al limpiar el catálogo, los canales sustituidos desaparecen.
+    assert {artist for artist in artists if titulos.looks_like_channel(artist)} <= REAL_CHANNELS
+
+
+def test_channel_suffix():
+    assert titulos.strip_channel_suffix("OmarMontesVEVO") == "Omar Montes"
+    assert titulos.strip_channel_suffix("SFDKVEVO") == "SFDK"
+    assert titulos.strip_channel_suffix("SFDK VEVO") == "SFDK"
+    assert titulos.strip_channel_suffix("VEVO") == "VEVO"
+    assert titulos.strip_channel_suffix("Bad Bunny y SFDKVEVO") == "Bad Bunny y SFDKVEVO"  # varios artistas
+    assert titulos.strip_channel_suffix("Marea") == "Marea"
 
 
 def test_web_and_apk_do_not_apply_it():
@@ -111,7 +146,10 @@ def test_idempotence_on_random_titles():
     known = frozenset({"bad bunny", "zoo", "la"})
     for _ in range(20000):
         title = "".join(rng.choice(pieces) for _ in range(rng.randint(1, 8)))
-        artist = rng.choice(["", "Bad Bunny", "iPerol", "ZOO", " x ", "LA"])
+        artist = rng.choice([
+            "", "Bad Bunny", "iPerol", "ZOO", " x ", "LA", "gigatr0n", "OmarMontesVEVO", "SFDKVEVO", "VEVO",
+            "Luxury Music", "KapitalMusicTv",
+        ])
         keep = rng.random() < 0.3
         once = titulos.clean_song(title, artist, keep_artist=keep, known_artists=known)
         assert titulos.clean_song(*once, keep_artist=keep, known_artists=known) == once, (title, artist, keep)

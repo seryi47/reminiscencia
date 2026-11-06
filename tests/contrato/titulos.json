@@ -8,7 +8,9 @@
     "2. Una de las «extensiones» de vídeo o audio al final del título se quita.",
     "3. Etiquetas: el primer grupo entre paréntesis o corchetes que es una etiqueta se quita, y con él todo lo que va detrás, salvo los grupos que empiezan por una de las «marcas_colaboracion». Un grupo es etiqueta si su contenido normalizado (como el artista en duplicados.json) es una de las «etiquetas» de duplicados.json, o si todas sus palabras son «palabras_etiqueta» o años (de 1900 a 2099) y alguna no es un año. Si lo que sigue a la etiqueta empieza por un guion o una raya («Artista (Lyrics) - Título»), solo se quita el grupo. Un grupo «(X - <etiqueta>)» se queda en «(X)». Al final del título, sin paréntesis, se quita una cola de dos o más «palabras_etiqueta», o una sola de «palabras_sueltas_al_final».",
     "4. Un número de pista al principio («01 », «01. », «01 - », «1. », «1) », «12 - ») se quita. Un número sin cero delante y sin signo detrás («2 Catorce», «120») no es número de pista.",
-    "5. Se busca el primero de los «separadores» (con sus espacios). Si la parte izquierda tiene de 1 a «max_prefijo» caracteres y alguna letra, y la derecha no queda vacía: sin artista, la izquierda pasa a ser el artista; con artista, si todos los nombres de la izquierda están en el artista (los nombres se separan por «separadores_de_creditos» y se normalizan como el artista de duplicados.json), se quita el prefijo; si no, y el artista no viene de una playlist («conservar_artista»), la izquierda pasa a ser el artista si contiene todos los nombres del artista o si todos sus nombres son artistas conocidos de la biblioteca («conocidos»).",
+    "5. Se busca el primero de los «separadores» (con sus espacios). La parte izquierda, sin un grupo entre corchetes o paréntesis al principio («[HDLR LIVE] Natos» → «Natos»), es razonable si tiene de 1 a «max_prefijo» caracteres y alguna letra; la derecha no puede quedar vacía. Entonces: sin artista, la izquierda pasa a ser el artista; con artista, si todos los nombres de la izquierda están en el artista (los nombres se separan por «separadores_de_creditos» y se normalizan como el artista de duplicados.json), se quita el prefijo; si no, y el artista no viene de una playlist («conservar_artista»), la izquierda pasa a ser el artista si contiene todos los nombres del artista, si todos sus nombres son artistas conocidos de la biblioteca («conocidos») o si el artista parece un canal de YouTube (paso 5b).",
+    "5b. Un artista parece un canal si es un único nombre (sus créditos son uno) y, además, alguna de sus palabras, partiendo también las pegadas en «CamelCase» (KapitalMusicTv → Kapital Music Tv), normalizada, es una de las «palabras_de_canal»; o si es una sola palabra solo de letras y cifras, con al menos una cifra y al menos «min_letras_canal_alfanumerico» letras (ra29597, gigatr0n, CarlinhosX7; no U2 ni Blink-182). Cuando el artista que se sustituye es un canal, su nombre (sin distinguir mayúsculas) y lo que va detrás se quitan del título nuevo, si no está al principio. Ver «parece_canal».",
+    "5c. Salvo «conservar_artista», un artista de un único nombre que termina en uno de los «sufijos_de_canal», pegado o como palabra aparte, lo pierde y se separan las palabras pegadas: «OmarMontesVEVO» → «Omar Montes», «SFDKVEVO» → «SFDK». Si no queda ninguna letra («VEVO»), no cambia.",
     "6. Sin grupos vacíos, sin espacios tras «(» o «[» ni antes de , ; : ! ? ) ], y sin separadores ni signos colgando a los lados.",
     "7. Un título entero en mayúsculas, con al menos «min_letras_mayusculas» letras, pasa a «Tipo Título»: cada palabra con la primera letra en mayúscula (también tras un guion interior), las «particulas» en minúscula salvo al principio, tras un separador o tras «(», las «siglas» en mayúsculas y las palabras con cifras como están. Igual el artista que sale del título; el artista que ya tenía la canción no se toca.",
     "8. Nunca vacío: si el título quedaría vacío, se devuelven el título y el artista de entrada.",
@@ -48,7 +50,8 @@
   ],
   "palabras_sueltas_al_final": [
     "oficial",
-    "official"
+    "official",
+    "lyrics"
   ],
   "marcas_colaboracion": [
     "ft",
@@ -127,6 +130,234 @@
     ".mkv",
     ".webm",
     ".mov"
+  ],
+  "palabras_de_canal": [
+    "vevo",
+    "music",
+    "records",
+    "archivos",
+    "tv",
+    "producciones",
+    "lyrics",
+    "fan",
+    "oficial",
+    "official",
+    "channel",
+    "topic"
+  ],
+  "sufijos_de_canal": [
+    "vevo"
+  ],
+  "min_letras_canal_alfanumerico": 2,
+  "parece_canal": [
+    [
+      "gigatr0n",
+      true
+    ],
+    [
+      "ra29597",
+      true
+    ],
+    [
+      "antifa93cat",
+      true
+    ],
+    [
+      "CarlinhosX7",
+      true
+    ],
+    [
+      "EuskalGazte778",
+      true
+    ],
+    [
+      "Warner Music Spain Archivos",
+      true
+    ],
+    [
+      "KapitalMusicTv",
+      true
+    ],
+    [
+      "IkonProducciones",
+      true
+    ],
+    [
+      "Doble Music",
+      true
+    ],
+    [
+      "Luxury Life Music",
+      true
+    ],
+    [
+      "Imagine Dragons FAN",
+      true
+    ],
+    [
+      "CantoYo Video Lyrics",
+      true
+    ],
+    [
+      "OmarMontesVEVO",
+      true
+    ],
+    [
+      "Disney Channel Animation",
+      true
+    ],
+    [
+      "YouMoreTv - Espectáculo",
+      true
+    ],
+    [
+      "Bad Bunny - Topic",
+      true
+    ],
+    [
+      "Bad Bunny Oficial",
+      true
+    ],
+    [
+      "Angel Delgado Sanchez",
+      false
+    ],
+    [
+      "Daniel Castro",
+      false
+    ],
+    [
+      "Asaki Takaya",
+      false
+    ],
+    [
+      "Anfezi",
+      false
+    ],
+    [
+      "iPerol",
+      false
+    ],
+    [
+      "king rd",
+      false
+    ],
+    [
+      "TOP SONGS",
+      false
+    ],
+    [
+      "Viral Latín",
+      false
+    ],
+    [
+      "Prime Video",
+      false
+    ],
+    [
+      "Vivziepop",
+      false
+    ],
+    [
+      "EpicBebe",
+      false
+    ],
+    [
+      "Sisster",
+      false
+    ],
+    [
+      "Playbill",
+      false
+    ],
+    [
+      "BULBA",
+      false
+    ],
+    [
+      "Annapantsu",
+      false
+    ],
+    [
+      "Samantha Orleski",
+      false
+    ],
+    [
+      "Ziksua",
+      false
+    ],
+    [
+      "Six Sigma Films",
+      false
+    ],
+    [
+      "Free Beats (Prod. KSK)",
+      false
+    ],
+    [
+      "Haylee Maree (Salt F4)",
+      false
+    ],
+    [
+      "El Jhota, CANO MUSIC y Los Del Control",
+      false
+    ],
+    [
+      "Chimbala, Chucky73 y Secreto El Famoso Biberon",
+      false
+    ],
+    [
+      "NADAL 015 y Fyahbwoy",
+      false
+    ],
+    [
+      "SFDK",
+      false
+    ],
+    [
+      "ROSALÍA",
+      false
+    ],
+    [
+      "Mägo de Oz",
+      false
+    ],
+    [
+      "Fito y Fitipaldis",
+      false
+    ],
+    [
+      "Rels B",
+      false
+    ],
+    [
+      "C. Tangana",
+      false
+    ],
+    [
+      "Duki y C.R.O",
+      false
+    ],
+    [
+      "U2",
+      false
+    ],
+    [
+      "Blink-182",
+      false
+    ],
+    [
+      "Musical",
+      false
+    ],
+    [
+      "Fanny",
+      false
+    ],
+    [
+      "Infante",
+      false
+    ]
   ],
   "max_prefijo": 80,
   "min_letras_mayusculas": 4,
@@ -568,8 +799,8 @@
       "titulo": "Fuego - Una vaina loca (Official 2011)",
       "artista": "ra29597",
       "salida": {
-        "titulo": "Fuego - Una vaina loca",
-        "artista": "ra29597"
+        "titulo": "Una vaina loca",
+        "artista": "Fuego"
       }
     },
     {
@@ -595,8 +826,8 @@
       "titulo": "Melendi - Un Violinista En Tu Tejado (Videoclip Oficial 4K)",
       "artista": "Warner Music Spain Archivos",
       "salida": {
-        "titulo": "Melendi - Un Violinista En Tu Tejado",
-        "artista": "Warner Music Spain Archivos"
+        "titulo": "Un Violinista En Tu Tejado",
+        "artista": "Melendi"
       }
     },
     {
@@ -777,6 +1008,251 @@
       "salida": {
         "titulo": "Kater St. Rag",
         "artista": ""
+      }
+    },
+    {
+      "nota": "canal con letras y cifras: el artista sale del título",
+      "titulo": "Marea - Corazon de mimbre",
+      "artista": "gigatr0n",
+      "salida": {
+        "titulo": "Corazon de mimbre",
+        "artista": "Marea"
+      }
+    },
+    {
+      "nota": "canal con «Music» y «Archivos»: el artista sale del título",
+      "titulo": "Melendi - Un Violinista En Tu Tejado (Videoclip Oficial 4K)",
+      "artista": "Warner Music Spain Archivos",
+      "salida": {
+        "titulo": "Un Violinista En Tu Tejado",
+        "artista": "Melendi"
+      }
+    },
+    {
+      "nota": "canal con solo dos letras y cifras",
+      "titulo": "Fuego - Una vaina loca (Official 2011)",
+      "artista": "ra29597",
+      "salida": {
+        "titulo": "Una vaina loca",
+        "artista": "Fuego"
+      }
+    },
+    {
+      "nota": "canal con palabras pegadas («KapitalMusicTv»)",
+      "titulo": "Poblado - Crissin, Totoy El Frio, Natan & Shander (Vídeo Oficial)",
+      "artista": "KapitalMusicTv",
+      "salida": {
+        "titulo": "Crissin, Totoy El Frio, Natan & Shander",
+        "artista": "Poblado"
+      }
+    },
+    {
+      "nota": "canal «Doble Music» y etiqueta tras un separador",
+      "titulo": "Dr. Bellido - La conocí bailando (Feat. K-narias) - (Lyric Video)",
+      "artista": "Doble Music",
+      "salida": {
+        "titulo": "La conocí bailando (Feat. K-narias)",
+        "artista": "Dr. Bellido"
+      }
+    },
+    {
+      "nota": "canal con letras y cifras al final",
+      "titulo": "Pont Aeri - Flying Free",
+      "artista": "CarlinhosX7",
+      "salida": {
+        "titulo": "Flying Free",
+        "artista": "Pont Aeri"
+      }
+    },
+    {
+      "nota": "canal con «Producciones» pegado",
+      "titulo": "Benito Kamelas - Aquellas cosas que solíamos hacer (Versión Original)",
+      "artista": "IkonProducciones",
+      "salida": {
+        "titulo": "Aquellas cosas que solíamos hacer (Versión Original)",
+        "artista": "Benito Kamelas"
+      }
+    },
+    {
+      "nota": "canal con cifras en mitad y artista que no está en la biblioteca",
+      "titulo": "Aspencat - L'últim Segon",
+      "artista": "antifa93cat",
+      "salida": {
+        "titulo": "L'últim Segon",
+        "artista": "Aspencat"
+      }
+    },
+    {
+      "nota": "canal «FAN» y artista en mayúsculas",
+      "titulo": "IMAGINE DRAGONS - SHARKS OFFICIALLY",
+      "artista": "Imagine Dragons FAN",
+      "salida": {
+        "titulo": "Sharks Officially",
+        "artista": "Imagine Dragons"
+      }
+    },
+    {
+      "nota": "canal: sin la marca del principio y sin su nombre ni lo de detrás en el título",
+      "titulo": "[HDLR LIVE] Natos x Waor x Recycled j - Sudores Frios Lyrics Luxury Life Music regala Amazon Music",
+      "artista": "Luxury Life Music",
+      "salida": {
+        "titulo": "Sudores Frios",
+        "artista": "Natos x Waor x Recycled j"
+      }
+    },
+    {
+      "nota": "canal VEVO sin guion en el título: se quita el sufijo",
+      "titulo": "Alocao (Video Oficial)",
+      "artista": "OmarMontesVEVO",
+      "salida": {
+        "titulo": "Alocao",
+        "artista": "Omar Montes"
+      }
+    },
+    {
+      "nota": "canal VEVO en mayúsculas pegado",
+      "titulo": "Lucifer",
+      "artista": "SFDKVEVO",
+      "salida": {
+        "titulo": "Lucifer",
+        "artista": "SFDK"
+      }
+    },
+    {
+      "nota": "canal VEVO como palabra aparte",
+      "titulo": "Lucifer",
+      "artista": "SFDK VEVO",
+      "salida": {
+        "titulo": "Lucifer",
+        "artista": "SFDK"
+      }
+    },
+    {
+      "nota": "solo «VEVO» no se queda vacío",
+      "titulo": "Lucifer",
+      "artista": "VEVO",
+      "salida": {
+        "titulo": "Lucifer",
+        "artista": "VEVO"
+      }
+    },
+    {
+      "nota": "canal de una playlist: se respeta",
+      "titulo": "Marea - Corazon de mimbre",
+      "artista": "gigatr0n",
+      "conservar_artista": true,
+      "salida": {
+        "titulo": "Marea - Corazon de mimbre",
+        "artista": "gigatr0n"
+      }
+    },
+    {
+      "nota": "canal VEVO de una playlist: se respeta",
+      "titulo": "Alocao",
+      "artista": "OmarMontesVEVO",
+      "conservar_artista": true,
+      "salida": {
+        "titulo": "Alocao",
+        "artista": "OmarMontesVEVO"
+      }
+    },
+    {
+      "nota": "canal sin guion en el título: no cambia",
+      "titulo": "Alaska y Dinarama A Quién Le Importa",
+      "artista": "YouMoreTv - Espectáculo",
+      "salida": {
+        "titulo": "Alaska y Dinarama A Quién Le Importa",
+        "artista": "YouMoreTv - Espectáculo"
+      }
+    },
+    {
+      "nota": "nombre de persona: no es un canal",
+      "titulo": "Marea - Trasegando",
+      "artista": "Daniel Castro",
+      "salida": {
+        "titulo": "Marea - Trasegando",
+        "artista": "Daniel Castro"
+      }
+    },
+    {
+      "nota": "nombre de persona: no es un canal (2)",
+      "titulo": "Your Obedient Servant - Hamilton (Original Cast 2016 - Live) [HD]",
+      "artista": "Asaki Takaya",
+      "salida": {
+        "titulo": "Your Obedient Servant - Hamilton (Original Cast 2016 - Live)",
+        "artista": "Asaki Takaya"
+      }
+    },
+    {
+      "nota": "nombre de persona: no es un canal (3)",
+      "titulo": "SALGO A LA CALLE , BOIKOT",
+      "artista": "Angel Delgado Sanchez",
+      "salida": {
+        "titulo": "Salgo a la Calle, Boikot",
+        "artista": "Angel Delgado Sanchez"
+      }
+    },
+    {
+      "nota": "nombre de una palabra sin cifras: no es un canal",
+      "titulo": "Purpurina - Alberto Gambino",
+      "artista": "Anfezi",
+      "salida": {
+        "titulo": "Purpurina - Alberto Gambino",
+        "artista": "Anfezi"
+      }
+    },
+    {
+      "nota": "nombre pegado sin marca de canal: no es un canal",
+      "titulo": "CANDY STORE - Heathers The Musical (Jessica Keenan Wynn)",
+      "artista": "EpicBebe",
+      "salida": {
+        "titulo": "CANDY STORE - Heathers The Musical (Jessica Keenan Wynn)",
+        "artista": "EpicBebe"
+      }
+    },
+    {
+      "nota": "«Prime Video» no es una marca de canal",
+      "titulo": "Sera's Confession Sing-Along - Hazbin Hotel S2 Prime Video",
+      "artista": "Prime Video",
+      "salida": {
+        "titulo": "Sera's Confession Sing-Along - Hazbin Hotel S2 Prime Video",
+        "artista": "Prime Video"
+      }
+    },
+    {
+      "nota": "un artista con «Music» entre varios no es un canal",
+      "titulo": "Cero - Versión extendida",
+      "artista": "El Jhota, CANO MUSIC y Los Del Control",
+      "salida": {
+        "titulo": "Cero - Versión extendida",
+        "artista": "El Jhota, CANO MUSIC y Los Del Control"
+      }
+    },
+    {
+      "nota": "una letra y una cifra no es un canal",
+      "titulo": "Sunday Bloody Sunday - Live",
+      "artista": "U2",
+      "salida": {
+        "titulo": "Sunday Bloody Sunday - Live",
+        "artista": "U2"
+      }
+    },
+    {
+      "nota": "letras, guion y cifras no es un canal",
+      "titulo": "All The Small Things - Live",
+      "artista": "Blink-182",
+      "salida": {
+        "titulo": "All The Small Things - Live",
+        "artista": "Blink-182"
+      }
+    },
+    {
+      "nota": "letras y cifras entre varias palabras no es un canal",
+      "titulo": "You Didn't Know - Cover",
+      "artista": "Haylee Maree (Salt F4)",
+      "salida": {
+        "titulo": "You Didn't Know - Cover",
+        "artista": "Haylee Maree (Salt F4)"
       }
     }
   ]

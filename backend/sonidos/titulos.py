@@ -29,7 +29,12 @@ Pasos, sobre el título y el artista (clean_song):
    - Si no, y salvo keep_artist (artista de una playlist, ADR-0019): si el artista está entre los nombres de la
      izquierda, la izquierda pasa a ser el artista (más completo); o si todos los nombres de la izquierda son artistas
      conocidos de la biblioteca (known_artists), también (el artista era el canal de YouTube: «iPerol | Bad Bunny - DtMF»
-     → «Bad Bunny | DtMF»).
+     → «Bad Bunny | DtMF»); o si el artista parece un canal (looks_like_channel: «gigatr0n | Marea - Corazon de
+     mimbre» → «Marea | Corazon de mimbre»), y entonces el nombre del canal y lo que le sigue salen del título.
+   - La izquierda pierde un grupo entre corchetes o paréntesis al principio («[HDLR LIVE] Natos x Waor» → «Natos x
+     Waor»).
+   - Salvo keep_artist, un canal oficial «<Artista>VEVO» pasa a «<Artista>» (strip_channel_suffix: «OmarMontesVEVO» →
+     «Omar Montes»).
 6. Separadores colgando y signos sueltos: fuera («Tema -», «( Tot )»).
 7. Mayúsculas: un título ENTERO en mayúsculas con al menos MIN_UPPER_LETTERS letras pasa a «Tipo Título», con las
    PARTICLES en minúscula salvo al principio (o tras «(» o un separador) y las ACRONYMS en mayúsculas. Lo mismo el
@@ -54,7 +59,7 @@ TAG_WORDS = (
     "remasterizado", "remasterizada",
 )
 # Palabras que se quitan solas al final del título, sin paréntesis («DILES Oficial» → «DILES»).
-TRAILING_WORDS = ("oficial", "official")
+TRAILING_WORDS = ("oficial", "official", "lyrics")
 # Primera palabra de un grupo de colaboración, que se conserva aunque vaya detrás de una etiqueta.
 COLLAB_MARKS = ("ft", "feat", "featuring", "con", "with")
 # Separadores de los nombres de un crédito de artista («A, B y C», «A & B», «A x B», «A feat. B»).
@@ -67,6 +72,15 @@ ACRONYMS = ("DJ", "MC", "TV", "EP", "LP", "UK", "USA", "II", "III", "IV", "VII",
 EXTENSIONS = (
     ".mp3", ".mp4", ".m4a", ".wav", ".flac", ".ogg", ".opus", ".wmv", ".avi", ".flv", ".mkv", ".webm", ".mov",
 )
+# Palabras (normalizadas) que delatan que el artista es un canal de YouTube y no un artista (ver looks_like_channel).
+CHANNEL_WORDS = (
+    "vevo", "music", "records", "archivos", "tv", "producciones", "lyrics", "fan", "oficial", "official", "channel",
+    "topic",
+)
+# Sufijo del canal oficial de un artista que se quita del nombre («OmarMontesVEVO» → «Omar Montes»).
+CHANNEL_SUFFIXES = ("vevo",)
+# Un nombre de una sola palabra con letras y cifras mezcladas es un canal si tiene al menos tantas letras («ra29597»).
+CHANNEL_MIN_LETTERS = 2
 MAX_PREFIX_CHARS = 80
 MIN_UPPER_LETTERS = 4
 MAX_ROUNDS = 8
@@ -76,6 +90,8 @@ _TRAILING_WORDS = frozenset(TRAILING_WORDS)
 _COLLAB = frozenset(COLLAB_MARKS)
 _PARTICLES = frozenset(PARTICLES)
 _ACRONYMS = frozenset(ACRONYMS)
+_CHANNEL_WORDS = frozenset(CHANNEL_WORDS)
+_LEADING_GROUP = re.compile(r"^[(\[][^()\[\]]*[)\]]\s*")
 _EXACT_TAGS = frozenset(duplicados.TAGS)
 _YEAR = re.compile(r"(?:19|20)[0-9]{2}")
 _GROUP = re.compile(r"[(\[]([^()\[\]]*)[)\]]")
@@ -203,6 +219,73 @@ def _reasonable_prefix(left: str) -> bool:
     return 0 < len(left) <= MAX_PREFIX_CHARS and any(char.isalpha() for char in left)
 
 
+def _artist_from_title(left: str) -> str:
+    """La parte izquierda de «X - Y» como artista: sin un grupo entre corchetes o paréntesis al principio (la marca del
+    canal: «[HDLR LIVE] Natos x Waor»), sin signos colgando y en «Tipo Título» si estaba toda en mayúsculas."""
+    left = _tidy(left)
+    stripped = _tidy(_LEADING_GROUP.sub("", left, count=1))
+    return title_case(stripped if stripped else left)
+
+
+def _camel_words(text: str) -> list[str]:
+    """Las palabras de un nombre, partiendo también las pegadas en «CamelCase» («KapitalMusicTv» → Kapital Music Tv)."""
+    spaced = []
+    previous = ""
+    for char in text:
+        if previous.islower() and char.isupper():
+            spaced.append(" ")
+        spaced.append(char)
+        previous = char
+    return "".join(spaced).split()
+
+
+def looks_like_channel(artist: str) -> bool:
+    """¿El artista parece el canal de YouTube que subió el vídeo y no un artista? Solo si es un único nombre (sin «, »,
+    « y », « & »...) y, además, alguna de sus palabras (también las pegadas en «CamelCase») es una de CHANNEL_WORDS
+    («Warner Music Spain Archivos», «KapitalMusicTv», «Imagine Dragons FAN»), o es una sola palabra de letras y cifras
+    mezcladas, con al menos CHANNEL_MIN_LETTERS letras («ra29597», «gigatr0n», «CarlinhosX7»)."""
+    artist = _spaces(artist)
+    if not artist or len(credits(artist)) != 1:
+        return False
+    words = [word for part in _camel_words(artist) for word in _words(part)]
+    if any(word in _CHANNEL_WORDS for word in words):
+        return True
+    if " " in artist or not artist.isalnum():
+        return False
+    letters = sum(char.isalpha() for char in artist)
+    return letters >= CHANNEL_MIN_LETTERS and any(char.isdigit() for char in artist)
+
+
+def _cut_channel_name(title: str, channel: str) -> str:
+    """El título sin el nombre del canal ni lo que va detrás («Sudores Frios Lyrics Luxury Life Music regala…» con el
+    canal «Luxury Life Music» → «Sudores Frios Lyrics»). Si el nombre está al principio o no está, no cambia."""
+    position = title.lower().find(channel.lower())
+    if position <= 0:
+        return title
+    return _tidy(title[:position]) or title
+
+
+def strip_channel_suffix(artist: str) -> str:
+    """«OmarMontesVEVO» → «Omar Montes»: un nombre que termina en uno de CHANNEL_SUFFIXES (pegado o como palabra) es
+    el canal oficial de un artista; se quita el sufijo y se separan las palabras pegadas. Si no queda ninguna letra, o
+    el nombre tiene varios artistas, no cambia."""
+    words = _camel_words(_spaces(artist))
+    if not words or len(credits(artist)) != 1:
+        return artist
+    last = words[-1]
+    for suffix in CHANNEL_SUFFIXES:
+        if last.lower() == suffix:
+            rest = " ".join(words[:-1])
+        elif (last.lower().endswith(suffix) and len(last) > len(suffix) and last.isupper()):
+            # «SFDKVEVO»: el nombre en mayúsculas y el sufijo, pegados.
+            rest = " ".join([*words[:-1], last[: -len(suffix)]])
+        else:
+            continue
+        if any(char.isalpha() for char in rest):
+            return _tidy(rest)
+    return artist
+
+
 def is_all_caps(text: str) -> bool:
     """¿Todo el texto en mayúsculas, con al menos MIN_UPPER_LETTERS letras con mayúscula y minúscula?"""
     cased = [char for char in text if char.isupper() or char.islower()]
@@ -254,18 +337,24 @@ def _round(title: str, artist: str, *, keep_artist: bool, known: frozenset[str])
     title = _tidy(title)
     match = _SEPARATOR.search(title)
     if match is not None and match.group(0) in SEPARATORS:
-        left, right = _tidy(title[: match.start()]), _tidy(title[match.end():])
+        left, right = _artist_from_title(title[: match.start()]), _tidy(title[match.end():])
         if _reasonable_prefix(left) and right:
             if not artist:
-                artist, title = title_case(left), right
+                artist, title = left, right
             else:
                 prefix_names, artist_names = credits(left), credits(artist)
                 if prefix_names and prefix_names <= artist_names:
                     title = right
-                elif not keep_artist and artist_names and artist_names <= prefix_names:
-                    artist, title = title_case(left), right
-                elif not keep_artist and prefix_names and prefix_names <= known:
-                    artist, title = title_case(left), right
+                elif not keep_artist and (
+                    (artist_names and artist_names <= prefix_names)
+                    or (prefix_names and prefix_names <= known)
+                    or looks_like_channel(artist)
+                ):
+                    if looks_like_channel(artist):
+                        right = _cut_channel_name(right, artist)
+                    artist, title = left, right
+    if not keep_artist:
+        artist = strip_channel_suffix(artist)
     return title_case(_tidy(title)), artist
 
 
