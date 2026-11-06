@@ -54,9 +54,9 @@ R2 (entrada/<UUID>/) y lanza el workflow con repository_dispatch. El job 'recoge
 licencia de la web. Lo que no se puede unir se rechaza (no se queda para revisar: 'publicar' borra del bucket todo lo
 recogido). El código de .partes se mantiene para las subidas que quedaran a medias en main al cambiar.
 
-Orden (ADR-0030): una ejecución recoge todas las subidas completas del bucket, y 'recoger' deja su orden de llegada en
-orden.json. Las de la web se catalogan en ese orden, después de lo del buzón de main (por nombre, como siempre): así las
-pistas de un álbum reciben su número en el orden en que se subieron. Una subida que ya está en el catálogo (mismo
+Orden (ADR-0030): una ejecución recoge todas las subidas completas del bucket, y 'recoger' deja en orden.json el orden
+de la cola de quien las subió (sonidos.entrada.queue_order). Las de la web se catalogan en ese orden, después de lo del
+buzón de main (por nombre, como siempre): así las pistas de un álbum reciben su número en el orden en que se eligieron. Una subida que ya está en el catálogo (mismo
 SHA-256) sale como duplicada y no cambia nada: procesar dos veces lo mismo deja el mismo catálogo.
 """
 
@@ -99,7 +99,7 @@ UPLOADED_BY = "Subida por "
 PARTES_SUBDIRECTORY = ".partes"
 PARTES_DIRECTORY = f"{BUZON_DIRECTORY}/{PARTES_SUBDIRECTORY}"
 PARTES_MANIFEST = "manifiesto.json"
-# El orden de llegada de las subidas recogidas del bucket (sonidos.entrada.ORDER_FILE; lo comprueban las pruebas).
+# El orden de catalogar las subidas recogidas del bucket (sonidos.entrada.ORDER_FILE; lo comprueban las pruebas).
 ENTRY_ORDER_FILE = "orden.json"
 MAX_ENTRY_ORDER_BYTES = 64 * 1024
 MAX_PARTES = 1000

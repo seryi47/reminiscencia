@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,38 @@ def test_arrival_order_tolerates_missing_or_odd_dates():
     modified = _manifest_dates(**{UPLOAD_A: "2026-11-06T10:00:00+01:00", UPLOAD_B: "2026-11-06T09:30:00Z",
                                   UPLOAD_C: "no es una fecha"})
     assert entrada.arrival_order(complete, modified) == [UPLOAD_C, UPLOAD_A, UPLOAD_B]
+
+
+# UUID versión 7 (RFC 9562) como los de la web y la APK: los 48 primeros bits son milisegundos Unix y, si coinciden, el
+# contador de los 12 bits siguientes desempata.
+V7_FIRST = "019a5b2c-3d4e-7000-8a1b-2c3d4e5f6a7b"
+V7_SECOND = "019a5b2c-3d4e-7001-9a1b-2c3d4e5f6a7b"
+V7_THIRD = "019a5b2c-3d4f-7000-ba1b-2c3d4e5f6a7b"
+
+
+def test_uuid7_ms_reads_the_client_time_only_from_version_7():
+    assert entrada.uuid7_ms(V7_FIRST) == 0x019A5B2C3D4E
+    assert entrada.uuid7_ms(UPLOAD_A) is None  # versión 4
+    assert entrada.uuid7_ms("019a5b2c-3d4e-7000-0a1b-2c3d4e5f6a7b") is None  # variante que no es la de RFC 9562
+    assert entrada.uuid7_ms("../a") is None
+
+
+def test_queue_order_follows_the_client_queue_even_if_uploads_completed_out_of_order(tmp_path):
+    # Dos envíos a la vez: la tercera de la cola terminó antes que la primera. El orden es el de la cola (UUID v7), y
+    # una subida de un cliente anterior (v4) cuenta con la fecha de su manifiesto.
+    objects = {**_subida(V7_FIRST, b"abcdef", 2), **_subida(V7_SECOND, b"ghij", 1), **_subida(V7_THIRD, b"kl", 1),
+               **_subida(UPLOAD_A, b"mn", 1)}
+    first_ms = 0x019A5B2C3D4E
+    iso = lambda ms: datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z")  # noqa: E731
+    dates = {V7_THIRD: iso(first_ms + 500), V7_SECOND: iso(first_ms + 900), V7_FIRST: iso(first_ms + 1200),
+             UPLOAD_A: iso(first_ms)}
+    bucket = FakeBucket(objects, modified=_manifest_dates(**dates))
+
+    result = entrada.collect(bucket, tmp_path / "salida")
+
+    assert result["recogidas"] == [UPLOAD_A, V7_THIRD, V7_SECOND, V7_FIRST]  # por llegada (el tope, igual que antes)
+    orden = json.loads((tmp_path / "salida" / entrada.ORDER_FILE).read_text())["subidas"]
+    assert orden == [V7_FIRST, V7_SECOND, UPLOAD_A, V7_THIRD]
 
 
 def test_cleanup_never_touches_an_upload_that_arrived_after_collecting(tmp_path):
