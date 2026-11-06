@@ -788,7 +788,8 @@ def test_un_zip_publica_cada_cancion_con_el_nombre_de_su_archivo_y_se_borra(repo
     result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
 
     titulos = {item["titulo"] for item in result["publicas"]}
-    assert titulos == {"01 Vals", "02 Copla", "Bolero", "Tango", "Pasodoble", "Nana"}
+    # El título es el nombre del archivo, limpio (ADR-0032): sin el número de pista.
+    assert titulos == {"Vals", "Copla", "Bolero", "Tango", "Pasodoble", "Nana"}
     assert {item["archivo"] for item in result["publicas"]} == {
         "Álbum de 1960.zip/01 Vals.mp3", "Álbum de 1960.zip/02 Copla.FLAC", "Álbum de 1960.zip/Bolero.wav",
         "Álbum de 1960.zip/Tango.m4a", "Álbum de 1960.zip/Pasodoble.ogg", "Álbum de 1960.zip/Nana.opus",

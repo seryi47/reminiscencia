@@ -6,7 +6,8 @@ comandos: vuelve a validar la petición con sonidos.issue_request y la aplica:
 
   import     descarga, convierte y añade la canción al catálogo (sonidos.pipeline)
   organize   crea, renombra, edita (nombre y artista del álbum) o borra carpetas, edita y mueve canciones, ordena un
-             álbum (order_album, ADR-0026) y organiza una playlist de YouTube ya catalogada. Antes migra los números de
+             álbum (order_album, ADR-0026), organiza una playlist de YouTube ya catalogada y limpia títulos y artistas
+             con la regla de título limpio (clean_titles, sonidos.titulos, ADR-0032). Antes migra los números de
              pista (catalog.normalize_tracks). Al borrar una carpeta se borra también su portada (ADR-0016).
 
 Siempre termina regenerando la parte pública de la web, para que catálogo y web coincidan.
@@ -24,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from sonidos import catalog  # noqa: E402
+from sonidos import catalog, titulos  # noqa: E402
 from sonidos.issue_request import request_from_env  # noqa: E402
 from sonidos.pipeline import import_url  # noqa: E402
 from sonidos.portadas import COVER_ID  # noqa: E402
@@ -78,6 +79,19 @@ def organize(data: dict, payload: dict) -> dict:
             for song, track in zip(songs, tracks, strict=True)
         ]
         return {"folder": folder, "songs": updated}
+    if operation == "clean_titles":
+        # Atómica: primero se comprueba que existen todas las canciones pedidas y se calculan todos los cambios; después
+        # se aplican. Solo cambian las canciones cuyo título o artista cambia; repetirla no cambia nada (idempotente).
+        song_ids = payload.get("song_ids")
+        if song_ids is not None:
+            for song_id in song_ids:
+                catalog.find_song(data, song_id)
+        changes = titulos.plan_clean(data, song_ids)
+        for change in changes:
+            before, after = change["antes"], change["despues"]
+            fields = {key: after[key] for key in ("title", "artist") if after[key] != before[key]}
+            catalog.update_song(data, change["id"], fields)
+        return {"cleaned": len(changes), "songs": changes}
     raise catalog.CatalogError(f"operación desconocida: {operation}")
 
 

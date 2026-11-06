@@ -118,7 +118,8 @@ def test_buzon_warns_about_possible_duplicates_without_blocking(repo):
 
     resumen = resumen_markdown(result)
     assert "### Posibles duplicados (se han añadido igualmente; revisa si sobran)" in resumen
-    assert f'"Nueva.wav" -> {avisos["Nueva.wav"]["song_id"]} · parece "Nueva [HD]"' in resumen
+    # «Nueva [HD].wav» ya entra con el título limpio, «Nueva» (ADR-0032).
+    assert f'"Nueva.wav" -> {avisos["Nueva.wav"]["song_id"]} · parece "Nueva"' in resumen
 
 
 def test_an_identical_file_is_still_reported_as_already_there_not_as_a_possible_duplicate(repo):

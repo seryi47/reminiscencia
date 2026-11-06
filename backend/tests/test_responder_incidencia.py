@@ -68,6 +68,18 @@ def test_no_changes_to_save_still_counts_as_success(responder):
     assert ok is True
 
 
+def test_clean_titles_says_how_many_songs_changed(responder):
+    peticion = {"action": "organize", "op": "clean_titles"}
+    ok, body = responder.evaluate(peticion, {"cleaned": 71, "songs": [], "web": {"public": 290, "folders": 7}}, OK)
+    assert ok is True
+    assert "- Operación: clean_titles" in body
+    assert "- Títulos limpiados: 71 canciones." in body
+    _, one = responder.evaluate(peticion, {"cleaned": 1, "songs": []}, OK)
+    assert "- Títulos limpiados: 1 canción." in one
+    _, none = responder.evaluate(peticion, {"cleaned": 0, "songs": []}, OK)
+    assert "- Títulos limpiados: 0 canciones." in none
+
+
 def test_main_writes_the_body_file_and_prints_the_decision(responder, tmp_path, monkeypatch, capsys):
     peticion = tmp_path / "peticion.json"
     peticion.write_text(json.dumps({"error": "clave desconocida: comentario"}), encoding="utf-8")

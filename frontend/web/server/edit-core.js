@@ -3,7 +3,7 @@
 //
 //   Contenido JSON  { "action": "organize", "payload": { "op": … } }  →  abre en GitHub una incidencia «biblioteca»
 //     (ADR-0008), validada aquí con las reglas de js/cuidador/incidencias.js. Operaciones admitidas: create_folder,
-//     edit_folder, rename_folder, edit_song sin «public», move_songs y order_album. Respuesta
+//     edit_folder, rename_folder, edit_song sin «public», move_songs, order_album y clean_titles (ADR-0032). Respuesta
 //     { ok: true, incidencia, etiquetada, mensaje }.
 //   Contenido image/jpeg, cabecera X-Portada-Id (S o F + 16 hexadecimales), hasta 1 MB  →  la portada. Dónde se guarda
 //     lo decide cada plataforma (saveCover): Vercel, en el buzón de GitHub (lo procesa buzon.yml); el Worker, en el
@@ -25,7 +25,7 @@ export const REPOSITORY = 'seryi47/reminiscencia';
 export const BRANCH = 'main';
 export const COVERS_DIRECTORY = 'audio-library/buzon/portadas';
 export const MAX_COVER_BYTES = 1024 * 1024;
-export const ALLOWED_OPS = Object.freeze(['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs', 'order_album']);
+export const ALLOWED_OPS = Object.freeze(['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs', 'order_album', 'clean_titles']);
 export const DONE_MESSAGE = 'Guardado: llegará a todos en un par de minutos.';
 export const ERROR_LABEL = 'error';
 export const EDIT_STATES = Object.freeze({ OPEN: 'abierta', CLOSED: 'cerrada', ERROR: 'error' });

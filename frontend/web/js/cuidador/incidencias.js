@@ -10,7 +10,8 @@
 // «Editar detalles» de una canción o de un álbum, «Añadir a un álbum», «Quitar de este álbum», «Añadir canciones» a
 // un álbum y «Quitar del álbum» o «Mover a otro álbum» de la selección múltiple (move_songs, varias canciones en una
 // sola petición), «Ordenar canciones» (order_album, la lista completa del álbum en el orden nuevo; ADR-0026) y
-// «Crear álbum». Las carpetas del catálogo se
+// «Crear álbum». clean_titles (limpiar títulos y artistas con la regla del backend, ADR-0032) no tiene hoja: se valida
+// aquí para que /api/editar la admita. Las carpetas del catálogo se
 // llaman «Álbumes» en toda la interfaz; el contrato conserva sus nombres (create_folder, edit_folder, folder_id).
 // La carpeta js/cuidador/ conserva su nombre por las referencias de la documentación (CLAUDE.md, ADR-0005 y
 // ADR-0008); ya no hay modo cuidador (ADR-0015).
@@ -45,6 +46,8 @@ export const REQUEST_LIMITS = Object.freeze({
   // order_album: canciones de un álbum que se pueden ordenar en una petición (de 1 a 190; caben en los 4000
   // caracteres del payload, ADR-0026).
   orderSongs: 190,
+  // clean_titles con song_ids: canciones distintas por petición (de 1 a 100; sin song_ids, todas; ADR-0032).
+  cleanTitles: 100,
 });
 
 // Copia de BLOCKED_HOSTS en backend/sonidos/sources.py (ADR-0005), la misma lista que intake.js de main. Cada entrada
@@ -125,6 +128,8 @@ const OPERATIONS = Object.freeze({
   move_songs: Object.freeze({ required: Object.freeze(['song_ids', 'folder_id']), optional: Object.freeze([]) }),
   // El orden nuevo de un álbum: la lista completa y exacta de sus canciones (el backend lo comprueba al aplicarla).
   order_album: Object.freeze({ required: Object.freeze(['folder_id', 'song_ids']), optional: Object.freeze([]) }),
+  // Títulos y artistas limpios (ADR-0032): sin campos, todas las canciones; con song_ids, solo esas.
+  clean_titles: Object.freeze({ required: Object.freeze([]), optional: Object.freeze(['song_ids']) }),
 });
 
 // Textos de validación. Van junto al campo que los produce; ninguno repite lo que escribió la persona.
@@ -438,6 +443,14 @@ export function operationIssue(payload) {
           tooManyMessage: `Se pueden ordenar ${REQUEST_LIMITS.orderSongs} canciones como mucho.`,
           repeatedMessage: 'Hay canciones repetidas en el orden.',
         });
+    case 'clean_titles':
+      return 'song_ids' in payload
+        ? songIdsIssue(payload.song_ids, REQUEST_LIMITS.cleanTitles, {
+          emptyMessage: 'Elige al menos una canción, o ninguna lista para limpiar todas.',
+          tooManyMessage: `Como mucho ${REQUEST_LIMITS.cleanTitles} canciones en cada petición; sin lista se limpian todas.`,
+          repeatedMessage: 'Hay canciones repetidas en la lista.',
+        })
+        : null;
     default: {
       const problem = songRefIssue(payload.song_id)
         ?? ('title' in payload ? songTitleIssue(payload.title) : null)
@@ -556,6 +569,11 @@ export function buildIssueTitle(request) {
     }
     case 'order_album':
       return cleanIssueTitle(`Ordenar el álbum ${payload.folder_id}`);
+    case 'clean_titles': {
+      if (!Array.isArray(payload.song_ids)) return 'Limpiar los títulos de todas las canciones';
+      const count = payload.song_ids.length;
+      return cleanIssueTitle(`Limpiar los títulos de ${count} ${count === 1 ? 'canción' : 'canciones'}`);
+    }
     default:
       return FALLBACK_TITLE;
   }

@@ -15,8 +15,9 @@ Este módulo la valida antes de tocar la red o el catálogo:
   Operaciones: create_folder (name, parent_id y artist opcionales), rename_folder, edit_folder (name obligatorio y
   artist opcional, ADR-0016), delete_folder, edit_song, move_songs (pasar de 1 a 100 canciones a un álbum, o sacarlas
   de su álbum con folder_id null, en una sola petición atómica; ADR-0023), order_album (el orden nuevo de las canciones
-  de un álbum: la lista completa y exacta de sus canciones, de 1 a 190; ADR-0026) y organize_youtube_playlist (reparar
-  un álbum y los artistas de todas sus canciones en una petición).
+  de un álbum: la lista completa y exacta de sus canciones, de 1 a 190; ADR-0026), organize_youtube_playlist (reparar
+  un álbum y los artistas de todas sus canciones en una petición) y clean_titles (aplicar la regla de título limpio a
+  todas las canciones, o a las de song_ids, de 1 a 100; ADR-0032).
 
 Las URL se validan con sonidos.sources (classify, resolve_direct_file, ia_identifier): la misma
 lógica que usa la importación.
@@ -71,12 +72,15 @@ OPERATIONS = {
         frozenset({"playlist_id", "name", "songs"}),
         frozenset(),
     ),
+    "clean_titles": (frozenset(), frozenset({"song_ids"})),
 }
 # Canciones por petición de move_songs: 100 ids caben de sobra en los 4000 caracteres del payload.
 MAX_MOVE_SONGS = 100
 # Canciones de un álbum que se pueden ordenar en una petición de order_album (ADR-0026): con ids de álbum F + 16
 # hexadecimales, el payload normalizado ocupa 65 + 20 × n caracteres; 190 dan 3865, dentro de los 4000.
 MAX_ORDER_SONGS = 190
+# Canciones por petición de clean_titles con song_ids (ADR-0032); sin song_ids, se limpian todas.
+MAX_CLEAN_SONGS = 100
 # Canciones de una playlist de YouTube que se reparan en una petición de organize_youtube_playlist.
 MAX_PLAYLIST_SONGS = 200
 
@@ -194,6 +198,11 @@ def validate_payload(data: object) -> dict:
             "folder_id": _folder_id(data["folder_id"], field="folder_id"),
             "song_ids": _song_ids(data["song_ids"], MAX_ORDER_SONGS),
         }
+    if operation == "clean_titles":
+        # Sin campos: todas las canciones. Con song_ids: solo esas (que existan lo comprueba quien la aplica).
+        if "song_ids" in data:
+            return {"op": operation, "song_ids": _song_ids(data["song_ids"], MAX_CLEAN_SONGS)}
+        return {"op": operation}
     if operation == "organize_youtube_playlist":
         playlist_id = data["playlist_id"]
         if not isinstance(playlist_id, str) or not YOUTUBE_PLAYLIST_ID_RE.fullmatch(playlist_id):
@@ -396,7 +405,7 @@ def _song_id(value: object, field: str = "song_id") -> str:
 
 
 def _song_ids(value: object, maximum: int) -> list[str]:
-    """Lista de 1 a maximum ids de canción válidos y sin repetir (move_songs y order_album)."""
+    """Lista de 1 a maximum ids de canción válidos y sin repetir (move_songs, order_album y clean_titles)."""
     message = f"song_ids debe contener entre 1 y {maximum} canciones"
     if not isinstance(value, list):
         raise RequestError(message, "song_ids_not_list", "song_ids")

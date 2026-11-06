@@ -38,6 +38,7 @@ describe('contrato común de peticiones: límites, espacios e ids', () => {
         anio_max: REQUEST_LIMITS.yearMax,
         move_songs: REQUEST_LIMITS.moveSongs,
         order_album: REQUEST_LIMITS.orderSongs,
+        clean_titles: REQUEST_LIMITS.cleanTitles,
         titulo_incidencia: REQUEST_LIMITS.issueTitle,
       },
       // La web no genera organize_youtube_playlist.
