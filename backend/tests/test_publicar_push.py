@@ -121,7 +121,8 @@ def test_a_commit_that_touches_the_library_or_the_same_paths_is_not_rebased_over
 
 def test_a_rewritten_main_is_not_rebased_over(remoto, tmp_path):
     base = _publish_commit(remoto)
-    _git(remoto["otra"], "commit", "-q", "--amend", "-m", "historia reescrita")
+    # Con identidad explícita, como el resto: en la CI no hay usuario de git configurado (falló con código 128).
+    _git(remoto["otra"], "-c", "user.name=p", "-c", "user.email=p@example.invalid", "commit", "-q", "--amend", "-m", "historia reescrita")
     _git(remoto["otra"], "push", "-q", "--force", "origin", "main")
 
     result = _run("biblioteca.yml", remoto, base, tmp_path)

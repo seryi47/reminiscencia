@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { handleRequest } from "../../../worker/src/index.js";
 import { fakeR2 } from "../../web-unit/r2-falso.mjs";
-import { WEB_ROOT } from "./servidor.mjs";
+import { apiConfigWithBase, WEB_ROOT } from "./servidor.mjs";
 
 async function readBody(request) {
   const parts = [];
@@ -39,7 +39,7 @@ export async function startFakeWorker() {
     if (match) return new Response(JSON.stringify({ number: Number(match[1]), state: "open", body: "action: organize\npayload: {}", labels: [] }), { status: 200 });
     return new Response("{}", { status: 404 });
   };
-  const env = { GITHUB_TOKEN: "token-de-prueba", PRIVATE_BUCKET: privateBucket, PUBLIC_BUCKET: publicBucket };
+  const env = { GITHUB_TOKEN: "token-de-prueba", PRIVATE_BUCKET: privateBucket, PUBLIC_BUCKET: publicBucket, ALLOW_LOCALHOST: "1" };
   const state = { down: false, requests: [] };
   const server = createServer(async (request, response) => {
     try {
@@ -82,8 +82,5 @@ export async function startFakeWorker() {
 
 /** js/api-config.js de la web con WORKER_API_BASE = [base] (para startStaticServer({ overrides })). */
 export function apiConfigOverride(base) {
-  const source = readFileSync(join(WEB_ROOT, "js", "api-config.js"), "utf8");
-  const replaced = source.replace(/^export const WORKER_API_BASE = '';$/m, `export const WORKER_API_BASE = '${base}';`);
-  if (replaced === source) throw new Error("No se ha encontrado WORKER_API_BASE en js/api-config.js.");
-  return { body: replaced, type: "text/javascript; charset=utf-8" };
+  return apiConfigWithBase(base);
 }
