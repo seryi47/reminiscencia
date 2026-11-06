@@ -4,9 +4,13 @@ La función de Vercel /api/subir (frontend/web/api/subir.js) guarda cada trozo d
 `entrada/<UUID>/<índice>.part` del bucket privado y, con el último, `entrada/<UUID>/manifiesto.json`; después lanza el
 workflow buzon (repository_dispatch). Nada de eso pasa por Git.
 
-- recoger (job 'recoger' de buzon.yml, con credenciales de R2 y sin token de GitHub): descarga las subidas completas
-  (las que tienen manifiesto) a una carpeta que viaja como artefacto a 'procesar', que no tiene secretos. Solo lee.
-- limpiar (job 'publicar', después de subir a main): borra `entrada/<UUID>/` de las subidas que se recogieron.
+- recoger (job 'recoger' de buzon.yml, con credenciales de R2 y sin token de GitHub): descarga TODAS las subidas
+  completas (las que tienen manifiesto), no solo la del aviso que lanzó la ejecución, hasta un tope por ejecución, a una
+  carpeta que viaja como artefacto a 'procesar', que no tiene secretos. Las toma por orden de llegada (la fecha del
+  manifiesto, que se escribe con el último trozo) y deja ese orden en `orden.json`: el buzón las cataloga así, y las
+  pistas de un álbum quedan en el orden en que se subieron (ADR-0030). Solo lee.
+- limpiar (job 'publicar', después de subir a main): borra `entrada/<UUID>/` de las subidas que se recogieron (y, por
+  tanto, se publicaron o se rechazaron en esa ejecución); nunca las que llegaron después.
 
 Este módulo solo usa la biblioteca estándar y sonidos.r2: los pasos con credenciales no instalan nada. El contenido de
 los trozos y del manifiesto no se interpreta aquí: lo valida sonidos.buzon al unirlos, en 'procesar'.
@@ -14,8 +18,10 @@ los trozos y del manifiesto no se interpreta aquí: lo valida sonidos.buzon al u
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable, Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sonidos.r2 import Bucket, R2Error
@@ -30,6 +36,8 @@ MAX_MANIFEST_BYTES = 4096
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # sonidos.buzon.MAX_FILE_BYTES: el buzón rechaza un archivo unido mayor
 MAX_UPLOADS_PER_RUN = 50
 MAX_BYTES_PER_RUN = 2 * 1024 * 1024 * 1024
+# El orden de llegada de lo recogido (sonidos.buzon.ENTRY_ORDER_FILE): {"subidas": ["<UUID>", ...]}.
+ORDER_FILE = "orden.json"
 
 
 def complete_uploads(listing: Mapping[str, int]) -> tuple[dict[str, dict[str, int]], list[str]]:
@@ -61,16 +69,41 @@ def complete_uploads(listing: Mapping[str, int]) -> tuple[dict[str, dict[str, in
     return complete, sorted(item for item in broken if item in groups and MANIFEST in groups[item])
 
 
+def arrival_order(complete: Mapping[str, Mapping[str, int]], modified: Mapping[str, str]) -> list[str]:
+    """Los UUID de las subidas completas por orden de llegada: la fecha de su manifiesto (R2 la da en ISO 8601, en UTC)
+    y, a igualdad o sin fecha, el UUID. Así la ejecución toma primero las más antiguas y el resultado no depende de
+    cuántos avisos lleguen ni de cuándo."""
+    def key(upload_id: str) -> tuple[str, str]:
+        return (_utc(modified.get(f"{ENTRY_PREFIX}{upload_id}/{MANIFEST}", "")), upload_id)
+
+    return sorted(complete, key=key)
+
+
+def _utc(value: str) -> str:
+    """La fecha en una forma que se ordena como texto (UTC, microsegundos), o «» si no se entiende."""
+    try:
+        moment = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return ""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+
 def collect(bucket: Bucket, destination: Path, *, max_uploads: int = MAX_UPLOADS_PER_RUN,
             max_bytes: int = MAX_BYTES_PER_RUN) -> dict:
-    """Descarga a destination/<UUID>/ las subidas completas del bucket privado, como mucho max_uploads y max_bytes por
-    ejecución (las demás las recoge la siguiente: cada subida lanza su ejecución). Devuelve los UUID recogidos y los
-    que no se pueden recoger. Comprueba que cada fichero descargado tiene el tamaño del listado."""
-    complete, broken = complete_uploads(bucket.list_sizes(ENTRY_PREFIX))
+    """Descarga a destination/<UUID>/ todas las subidas completas del bucket privado, por orden de llegada, como mucho
+    max_uploads y max_bytes por ejecución (las demás las recoge la siguiente ejecución de la cola). Escribe el orden en
+    destination/orden.json. Devuelve los UUID recogidos y los que no se pueden recoger. Comprueba que cada fichero
+    descargado tiene el tamaño del listado."""
+    details = bucket.list_details(ENTRY_PREFIX)
+    complete, broken = complete_uploads({key: size for key, (size, _) in details.items()})
+    modified = {key: when for key, (_, when) in details.items()}
     destination.mkdir(parents=True, exist_ok=True)
     collected: list[str] = []
     total = 0
-    for upload_id, files in complete.items():
+    for upload_id in arrival_order(complete, modified):
+        files = complete[upload_id]
         size = sum(files.values())
         if len(collected) >= max_uploads or (collected and total + size > max_bytes):
             break
@@ -83,6 +116,8 @@ def collect(bucket: Bucket, destination: Path, *, max_uploads: int = MAX_UPLOADS
             (folder / name).write_bytes(data)
         collected.append(upload_id)
         total += size
+    if collected:
+        (destination / ORDER_FILE).write_text(json.dumps({"subidas": collected}) + "\n", encoding="utf-8")
     return {"recogidas": collected, "no_validas": broken, "pendientes": len(complete) - len(collected), "bytes": total}
 
 

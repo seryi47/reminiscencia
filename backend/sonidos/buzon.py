@@ -53,6 +53,11 @@ R2 (entrada/<UUID>/) y lanza el workflow con repository_dispatch. El job 'recoge
 'procesar' como artefacto (parámetro 'entrada' de procesar_buzon) y se unen igual que los de .partes, siempre con la
 licencia de la web. Lo que no se puede unir se rechaza (no se queda para revisar: 'publicar' borra del bucket todo lo
 recogido). El código de .partes se mantiene para las subidas que quedaran a medias en main al cambiar.
+
+Orden (ADR-0030): una ejecución recoge todas las subidas completas del bucket, y 'recoger' deja su orden de llegada en
+orden.json. Las de la web se catalogan en ese orden, después de lo del buzón de main (por nombre, como siempre): así las
+pistas de un álbum reciben su número en el orden en que se subieron. Una subida que ya está en el catálogo (mismo
+SHA-256) sale como duplicada y no cambia nada: procesar dos veces lo mismo deja el mismo catálogo.
 """
 
 from __future__ import annotations
@@ -94,6 +99,9 @@ UPLOADED_BY = "Subida por "
 PARTES_SUBDIRECTORY = ".partes"
 PARTES_DIRECTORY = f"{BUZON_DIRECTORY}/{PARTES_SUBDIRECTORY}"
 PARTES_MANIFEST = "manifiesto.json"
+# El orden de llegada de las subidas recogidas del bucket (sonidos.entrada.ORDER_FILE; lo comprueban las pruebas).
+ENTRY_ORDER_FILE = "orden.json"
+MAX_ENTRY_ORDER_BYTES = 64 * 1024
 MAX_PARTES = 1000
 MAX_MANIFEST_BYTES = 4096
 # ZIP con canciones (ver el docstring del módulo).
@@ -303,11 +311,16 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     del_evento = archivos_del_evento(event) if isinstance(event, Mapping) and "commits" in event else {}
     albumes: dict[str, dict] = {}
     archivos.update(_unir_partes(buzon, result, del_evento, albumes=albumes))
+    web: dict[str, str] = {}
     if entrada is not None:
-        archivos.update(_unir_partes(buzon, result, {}, albumes=albumes, origen=entrada))
+        web = _unir_partes(buzon, result, {}, albumes=albumes, origen=entrada)
+        archivos.update(web)
     portadas = {path: message for path, message in archivos.items() if path.startswith(portadas_prefix)}
+    # Lo del buzón de main, por nombre; después, las subidas de la web en su orden de llegada (ADR-0030).
+    orden = [path for path in sorted(archivos) if path not in web] + list(web)
     try:
-        for path, message in sorted(archivos.items()):
+        for path in orden:
+            message = archivos[path]
             if path in portadas:
                 continue
             name = path[len(prefix):]
@@ -366,6 +379,27 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
         catalog_path=catalog_path, audio_dir=audio_dir, web_dir=repo / "frontend" / "web", covers_dir=covers_dir,
     )
     return result
+
+
+def _por_orden_de_llegada(directory: Path, entries: list[Path]) -> list[Path]:
+    """Las carpetas de las subidas recogidas en el orden de orden.json (las que no aparezcan, al final y por nombre). El
+    fichero de orden no es una subida: se quita de la lista. Si no se puede leer o no tiene la forma esperada, se usa el
+    orden por nombre (el de siempre): el orden nunca hace perder una subida."""
+    order_file = directory / ENTRY_ORDER_FILE
+    rest = [entry for entry in entries if entry.name != ENTRY_ORDER_FILE]
+    if order_file.is_symlink() or not order_file.is_file():
+        return rest
+    try:
+        if order_file.stat().st_size > MAX_ENTRY_ORDER_BYTES:
+            return rest
+        data = json.loads(order_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return rest
+    ids = data.get("subidas") if isinstance(data, dict) else None
+    if not isinstance(ids, list) or not all(isinstance(item, str) and _UPLOAD_ID.fullmatch(item) for item in ids):
+        return rest
+    position = {upload_id: index for index, upload_id in enumerate(dict.fromkeys(ids))}
+    return sorted(rest, key=lambda entry: (position.get(entry.name, len(position)), entry.name))
 
 
 def _leer_manifiesto(path: Path) -> tuple[str, int, dict | None, str] | None:
@@ -438,6 +472,9 @@ def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str], *,
     if not directory.is_dir():
         return {}
     unidas: dict[str, str] = {}
+    entries = sorted(directory.iterdir())
+    if origen is not None:
+        entries = _por_orden_de_llegada(directory, entries)
 
     def revisar(ruta: str, motivo: str) -> None:
         # Las de .partes se quedan en main para revisarlas. Las del bucket se borran tras publicar (sonidos.entrada):
@@ -447,7 +484,7 @@ def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str], *,
         else:
             result["rechazados"].append({"archivo": ruta, "motivo": motivo})
 
-    for entry in sorted(directory.iterdir()):
+    for entry in entries:
         if entry.name in PLACEHOLDERS:
             continue
         ruta = f"{label}/{entry.name}"

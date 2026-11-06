@@ -65,6 +65,7 @@ class PublicationPlan:
 
 class Bucket(Protocol):
     def list_sizes(self, prefix: str = AUDIO_PREFIX) -> Mapping[str, int]: ...
+    def list_details(self, prefix: str = AUDIO_PREFIX) -> Mapping[str, tuple[int, str]]: ...
     def put(self, key: str, path: Path) -> None: ...
     def put_bytes(self, key: str, data: bytes) -> None: ...
     def get(self, key: str) -> bytes: ...
@@ -244,7 +245,8 @@ class SigV4Client:
             raise R2Error("respuesta de R2 no reconocida al listar el bucket") from error
         ns = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
         contents = [
-            {"Key": item.findtext("s3:Key", "", ns), "Size": int(item.findtext("s3:Size", "0", ns))}
+            {"Key": item.findtext("s3:Key", "", ns), "Size": int(item.findtext("s3:Size", "0", ns)),
+             "LastModified": item.findtext("s3:LastModified", "", ns)}
             for item in root.findall("s3:Contents", ns)
         ]
         page: dict[str, Any] = {"Contents": contents, "IsTruncated": root.findtext("s3:IsTruncated", "", ns) == "true"}
@@ -340,7 +342,12 @@ class S3Bucket:
         return self._bucket
 
     def list_sizes(self, prefix: str = AUDIO_PREFIX) -> dict[str, int]:
-        sizes: dict[str, int] = {}
+        return {key: size for key, (size, _) in self.list_details(prefix).items()}
+
+    def list_details(self, prefix: str = AUDIO_PREFIX) -> dict[str, tuple[int, str]]:
+        """Clave -> (tamaño, fecha de la última modificación tal como la da R2, «» si no la da). La fecha solo sirve
+        para ordenar (sonidos.entrada: las subidas, por el momento en que se completaron)."""
+        details: dict[str, tuple[int, str]] = {}
         token = None
         while True:
             args: dict[str, Any] = {"Bucket": self._bucket, "Prefix": prefix}
@@ -348,9 +355,10 @@ class S3Bucket:
                 args["ContinuationToken"] = token
             page = self._client.list_objects_v2(**args)
             for item in page.get("Contents", []):
-                sizes[item["Key"]] = item["Size"]
+                modified = item.get("LastModified", "")
+                details[item["Key"]] = (item["Size"], modified if isinstance(modified, str) else str(modified))
             if not page.get("IsTruncated"):
-                return sizes
+                return details
             token = page.get("NextContinuationToken")
 
     def put(self, key: str, path: Path) -> None:
