@@ -1,6 +1,7 @@
 # ADR-0020: Audio en Cloudflare R2
 
 - Estado: aceptada y completa (fase 3, 2026-11-05): R2 es el único sitio que sirve el audio público. La web ya no publica audio en `frontend/web/audio/`; Vercel redirige `/audio/<id>.opus` al bucket.
+- **Modificada por [ADR-0031](ADR-0031-audio-por-el-worker.md) (2026-11-06):** el audio se pide primero al Worker (que lo lee del mismo bucket por *binding*, sin el límite de `r2.dev`), con `r2.dev` de respaldo; Vercel redirige `/audio/:file` al Worker y `kAudioBase` de la APK se sustituye por `ApiRoutes.audioBase` y `kR2AudioBase`.
 - Fecha: 2026-11-05.
 - Relacionadas: ADR-0014 y ADR-0017 (buzón y subida), ADR-0008 (publicación por workflows).
 

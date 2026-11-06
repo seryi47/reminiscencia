@@ -8,7 +8,7 @@
 
 Cuatro piezas, cada una con una sola responsabilidad:
 
-- **GitHub guarda** el código, el catálogo (`audio-library/indexes/catalog.json`) y los datos públicos de la web (`frontend/web/data/`). **Cloudflare R2 guarda el audio** en dos buckets (ADR-0020 y ADR-0024): el privado es la fuente de verdad de todas las canciones (y guarda en `entrada/` las subidas de la web en curso); el público solo tiene las públicas y es el que se sirve (Vercel redirige `/audio/<id>.opus` a él). `publicar` actualiza los dos antes de subir a main. Desde la parte 2 de ADR-0024, `audio-library/audio/` ya no está en Git (está en `.gitignore`; el historial conserva el audio antiguo).
+- **GitHub guarda** el código, el catálogo (`audio-library/indexes/catalog.json`) y los datos públicos de la web (`frontend/web/data/`). **Cloudflare R2 guarda el audio** en dos buckets (ADR-0020 y ADR-0024): el privado es la fuente de verdad de todas las canciones (y guarda en `entrada/` las subidas de la web en curso); el público solo tiene las públicas y es el que se sirve: el Worker de Cloudflare lo lee por *binding* y sirve `/audio/<id>.opus`, con `r2.dev` de respaldo (Vercel redirige `/audio/<id>.opus` al Worker; ADR-0031). `publicar` actualiza los dos antes de subir a main. Desde la parte 2 de ADR-0024, `audio-library/audio/` ya no está en Git (está en `.gitignore`; el historial conserva el audio antiguo).
 - **GitHub Actions procesa.** Importar, convertir, organizar y publicar se hacen en dos workflows con ffmpeg del runner: `biblioteca.yml` (peticiones por incidencia) y `buzon.yml` (archivos subidos a `audio-library/buzon/`). Nada de eso corre en Vercel.
 - **Vercel sirve la web estática** de `frontend/web` (Root Directory, según ADR-0007) y funciones serverless. `api/subir.js` (ADR-0017 y ADR-0024) recibe canciones por trozos, las guarda en el bucket privado de R2 y avisa a `buzon.yml` con un `repository_dispatch` (`GITHUB_TOKEN`); `api/youtube/*` extrae metadatos de playlists con `yt-dlp` y hace de proxy para la API de yttowav. El proxy transmite el WAV, que luego la cola de la web convierte a Opus y publica por el workflow `buzon`. El runtime necesita `yt-dlp` en `PATH` o `YTDLP_PATH`. La interfaz es una sola página, sin usuarios, con el aspecto de Spotify (ADR-0015).
 - **La app Android lee la biblioteca** de la web: descarga `data/songs.json` y `data/folders.json` de `https://reminiscencia.vercel.app/` y guarda una copia para escuchar sin conexión. No lleva audio empaquetado ni tiene usuarios. «Subir canciones» convierte cada archivo a Opus en el teléfono y lo envía por trozos a la misma función `/api/subir` de la web (ADR-0017); las canciones guardadas antes solo en el teléfono (ADR-0013) siguen sonando y se borran.
@@ -71,7 +71,7 @@ flowchart LR
   PUBLICAR -->|"responde y cierra o etiqueta error"| ISSUE
   CI -.->|"push y pull request"| MAIN
   MAIN -->|"despliegue desde Git"| VERCEL
-  VERCEL -->|"web y datos; /audio redirige a R2"| NAVEG
+  VERCEL -->|"web y datos; /audio redirige al Worker"| NAVEG
   R2PUB -->|"audio"| NAVEG
   R2PUB -->|"audio"| APP
   VERCEL -->|"data/songs.json y data/folders.json"| APP
@@ -107,7 +107,7 @@ Las flechas continuas son flujos de datos o de control. La flecha de puntos es l
 
 ## Flujos
 
-**Escucha.** Vercel sirve `index.html`, los módulos de `js/` y las hojas de `css/`. `js/app.js` lee `data/songs.json` y `data/folders.json`, junta esas canciones con las guardadas antes en este navegador y `js/player.js` reproduce `audio/<id>.opus`, que el service worker pide a R2 (y Vercel redirige a R2 si no hay service worker), o `audio/L….opus`, servido por `sw.js` desde IndexedDB. La app Android lee los mismos datos desde la misma dirección y guarda una copia local.
+**Escucha.** Vercel sirve `index.html`, los módulos de `js/` y las hojas de `css/`. `js/app.js` lee `data/songs.json` y `data/folders.json`, junta esas canciones con las guardadas antes en este navegador y `js/player.js` reproduce `audio/<id>.opus`, que el service worker pide al Worker de Cloudflare, después a R2 por `r2.dev` y después al propio origen (y Vercel redirige al Worker si no hay service worker; ADR-0031), o `audio/L….opus`, servido por `sw.js` desde IndexedDB. La app Android lee los mismos datos desde la misma dirección y guarda una copia local.
 
 **Gestión por incidencias (importar, organizar, publicar).**
 

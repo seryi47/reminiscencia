@@ -12,7 +12,7 @@
 | `audio-library/audio/<id>.opus` | Audio de reproducción de todas las canciones (287 ficheros, unos 480 MB, el 2026-11-05) | Ya no se versiona (parte 2 de ADR-0024, en `.gitignore`); el historial conserva lo que hubo. En los workflows, solo el audio nuevo, de paso hacia el bucket | No |
 | `audio/<id>.opus` del bucket privado de R2 | Copia de todo el audio, público y privado: la fuente de verdad desde ADR-0024. La rellenó `migrar-audio-privado.yml` (parte 1, ya retirado) y la mantiene cada `publicar` | Fuera de Git | No |
 | `entrada/<id>/` del bucket privado de R2 | Trozos y manifiesto de las subidas de `/api/subir`, hasta que `buzon.yml` los publica y los borra (ADR-0024) | Fuera de Git | No |
-| `frontend/web/audio/<id>.opus` | Ya no existe (ADR-0020, fase 3): el audio publicado lo sirve el bucket público de Cloudflare R2 | — | Vercel redirige `/audio/*` a R2 |
+| `frontend/web/audio/<id>.opus` | Ya no existe (ADR-0020, fase 3): el audio publicado lo sirve el bucket público de Cloudflare R2 | — | Vercel redirige `/audio/*` al Worker, que lo lee del bucket (ADR-0031) |
 | `audio-library/covers/<id>.jpg` y `frontend/web/covers/<id>.jpg` | Portadas de 640×640 (hoy una); a la web van las de canciones públicas y todas las carpetas (ADR-0016) | Versionado | Las de `frontend/web/covers/` |
 | `audio-library/buzon/` (y `.partes/<id>/`) | Carpeta de paso del workflow `buzon`: archivos subidos desde la página de GitHub, que se borran al procesarlos. `.partes/` solo guarda subidas de `/api/subir` anteriores a ADR-0024 | Versionado de paso; queda en el historial | No |
 | `frontend/web/data/songs.json`, `folders.json`, `catalog.json` | Datos públicos, regenerados desde el catálogo | Versionado | Sí, lo sirve Vercel |

@@ -5,6 +5,7 @@
 - Amplía: [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) y [ADR-0024](ADR-0024-audio-privado-en-r2.md) (`/api/subir`, ahora también en un Worker), [ADR-0022](ADR-0022-editar-sin-github.md) (`/api/editar`, también en el Worker) y [ADR-0027](ADR-0027-ediciones-pendientes.md) (portadas confirmadas por el índice).
 - Modifica: [ADR-0016](ADR-0016-portadas-y-albumes.md), decisión 4: el campo `cover` del catálogo deja de ser la única fuente; el índice de portadas de R2 manda sobre él.
 - Relacionadas: [ADR-0020](ADR-0020-audio-en-r2.md) (bucket público) y [ADR-0028](ADR-0028-contrato-comun-y-busqueda.md) (contrato común).
+- Ampliada por: [ADR-0031](ADR-0031-audio-por-el-worker.md) (el Worker sirve también el audio público, `GET`/`HEAD /audio/<id>.opus`).
 
 ## Contexto
 
