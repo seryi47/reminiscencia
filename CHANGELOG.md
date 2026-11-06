@@ -4,7 +4,7 @@
   - el bucket privado es la fuente de verdad de todo el audio; `publicar` sube allí el audio nuevo y copia al público, desde local o desde el privado, el de las canciones públicas, y se detiene si a una pública le falta audio;
   - `/api/subir` guarda los trozos en el bucket privado (`entrada/<UUID>/`, sin sobrescribir) y lanza `buzon.yml` con un `repository_dispatch`; ya no hace commits en `main`. El contrato no cambia para la web ni la APK;
   - job nuevo `recoger` (credenciales de R2, sin token); `procesar` sigue sin secretos; `publicar` borra lo recogido tras el push;
-  - workflow manual `migrar-audio-privado.yml`. Sacar `audio-library/audio/` de Git va en la rama aparte `feature/audio-fuera-de-git`, que se fusiona después de migrar (el historial no encoge);
+  - migración única con el workflow manual `migrar-audio-privado.yml`. Después, `feature/audio-fuera-de-git` saca `audio-library/audio/` de Git, lo añade a `.gitignore` y retira la migración. El historial no encoge;
   - firma SigV4 en Node comprobada con los mismos vectores que la de Python, incluido el ejemplo oficial de AWS. Las E2E usan un Opus de prueba de 16 KB (`tests/fixtures/tono-prueba.opus`).
 - **`publicar` robusto** ([ADR-0025](docs/decisions/ADR-0025-publicar-robusto.md)):
   - ya no falla si `main` avanzó sin tocar la biblioteca: aplica el paquete sobre el HEAD nuevo cuando la base es un antecesor y nada nuevo toca el paquete, el catálogo, el audio, las portadas ni la parte pública;

@@ -2,6 +2,7 @@ import base64
 import importlib.util
 import io
 import json
+import subprocess
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
@@ -394,32 +395,24 @@ def test_script_without_delete_flag_never_deletes(tmp_path):
 
 
 def test_script_simulates_the_real_repository(capsys):
+    # Sin el audio en Git (ADR-0024, parte 2) y sin credenciales, no puede comprobar los buckets: solo lo dice.
     assert _script().main([], env={}) == 0
+    assert "Sin audio local" in capsys.readouterr().out
 
 
-# --- scripts/migrar_audio_privado.py -----------------------------------------------------------------------------
-
-def test_migration_uploads_everything_verifies_sizes_and_never_deletes(capsys, tmp_path):
-    root = _library(tmp_path, [_song(ID_A)], {f"{ID_A}.opus": 3, f"{ID_B}.opus": 5}, catalog=[ID_A, ID_B])
-    s3 = FakeS3({"privado": {KEY_A: b"xxx", "audio/Sfffffffffffffff0.opus": b"z", "entrada/x": b"y"}})
-
-    assert _script("migrar_audio_privado").main(["--aplicar", "--raiz", str(root)], env=ENV, client=s3) == 0
-
-    assert set(s3.buckets["privado"]) == {KEY_A, KEY_B, "audio/Sfffffffffffffff0.opus", "entrada/x"}
-    assert "mismo tamaño" in capsys.readouterr().out
+def test_the_audio_is_no_longer_versioned():
+    ignored = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", "audio-library/audio/S0123456789abcdef.opus"])
+    assert ignored.returncode == 0
+    tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "audio-library/audio"], capture_output=True, text=True)
+    assert tracked.stdout == ""
 
 
-def test_migration_fails_if_a_catalog_song_ends_without_audio_in_the_bucket(capsys, tmp_path):
-    root = _library(tmp_path, [], {f"{ID_A}.opus": 3}, catalog=[ID_A, ID_B])
-    s3 = FakeS3({"privado": {}})
+def test_without_local_audio_publishing_takes_every_public_song_from_the_private_bucket(tmp_path):
+    # Lo normal tras la parte 2: la copia de 'publicar' solo tiene el audio que trae el paquete.
+    root = _library(tmp_path, [_song(ID_A), _song(ID_B)], {f"{ID_C}.opus": 2}, catalog=[ID_A, ID_B, ID_C])
+    s3 = FakeS3({"privado": {KEY_A: b"aaa", KEY_B: b"bb"}, "publico": {KEY_A: b"aaa"}})
 
-    assert _script("migrar_audio_privado").main(["--aplicar", "--raiz", str(root)], env=ENV, client=s3) == 1
+    assert _script().main(["--aplicar", "--borrar-sobrantes", "--raiz", str(root)], env=ENV, client=s3) == 0
 
-    assert f"{KEY_B}: canción del catálogo sin audio" in capsys.readouterr().out
-
-
-def test_migration_simulates_without_credentials_and_needs_them_to_apply(tmp_path):
-    root = _library(tmp_path, [_song(ID_A)], {f"{ID_A}.opus": 3})
-    module = _script("migrar_audio_privado")
-    assert module.main(["--raiz", str(root)], env={}) == 0
-    assert module.main(["--aplicar", "--raiz", str(root)], env={}) == 1
+    assert s3.buckets["publico"] == {KEY_A: b"aaa", KEY_B: b"bb"}
+    assert set(s3.buckets["privado"]) == {KEY_A, KEY_B, KEY_C}
