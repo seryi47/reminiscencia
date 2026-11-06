@@ -1,18 +1,20 @@
 // Pruebas de extremo a extremo con el Worker de Cloudflare (ADR-0029): la web servida con WORKER_API_BASE apuntando al
 // Worker simulado (código real de worker/src/index.js en otro origen, con R2 en memoria; helpers/worker.mjs) sube por
 // él, cambia portadas al momento (bucket público + índice) y las confirma en segundos, lee el índice al abrir y, si el
-// Worker no responde, vuelve a las funciones de Vercel simuladas. Las imágenes y el índice del bucket público
-// (pub-….r2.dev) se sirven desde el bucket simulado interceptando las peticiones del navegador.
+// Worker no responde, vuelve a las funciones de Vercel simuladas. El audio (ADR-0031) suena por el Worker simulado
+// (service worker → /audio/<id>.opus del Worker) y, si el Worker falla, desde el propio origen. Las imágenes y el
+// índice del bucket público (pub-….r2.dev) se sirven desde el bucket simulado interceptando las peticiones del
+// navegador.
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { crc32, deflateSync } from "node:zlib";
 
-import { createTestCatalogOverrides } from "./helpers/catalogo-prueba.mjs";
+import { createTestCatalogOverrides, TEST_AUDIO_FILE } from "./helpers/catalogo-prueba.mjs";
 import { clickTestid, TEST_TIMEOUT_MS, textOf, waitVisible } from "./helpers/elementos.mjs";
-import { openApp, openCollection, openUpload, saveEdit } from "./helpers/flujos.mjs";
+import { openApp, openCollection, openUpload, saveEdit, waitServiceWorker } from "./helpers/flujos.mjs";
 import { launchBrowser, VIEWPORTS, withPage } from "./helpers/navegador.mjs";
 import { startStaticServer } from "./helpers/servidor.mjs";
 import { apiConfigOverride, startFakeWorker } from "./helpers/worker.mjs";
@@ -20,6 +22,7 @@ import { AUDIO_ORIGIN } from "../../frontend/web/js/offline-core.js";
 import { COVER_INDEX_KEY, parseCoverIndex } from "../../frontend/web/js/cover-index.js";
 
 const ALBUM_A = "F0000000000000001";
+const SONG_1 = "S0000000000000001";
 const FOLDER_A = `#/album/${ALBUM_A}`;
 const prueba = (nombre, fn) => it(nombre, { timeout: TEST_TIMEOUT_MS }, fn);
 
@@ -190,6 +193,51 @@ describe("Worker de Cloudflare (ADR-0029)", () => {
       assert.ok(worker.github.some((call) => call.path.endsWith("/dispatches") && call.body?.client_payload?.id === id));
       assert.ok(worker.state.requests.includes("GET /api/salud"), "Antes de subir se pregunta al Worker.");
       assert.equal(vercel.length, 0);
+    }),
+  );
+
+  prueba("El audio suena por el Worker (bucket público por binding, con rangos; ADR-0031)", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      const key = `audio/${SONG_1}.opus`;
+      worker.publicBucket.seed(key, await readFile(TEST_AUDIO_FILE), { contentType: "audio/ogg" });
+      const before = worker.state.requests.length;
+      try {
+        await openApp(page, server.url);
+        await waitServiceWorker(page);
+        await openCollection(page, FOLDER_A);
+        await clickTestid(page, "collection-play", "botón verde del álbum");
+        await page.waitForFunction(() => document.getElementById("audio").currentTime > 0.2, { timeout: 10000 });
+        const audio = await page.evaluate(() => ({ src: document.getElementById("audio").src, error: document.getElementById("audio").error?.code ?? null }));
+        assert.equal(audio.error, null);
+        // La página pide su propio /audio/…; el service worker lo trae del Worker.
+        assert.equal(new URL(audio.src).origin, new URL(server.url).origin);
+        assert.ok(worker.state.requests.slice(before).includes(`GET /${key}`), worker.state.requests.slice(before).join(", "));
+      } finally {
+        worker.publicBucket.objects.delete(key);
+      }
+    }),
+  );
+
+  prueba("Si el Worker no tiene el audio o no responde, suena igual (r2.dev y luego el propio origen)", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      const before = worker.state.requests.length;
+      await openApp(page, server.url);
+      await waitServiceWorker(page);
+      // Sin el audio en el bucket: el Worker responde 404 y el service worker pasa al siguiente.
+      await openCollection(page, FOLDER_A);
+      await clickTestid(page, "collection-play", "botón verde del álbum");
+      await page.waitForFunction(() => document.getElementById("audio").currentTime > 0.2, { timeout: 15000 });
+      assert.ok(worker.state.requests.slice(before).includes(`GET /audio/${SONG_1}.opus`));
+      // Worker caído (página de error de Cloudflare): la siguiente canción también suena.
+      worker.state.down = true;
+      try {
+        await clickTestid(page, "player-next", "siguiente canción");
+        await page.waitForFunction((first) => /\/audio\/S[0-9a-f]{16}\.opus$/.test(document.getElementById("audio").src) && !document.getElementById("audio").src.endsWith(first), { timeout: 10000 }, `${SONG_1}.opus`);
+        await page.waitForFunction(() => document.getElementById("audio").currentTime > 0.2, { timeout: 15000 });
+        assert.equal(await page.evaluate(() => document.getElementById("audio").error?.code ?? null), null);
+      } finally {
+        worker.state.down = false;
+      }
     }),
   );
 

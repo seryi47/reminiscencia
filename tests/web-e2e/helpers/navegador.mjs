@@ -67,10 +67,13 @@ export async function launchBrowser() {
       "--hide-scrollbars",
       "--mute-audio",
       "--font-render-hinting=none",
-      // Las pruebas nunca van al bucket real de R2 (pub-….r2.dev): el audio cae al servidor de pruebas, como cuando R2
-      // falla, y el índice de portadas (ADR-0029) falla al momento en lugar de depender de la red. worker.e2e.mjs sirve
-      // el bucket simulado interceptando las peticiones, antes de resolver el nombre.
-      "--host-resolver-rules=MAP *.r2.dev ~NOTFOUND",
+      // Las pruebas nunca van al bucket real de R2 (pub-….r2.dev) ni al Worker real (….workers.dev; incidente del
+      // 2026-11-06): el audio cae al servidor de pruebas, como cuando R2 o el Worker fallan, y el índice de portadas
+      // (ADR-0029) falla al momento en lugar de depender de la red. Aunque una sustitución de js/api-config.js fallara
+      // y la web o el service worker usaran la dirección de producción (API o audio, ADR-0031), el nombre no se
+      // resuelve. worker.e2e.mjs sirve el bucket simulado interceptando las peticiones, antes de resolver el nombre, y
+      // su Worker simulado escucha en 127.0.0.1.
+      "--host-resolver-rules=MAP *.r2.dev ~NOTFOUND, MAP *.workers.dev ~NOTFOUND",
       // Chrome en Linux dentro de contenedores de CI necesita desactivar el sandbox.
       ...(process.platform === "linux" ? ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"] : []),
     ],
