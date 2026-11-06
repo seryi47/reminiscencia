@@ -424,11 +424,22 @@ def test_processing_in_the_sparse_checkout_of_the_job_packages_the_same_as_a_ful
                        solo_entrada=True)
         package = tmp_path / f"paquete-{name}"
         paquete.package_processing_changes(clone, package, action="buzon")
-        manifest = json.loads((package / "manifiesto.json").read_text(encoding="utf-8"))
-        # El Opus que produce ffmpeg cambia en cada ejecución (número de serie Ogg aleatorio): se compara el catálogo.
-        manifest["catalogo"] = hashlib.sha256(
-            (package / paquete.CHANGES_DIR / "audio-library/indexes/catalog.json").read_bytes()).hexdigest()
-        manifests[name] = manifest
+        # El Opus que produce ffmpeg cambia en cada ejecución (número de serie Ogg aleatorio), y con él el id de la
+        # canción (su SHA-256), su tamaño y su duración; el álbum nuevo tiene un id aleatorio. Se comparan el manifiesto
+        # y el catálogo con esos valores enmascarados (en la CI, sin enmascarar, fallaba aunque el paquete era el mismo).
+        manifest_text = (package / "manifiesto.json").read_text(encoding="utf-8")
+        catalog_text = (package / paquete.CHANGES_DIR / "audio-library/indexes/catalog.json").read_text(encoding="utf-8")
+        manifests[name] = {"manifiesto": json.loads(_variable_masked(manifest_text)),
+                           "catalogo": json.loads(_variable_masked(catalog_text))}
 
     assert manifests["sparse"] == manifests["completo"]
-    assert {item["ruta"].split("/")[1] for item in manifests["sparse"]["cambios"]} == {"indexes", "audio"}
+    assert {item["ruta"].split("/")[1] for item in manifests["sparse"]["manifiesto"]["cambios"]} == {"indexes", "audio"}
+
+
+def _variable_masked(text: str) -> str:
+    """El texto con los valores que cambian en cada conversión o creación sustituidos por marcadores fijos."""
+    text = re.sub(r"S[0-9a-f]{16}", "S<id>", text)
+    text = re.sub(r"F[0-9a-f]{16}", "F<id>", text)
+    text = re.sub(r"\b[0-9a-f]{64}\b", "<sha256>", text)
+    text = re.sub(r'"(size_bytes|duration_s)": [0-9.]+', r'"\1": 0', text)
+    return re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?", "<fecha>", text)
