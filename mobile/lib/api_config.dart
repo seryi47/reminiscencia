@@ -11,7 +11,7 @@ import 'library_store.dart' show kLibraryBase;
 
 /// ÚNICO SITIO QUE HAY QUE CAMBIAR al desplegar el Worker: su dirección, sin barra final, por ejemplo
 /// `https://reminiscencia-api.SUBDOMINIO.workers.dev`. Vacía = todo por Vercel.
-const String kWorkerApiBase = '';
+const String kWorkerApiBase = 'https://reminiscencia-api.reminiscencia-app.workers.dev';
 
 /// Trozo de /api/subir: 4 MB en Vercel (admite 4,5 MB por petición) y 32 MB en el Worker. Los mismos valores que
 /// VERCEL_CHUNK_BYTES y WORKER_CHUNK_BYTES de la web (lo comprueba test/api_config_test.dart).
