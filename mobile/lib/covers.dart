@@ -14,7 +14,7 @@ final RegExp _coverPath = RegExp(
   r'^(?:covers/[A-Za-z0-9_-]{1,64}\.(?:jpg|jpeg|png|webp)|portadas/[SF][0-9a-f]{16}-[0-9a-f]{16}\.jpg)$',
 );
 
-/// Bucket público de R2 (el mismo que kAudioBase de library_store.dart): de ahí salen las portadas `portadas/…`.
+/// Bucket público de R2 (el mismo que kR2AudioBase de library_store.dart): de ahí salen las portadas `portadas/…`.
 const String kCoverBucketBase =
     'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/';
 

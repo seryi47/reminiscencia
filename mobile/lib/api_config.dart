@@ -11,7 +11,8 @@ import 'library_store.dart' show kLibraryBase;
 
 /// ÚNICO SITIO QUE HAY QUE CAMBIAR al desplegar el Worker: su dirección, sin barra final, por ejemplo
 /// `https://reminiscencia-api.SUBDOMINIO.workers.dev`. Vacía = todo por Vercel.
-const String kWorkerApiBase = 'https://reminiscencia-api.reminiscencia-app.workers.dev';
+const String kWorkerApiBase =
+    'https://reminiscencia-api.reminiscencia-app.workers.dev';
 
 /// Trozo de /api/subir: 4 MB en Vercel (admite 4,5 MB por petición) y 32 MB en el Worker. Los mismos valores que
 /// VERCEL_CHUNK_BYTES y WORKER_CHUNK_BYTES de la web (lo comprueba test/api_config_test.dart).
@@ -82,6 +83,16 @@ class ApiRoutes {
       (_downUntil == null || !_clock().isBefore(_downUntil!));
 
   void _markDown() => _downUntil = _clock().add(kRetryWorkerAfter);
+
+  /// Base del audio público por el Worker (ADR-0031): `<base>/` (después va `audio/<id>.opus`), o '' si no hay Worker
+  /// o está marcado como caído. Sale de [base] (por defecto [kWorkerApiBase]): la dirección no se repite.
+  String get audioBase => usesWorker ? '$base/' : '';
+
+  /// El Worker no ha respondido al pedirle audio (red, tiempo agotado o una respuesta que no es suya): durante
+  /// [kRetryWorkerAfter] el audio y el API van directamente a los respaldos. Un 404 suyo NO cuenta como caída.
+  void reportWorkerFailure() {
+    if (base.isNotEmpty) _markDown();
+  }
 
   /// [path] ('/api/…') en Vercel.
   Uri vercelUri(String path) => Uri.parse(

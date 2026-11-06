@@ -12,7 +12,10 @@ import { fileURLToPath } from 'node:url';
 
 import {
   AUDIO_ORIGIN,
+  AUDIO_HEADERS_TIMEOUT_MS,
   r2AudioUrl,
+  remoteAudioUrls,
+  WORKER_AUDIO_ORIGIN,
   audioCacheName,
   coverCacheName,
   formatBytes,
@@ -29,6 +32,7 @@ import {
   shellCacheName,
 } from '../../frontend/web/js/offline-core.js';
 import { cachedAudioPaths, registerPwa, removeOfflineSongs, saveLibraryOffline } from '../../frontend/web/js/pwa.js';
+import { normalizeApiBase, WORKER_API_BASE } from '../../frontend/web/js/api-config.js';
 
 const WEB_DIR = fileURLToPath(new URL('../../frontend/web/', import.meta.url));
 const SW_MODULE_URL = new URL('../../frontend/web/sw.js', import.meta.url).href;
@@ -265,7 +269,35 @@ describe('clasificación de peticiones', () => {
     assert.equal(r2AudioUrl('/data/songs.json'), null);
   });
 
-  test('el service worker prueba R2 y vuelve al propio origen si falla', () => {
+  test('el audio de la biblioteca se pide al Worker y luego a r2.dev; sin Worker, solo a r2.dev (ADR-0031)', () => {
+    const W = 'https://reminiscencia-api.prueba.workers.dev';
+    assert.deepEqual(remoteAudioUrls('/audio/S0123456789abcdef.opus', W), [
+      `${W}/audio/S0123456789abcdef.opus`,
+      `${AUDIO_ORIGIN}/audio/S0123456789abcdef.opus`,
+    ]);
+    assert.deepEqual(remoteAudioUrls('https://reminiscencia.vercel.app/audio/Sabc.opus?x=1', `${W}/`), [
+      `${W}/audio/Sabc.opus`,
+      `${AUDIO_ORIGIN}/audio/Sabc.opus`,
+    ]);
+    assert.deepEqual(remoteAudioUrls('/audio/S0123456789abcdef.opus', ''), [`${AUDIO_ORIGIN}/audio/S0123456789abcdef.opus`]);
+    // Una dirección que no es un origen https válido no se usa (como WORKER_API_BASE en api-config.js).
+    assert.deepEqual(remoteAudioUrls('/audio/S0123456789abcdef.opus', 'http://malo.example'), [`${AUDIO_ORIGIN}/audio/S0123456789abcdef.opus`]);
+    assert.deepEqual(remoteAudioUrls('/audio/L0011223344556677.opus', W), []);
+    assert.deepEqual(remoteAudioUrls('/audio/demo.mp3', W), []);
+    assert.deepEqual(remoteAudioUrls('/data/songs.json', W), []);
+  });
+
+  test('el origen del audio es WORKER_API_BASE de js/api-config.js, sin otra copia de la dirección', () => {
+    assert.equal(WORKER_AUDIO_ORIGIN, normalizeApiBase(WORKER_API_BASE));
+    assert.deepEqual(remoteAudioUrls('/audio/S0123456789abcdef.opus')[0], `${WORKER_AUDIO_ORIGIN || AUDIO_ORIGIN}/audio/S0123456789abcdef.opus`);
+    const address = /https:\/\/[^\s'"`]*\.(?:workers|r2)\.dev/;
+    const core = readFileSync(join(WEB_DIR, 'js', 'offline-core.js'), 'utf8');
+    assert.ok(!/https:\/\/[^\s'"`]*\.workers\.dev/.test(core), 'offline-core.js no debe repetir la dirección del Worker');
+    const sw = readFileSync(join(WEB_DIR, 'sw.js'), 'utf8');
+    assert.ok(!address.test(sw), 'sw.js toma las direcciones de offline-core.js');
+  });
+
+  test('el service worker prueba el Worker, después R2 y vuelve al propio origen si falla', () => {
     const sw = readFileSync(join(fileURLToPath(new URL('../../frontend/web/', import.meta.url)), 'sw.js'), 'utf8');
     assert.match(sw, /fetchAudio\(request, range\)/);
     assert.match(sw, /if \(response\.ok\) return response;/);
@@ -652,6 +684,56 @@ describe('service worker (sw.js)', () => {
     assert.equal(await (await pending.response).text(), 'xyz');
     await Promise.all(pending.waits);
     assert.equal(await (await caches.open(AUDIO)).match(`${ORIGIN}audio/demo-2.opus`), undefined);
+  });
+
+  test('audio no guardado (ADR-0031): primero el Worker, con el Range y CORS; no toca r2.dev ni el origen', async () => {
+    const W = `${WORKER_AUDIO_ORIGIN || AUDIO_ORIGIN}/audio/S0123456789abcdef.opus`;
+    let seen = null;
+    const fetchBase = globalThis.fetch;
+    globalThis.fetch = async (input, init = {}) => {
+      if (urlOf(input) === W) seen = init;
+      return fetchBase(input, init);
+    };
+    env.routes.set(W, { body: '01', status: 206, headers: { 'Content-Range': 'bytes 0-1/10' } });
+    const pending = dispatchFetch(new Request(`${ORIGIN}audio/S0123456789abcdef.opus`, { headers: { Range: 'bytes=0-1' } }));
+    const response = await pending.response;
+    assert.equal(response.status, 206);
+    assert.equal(await response.text(), '01');
+    assert.deepEqual(env.requests.map((item) => item.url), [W]);
+    assert.deepEqual(seen.headers, { Range: 'bytes=0-1' });
+    assert.equal(seen.mode, 'cors');
+    assert.equal(seen.credentials, 'omit');
+    assert.ok(seen.signal, 'cada intento tiene un tiempo máximo para empezar a responder');
+    assert.ok(AUDIO_HEADERS_TIMEOUT_MS >= 5000);
+  });
+
+  test('audio no guardado: si el Worker falla (error, página que no es audio o red), R2; si R2 falla, el propio origen', async () => {
+    const path = 'audio/S0123456789abcdef.opus';
+    const order = remoteAudioUrls(`/${path}`);
+    assert.equal(order.at(-1), `${AUDIO_ORIGIN}/${path}`);
+    // El Worker responde con un error: se pasa a R2.
+    if (order.length === 2) env.routes.set(order[0], { body: '<html>Error 1101</html>', status: 500 });
+    env.routes.set(order.at(-1), { body: 'de-r2' });
+    let response = await dispatchFetch(new Request(`${ORIGIN}${path}`)).response;
+    assert.equal(await response.text(), 'de-r2');
+    assert.deepEqual(env.requests.map((item) => item.url), order);
+    // Ni el Worker ni R2: el propio origen (que vercel.json redirige al Worker).
+    env.requests = [];
+    env.routes.delete(order.at(-1));
+    env.routes.set(`${ORIGIN}${path}`, { body: 'del-origen' });
+    response = await dispatchFetch(new Request(`${ORIGIN}${path}`)).response;
+    assert.equal(await response.text(), 'del-origen');
+    assert.deepEqual(env.requests.map((item) => item.url), [...order, `${ORIGIN}${path}`]);
+    // Un fallo de red del Worker también pasa al siguiente.
+    env.requests = [];
+    const fetchBase = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (order.length === 2 && urlOf(input) === order[0]) throw new TypeError('Failed to fetch');
+      return fetchBase(input, init);
+    };
+    env.routes.set(order.at(-1), { body: 'de-r2' });
+    response = await dispatchFetch(new Request(`${ORIGIN}${path}`)).response;
+    assert.equal(await response.text(), 'de-r2');
   });
 
   test('un fallo al escribir en caché no rompe la respuesta de red', async () => {

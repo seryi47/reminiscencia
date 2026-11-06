@@ -2,6 +2,7 @@
 // propia caché), canciones descargadas para escuchar sin conexión, canciones subidas a este navegador (audio/L….opus, desde IndexedDB; ADR-0012 y ADR-0015) y datos
 // con respaldo de caché. Se registra desde js/pwa.js. Al cambiar el shell, sube SHELL_VERSION en js/offline-core.js.
 import {
+  AUDIO_HEADERS_TIMEOUT_MS,
   audioCacheName,
   coverCacheName,
   isAudioRequest,
@@ -10,7 +11,7 @@ import {
   isShellRequest,
   localAudioId,
   parseRange,
-  r2AudioUrl,
+  remoteAudioUrls,
   SHELL_ASSETS,
   SHELL_CACHE_PREFIX,
   shellCacheName,
@@ -137,21 +138,27 @@ async function audioResponse(request) {
   return sliceResponse(await cached.blob(), cached.headers.get('content-type') || 'audio/ogg', range);
 }
 
-/** Audio fuera de la caché: se pide a R2 (no cobra la salida de datos; ADR-0020). Si falla, se repite por el propio
- *  origen, que lo redirige a R2 (vercel.json; la web ya no lleva audio). Se reenvía el Range para poder buscar dentro
- *  del tema. */
+/** Audio fuera de la caché (ADR-0031): se pide al Worker (bucket público por binding, sin el límite de r2.dev); si
+ *  falla, a r2.dev (ADR-0020), y si también falla, al propio origen, que vercel.json redirige al Worker. Sin Worker
+ *  configurado (WORKER_API_BASE vacía en js/api-config.js) empieza en r2.dev, como antes. Se reenvía el Range para poder
+ *  buscar dentro del tema. Cada intento tiene AUDIO_HEADERS_TIMEOUT_MS para empezar a responder. */
 async function fetchAudio(request, range) {
-  const r2 = r2AudioUrl(request.url);
-  if (r2) {
+  for (const url of remoteAudioUrls(request.url)) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AUDIO_HEADERS_TIMEOUT_MS);
     try {
-      const response = await fetch(r2, {
+      const response = await fetch(url, {
         headers: range ? { Range: range } : {},
         mode: 'cors',
         credentials: 'omit',
+        signal: controller.signal,
       });
       if (response.ok) return response;
+      await response.body?.cancel().catch(() => {});
     } catch {
-      // Sin R2 se usa el origen propio.
+      // Se prueba el siguiente.
+    } finally {
+      clearTimeout(timer);
     }
   }
   return fetch(request);

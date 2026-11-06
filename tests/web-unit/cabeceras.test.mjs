@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { AUDIO_ORIGIN } from "../../frontend/web/js/offline-core.js";
+import { AUDIO_ORIGIN, WORKER_AUDIO_ORIGIN } from "../../frontend/web/js/offline-core.js";
 import { normalizeApiBase, WORKER_API_BASE } from "../../frontend/web/js/api-config.js";
 
 const WORKERS_DEV = "https://*.workers.dev";
@@ -30,7 +30,8 @@ describe("vercel.json: Content-Security-Policy", () => {
     assert.deepEqual(directives.get("default-src"), ["'self'"]);
     assert.deepEqual(directives.get("script-src"), ["'self'"]);
     assert.deepEqual(directives.get("object-src"), ["'none'"]);
-    assert.deepEqual(directives.get("media-src"), ["'self'", AUDIO_ORIGIN]);
+    // El audio: el Worker (ADR-0031; WORKER_API_BASE de js/api-config.js) y r2.dev de respaldo (ADR-0020).
+    assert.deepEqual(directives.get("media-src"), ["'self'", AUDIO_ORIGIN, ...(WORKER_AUDIO_ORIGIN ? [WORKER_AUDIO_ORIGIN] : [])]);
     // Además de la propia web, el bucket de R2 (audio, ADR-0020; índice de portadas, ADR-0029) y el Worker del API en
     // workers.dev (ADR-0029; su subdominio exacto se conoce al desplegarlo).
     assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN, WORKERS_DEV]);
@@ -41,20 +42,29 @@ describe("vercel.json: Content-Security-Policy", () => {
     assert.deepEqual(directives.get("frame-src"), ["https://www.youtube-nocookie.com"]);
   });
 
-  it("la dirección del Worker configurada en js/api-config.js está permitida en connect-src", () => {
+  it("la dirección del Worker configurada en js/api-config.js está permitida en connect-src y media-src", () => {
     const config = JSON.parse(read("vercel.json"));
     const header = config.headers.find((item) => item.source === "/(.*)").headers.find((item) => item.key === "Content-Security-Policy");
-    const allowed = directivesOf(header.value).get("connect-src");
-    const permits = (origin) => allowed.some((source) => {
+    const directives = directivesOf(header.value);
+    const permits = (directive, origin) => directives.get(directive).some((source) => {
       if (source === origin) return true;
       const wildcard = /^https:\/\/\*\.(.+)$/.exec(source);
       return Boolean(wildcard) && origin.startsWith("https://") && origin.endsWith(`.${wildcard[1]}`) && !origin.slice(8, -wildcard[1].length - 1).includes("/");
     });
     const base = normalizeApiBase(WORKER_API_BASE);
-    if (base !== "") assert.ok(permits(base), `connect-src no permite ${base}: añádelo a vercel.json`);
+    // El origen del audio sale de la misma constante: no hay una segunda copia de la dirección en js/.
+    assert.equal(WORKER_AUDIO_ORIGIN, base);
+    if (base !== "") {
+      assert.ok(permits("connect-src", base), `connect-src no permite ${base}: añádelo a vercel.json`);
+      assert.ok(permits("media-src", base), `media-src no permite ${base}: añádelo a vercel.json (audio por el Worker, ADR-0031)`);
+    }
+    // r2.dev sigue admitido: es el respaldo del audio.
+    assert.ok(permits("media-src", AUDIO_ORIGIN));
+    assert.ok(permits("connect-src", AUDIO_ORIGIN));
     // La forma de la dirección que da Cloudflare al desplegar sí está permitida; otra cualquiera, no.
-    assert.ok(permits("https://reminiscencia-api.mi-cuenta.workers.dev"));
-    assert.ok(!permits("https://reminiscencia-api.example.com"));
+    assert.ok(permits("connect-src", "https://reminiscencia-api.mi-cuenta.workers.dev"));
+    assert.ok(!permits("connect-src", "https://reminiscencia-api.example.com"));
+    assert.ok(!permits("media-src", "https://otro-worker.mi-cuenta.workers.dev"), "media-src admite solo el Worker exacto, sin comodín");
   });
 
   it("permite el favicon en data: y no admite eval ni scripts en línea", () => {
@@ -67,13 +77,15 @@ describe("vercel.json: Content-Security-Policy", () => {
   });
 });
 
-describe("vercel.json: audio en R2", () => {
-  it("redirige /audio/<id>.opus al bucket de R2, de forma temporal (ADR-0020, fase 3)", () => {
+describe("vercel.json: audio por el Worker (ADR-0031) con R2 de respaldo", () => {
+  it("redirige /audio/<id>.opus al Worker (o a r2.dev si no hay Worker), de forma temporal", () => {
     const config = JSON.parse(read("vercel.json"));
     const rule = config.redirects?.find((item) => item.source === "/audio/:file");
     assert.ok(rule, "falta la redirección del audio");
-    assert.equal(rule.destination, `${AUDIO_ORIGIN}/audio/:file`);
-    // Temporal (307): si R2 cambia de dominio, los navegadores no se quedan con la dirección vieja.
+    // El destino coincide con WORKER_API_BASE de js/api-config.js: si cambia la dirección del Worker, hay que
+    // cambiarla también aquí (vercel.json no puede importar JavaScript).
+    assert.equal(rule.destination, `${WORKER_AUDIO_ORIGIN || AUDIO_ORIGIN}/audio/:file`);
+    // Temporal (307): si el Worker o R2 cambian de dirección, los navegadores no se quedan con la vieja.
     assert.equal(rule.permanent, false);
   });
 

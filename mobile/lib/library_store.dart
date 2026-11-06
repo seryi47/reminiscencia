@@ -13,8 +13,10 @@ import 'song.dart';
 /// Origen de la biblioteca. La web de Vercel es la fuente; la app guarda copias para usarla sin conexión.
 const String kLibraryBase = 'https://reminiscencia.vercel.app/';
 
-/// Dónde está el audio (ADR-0020): Cloudflare R2, que no cobra la salida de datos. Si falla, se usa kLibraryBase.
-const String kAudioBase =
+/// Bucket público de R2 por r2.dev (ADR-0020): las portadas y, desde ADR-0031, el primer respaldo del audio. El audio
+/// se pide antes al Worker (`ApiRoutes.audioBase`, derivado de kWorkerApiBase en lib/api_config.dart) y, si también
+/// falla r2.dev, a la web (kLibraryBase), que lo redirige al Worker.
+const String kR2AudioBase =
     'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/';
 
 class LibraryData {
@@ -62,6 +64,9 @@ class LibraryStore implements LibrarySource {
   final ApiRoutes? _routes;
   Directory? _root;
 
+  /// Rutas del API y del audio: las inyectadas o las comunes (que las pruebas cambian por unas sin Worker).
+  ApiRoutes get _api => _routes ?? apiRoutes;
+
   static Future<Directory> _documentsRoot() async {
     final docs = await getApplicationDocumentsDirectory();
     return Directory('${docs.path}/biblioteca');
@@ -94,7 +99,7 @@ class LibraryStore implements LibrarySource {
       try {
         indexBody = await fetchCoverIndexBody(
           _client,
-          bucketBase: kAudioBase,
+          bucketBase: kR2AudioBase,
           routes: _routes,
         );
         indexFresh = indexBody != null;
@@ -154,11 +159,20 @@ class LibraryStore implements LibrarySource {
     return response.body;
   }
 
-  Uri audioUri(Song song) => Uri.parse('$kAudioBase${song.audio}');
+  /// Dónde pedir el audio de una canción, por orden (ADR-0031): el Worker (si hay y no está caído), r2.dev y la web
+  /// (Vercel lo redirige al Worker: es otro camino, no una copia aparte). Sin Worker, como antes: r2.dev y la web.
+  List<Uri> audioUris(Song song) => [
+    if (_api.audioBase.isNotEmpty) Uri.parse('${_api.audioBase}${song.audio}'),
+    Uri.parse('$kR2AudioBase${song.audio}'),
+    Uri.parse('$kLibraryBase${song.audio}'),
+  ];
 
-  /// El mismo audio pedido a la web, de respaldo si falla la petición directa a R2: Vercel lo redirige al bucket
-  /// (ADR-0020, fase 3), así que es un segundo intento por otro camino, no una copia aparte.
-  Uri fallbackAudioUri(Song song) => Uri.parse('$kLibraryBase${song.audio}');
+  /// Primera dirección del audio (la que se transmite al reproducir).
+  Uri audioUri(Song song) => audioUris(song).first;
+
+  /// ¿Es [uri] el audio pedido al Worker?
+  bool _isWorkerAudio(Uri uri) =>
+      _api.base.isNotEmpty && uri.toString().startsWith('${_api.base}/');
 
   /// Fichero local de una canción de la web (puede no existir todavía).
   Future<File> audioFile(Song song) async {
@@ -223,18 +237,31 @@ class LibraryStore implements LibrarySource {
 
   /// Descarga una canción a disco sin cargarla en memoria, con hasta 3 intentos. El fichero solo
   /// existe completo (se escribe en `.part` y se renombra), y una canción rota no frena a las demás.
+  /// Con Worker: Worker, r2.dev y la web; sin Worker: r2.dev, la web y r2.dev otra vez (ADR-0031). Si el Worker no
+  /// responde (no un 404 suyo), se marca caído y las siguientes canciones empiezan en r2.dev.
   Future<bool> _downloadOne(Song song) async {
     final file = await audioFile(song);
     final part = File('${file.path}.part');
+    // Las direcciones se fijan al empezar la canción: si el Worker cae a mitad, el siguiente intento sigue siendo r2.dev.
+    final sources = audioUris(song);
     for (var attempt = 1; attempt <= 3; attempt++) {
+      final uri = sources[(attempt - 1) % sources.length];
       try {
-        // Intentos 1 y 3 en R2; el 2 en la web, por si R2 falla o aún no tiene la canción.
-        final uri = attempt == 2 ? fallbackAudioUri(song) : audioUri(song);
-        final response = await _client
-            .send(http.Request('GET', uri))
-            .timeout(const Duration(seconds: 30));
+        final http.StreamedResponse response;
+        try {
+          response = await _client
+              .send(http.Request('GET', uri))
+              .timeout(const Duration(seconds: 30));
+        } catch (_) {
+          if (_isWorkerAudio(uri)) _api.reportWorkerFailure();
+          rethrow;
+        }
+        if (_isWorkerAudio(uri) &&
+            !response.headers.containsKey(kWorkerHeader)) {
+          _api.reportWorkerFailure();
+        }
         if (response.statusCode != 200) {
-          throw HttpException('HTTP ${response.statusCode}');
+          throw HttpException('HTTP ${response.statusCode}', uri: uri);
         }
         final sink = part.openWrite();
         try {

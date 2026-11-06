@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:reminiscencia/api_config.dart';
 import 'package:reminiscencia/app_error.dart';
 import 'package:reminiscencia/library_controller.dart';
 import 'package:reminiscencia/library_store.dart';
@@ -108,38 +109,86 @@ void main() {
     );
 
     test(
-      'una canción transmitida que falla en R2 se reintenta una sola vez desde la web',
+      'una canción transmitida que falla se reintenta con cada dirección que queda, una vez cada una (ADR-0031)',
       () {
+        final worker = Uri.parse('https://w.prueba.workers.dev/audio/$kA.opus');
+        final r2 = Uri.parse('${kR2AudioBase}audio/$kA.opus');
+        final webUri = Uri.parse('${kLibraryBase}audio/$kA.opus');
+        final sources = [worker, r2, webUri];
         expect(
-          shouldRetryFromFallback(song: _song(kA), cached: false, tried: {}),
-          isTrue,
+          nextFallbackUri(
+            song: _song(kA),
+            cached: false,
+            sources: sources,
+            tried: {worker},
+          ),
+          r2,
         );
-        // Ya reintentada en esta cola: se salta como antes.
         expect(
-          shouldRetryFromFallback(song: _song(kA), cached: false, tried: {kA}),
-          isFalse,
+          nextFallbackUri(
+            song: _song(kA),
+            cached: false,
+            sources: sources,
+            tried: {worker, r2},
+          ),
+          webUri,
+        );
+        // Ya probadas todas en esta cola: se salta como antes.
+        expect(
+          nextFallbackUri(
+            song: _song(kA),
+            cached: false,
+            sources: sources,
+            tried: {worker, r2, webUri},
+          ),
+          isNull,
+        );
+        // Sin Worker: r2.dev y una sola vez la web, como antes.
+        expect(
+          nextFallbackUri(
+            song: _song(kA),
+            cached: false,
+            sources: [r2, webUri],
+            tried: {r2},
+          ),
+          webUri,
         );
         expect(
-          shouldRetryFromFallback(song: _song(kB), cached: false, tried: {kA}),
-          isTrue,
+          nextFallbackUri(
+            song: _song(kA),
+            cached: false,
+            sources: [r2, webUri],
+            tried: {r2, webUri},
+          ),
+          isNull,
         );
       },
     );
 
     test(
-      'no se reintenta desde la web lo guardado, lo local ni lo que no tiene audio en la web',
+      'no se reintenta lo guardado, lo local ni lo que no tiene audio en la web',
       () {
+        final sources = [
+          Uri.parse('${kR2AudioBase}audio/$kA.opus'),
+          Uri.parse('${kLibraryBase}audio/$kA.opus'),
+        ];
         expect(
-          shouldRetryFromFallback(song: _song(kA), cached: true, tried: {}),
-          isFalse,
-        );
-        expect(
-          shouldRetryFromFallback(
-            song: _song(kLocal, local: true),
-            cached: false,
+          nextFallbackUri(
+            song: _song(kA),
+            cached: true,
+            sources: sources,
             tried: {},
           ),
-          isFalse,
+          isNull,
+        );
+        expect(
+          nextFallbackUri(
+            song: _song(kLocal, local: true),
+            cached: false,
+            sources: sources,
+            tried: {},
+          ),
+          isNull,
         );
         final noWebAudio = Song(
           id: 'yt-abc',
@@ -153,8 +202,13 @@ void main() {
           audio: '',
         );
         expect(
-          shouldRetryFromFallback(song: noWebAudio, cached: false, tried: {}),
-          isFalse,
+          nextFallbackUri(
+            song: noWebAudio,
+            cached: false,
+            sources: sources,
+            tried: {},
+          ),
+          isNull,
         );
       },
     );
@@ -270,23 +324,149 @@ void main() {
       },
     );
 
-    test('el audio se pide a R2 y, si falla, a la web', () async {
-      final hosts = <String>[];
-      final store2 = LibraryStore(
+    test(
+      'sin Worker (las pruebas nunca usan el real), el audio se pide a R2 y, si falla, a la web',
+      () async {
+        final hosts = <String>[];
+        final store2 = LibraryStore(
+          root: () async => Directory('${tmp.path}/biblioteca'),
+          client: MockClient.streaming((request, _) async {
+            hosts.add(request.url.host);
+            if (request.url.host.endsWith('r2.dev')) {
+              return http.StreamedResponse(const Stream.empty(), 404);
+            }
+            return http.StreamedResponse(Stream.value([1, 2, 3]), 200);
+          }),
+        );
+        final song = Song.fromJson(FakeWeb._json('Sr2'));
+        // test/flutter_test_config.dart deja las rutas comunes sin Worker: ninguna dirección es de workers.dev.
+        expect(apiRoutes.base, isEmpty);
+        expect(store2.audioUris(song).map((uri) => uri.host), [
+          Uri.parse(kR2AudioBase).host,
+          Uri.parse(kLibraryBase).host,
+        ]);
+        expect(store2.audioUri(song).host, endsWith('r2.dev'));
+        expect(await store2.downloadAll([song], (_, _) {}), 1);
+        expect(hosts, [
+          Uri.parse(kR2AudioBase).host,
+          Uri.parse(kLibraryBase).host,
+        ]);
+        expect(await hasCachedAudio('Sr2'), isTrue);
+      },
+    );
+
+    group('audio por el Worker (ADR-0031)', () {
+      const workerBase = 'https://reminiscencia-api.prueba.workers.dev';
+      final workerHost = Uri.parse(workerBase).host;
+
+      LibraryStore storeWith(
+        ApiRoutes routes,
+        Future<http.StreamedResponse> Function(http.BaseRequest) reply,
+      ) => LibraryStore(
         root: () async => Directory('${tmp.path}/biblioteca'),
-        client: MockClient.streaming((request, _) async {
-          hosts.add(request.url.host);
-          if (request.url.host.endsWith('r2.dev')) {
-            return http.StreamedResponse(const Stream.empty(), 404);
-          }
-          return http.StreamedResponse(Stream.value([1, 2, 3]), 200);
-        }),
+        routes: routes,
+        client: MockClient.streaming((request, _) => reply(request)),
       );
-      final song = Song.fromJson(FakeWeb._json('Sr2'));
-      expect(store2.audioUri(song).host, endsWith('r2.dev'));
-      expect(await store2.downloadAll([song], (_, _) {}), 1);
-      expect(hosts, [Uri.parse(kAudioBase).host, Uri.parse(kLibraryBase).host]);
-      expect(await hasCachedAudio('Sr2'), isTrue);
+
+      test(
+        'el orden es Worker, r2.dev y la web; la dirección sale de las rutas del API',
+        () {
+          final routes = ApiRoutes(base: workerBase);
+          expect(routes.audioBase, '$workerBase/');
+          final song = Song.fromJson(FakeWeb._json('Sw'));
+          final uris = storeWith(
+            routes,
+            (_) async => http.StreamedResponse(const Stream.empty(), 500),
+          ).audioUris(song);
+          expect(uris.map((uri) => uri.toString()), [
+            '$workerBase/audio/Sw.opus',
+            '${kR2AudioBase}audio/Sw.opus',
+            '${kLibraryBase}audio/Sw.opus',
+          ]);
+          expect(ApiRoutes(base: '').audioBase, isEmpty);
+        },
+      );
+
+      test('descarga del Worker al primer intento, sin tocar r2.dev', () async {
+        final hosts = <String>[];
+        final store2 = storeWith(ApiRoutes(base: workerBase), (request) async {
+          hosts.add(request.url.host);
+          return http.StreamedResponse(
+            Stream.value([7, 7]),
+            200,
+            headers: {kWorkerHeader: '1'},
+          );
+        });
+        final song = Song.fromJson(FakeWeb._json('Sw1'));
+        expect(await store2.downloadAll([song], (_, _) {}), 1);
+        expect(hosts, [workerHost]);
+        expect(await hasCachedAudio('Sw1'), isTrue);
+      });
+
+      test('un 404 del Worker pasa a r2.dev sin darlo por caído', () async {
+        final hosts = <String>[];
+        final routes = ApiRoutes(base: workerBase);
+        final store2 = storeWith(routes, (request) async {
+          hosts.add(request.url.host);
+          if (request.url.host == workerHost) {
+            return http.StreamedResponse(
+              const Stream.empty(),
+              404,
+              headers: {kWorkerHeader: '1'},
+            );
+          }
+          return http.StreamedResponse(Stream.value([1]), 200);
+        });
+        final song = Song.fromJson(FakeWeb._json('Sw2'));
+        expect(await store2.downloadAll([song], (_, _) {}), 1);
+        expect(hosts, [workerHost, Uri.parse(kR2AudioBase).host]);
+        expect(routes.usesWorker, isTrue);
+      });
+
+      test(
+        'si el Worker no responde, r2.dev, y las siguientes canciones empiezan en r2.dev',
+        () async {
+          final hosts = <String>[];
+          final routes = ApiRoutes(base: workerBase);
+          final store2 = storeWith(routes, (request) async {
+            hosts.add(request.url.host);
+            if (request.url.host == workerHost) {
+              throw const SocketException('corte');
+            }
+            if (request.url.host.endsWith('r2.dev')) {
+              return http.StreamedResponse(const Stream.empty(), 503);
+            }
+            return http.StreamedResponse(Stream.value([1]), 200);
+          });
+          Song song(String id) => Song.fromJson(FakeWeb._json(id));
+          expect(
+            await store2.downloadAll([song('Sw3'), song('Sw4')], (_, _) {}),
+            2,
+          );
+          final r2 = Uri.parse(kR2AudioBase).host;
+          final webHost = Uri.parse(kLibraryBase).host;
+          // Primera canción: Worker (falla), r2.dev (503), la web. Segunda: ya sin Worker.
+          expect(hosts, [workerHost, r2, webHost, r2, webHost]);
+          expect(routes.usesWorker, isFalse);
+          expect(routes.audioBase, isEmpty);
+        },
+      );
+
+      test(
+        'una página que no es del Worker (sin su cabecera) también lo da por caído',
+        () async {
+          final routes = ApiRoutes(base: workerBase);
+          final store2 = storeWith(routes, (request) async {
+            if (request.url.host == workerHost) {
+              return http.StreamedResponse(const Stream.empty(), 500);
+            }
+            return http.StreamedResponse(Stream.value([1]), 200);
+          });
+          final song = Song.fromJson(FakeWeb._json('Sw5'));
+          expect(await store2.downloadAll([song], (_, _) {}), 1);
+          expect(routes.usesWorker, isFalse);
+        },
+      );
     });
 
     test('un catálogo que cambia actualiza la biblioteca', () async {

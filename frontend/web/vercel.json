@@ -11,7 +11,7 @@
   "redirects": [
     {
       "source": "/audio/:file",
-      "destination": "https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/audio/:file",
+      "destination": "https://reminiscencia-api.reminiscencia-app.workers.dev/audio/:file",
       "permanent": false
     }
   ],
@@ -21,7 +21,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; media-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; connect-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://*.workers.dev; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; media-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://reminiscencia-api.reminiscencia-app.workers.dev; connect-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://*.workers.dev; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'"
         }
       ]
     }

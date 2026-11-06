@@ -3,21 +3,49 @@
 // No usa DOM ni APIs del navegador, así que se prueba directamente en node
 // (tests/web-unit/offline-core.test.mjs).
 
+import { normalizeApiBase, WORKER_API_BASE } from './api-config.js';
+
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 29;
+export const SHELL_VERSION = 30;
 
-/** Origen público del bucket de audio en Cloudflare R2 (ADR-0020). Debe coincidir con connect-src de vercel.json. */
+/** Origen público del bucket de audio en Cloudflare R2 por r2.dev (ADR-0020): las portadas y, desde ADR-0031, el
+ *  respaldo del audio. Debe coincidir con media-src, connect-src e img-src de vercel.json. */
 export const AUDIO_ORIGIN = 'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev';
 
-/** URL en R2 de un audio de la biblioteca (/audio/<id>.opus), o null si no lo es. Las canciones subidas a este
- *  navegador (L<16 hex>) no están en R2. */
-export function r2AudioUrl(url) {
+/** Origen del Worker que sirve el audio público (ADR-0031): el mismo del API, WORKER_API_BASE de js/api-config.js (no
+ *  se repite aquí), o '' si no hay Worker (entonces el audio va a r2.dev, como antes). vercel.json redirige
+ *  /audio/:file a este origen y lo admite en media-src; tests/web-unit/cabeceras.test.mjs comprueba que coinciden. */
+export const WORKER_AUDIO_ORIGIN = normalizeApiBase(WORKER_API_BASE);
+
+/** ¿Es la ruta de un audio de la biblioteca que se pide fuera (no una canción subida a este navegador, L<16 hex)? */
+function remoteAudioPath(url) {
   const path = pathOf(url);
   if (path === null || !AUDIO_PATTERN.test(path) || LOCAL_AUDIO_PATTERN.test(path)) return null;
-  return `${AUDIO_ORIGIN}${path}`;
+  return path;
 }
+
+/** URL en R2 (r2.dev) de un audio de la biblioteca (/audio/<id>.opus), o null si no lo es. Las canciones subidas a
+ *  este navegador (L<16 hex) no están en R2. */
+export function r2AudioUrl(url) {
+  const path = remoteAudioPath(url);
+  return path === null ? null : `${AUDIO_ORIGIN}${path}`;
+}
+
+/** Dónde pedir un audio de la biblioteca, por orden (ADR-0031): el Worker (si hay) y r2.dev. El service worker prueba
+ *  cada una y, si todas fallan, el propio origen (que vercel.json redirige al Worker). [] si no es de la biblioteca o es
+ *  una canción subida a este navegador. workerOrigin es inyectable para las pruebas. */
+export function remoteAudioUrls(url, workerOrigin = WORKER_AUDIO_ORIGIN) {
+  const path = remoteAudioPath(url);
+  if (path === null) return [];
+  const worker = normalizeApiBase(workerOrigin);
+  return [...(worker ? [`${worker}${path}`] : []), `${AUDIO_ORIGIN}${path}`];
+}
+
+/** Tiempo para que el Worker o r2.dev empiecen a responder antes de pasar al siguiente (solo cabeceras: una vez
+ *  empezada, la descarga no tiene límite). */
+export const AUDIO_HEADERS_TIMEOUT_MS = 10_000;
 
 /** Prefijo de las cachés del shell; sirve para reconocer las antiguas al limpiar. */
 export const SHELL_CACHE_PREFIX = 'reminiscencia-shell-';
@@ -41,6 +69,7 @@ const SHELL_PATTERNS = [
 ];
 const DATA_PATTERN = /^\/data\/[^/]+\.json$/;
 const AUDIO_PATTERN = /^\/audio\/[^/]+\.opus$/;
+const LOCAL_AUDIO_PATTERN = /^\/audio\/(L[0-9a-f]{16})\.opus$/;
 const COVER_PATTERN = /^\/covers\/[A-Za-z0-9_-]{1,64}\.jpg$/;
 
 /** Rutas desde la raíz del sitio que el service worker precarga al instalarse. Las que
@@ -144,8 +173,6 @@ export function isDataRequest(url) {
   const path = pathOf(url);
   return path !== null && DATA_PATTERN.test(path);
 }
-
-const LOCAL_AUDIO_PATTERN = /^\/audio\/(L[0-9a-f]{16})\.opus$/;
 
 /** Identificador de una canción subida a este navegador si la ruta es /audio/L<16 hex>.opus (la sirve el service
  *  worker desde IndexedDB; ADR-0015), o null. */

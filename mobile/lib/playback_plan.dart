@@ -15,15 +15,22 @@ int? nextAvailableIndex(List<bool> playable, int from) {
   return null;
 }
 
-/// Si una canción que se transmitía y ha fallado se reintenta una vez desde la web (respaldo de R2, ADR-0020) antes de
-/// saltarla. Solo las de la biblioteca que no están en el teléfono (ni locales ni guardadas), con audio en la web
-/// (las de YouTube no tienen) y que no se han reintentado ya en esta cola.
-bool shouldRetryFromFallback({
+/// Siguiente dirección desde la que reintentar una canción que se transmitía y ha fallado, antes de saltarla, o null
+/// si no hay que reintentar (ADR-0031): la primera de [sources] (LibraryStore.audioUris: Worker, r2.dev y la web; sin
+/// Worker, r2.dev y la web) que no está en [tried] (las ya probadas en esta cola). Solo las de la biblioteca que no
+/// están en el teléfono (ni locales ni guardadas) y con audio en la web (las de YouTube no tienen).
+Uri? nextFallbackUri({
   required Song song,
   required bool cached,
-  required Set<String> tried,
-}) =>
-    !song.local && !cached && song.audio.isNotEmpty && !tried.contains(song.id);
+  required List<Uri> sources,
+  required Set<Uri> tried,
+}) {
+  if (song.local || cached || song.audio.isEmpty) return null;
+  for (final uri in sources) {
+    if (!tried.contains(uri)) return uri;
+  }
+  return null;
+}
 
 /// Ids cuyo audio guardado puede borrarse: los que ya no están en el catálogo y no están sonando ni en la cola.
 /// Las canciones del catálogo nunca se borran; las locales no entran aquí (viven en otra carpeta).
