@@ -341,3 +341,200 @@ describe('portadas al instante', () => {
     assert.deepEqual(await response.json(), { [SONG]: reply.portada });
   });
 });
+
+describe('audio público por el Worker (ADR-0031)', () => {
+  const AUDIO_ID = 'S0123456789abcdef';
+  const AUDIO_PATH = `/audio/${AUDIO_ID}.opus`;
+  const BYTES = Uint8Array.from({ length: 1000 }, (_, i) => i % 251);
+  const withAudio = (env) => {
+    const world = setup(env ? { env } : {});
+    world.publicBucket.seed(`audio/${AUDIO_ID}.opus`, BYTES, { contentType: 'audio/ogg' });
+    world.publicBucket.calls.length = 0;
+    return world;
+  };
+  const bytesOf = async (response) => new Uint8Array(await response.arrayBuffer());
+
+  test('GET sin Range: 200 con el audio entero, tipo Opus, caché de un año, ETag y la cabecera del Worker', async () => {
+    const { call, publicBucket } = withAudio();
+    const response = await call(AUDIO_PATH);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await bytesOf(response), BYTES);
+    assert.equal(response.headers.get('content-type'), 'audio/ogg; codecs=opus');
+    assert.equal(response.headers.get('accept-ranges'), 'bytes');
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(response.headers.get('content-length'), '1000');
+    assert.match(response.headers.get('etag'), /^"v\d+"$/);
+    assert.equal(response.headers.get(API_HEADER), '1');
+    // Sin Origin (la APK, el elemento <audio>): se atiende, sin CORS.
+    assert.equal(response.headers.get('access-control-allow-origin'), null);
+    // Una sola lectura del bucket, sin head().
+    assert.deepEqual(publicBucket.calls.map((item) => item.op), ['get']);
+  });
+
+  test('CORS para la web: expone Content-Range, Content-Length, Accept-Ranges y ETag; preflight con Range y HEAD', async () => {
+    const { call } = withAudio();
+    const response = await call(AUDIO_PATH, { headers: { Origin: WEB_ORIGIN, Range: 'bytes=0-9' } });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get('access-control-allow-origin'), WEB_ORIGIN);
+    const exposed = response.headers.get('access-control-expose-headers').split(',').map((item) => item.trim());
+    for (const name of [API_HEADER, 'Content-Range', 'Content-Length', 'Accept-Ranges', 'ETag']) assert.ok(exposed.includes(name), name);
+    const preflight = await call(AUDIO_PATH, { method: 'OPTIONS', headers: { Origin: WEB_ORIGIN, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'range' } });
+    assert.equal(preflight.status, 204);
+    assert.match(preflight.headers.get('access-control-allow-headers'), /\bRange\b/);
+    assert.match(preflight.headers.get('access-control-allow-methods'), /HEAD/);
+  });
+
+  test('otro origen: 403 sin leer el bucket', async () => {
+    const { call, publicBucket } = withAudio();
+    const response = await call(AUDIO_PATH, { headers: { Origin: 'https://malo.example' } });
+    assert.equal(response.status, 403);
+    assert.equal(publicBucket.calls.length, 0);
+  });
+
+  test('rangos de un tramo: 206 con Content-Range, leídos por R2 (range) del mismo objeto, también abiertos y sufijos', async () => {
+    const { call, publicBucket } = withAudio();
+    const cases = [
+      ['bytes=0-99', 0, 99],
+      ['bytes=990-', 990, 999],
+      ['bytes=-10', 990, 999],
+      ['bytes=500-5000', 500, 999],
+      ['bytes=0-0', 0, 0],
+      ['bytes=-5000', 0, 999],
+    ];
+    for (const [header, start, end] of cases) {
+      publicBucket.calls.length = 0;
+      const response = await call(AUDIO_PATH, { headers: { Range: header } });
+      assert.equal(response.status, 206, header);
+      assert.equal(response.headers.get('content-range'), `bytes ${start}-${end}/1000`, header);
+      assert.equal(response.headers.get('content-length'), String(end - start + 1), header);
+      assert.equal(response.headers.get('content-type'), 'audio/ogg; codecs=opus');
+      assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+      assert.deepEqual(await bytesOf(response), BYTES.slice(start, end + 1), header);
+      const get = publicBucket.calls.find((item) => item.op === 'get');
+      assert.deepEqual(get.options.range, { offset: start, length: end - start + 1 }, header);
+      assert.deepEqual(get.options.onlyIf, { etagMatches: 'v1' }, header);
+    }
+  });
+
+  test('rango fuera del audio: 416 con Content-Range bytes */tamaño; rango inválido o de varios tramos: 200 entero', async () => {
+    const { call } = withAudio();
+    for (const header of ['bytes=1000-', 'bytes=5000-6000', 'bytes=-0']) {
+      const response = await call(AUDIO_PATH, { headers: { Range: header } });
+      assert.equal(response.status, 416, header);
+      assert.equal(response.headers.get('content-range'), 'bytes */1000', header);
+    }
+    for (const header of ['bytes=0-1,5-6', 'items=0-5', 'bytes=9-3', 'bytes=abc']) {
+      const response = await call(AUDIO_PATH, { headers: { Range: header } });
+      assert.equal(response.status, 200, header);
+      assert.equal(response.headers.get('content-range'), null, header);
+      assert.equal((await bytesOf(response)).length, 1000, header);
+    }
+  });
+
+  test('If-Range con otra etiqueta: se ignora el Range y se sirve entero; con la suya, el tramo', async () => {
+    const { call } = withAudio();
+    const etag = (await call(AUDIO_PATH, { method: 'HEAD' })).headers.get('etag');
+    assert.equal((await call(AUDIO_PATH, { headers: { Range: 'bytes=0-9', 'If-Range': '"otra"' } })).status, 200);
+    assert.equal((await call(AUDIO_PATH, { headers: { Range: 'bytes=0-9', 'If-Range': etag } })).status, 206);
+  });
+
+  test('HEAD: cabeceras sin cuerpo (entero o tramo) y sin leer el audio', async () => {
+    const { call, publicBucket } = withAudio();
+    const whole = await call(AUDIO_PATH, { method: 'HEAD' });
+    assert.equal(whole.status, 200);
+    assert.equal(whole.headers.get('content-length'), '1000');
+    assert.equal(whole.headers.get('content-type'), 'audio/ogg; codecs=opus');
+    assert.equal(whole.headers.get('accept-ranges'), 'bytes');
+    assert.equal((await bytesOf(whole)).length, 0);
+    const part = await call(AUDIO_PATH, { method: 'HEAD', headers: { Range: 'bytes=10-19' } });
+    assert.equal(part.status, 206);
+    assert.equal(part.headers.get('content-range'), 'bytes 10-19/1000');
+    assert.equal(part.headers.get('content-length'), '10');
+    assert.ok(publicBucket.calls.every((item) => item.op === 'head'));
+    assert.equal((await call('/audio/S00000000000000ff.opus', { method: 'HEAD' })).status, 404);
+  });
+
+  test('If-None-Match con su ETag: 304 sin cuerpo (GET, HEAD y con Range); con otra: 200', async () => {
+    const { call } = withAudio();
+    const etag = (await call(AUDIO_PATH)).headers.get('etag');
+    for (const [init, label] of [
+      [{ headers: { 'If-None-Match': etag } }, 'GET'],
+      [{ headers: { 'If-None-Match': `W/${etag}` } }, 'GET débil'],
+      [{ headers: { 'If-None-Match': `"otra", ${etag}` } }, 'GET lista'],
+      [{ headers: { 'If-None-Match': '*' } }, 'GET *'],
+      [{ method: 'HEAD', headers: { 'If-None-Match': etag } }, 'HEAD'],
+      [{ headers: { 'If-None-Match': etag, Range: 'bytes=0-9' } }, 'Range'],
+    ]) {
+      const response = await call(AUDIO_PATH, init);
+      assert.equal(response.status, 304, label);
+      assert.equal(response.headers.get('etag'), etag, label);
+      assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable', label);
+      assert.equal((await bytesOf(response)).length, 0, label);
+    }
+    const changed = await call(AUDIO_PATH, { headers: { 'If-None-Match': '"otra"' } });
+    assert.equal(changed.status, 200);
+    assert.equal((await bytesOf(changed)).length, 1000);
+  });
+
+  test('audio que no está en el bucket público (privado o inexistente): 404 sin caché', async () => {
+    const { call } = withAudio();
+    const response = await call('/audio/S00000000000000ff.opus');
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get(API_HEADER), '1');
+    assert.equal((await call('/audio/S00000000000000ff.opus', { headers: { Range: 'bytes=0-9' } })).status, 404);
+  });
+
+  test('ids no válidos y rutas fuera de audio/: 404 sin tocar el bucket', async () => {
+    const { call, publicBucket } = withAudio();
+    publicBucket.seed('portadas/indice.json', '{}');
+    publicBucket.seed('audio/L0123456789abcdef.opus', BYTES);
+    publicBucket.calls.length = 0;
+    for (const path of [
+      '/audio/L0123456789abcdef.opus', // subida local de un navegador
+      '/audio/S0123456789ABCDEF.opus', // mayúsculas
+      '/audio/S0123456789abcde.opus', // 15 hex
+      '/audio/S0123456789abcdef0.opus', // 17 hex
+      '/audio/S0123456789abcdef.mp3',
+      '/audio/S0123456789abcdef.opus/x',
+      '/audio/..%2Fportadas%2Findice.json',
+      '/audio/%2e%2e/portadas/indice.json',
+      '/audio/',
+      '/audio/portadas/indice.json',
+      '/audio/../portadas/indice.json',
+    ]) {
+      const response = await call(path);
+      assert.equal(response.status, 404, path);
+    }
+    assert.equal(publicBucket.calls.length, 0);
+  });
+
+  test('POST u otro método: 405; sin bucket público: 503; R2 que falla: 502', async () => {
+    const { call } = withAudio();
+    const post = await call(AUDIO_PATH, { method: 'POST', body: 'x' });
+    assert.equal(post.status, 405);
+    assert.equal(post.headers.get('allow'), 'GET, HEAD');
+    const noBucket = await setup({ env: { PUBLIC_BUCKET: undefined } }).call(AUDIO_PATH);
+    assert.equal(noBucket.status, 503);
+    assert.equal(noBucket.headers.get(API_HEADER), '1');
+    const failing = fakeR2({ failOn: (operation) => operation === 'get' || operation === 'head' });
+    for (const init of [{}, { headers: { Range: 'bytes=0-9' } }]) {
+      const broken = await handleRequest(new Request(`https://w.example${AUDIO_PATH}`, init), { PUBLIC_BUCKET: failing });
+      assert.equal(broken.status, 502);
+      assert.equal(broken.headers.get(API_HEADER), '1');
+    }
+  });
+
+  test('si el audio cambia entre head() y get(), 503 para reintentar (nunca un tramo de otro fichero)', async () => {
+    const { call, publicBucket } = withAudio();
+    const originalHead = publicBucket.head;
+    publicBucket.head = async (key) => {
+      const meta = await originalHead(key);
+      publicBucket.seed(key, BYTES.slice(0, 500));
+      return meta;
+    };
+    const response = await call(AUDIO_PATH, { headers: { Range: 'bytes=0-9' } });
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('retry-after'), '1');
+  });
+});

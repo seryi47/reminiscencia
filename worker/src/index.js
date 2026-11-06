@@ -10,19 +10,22 @@
 //   GET  /api/editar?incidencia=N   estado de una edición (como api/editar.js).
 //   POST /api/portada               solo portadas (lo mismo que la portada de /api/editar).
 //   GET  /api/portadas              el índice de portadas leído del bucket, sin caché.
+//   GET  /audio/<id>.opus           audio público del bucket público, con rangos, ETag y caché de un año (también
+//   HEAD                            HEAD); id S + 16 hex, nada fuera de audio/ (ADR-0031, worker/src/audio.js).
 //
 // CORS solo para el origen de la web (https://reminiscencia.vercel.app; más los de ALLOWED_ORIGINS). localhost y
 // 127.0.0.1 solo con ALLOW_LOCALHOST="1" (el Worker simulado de las pruebas o «wrangler dev»), NUNCA en producción: el
 // 2026-11-06 el navegador de las pruebas habló con el Worker real por esa puerta y abrió incidencias y subidas reales.
-// Una petición con otro Origin se rechaza con 403 sin hacer nada. Sin Origin
-// (la APK, curl) se atiende. Todas las respuestas llevan X-Reminiscencia-Api: así los clientes distinguen una respuesta
-// del Worker de una página de error de Cloudflare y saben cuándo volver a Vercel.
+// Una petición con otro Origin se rechaza con 403 sin hacer nada. Sin Origin (la APK, curl, el elemento <audio> tras
+// la redirección de vercel.json) se atiende. Todas las respuestas llevan X-Reminiscencia-Api: así los clientes
+// distinguen una respuesta del Worker de una página de error de Cloudflare y saben cuándo volver a Vercel.
 //
 // Bindings y secretos (worker/wrangler.toml): PRIVATE_BUCKET (reminiscencia-audio-privado), PUBLIC_BUCKET
 // (reminiscencia-audio) y el secreto GITHUB_TOKEN (wrangler secret put GITHUB_TOKEN; Contents e Issues en escritura).
 
 import { EditError, handleEditRequest, jsonResponse, readCover } from '../../frontend/web/server/edit-core.js';
 import { handleUploadRequest, UploadError, WORKER_MAX_CHUNK_BYTES } from '../../frontend/web/server/upload-core.js';
+import { AUDIO_EXPOSE_HEADERS, handleAudioRequest } from './audio.js';
 import { readCoverIndex, saveCoverToBucket } from './portadas.js';
 import { bindingStorage } from './r2-storage.js';
 import { serializeCoverIndex } from '../../frontend/web/js/cover-index.js';
@@ -32,7 +35,7 @@ export const API_HEADER = 'X-Reminiscencia-Api';
 export const WEB_ORIGIN = 'https://reminiscencia.vercel.app';
 export const ALLOWED_HEADERS = Object.freeze([
   'Content-Type', 'X-Nombre-Archivo', 'X-Subida-Id', 'X-Parte', 'X-Partes', 'X-Album-Id', 'X-Album-Name',
-  'X-Artista-Cancion', 'X-Portada-Id',
+  'X-Artista-Cancion', 'X-Portada-Id', 'Range', 'If-None-Match', 'If-Range',
 ]);
 const LOCAL_ORIGIN = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d{1,5})?$/;
 export const COVER_DONE_MESSAGE = 'Portada guardada: ya la ven todos.';
@@ -48,18 +51,18 @@ export function isAllowedOrigin(origin, env = {}) {
   return extra.includes(origin);
 }
 
-function corsHeaders(origin) {
+function corsHeaders(origin, expose = []) {
   return origin ? {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Expose-Headers': API_HEADER,
+    'Access-Control-Expose-Headers': [API_HEADER, ...expose].join(', '),
     Vary: 'Origin',
   } : { Vary: 'Origin' };
 }
 
 /** Copia la respuesta con las cabeceras del Worker (CORS y X-Reminiscencia-Api). */
-function finish(response, origin) {
+function finish(response, origin, expose = []) {
   const headers = new Headers(response.headers);
-  for (const [name, value] of Object.entries(corsHeaders(origin))) headers.set(name, value);
+  for (const [name, value] of Object.entries(corsHeaders(origin, expose))) headers.set(name, value);
   headers.set(API_HEADER, '1');
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -117,12 +120,14 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
     return finish(new Response(null, {
       status: 204,
       headers: {
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
         'Access-Control-Allow-Headers': ALLOWED_HEADERS.join(', '),
         'Access-Control-Max-Age': '86400',
       },
     }), origin);
   }
+  const audio = await handleAudioRequest(request, env.PUBLIC_BUCKET);
+  if (audio) return finish(audio, origin, AUDIO_EXPOSE_HEADERS);
   let response;
   switch (path) {
     case '/api/salud':
