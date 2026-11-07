@@ -15,6 +15,15 @@ class UploadsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Escucha a las subidas directamente: cada trozo o porcentaje repinta solo este panel, no Tu biblioteca entera
+    // (ADR-0033).
+    return ListenableBuilder(
+      listenable: services.library.uploads,
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     final uploads = services.library.uploads;
     final entries = uploads.entries;
     final sections = uploads.sections;
@@ -29,18 +38,21 @@ class UploadsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          // Resumen y «Quitar publicadas»: si no caben en una línea (320 dp con el texto grande), el botón baja a la
+          // siguiente en lugar de salirse por la derecha (ADR-0033).
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
             children: [
-              Expanded(
-                child: Semantics(
-                  liveRegion: true,
-                  label: 'Subidas: ${uploads.summary}',
-                  excludeSemantics: true,
-                  child: Text(
-                    uploads.summary,
-                    key: const Key('uploads-summary'),
-                    style: theme.textTheme.titleSmall,
-                  ),
+              Semantics(
+                liveRegion: true,
+                label: 'Subidas: ${uploads.summary}',
+                excludeSemantics: true,
+                child: Text(
+                  uploads.summary,
+                  key: const Key('uploads-summary'),
+                  style: theme.textTheme.titleSmall,
                 ),
               ),
               if (anyPublished)
@@ -151,7 +163,10 @@ class _UploadRow extends StatelessWidget {
     final playable = entry.stage == UploadStage.published
         ? entry.publishedId != null
         : entry.opusPath != null;
-    final busy = library.importing;
+    // Lo que se anuncia: el paso, no cada porcentaje (como la web).
+    final announced = entry.stage == UploadStage.sending && !entry.waitingToSend
+        ? 'Subiendo…'
+        : status;
     return Padding(
       key: Key('upload-row-${entry.key}'),
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -161,7 +176,7 @@ class _UploadRow extends StatelessWidget {
           Semantics(
             container: true,
             liveRegion: true,
-            label: '${entry.name}: $status',
+            label: '${entry.name}: $announced',
             excludeSemantics: true,
             child: Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -185,13 +200,23 @@ class _UploadRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: entry.progress,
-                      minHeight: 4,
-                      color: failed ? theme.colorScheme.error : palette.accent,
-                      backgroundColor: palette.cardPressed,
+                  // Sin nada que medir, la barra no se ve pero guarda su hueco: la fila no cambia de alto (ADR-0033).
+                  Visibility(
+                    visible: entry.showsBar,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        key: Key('upload-bar-${entry.key}'),
+                        value: entry.progress,
+                        minHeight: 4,
+                        color: failed
+                            ? theme.colorScheme.error
+                            : palette.accent,
+                        backgroundColor: palette.cardPressed,
+                      ),
                     ),
                   ),
                 ],
@@ -216,13 +241,12 @@ class _UploadRow extends StatelessWidget {
                   _ActionButton(
                     label: 'Reintentar',
                     semanticsLabel: 'Reintentar la subida de «${entry.title}»',
-                    onPressed: busy
-                        ? null
-                        : () => runWithNotice(
-                            context,
-                            () => library.retryUpload(entry.key),
-                            failurePrefix: 'No se pudo reintentar',
-                          ),
+                    // Se puede reintentar aunque otras se estén subiendo: entra en la cola (ADR-0033).
+                    onPressed: () => runWithNotice(
+                      context,
+                      () => library.retryUpload(entry.key),
+                      failurePrefix: 'No se pudo reintentar',
+                    ),
                   ),
               ],
             ),

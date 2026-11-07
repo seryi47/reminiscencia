@@ -92,9 +92,8 @@ class _LibraryPageState extends State<LibraryPage> {
                       alignment: Alignment.centerLeft,
                       child: FilledButton.icon(
                         key: const Key('upload-songs'),
-                        onPressed: library.importing
-                            ? null
-                            : () => uploadSongs(context, services),
+                        // También mientras se suben otras: la tanda nueva espera su turno (ADR-0033).
+                        onPressed: () => uploadSongs(context, services),
                         icon: const Icon(Icons.upload_rounded),
                         label: const Text('Subir canciones'),
                       ),

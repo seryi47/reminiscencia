@@ -57,7 +57,7 @@ function metaLine(context, songs) {
   if (context.owner) parts.push(el('span', { class: 'meta-owner' }, context.owner));
   if (context.year) parts.push(String(context.year));
   const count = songCountText(songs.length);
-  parts.push(songs.length > 0 ? `${count}, ${formatTotalDuration(totalDuration(songs))}` : count);
+  parts.push(el('span', { class: 'meta-nowrap' }, songs.length > 0 ? `${count}, ${formatTotalDuration(totalDuration(songs))}` : count));
   const out = [];
   parts.forEach((part, index) => {
     if (index > 0) out.push(DOT);
@@ -116,7 +116,7 @@ export function renderCollection(main, ctx, contextId) {
     actions.append(shuffleToggle(ctx));
     if (context.kind !== 'liked') actions.append(likeAllButton(ctx, context));
     const downloadable = songs.filter((song) => !song.local);
-    if (downloadable.length > 0) actions.append(downloadButton(ctx, contextId, downloadable));
+    if (downloadable.length > 0) actions.append(...downloadButton(ctx, contextId, downloadable));
   }
   if (editable.length > 0 && !selecting) {
     actions.append(el('button', {
@@ -126,7 +126,7 @@ export function renderCollection(main, ctx, contextId) {
       'data-testid': 'album-select',
       'data-key': 'album-select',
       on: { click: () => ctx.startAlbumSelection(context.folder.id) },
-    }, icon('check', { size: 16 }), 'Seleccionar'));
+    }, icon('check', { size: 16 }), el('span', { class: 'album-select-label' }, 'Seleccionar')));
   }
   const menuItems = collectionMenuItems(ctx, context, editDetails);
   if (menuItems.length > 0) {
@@ -323,20 +323,57 @@ function likeAllButton(ctx, context) {
   }, icon(all ? 'heart-filled' : 'heart', { size: 32 }));
 }
 
-function downloadButton(ctx, contextId, songs) {
+/**
+ * Estado del botón de descarga de una colección (ADR-0033): descargándose (con «3 de 8» y cancelable), descargada o
+ * por descargar. Lo usan el pintado de la página y la actualización en su sitio mientras se descarga.
+ */
+export function downloadState(ctx, contextId, songs) {
+  const progress = ctx.downloadProgress(contextId);
+  if (progress) {
+    return {
+      busy: true,
+      done: false,
+      ratio: progress.total > 0 ? progress.done / progress.total : 0,
+      label: `Cancelar la descarga (${progress.done} de ${progress.total})`,
+      status: ctx.downloadStatusText(progress),
+    };
+  }
   const done = songs.every((song) => ctx.state.cached.has(song.audio));
-  const busy = ctx.state.downloading.has(contextId);
-  const label = done ? 'Quitar la descarga' : busy ? 'Descargando…' : 'Descargar para escuchar sin conexión';
-  return el('button', {
+  return { busy: false, done, ratio: done ? 1 : 0, label: done ? 'Quitar la descarga' : 'Descargar para escuchar sin conexión', status: '' };
+}
+
+/** Pone al día un botón de descarga y su línea de estado sin volver a pintar la página (el foco no se mueve). */
+export function paintDownloadButton(button, status, info) {
+  button.classList.toggle('is-active', info.done);
+  button.classList.toggle('is-busy', info.busy);
+  button.setAttribute('aria-label', info.label);
+  button.setAttribute('aria-pressed', info.done ? 'true' : 'false');
+  button.title = info.busy ? info.status : info.label;
+  button.style.setProperty('--download-ratio', String(info.ratio));
+  const iconName = info.busy ? 'close' : info.done ? 'downloaded' : 'download';
+  if (button.dataset.icon !== iconName) {
+    button.dataset.icon = iconName;
+    button.replaceChildren(icon(iconName, { size: info.busy ? 16 : 32 }));
+  }
+  if (status) {
+    status.textContent = info.status;
+    status.hidden = info.status === '';
+  }
+}
+
+function downloadButton(ctx, contextId, songs) {
+  const button = el('button', {
     type: 'button',
-    class: `action-icon download-toggle${done ? ' is-active' : ''}`,
-    'aria-label': label,
-    'aria-pressed': done ? 'true' : 'false',
-    'aria-disabled': busy ? 'true' : null,
+    class: 'action-icon download-toggle',
     'data-testid': 'collection-download',
     'data-key': 'collection-download',
-    on: { click: () => { if (!busy) ctx.toggleDownload(contextId, songs, done); } },
-  }, icon(done ? 'downloaded' : 'download', { size: 32 }));
+    'data-download-context': contextId,
+    on: { click: () => ctx.toggleDownload(contextId, songs, downloadState(ctx, contextId, songs).done) },
+  });
+  // Línea «Descargando 3 de 8 · 2,4 MB» en el hueco inferior de la barra de acciones: no empuja nada al aparecer.
+  const status = el('p', { class: 'download-status', 'data-testid': 'collection-download-status', 'aria-hidden': 'true', hidden: true });
+  paintDownloadButton(button, status, downloadState(ctx, contextId, songs));
+  return [button, status];
 }
 
 // «Busquemos algo para tu lista»: búsqueda en el catálogo con botón «Añadir» por canción.

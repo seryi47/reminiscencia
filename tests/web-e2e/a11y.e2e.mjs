@@ -30,7 +30,11 @@ let server;
 let browser;
 
 before(async () => {
-  server = await startStaticServer({ overrides: createTestCatalogOverrides() });
+  const overrides = createTestCatalogOverrides();
+  // Una canción del álbum B tarda en servirse: así su descarga se ve en marcha (anillo y «Descargando n de 8»).
+  const lenta = "/audio/S0000000000000016.opus";
+  overrides.set(lenta, { ...overrides.get(lenta), delayMs: 8000 });
+  server = await startStaticServer({ overrides });
   browser = await launchBrowser();
 });
 
@@ -41,6 +45,21 @@ after(async () => {
 
 const prueba = (nombre, fn) => it(nombre, { timeout: TEST_TIMEOUT_MS }, fn);
 const FOLDER_A = "#/album/F0000000000000001";
+
+/** Subidas guardadas de una visita anterior (publicándose, pendiente de aparecer y con error) y recarga la página. */
+async function seedUploads(page) {
+  await page.evaluate(() => {
+    const now = Date.now();
+    const long = "Concierto para piano y orquesta n.º 21 en do mayor K. 467 - II. Andante (grabación histórica de 1958)";
+    localStorage.setItem("reminiscencia.subidas", JSON.stringify({ version: 1, items: [
+      { key: "k1", name: `${long}.wav`, title: long, state: "publicandose", localId: "L0000000000000001", savedAt: now, knownIds: [], createdAt: now },
+      { key: "k2", name: "Vals de las olas.mp3", title: "Vals de las olas", state: "tarde", localId: "L0000000000000002", savedAt: now - 11 * 60000, knownIds: [], createdAt: now },
+      { key: "k3", name: `${long} (otra toma).flac`, title: `${long} (otra toma)`, state: "error", error: "El archivo no es Ogg Opus.", localId: "L0000000000000003", createdAt: now },
+    ] }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector('html[data-ready="true"]', { timeout: 15000 });
+}
 
 // WAV de silencio (PCM de 16 bits, mono, 48 kHz) de la duración indicada: para el aviso de posible duplicado al subir.
 async function silentWavs(names, seconds = 1) {
@@ -254,6 +273,31 @@ const PANTALLAS = [
     },
   },
   { nombre: "Hoja Subir canciones", preparar: (page, vp) => openUpload(page, vp) },
+  {
+    nombre: "Álbum descargándose (anillo, «Descargando n de 8» y cancelar)",
+    preparar: async (page) => {
+      await openCollection(page, "#/album/F0000000000000002");
+      await clickTestid(page, "collection-download", "Descargar");
+      await waitVisible(page, "collection-download-status", { context: "línea Descargando n de 8" });
+    },
+  },
+  {
+    nombre: "Hoja Subir canciones con subidas publicándose, pendientes y con error",
+    preparar: async (page, vp) => {
+      await seedUploads(page);
+      await openUpload(page, vp);
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="upload-item"]').length === 3);
+    },
+  },
+  {
+    nombre: "Tu biblioteca del teléfono con subidas en marcha",
+    soloTelefono: true,
+    preparar: async (page, vp) => {
+      await seedUploads(page);
+      await goSection(page, "biblioteca", vp);
+      await waitVisible(page, "library-page-uploads", { context: "aviso de subidas" });
+    },
+  },
   {
     nombre: "Subir: aviso de posible duplicado",
     preparar: async (page, vp) => {

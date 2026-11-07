@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -8,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'api_config.dart';
 import 'cover_index.dart';
 import 'local_audio.dart';
+import 'offline_downloads.dart';
 import 'song.dart';
 
 /// Origen de la biblioteca. La web de Vercel es la fuente; la app guarda copias para usarla sin conexión.
@@ -37,10 +40,14 @@ abstract interface class LibrarySource {
   Future<LibraryData> load();
 
   /// Descarga las canciones que falten para escucharlas sin conexión. Devuelve cuántas se han descargado.
+  /// [onProgress] recibe (hechas + fallidas, que faltaban); [onDetail], el progreso de todas las canciones con los
+  /// bytes («Guardando 3 de 8 · 2,4 MB», ADR-0033). Con [cancel] se puede cortar: lo ya guardado se queda.
   Future<int> downloadAll(
     List<Song> songs,
-    void Function(int done, int total) onProgress,
-  );
+    void Function(int done, int total) onProgress, {
+    void Function(OfflineProgress progress)? onDetail,
+    OfflineCancel? cancel,
+  });
 
   /// Ids de las canciones cuyo audio está guardado en la copia de la web (nunca las locales).
   Future<Set<String>> cachedAudioIds();
@@ -54,10 +61,17 @@ class LibraryStore implements LibrarySource {
     Future<Directory> Function()? root,
     http.Client? client,
     ApiRoutes? routes,
+    this.concurrency = kOfflineConcurrency,
   }) : _resolveRoot = root ?? _documentsRoot,
        _client = client ?? http.Client(),
        // ignore: prefer_initializing_formals
        _routes = routes;
+
+  /// Canciones que se descargan a la vez (ADR-0033).
+  final int concurrency;
+
+  /// Número de cada descarga en curso, para el nombre de su «.part».
+  static int _partSeq = 0;
 
   final Future<Directory> Function() _resolveRoot;
   final http.Client _client;
@@ -212,24 +226,56 @@ class LibraryStore implements LibrarySource {
   @override
   Future<int> downloadAll(
     List<Song> songs,
-    void Function(int done, int total) onProgress,
-  ) async {
+    void Function(int done, int total) onProgress, {
+    void Function(OfflineProgress progress)? onDetail,
+    OfflineCancel? cancel,
+  }) async {
+    // Una lectura de la carpeta en lugar de comprobar canción a canción, y sin repetir ids.
+    final cached = await cachedAudioIds();
+    final targets = <String, Song>{
+      for (final song in songs)
+        if (!song.local) song.id: song,
+    };
+    final missing = [
+      for (final song in targets.values)
+        if (!cached.contains(song.id)) song,
+    ];
+    final already = targets.length - missing.length;
     var done = 0;
-    final missing = <Song>[];
-    for (final song in songs) {
-      if (song.local) continue;
-      if (!await isCached(song)) missing.add(song);
-    }
     var failed = 0;
-    for (final song in missing) {
-      if (await _downloadOne(song)) {
+    var bytes = 0;
+    void report() => onDetail?.call(
+      OfflineProgress(
+        done: already + done,
+        total: targets.length,
+        bytes: bytes,
+        failed: failed,
+      ),
+    );
+    report();
+    // Varias a la vez (ADR-0033); cada una entera o nada, y una rota no frena a las demás.
+    await runLimited(missing, concurrency, (song) async {
+      final ok = await _downloadOne(
+        song,
+        onBytes: (count) {
+          bytes = max(0, bytes + count);
+          report();
+        },
+        cancel: cancel,
+      );
+      if (cancel?.cancelled ?? false) {
+        if (ok) done += 1;
+        return;
+      }
+      if (ok) {
         done += 1;
       } else {
         failed += 1;
       }
       onProgress(done + failed, missing.length);
-    }
-    if (failed > 0 && done == 0) {
+      report();
+    }, cancel: cancel);
+    if (failed > 0 && done == 0 && !(cancel?.cancelled ?? false)) {
       throw HttpException('No se pudo descargar ninguna de $failed canciones');
     }
     return done;
@@ -239,13 +285,22 @@ class LibraryStore implements LibrarySource {
   /// existe completo (se escribe en `.part` y se renombra), y una canción rota no frena a las demás.
   /// Con Worker: Worker, r2.dev y la web; sin Worker: r2.dev, la web y r2.dev otra vez (ADR-0031). Si el Worker no
   /// responde (no un 404 suyo), se marca caído y las siguientes canciones empiezan en r2.dev.
-  Future<bool> _downloadOne(Song song) async {
+  /// [onBytes] recibe lo que llega (y, si un intento falla, lo que se descarta, en negativo). Con [cancel] se corta.
+  Future<bool> _downloadOne(
+    Song song, {
+    void Function(int count)? onBytes,
+    OfflineCancel? cancel,
+  }) async {
     final file = await audioFile(song);
-    final part = File('${file.path}.part');
+    // Un nombre propio por descarga: dos descargas a la vez de la misma canción no escriben el mismo «.part».
+    _partSeq += 1;
+    final part = File('${file.path}.$_partSeq.part');
     // Las direcciones se fijan al empezar la canción: si el Worker cae a mitad, el siguiente intento sigue siendo r2.dev.
     final sources = audioUris(song);
     for (var attempt = 1; attempt <= 3; attempt++) {
+      if (cancel?.cancelled ?? false) return false;
       final uri = sources[(attempt - 1) % sources.length];
+      var received = 0;
       try {
         final http.StreamedResponse response;
         try {
@@ -264,18 +319,44 @@ class LibraryStore implements LibrarySource {
           throw HttpException('HTTP ${response.statusCode}', uri: uri);
         }
         final sink = part.openWrite();
+        final finished = Completer<void>();
+        final subscription = response.stream
+            .timeout(const Duration(seconds: 60))
+            .listen(
+              (chunk) {
+                sink.add(chunk);
+                received += chunk.length;
+                onBytes?.call(chunk.length);
+              },
+              onError: (Object error, StackTrace stack) {
+                if (!finished.isCompleted) {
+                  finished.completeError(error, stack);
+                }
+              },
+              onDone: () {
+                if (!finished.isCompleted) finished.complete();
+              },
+              cancelOnError: true,
+            );
+        final stopListening = cancel?.onCancel(() {
+          unawaited(subscription.cancel());
+          if (!finished.isCompleted) {
+            finished.completeError(const OfflineCancelled());
+          }
+        });
         try {
-          await sink.addStream(
-            response.stream.timeout(const Duration(seconds: 60)),
-          );
+          await finished.future;
         } finally {
+          stopListening?.call();
           await sink.close();
         }
         await part.rename(file.path);
         return true;
       } catch (error) {
-        debugPrint('biblioteca: ${song.title}, intento $attempt: $error');
+        if (received > 0) onBytes?.call(-received);
         if (await part.exists()) await part.delete();
+        if (error is OfflineCancelled) return false;
+        debugPrint('biblioteca: ${song.title}, intento $attempt: $error');
       }
     }
     return false;

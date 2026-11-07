@@ -126,6 +126,8 @@ export function libraryPanel(ctx, prefix, { page = false } = {}) {
     header(ctx, prefix, { page }),
     // Cambios enviados a la biblioteca común que aún no se han confirmado, o que han fallado (ADR-0027).
     ctx.pendingEditsButton?.(prefix) ?? null,
+    // En el teléfono no hay barra lateral: las subidas en marcha se ven (y se abren) aquí (ADR-0033).
+    page ? ctx.uploadsButton?.(prefix) ?? null : null,
     chips({
       label: 'Filtrar Tu biblioteca',
       options: FILTERS,

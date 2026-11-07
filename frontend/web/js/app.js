@@ -27,7 +27,8 @@ import { cachedDominantColor } from './cover-color.js';
 import { isSongId } from './cuidador/incidencias.js';
 import { openLocalLibrary } from './local-library.js';
 import { createPlayer, nextRepeatMode } from './player.js';
-import { cachedAudioPaths, registerPwa, removeOfflineSongs, saveLibraryOffline } from './pwa.js';
+import { cachedAudioPaths, downloadAudioToCache, registerPwa, removeOfflineSongs } from './pwa.js';
+import { createOfflineDownloads, downloadResultText, downloadStatusText } from './offline-downloads.js';
 import {
   convertToOpus,
   deleteLocalSong as removeLocalRecord,
@@ -69,7 +70,7 @@ import {
 } from './views/edit.js';
 import { renderHome } from './views/home.js';
 import { refreshSearchResults, renderSearch } from './views/search.js';
-import { renderCollection } from './views/collection.js';
+import { downloadState, paintDownloadButton, renderCollection } from './views/collection.js';
 import { libraryPanel, renderLibraryPage, renderSection } from './views/library.js';
 import { mountPlayerUi } from './views/player-ui.js';
 import { askDuplicate, openUploadSheet } from './views/upload.js';
@@ -123,7 +124,6 @@ const state = {
   playlists: [],
   likes: new Map(),
   cached: new Set(),
-  downloading: new Set(),
   recents: new Map(Object.entries(readJson(RECENTS_KEY)).filter(([, time]) => Number.isFinite(time))),
   online: typeof navigator === 'undefined' ? true : navigator.onLine !== false,
   homeFilter: 'todo',
@@ -149,6 +149,8 @@ let persistenceRequested = false;
 let lastSync = '';
 let uploads = null;
 let uploadSignature = '';
+// Descargas para escuchar sin conexión (js/offline-downloads.js, ADR-0033): siguen al cambiar de pantalla.
+let downloads = null;
 // Ediciones de la biblioteca común enviadas desde aquí y aún no confirmadas (js/edit-pending.js, ADR-0027).
 let edits = null;
 // Copias locales de subidas ya publicadas que se borran en cuanto dejan de sonar (id → URL de su audio).
@@ -678,7 +680,12 @@ async function deleteLocalSong(song) {
   return true;
 }
 
+/** Descargar, cancelar la descarga en marcha o quitar la descarga de una colección (ADR-0033). */
 async function toggleDownload(contextId, songs, done) {
+  if (downloads.isRunning(contextId)) {
+    downloads.cancel(contextId);
+    return;
+  }
   if (done) {
     await removeOfflineSongs(songs);
     state.cached = await cachedAudioPaths();
@@ -686,22 +693,58 @@ async function toggleDownload(contextId, songs, done) {
     toast('Se ha quitado la descarga.');
     return;
   }
-  state.downloading.add(contextId);
-  render();
-  toast('Descargando para escuchar sin conexión…');
-  try {
-    const result = await saveLibraryOffline(songs);
-    toast(result.failed.length === 0
-      ? 'Descargada. Ya se puede escuchar sin conexión.'
-      : `No se han podido descargar ${result.failed.length} de ${songs.length} canciones.`);
-  } catch (error) {
-    toast('No se ha podido descargar. Comprueba la conexión y el espacio libre.');
-    console.error(error);
-  } finally {
-    state.downloading.delete(contextId);
-    state.cached = await cachedAudioPaths();
-    render();
+  if (typeof caches === 'undefined') {
+    toast('Este navegador no permite guardar canciones para escuchar sin conexión.');
+    return;
   }
+  requestPersistence();
+  // Aviso corto: el progreso se ve en el propio botón y en la línea «Descargando 3 de 8» (un aviso largo los tapaba).
+  toast('Descargando…', { ms: 2500 });
+  watchDownload(downloads.start(contextId, songs));
+  paintDownloads();
+}
+
+/** Al terminar una descarga (o cancelarla): avisa y pinta la página con lo guardado. */
+function watchDownload(promise) {
+  promise.then(async (result) => {
+    state.cached = await cachedAudioPaths();
+    if (result.total > 0) toast(downloadResultText(result), { ms: 6000 });
+    if (state.ready) render();
+  }).catch((error) => {
+    console.error('Reminiscencia: fallo en una descarga.', error);
+    toast('No se ha podido descargar. Comprueba la conexión y el espacio libre.');
+  });
+}
+
+/** Pone al día, en su sitio, los botones de descarga que se ven (no se vuelve a pintar la página en cada canción). */
+function paintDownloads() {
+  for (const button of document.querySelectorAll('[data-download-context]')) {
+    const contextId = button.dataset.downloadContext;
+    const context = getContext(contextId);
+    if (!context) continue;
+    const songs = context.songs.filter((song) => !song.local);
+    const status = button.parentElement?.querySelector('[data-testid="collection-download-status"]') ?? null;
+    paintDownloadButton(button, status, downloadState(ctx, contextId, songs));
+  }
+}
+
+function createDownloads() {
+  const manager = createOfflineDownloads({
+    listCached: () => cachedAudioPaths(),
+    download: (url, options) => downloadAudioToCache(url, options),
+    storage: safeLocalStorage(),
+    // Cada canción guardada ya se puede escuchar sin conexión, sin releer la caché.
+    onSaved: (url) => state.cached.add(url),
+  });
+  manager.subscribe(paintDownloads);
+  return manager;
+}
+
+/** Retoma las descargas que quedaron a medias al cerrar la página (sin conexión, cuando vuelva). */
+function resumeDownloads() {
+  if (!state.online || typeof caches === 'undefined') return;
+  for (const promise of downloads.resume().values()) watchDownload(promise);
+  paintDownloads();
 }
 
 // ---------------------------------------------------------------------------
@@ -999,6 +1042,8 @@ const ctx = {
   addManyToQueue,
   deleteLocalSong,
   toggleDownload,
+  downloadProgress: (contextId) => downloads?.progress(contextId) ?? null,
+  downloadStatusText,
   editSong: (song) => openEditSongSheet(ctx, song),
   moveSongToAlbum: (song) => openMoveToAlbumSheet(ctx, song),
   removeSongFromAlbum: (song, folderId) => {
@@ -1026,6 +1071,7 @@ const ctx = {
   saveEdit: (payload) => edits.submit(payload),
   saveCoverEdit: (cover) => edits.submitCover(cover),
   pendingEditsButton: (prefix) => pendingEditsButton(prefix),
+  uploadsButton: (prefix) => uploadsButton(prefix),
   openPendingEdits: () => openPendingEditsSheet(),
   changeCover: (target) => openCoverSheet(ctx, target),
   openUpload: () => openUploadSheet(ctx),
@@ -1097,11 +1143,34 @@ function createUploadIndicator() {
   return { button, text };
 }
 
+/**
+ * Indicador de subidas en marcha de la página «Tu biblioteca» del teléfono, que no tiene barra lateral (ADR-0033): el
+ * mismo texto que el de la barra lateral y abre la hoja. null si no hay ninguna en marcha.
+ */
+function uploadsButton(prefix) {
+  const count = activeCount(uploads?.items() ?? []);
+  if (count === 0) return null;
+  return el('button', {
+    type: 'button',
+    class: 'upload-indicator upload-indicator-page',
+    'data-testid': `${prefix}-uploads`,
+    'data-key': `${prefix}-uploads`,
+    'data-upload-indicator': '',
+    'aria-label': `${indicatorText(count)}. Ver las subidas`,
+    on: { click: () => openUploadSheet(ctx) },
+  }, el('span', { class: 'upload-indicator-dot', 'aria-hidden': 'true' }), icon('upload', { size: 16 }),
+  el('span', { class: 'upload-indicator-text' }, indicatorText(count)));
+}
+
 function onUploadsChange(items) {
   const count = activeCount(items);
   dom.uploadIndicatorText.textContent = indicatorText(count);
   dom.uploadIndicator.hidden = count === 0;
   dom.uploadIndicator.setAttribute('aria-label', `${indicatorText(count)}. Ver las subidas`);
+  for (const button of document.querySelectorAll('[data-upload-indicator]')) {
+    button.querySelector('.upload-indicator-text').textContent = indicatorText(count);
+    button.setAttribute('aria-label', `${indicatorText(count)}. Ver las subidas`);
+  }
   // Solo los cambios de estado (no los porcentajes) cambian las etiquetas de la biblioteca.
   const signature = items.map((item) => `${item.localId}:${item.state}`).join('|');
   if (signature !== uploadSignature) {
@@ -1403,6 +1472,7 @@ async function start() {
   dom.uploadIndicatorText = indicator.text;
   uploads = createUploads();
   uploads.subscribe(onUploadsChange);
+  downloads = createDownloads();
   edits = createEdits();
   edits.subscribe(onEditsChange);
   // Lo enviado antes de recargar sigue pendiente (y se ve) hasta que se confirme o falle.
@@ -1452,8 +1522,11 @@ async function start() {
     state.online = navigator.onLine !== false;
     render();
     playerUi.update(player.getState());
-    // Al volver la conexión, las ediciones pendientes se revisan enseguida (ADR-0027).
-    if (state.online) edits.check();
+    // Al volver la conexión, las ediciones pendientes se revisan enseguida (ADR-0027) y siguen las descargas.
+    if (state.online) {
+      edits.check();
+      if (state.ready) resumeDownloads();
+    }
   };
   window.addEventListener('online', setOnline);
   window.addEventListener('offline', setOnline);
@@ -1493,6 +1566,7 @@ async function start() {
   state.ready = true;
   uploads.restore({ pendingCopies: state.localSongs.filter((song) => song.pending) });
   render();
+  resumeDownloads();
   playerUi.update(player.getState());
   document.documentElement.dataset.ready = 'true';
 }

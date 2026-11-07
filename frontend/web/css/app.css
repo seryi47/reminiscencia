@@ -1264,6 +1264,46 @@ button:disabled {
   cursor: progress;
 }
 
+/* Descarga sin conexión en marcha (ADR-0033): anillo con lo descargado y una cruz para cancelar. */
+.action-bar {
+  position: relative;
+}
+
+.download-toggle.is-busy {
+  color: var(--text);
+}
+
+.download-toggle.is-busy::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--download-ratio, 0) * 1turn), var(--highlight) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  transition: background 0.2s;
+}
+
+/* «Descargando 3 de 8 · 2,4 MB»: va en el hueco inferior de la barra, así no mueve la tabla al aparecer. */
+.download-status {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.download-status[hidden] {
+  display: none;
+}
+
 .collection-empty {
   padding: 24px 0;
 }
@@ -2826,9 +2866,13 @@ button:disabled {
 }
 
 .upload-summary[hidden],
-.upload-item-progress[hidden],
 .upload-indicator[hidden] {
   display: none;
+}
+
+/* Sin nada que medir (en cola, error), la barra no se ve pero guarda su hueco: la fila no cambia de alto (ADR-0033). */
+.upload-item-progress.is-idle {
+  visibility: hidden;
 }
 
 .upload-items {
@@ -2991,6 +3035,11 @@ button:disabled {
   font-size: var(--text-s);
   font-weight: 600;
   text-align: left;
+}
+
+/* En la página «Tu biblioteca» del teléfono (no hay barra lateral): debajo de la cabecera. */
+.upload-indicator-page {
+  margin: 0 var(--page-x) 8px;
 }
 
 .upload-indicator:hover {
@@ -3363,6 +3412,19 @@ button:disabled {
     margin-left: auto;
   }
 
+  /* «Seleccionar» se queda en su icono (el nombre va en aria-label y en «···»): con el texto no cabía a 360 px. */
+  .action-bar .album-select-button {
+    width: 44px;
+    margin-left: 0;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
+
+  .album-select-label {
+    display: none;
+  }
+
   .track-table thead,
   .track-table .col-num,
   .track-table .col-album,
@@ -3427,6 +3489,11 @@ button:disabled {
 
   .dialog-title {
     font-size: 20px;
+  }
+
+  /* La hoja llega al borde inferior: con viewport-fit=cover, lo último no queda bajo la barra de gestos (ADR-0033). */
+  .dialog:not(.dialog-full) .dialog-body {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
 
   .edit-grid {
@@ -3731,4 +3798,36 @@ button:disabled {
 
 .edits-actions .button {
   min-height: 44px;
+}
+
+/* Teléfonos estrechos: la barra de acciones de una colección cabe sin salirse por la derecha (ADR-0033). */
+@media (max-width: 400px) {
+  .action-bar {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 359px) {
+  /* A 320 px no caben seis botones de 44 px: «Seleccionar» sigue en «···». */
+  .action-bar .album-select-button {
+    display: none;
+  }
+}
+
+/* Hoja «Subir canciones» en el teléfono: «Reintentar» y «Reproducir» van debajo del texto, así el nombre y el error
+   usan todo el ancho de la fila en lugar de una columna estrecha (ADR-0033). */
+@media (max-width: 600px) {
+  .upload-item {
+    grid-template-columns: 32px minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .upload-item-actions {
+    grid-column: 2;
+  }
+}
+
+/* «8 canciones, 19 min 16 s» no se parte por dentro (antes, la «s» quedaba sola en otra línea a 360 px). */
+.meta-nowrap {
+  white-space: nowrap;
 }

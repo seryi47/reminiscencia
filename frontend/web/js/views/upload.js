@@ -108,15 +108,23 @@ function uploadRow(ctx) {
   const node = el('li', { class: 'upload-item', tabindex: '-1', 'data-testid': 'upload-item' },
     iconSlot, el('div', { class: 'upload-item-main' }, name, status, bar), actions);
   let shownState = null;
+  let shown = '';
 
   const update = (item) => {
+    const text = statusText(item);
+    const progress = progressOf(item);
+    // Solo se toca el DOM si cambia algo que se ve: con muchas subidas, repintar todas las filas en cada aviso frenaba
+    // el teléfono (ADR-0033).
+    const signature = `${item.key}|${item.state}|${item.name}|${text}|${progress.hidden}|${progress.value}|${item.retryable}|${item.songId}`;
+    if (signature === shown) return;
+    shown = signature;
     node.dataset.key = item.key;
     node.dataset.state = item.state;
     name.textContent = item.name;
     name.title = item.name;
-    status.textContent = statusText(item);
-    const progress = progressOf(item);
-    bar.hidden = progress.hidden;
+    status.textContent = text;
+    // Sin nada que medir, la barra no se ve pero guarda su hueco (visibility, no hidden): la fila no cambia de alto.
+    bar.classList.toggle('is-idle', progress.hidden);
     bar.setAttribute('aria-label', `Progreso de ${item.name}`);
     if (progress.value === null) bar.removeAttribute('value');
     else bar.value = progress.value;
@@ -223,8 +231,13 @@ function uploadPanel(ctx, openArchive) {
     const files = [...input.files];
     input.value = '';
     if (files.length === 0) return;
-    // Antes de la cola, se avisa de lo que parece estar ya en la biblioteca (ADR-0026).
-    ctx.addUploads(files, { checkDuplicates: true });
+    // Antes de la cola, se avisa de lo que parece estar ya en la biblioteca (ADR-0026). Después, la primera fila nueva
+    // se trae a la vista: en el teléfono, la lista queda debajo del texto de la hoja y no se veía que algo empezaba.
+    const before = new Set(rows.keys());
+    Promise.resolve(ctx.addUploads(files, { checkDuplicates: true })).then(() => {
+      const first = [...rows.entries()].find(([key]) => !before.has(key))?.[1]?.node;
+      if (first?.isConnected) first.scrollIntoView({ block: 'nearest' });
+    }).catch(() => {});
   });
 
   const uploads = ctx.uploads;

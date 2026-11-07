@@ -154,6 +154,145 @@ void main() {
     ),
   );
 
+  group('cola de tandas (ADR-0033)', () {
+    /// Rastreador cuyo primer envío espera a [gate]: así la primera tanda sigue «subiéndose» mientras se prueba.
+    UploadTracker gated(Completer<void> gate) {
+      var first = true;
+      return track(
+        UploadTracker(
+          uploader: SharedUploader(
+            client: MockClient((request) async {
+              requests.add(request);
+              if (first) {
+                first = false;
+                await gate.future;
+              }
+              return reply(requests.length);
+            }),
+            converter: converter,
+            hasConnection: () async => online,
+            workDir: () async => Directory('${work.path}/tmp'),
+            retryDelay: Duration.zero,
+            random: Random(3),
+          ),
+          published: published,
+          store: store(),
+          clock: () => now,
+          timer: timers.call,
+          random: Random(5),
+        ),
+      );
+    }
+
+    List<String> names() => [
+      for (final r in requests)
+        Uri.decodeComponent(r.headers['X-Nombre-Archivo']!),
+    ];
+
+    test(
+      'elegir más archivos mientras se suben otros: se ven «En espera» al momento y se suben después, en orden',
+      () async {
+        final gate = Completer<void>();
+        final t = gated(gate);
+        final firstBatch = t.start([picked('Uno.wav')]);
+        await until(() => requests.isNotEmpty);
+        expect(t.busy, isTrue);
+        final second = t.start([picked('Dos.wav'), picked('Tres.wav')]);
+        await until(() => t.entries.length == 3);
+        expect(
+          t.entries.skip(1).map((e) => e.statusText),
+          ['En espera', 'En espera'],
+          reason: 'la tanda nueva se ve en cuanto se elige',
+        );
+        expect(
+          requests,
+          hasLength(1),
+          reason: 'no empieza hasta que acaba la anterior',
+        );
+        gate.complete();
+        await firstBatch;
+        final result = await second;
+        expect(result.uploaded, 2);
+        expect(names(), ['Uno.wav', 'Dos.wav', 'Tres.wav']);
+        expect(t.busy, isFalse);
+      },
+    );
+
+    test(
+      '«Reintentar» mientras otra tanda se sube: queda «En espera» y se reenvía después',
+      () async {
+        // «Rota» falla la primera vez; «Lenta» se queda enviándose hasta abrir la puerta.
+        final gate = Completer<void>();
+        var rotaFailed = false;
+        final t = track(
+          UploadTracker(
+            uploader: SharedUploader(
+              client: MockClient((request) async {
+                requests.add(request);
+                final name = Uri.decodeComponent(
+                  request.headers['X-Nombre-Archivo']!,
+                );
+                if (name == 'Rota.wav' && !rotaFailed) {
+                  rotaFailed = true;
+                  return errorReply(400, 'rechazo de prueba');
+                }
+                if (name == 'Lenta.wav') await gate.future;
+                return okReply();
+              }),
+              converter: converter,
+              hasConnection: () async => online,
+              workDir: () async => Directory('${work.path}/tmp'),
+              retryDelay: Duration.zero,
+              random: Random(3),
+            ),
+            published: published,
+            store: store(),
+            clock: () => now,
+            timer: timers.call,
+            random: Random(5),
+          ),
+        );
+        await t.start([picked('Rota.wav')]);
+        final rota = t.entries.single;
+        expect(rota.stage, UploadStage.failed);
+        final batch = t.start([picked('Lenta.wav')]);
+        await until(() => requests.length == 2);
+        final retry = t.retry(rota.key);
+        await until(() => rota.stage == UploadStage.queued);
+        expect(rota.statusText, 'En espera');
+        expect(requests, hasLength(2), reason: 'espera a que acabe «Lenta»');
+        gate.complete();
+        await batch;
+        await retry;
+        expect(rota.stage, UploadStage.saved);
+        expect(names(), ['Rota.wav', 'Lenta.wav', 'Rota.wav']);
+      },
+    );
+
+    test(
+      'al salir de la app, la tanda que esperaba su turno no empieza: queda con «Reintentar»',
+      () async {
+        final gate = Completer<void>();
+        final t = gated(gate);
+        final firstBatch = t.start([picked('Uno.wav')]);
+        await until(() => requests.isNotEmpty);
+        final waiting = t.start([picked('Dos.wav')]);
+        await until(() => t.entries.length == 2);
+        // Se sale de la app antes de que le toque a la segunda.
+        await t.pause();
+        gate.complete();
+        await firstBatch;
+        final result = await waiting;
+        final dos = t.entries.last;
+        expect(dos.stage, UploadStage.failed);
+        expect(dos.canRetry, isTrue);
+        expect(dos.error, failureReason(kPausedUploadMessage));
+        expect(result.items.single.outcome, UploadOutcome.pending);
+        expect(names(), isNot(contains('Dos.wav')));
+      },
+    );
+  });
+
   group('estados', () {
     test('conserva el álbum de YouTube al reintentar una subida', () async {
       final t = tracker();
@@ -219,7 +358,9 @@ void main() {
         expect(seen, [
           'En espera',
           'Convirtiendo a Opus…',
-          'Subiendo… 0 %',
+          // Convertida y, hasta que sale el primer trozo, sin «0 %» (ADR-0033).
+          'Esperando para subir',
+          'Subiendo…',
           'Subiendo… 33 %',
           'Subiendo… 67 %',
           'Guardada en GitHub',

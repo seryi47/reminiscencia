@@ -58,7 +58,8 @@ describe('máquina de estados', () => {
     assert.deepEqual(texts, [
       'En cola',
       'Convirtiendo a Opus…',
-      `Subiendo… 0${NBSP}%`,
+      // Convertida, a la espera de hueco para enviarse (ADR-0030 y ADR-0033).
+      'Esperando para subir',
       `Subiendo… 45${NBSP}%`,
       'Guardada en GitHub',
       'Publicándose… (suele tardar 2–3 minutos)',
@@ -113,6 +114,12 @@ describe('máquina de estados', () => {
   test('la barra sigue el paso actual: medida, indeterminada mientras se publica u oculta al terminar mal', () => {
     const base = createItem({ key: 'k', name: 'a.wav', title: 'a' });
     assert.deepEqual(progressOf({ ...base, state: S.SENDING, fraction: 0.456 }), { value: 46, hidden: false });
+    // En cola no hay nada que medir; enviándose sin ningún trozo confirmado, la barra se mueve sin porcentaje y el texto
+    // no se queda en «0 %» (ADR-0033).
+    assert.deepEqual(progressOf({ ...base, state: S.QUEUED }), { value: null, hidden: true });
+    assert.deepEqual(progressOf({ ...base, state: S.SENDING, fraction: 0 }), { value: null, hidden: false });
+    assert.equal(statusText({ ...base, state: S.SENDING, fraction: 0 }), 'Subiendo…');
+    assert.deepEqual(progressOf({ ...base, state: S.CONVERTING, fraction: 0.5 }), { value: 50, hidden: false });
     assert.deepEqual(progressOf({ ...base, state: S.PUBLISHING }), { value: null, hidden: false });
     assert.deepEqual(progressOf({ ...base, state: S.PUBLISHED }), { value: 100, hidden: false });
     assert.equal(progressOf({ ...base, state: S.ERROR }).hidden, true);
@@ -377,7 +384,8 @@ describe('gestor de subidas', () => {
     assert.deepEqual(seen, [
       'Tono de prueba.wav:En cola',
       'Tono de prueba.wav:Convirtiendo a Opus…',
-      `Tono de prueba.wav:Subiendo… 0${NBSP}%`,
+      'Tono de prueba.wav:Esperando para subir',
+      'Tono de prueba.wav:Subiendo…',
       `Tono de prueba.wav:Subiendo… 33${NBSP}%`,
       `Tono de prueba.wav:Subiendo… 67${NBSP}%`,
       `Tono de prueba.wav:Subiendo… 100${NBSP}%`,
@@ -789,7 +797,10 @@ describe('canalización de las subidas (ADR-0030)', () => {
     assert.deepEqual(conversions, ['Pista 1.wav', 'Pista 2.wav', 'Pista 3.wav']);
     assert.equal(net.waiting(), 0, 'no hay una tercera petición');
     assert.equal(calls.send.length, 2);
-    assert.equal(statusText(tracker.items()[2]), `Subiendo… 0${NBSP}%`);
+    // La convertida que espera hueco no dice «Subiendo…» ni mueve la barra: aún no se envía (ADR-0033).
+    assert.equal(statusText(tracker.items()[2]), 'Esperando para subir');
+    assert.deepEqual(progressOf(tracker.items()[2]), { value: null, hidden: true });
+    assert.equal(statusText(tracker.items()[0]), 'Subiendo…');
     assert.equal(tracker.busy(), true);
 
     // La segunda termina antes que la primera: entra la tercera y empieza a convertirse la cuarta.

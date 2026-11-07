@@ -13,6 +13,7 @@ import 'edit_remote.dart' show EditStatusFetcher;
 import 'library_store.dart';
 import 'local_audio.dart';
 import 'offline_choice.dart';
+import 'offline_downloads.dart';
 import 'pending_edits.dart';
 import 'playback.dart';
 import 'playback_plan.dart';
@@ -74,7 +75,7 @@ class LibraryController extends ChangeNotifier {
       final store = covers;
       if (store != null) unawaited(store.revalidate({path}).catchError((_) {}));
     };
-    edits.addListener(_onUploadsChanged);
+    edits.addListener(_onEditsChanged);
   }
 
   final LibrarySource source;
@@ -114,8 +115,15 @@ class LibraryController extends ChangeNotifier {
   String? _loadError;
   String? _audioNotice;
   bool _downloading = false;
-  String _progress = '';
   bool _offlineWanted = false;
+  OfflineCancel? _offlineCancel;
+  bool _lastDownloadCancelled = false;
+  final Stopwatch _progressClock = Stopwatch();
+
+  /// Progreso de «Guardar para escuchar sin conexión» (ADR-0033), o null si no se está guardando. Es aparte de
+  /// [notifyListeners]: cada canción o cada trozo recibido solo repinta lo que lo escucha, no Inicio entero.
+  final ValueNotifier<OfflineProgress?> offlineProgress =
+      ValueNotifier<OfflineProgress?>(null);
   bool _catalogKnown = false;
   DateTime? _lastSync;
   Future<void>? _inFlight;
@@ -135,7 +143,22 @@ class LibraryController extends ChangeNotifier {
   String? get audioNotice => _audioNotice;
 
   bool get downloading => _downloading;
-  String get progress => _progress;
+
+  /// «Guardando 3 de 8 · 2,4 MB», o vacío.
+  String get progress => offlineProgress.value?.text ?? '';
+
+  /// True si la última descarga terminó porque se canceló.
+  bool get lastDownloadCancelled => _lastDownloadCancelled;
+
+  /// Corta la descarga en marcha: lo ya guardado se queda y deja de guardarse lo nuevo al sincronizar.
+  Future<void> cancelDownload() async {
+    final cancel = _offlineCancel;
+    if (cancel == null) return;
+    cancel.cancel();
+    _offlineWanted = false;
+    await offline?.write(false);
+    notifyListeners();
+  }
 
   /// True si el usuario pidió escuchar sin conexión (la sincronización descargará con cualquier conexión).
   bool get offlineWanted => _offlineWanted;
@@ -212,7 +235,27 @@ class LibraryController extends ChangeNotifier {
     _songs = [...view.songs, ..._localSongs, ..._provisional()];
   }
 
+  void _onEditsChanged() {
+    _rebuildSongs();
+    notifyListeners();
+  }
+
+  /// Lo de las subidas que cambia la biblioteca: qué canciones provisionales hay, su etiqueta y si se puede subir.
+  String _uploadsSignature() => [
+    uploads.busy,
+    for (final entry in uploads.entries)
+      '${entry.key}:${entry.stage.name}:${entry.opusPath != null}:${entry.publishedId}',
+  ].join('|');
+
+  String _lastUploadsSignature = '';
+
+  /// Un avance de una subida (porcentaje, trozo) no cambia la biblioteca: solo lo repinta el panel de subidas, que
+  /// escucha a [uploads] directamente. Rehacer la lista de canciones y repintar Inicio y Tu biblioteca en cada trozo
+  /// frenaba el teléfono (ADR-0033).
   void _onUploadsChanged() {
+    final signature = _uploadsSignature();
+    if (signature == _lastUploadsSignature) return;
+    _lastUploadsSignature = signature;
     _rebuildSongs();
     notifyListeners();
   }
@@ -513,23 +556,34 @@ class LibraryController extends ChangeNotifier {
   }
 
   /// Guarda para escuchar sin conexión (audio y portadas). Recuerda la elección: las siguientes sincronizaciones
-  /// descargan lo nuevo en Wi-Fi. Solo descarga el catálogo: las canciones locales no existen en la web.
+  /// descargan lo nuevo (también si se cerró la app a medias: sigue donde se quedó, sin bajar otra vez lo guardado).
+  /// Solo descarga el catálogo: las canciones locales no existen en la web. Varias canciones a la vez, sin bloquear la
+  /// interfaz, y se puede cancelar con [cancelDownload] (ADR-0033).
   Future<int> downloadForOffline() async {
+    if (_downloading) return 0;
     if (!_offlineWanted) {
       _offlineWanted = true;
       await offline?.write(true);
     }
+    final cancel = OfflineCancel();
+    _offlineCancel = cancel;
+    _lastDownloadCancelled = false;
     _downloading = true;
-    _progress = 'Preparando…';
+    offlineProgress.value = OfflineProgress.preparing;
+    _progressClock
+      ..reset()
+      ..start();
     notifyListeners();
     try {
-      final done = await source.downloadAll(_catalog, (done, total) {
-        _progress = '$done de $total';
-        notifyListeners();
-      });
+      final done = await source.downloadAll(
+        _catalog,
+        (_, _) {},
+        onDetail: _reportOffline,
+        cancel: cancel,
+      );
       // Las portadas también, para verlas sin conexión. Un fallo aquí no anula la descarga del audio.
       final store = covers;
-      if (store != null) {
+      if (store != null && !cancel.cancelled) {
         try {
           await store.downloadAll(referencedCovers);
         } catch (error) {
@@ -538,10 +592,28 @@ class LibraryController extends ChangeNotifier {
       }
       return done;
     } finally {
+      _lastDownloadCancelled = cancel.cancelled;
       _downloading = false;
-      _progress = '';
+      _offlineCancel = null;
+      offlineProgress.value = null;
+      _progressClock.stop();
       notifyListeners();
     }
+  }
+
+  /// Los bytes llegan a trozos: como mucho un repintado cada 150 ms, salvo si cambia el número de canciones.
+  void _reportOffline(OfflineProgress next) {
+    final current = offlineProgress.value;
+    final sameSongs =
+        current != null &&
+        current.done == next.done &&
+        current.failed == next.failed &&
+        current.total == next.total;
+    if (sameSongs && _progressClock.elapsedMilliseconds < 150) return;
+    _progressClock
+      ..reset()
+      ..start();
+    offlineProgress.value = next;
   }
 
   @override
@@ -549,8 +621,10 @@ class LibraryController extends ChangeNotifier {
     playback.nowPlaying.removeListener(_onNowPlayingChanged);
     uploads.removeListener(_onUploadsChanged);
     uploads.dispose();
-    edits.removeListener(_onUploadsChanged);
+    edits.removeListener(_onEditsChanged);
     edits.dispose();
+    _offlineCancel?.cancel();
+    offlineProgress.dispose();
     super.dispose();
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../offline_downloads.dart';
 import '../services.dart';
+import '../theme.dart';
 import '../song.dart';
 import 'cards.dart';
 import 'collection_page.dart';
@@ -66,6 +68,7 @@ class HomePage extends StatelessWidget {
                 bottom: false,
                 sliver: SliverToBoxAdapter(child: header),
               ),
+              SliverToBoxAdapter(child: OfflineStatusLine(services: services)),
               ..._notices(),
               ...body,
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -260,7 +263,9 @@ class HomePage extends StatelessWidget {
   }
 }
 
-/// Botón «Guardar para escuchar sin conexión»; mientras descarga muestra el progreso.
+/// Botón «Guardar para escuchar sin conexión». Mientras descarga es un anillo con lo guardado y una cruz para cancelar,
+/// del mismo tamaño que el botón (48 × 48): la cabecera no se mueve ni se estira con «3 de 120» (ADR-0033). Solo el
+/// anillo escucha el progreso: cada canción no repinta Inicio entero.
 class _OfflineButton extends StatelessWidget {
   const _OfflineButton({required this.services});
 
@@ -269,35 +274,95 @@ class _OfflineButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final library = services.library;
-    if (library.downloading) {
-      return Semantics(
-        liveRegion: true,
-        label: 'Guardando para escuchar sin conexión: ${library.progress}',
-        excludeSemantics: true,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            library.progress,
-            style: Theme.of(context).textTheme.bodySmall,
+    return ValueListenableBuilder<OfflineProgress?>(
+      valueListenable: library.offlineProgress,
+      builder: (context, progress, _) {
+        if (progress != null) {
+          final palette = paletteOf(context);
+          return Semantics(
+            button: true,
+            label: 'Cancelar la descarga. ${progress.text}',
+            excludeSemantics: true,
+            onTap: () => cancelOfflineFlow(context, services),
+            child: IconButton(
+              key: const Key('offline-cancel'),
+              tooltip: 'Cancelar la descarga (${progress.text})',
+              onPressed: () => cancelOfflineFlow(context, services),
+              icon: SizedBox(
+                width: 28,
+                height: 28,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Positioned.fill(
+                      child: CircularProgressIndicator(
+                        key: const Key('offline-progress-ring'),
+                        value: progress.fraction,
+                        strokeWidth: 3,
+                        color: palette.accent,
+                        backgroundColor: palette.cardPressed,
+                      ),
+                    ),
+                    const Icon(Icons.close_rounded, size: 16),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return IconButton(
+          key: const Key('offline-download'),
+          tooltip: library.offlineWanted
+              ? 'Guardar lo nuevo para escuchar sin conexión'
+              : 'Guardar para escuchar sin conexión',
+          icon: Icon(
+            library.offlineWanted
+                ? Icons.download_done_rounded
+                : Icons.download_for_offline_outlined,
           ),
-        ),
-      );
-    }
-    return IconButton(
-      tooltip: library.offlineWanted
-          ? 'Guardar lo nuevo para escuchar sin conexión'
-          : 'Guardar para escuchar sin conexión',
-      icon: Icon(
-        library.offlineWanted
-            ? Icons.download_done_rounded
-            : Icons.download_for_offline_outlined,
-      ),
-      onPressed: library.songs.isEmpty
-          ? null
-          : () => downloadForOfflineFlow(context, services),
+          onPressed: library.songs.isEmpty
+              ? null
+              : () => downloadForOfflineFlow(context, services),
+        );
+      },
     );
   }
 }
+
+/// Línea «Guardando 3 de 8 · 2,4 MB» bajo el saludo mientras se guarda para escuchar sin conexión. Solo ella escucha el
+/// progreso; sin descarga no ocupa sitio.
+class OfflineStatusLine extends StatelessWidget {
+  const OfflineStatusLine({super.key, required this.services});
+
+  final AppServices services;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<OfflineProgress?>(
+      valueListenable: services.library.offlineProgress,
+      builder: (context, progress, _) {
+        if (progress == null) return const SizedBox.shrink();
+        final theme = Theme.of(context);
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+          child: Text(
+            progress.text,
+            key: const Key('offline-status'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Cancela la descarga en marcha (lo guardado se queda).
+Future<void> cancelOfflineFlow(BuildContext context, AppServices services) =>
+    services.library.cancelDownload();
 
 /// Descarga el catálogo para escucharlo sin conexión y lo cuenta en un aviso.
 Future<void> downloadForOfflineFlow(
@@ -305,12 +370,15 @@ Future<void> downloadForOfflineFlow(
   AppServices services,
 ) async {
   final messenger = ScaffoldMessenger.of(context);
+  final library = services.library;
   try {
-    final done = await services.library.downloadForOffline();
+    final done = await library.downloadForOffline();
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          done == 0
+          library.lastDownloadCancelled
+              ? 'Se ha cancelado la descarga. Lo ya guardado se queda en este teléfono.'
+              : done == 0
               ? 'Ya estaba todo guardado.'
               : 'Guardadas $done canciones para escuchar sin conexión.',
         ),

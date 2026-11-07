@@ -16,6 +16,7 @@ import 'package:reminiscencia/image_picker.dart';
 import 'package:reminiscencia/library_controller.dart';
 import 'package:reminiscencia/library_requests.dart';
 import 'package:reminiscencia/library_store.dart';
+import 'package:reminiscencia/offline_downloads.dart';
 import 'package:reminiscencia/pending_edits.dart';
 import 'package:reminiscencia/playback.dart';
 import 'package:reminiscencia/playlist_covers.dart';
@@ -78,12 +79,26 @@ class FakeLibrarySource implements LibrarySource {
 
   final List<List<Song>> downloadCalls = [];
 
+  /// Si no es null, downloadAll avisa de este progreso y espera a que se complete (o se cancele) antes de terminar.
+  Completer<void>? holdDownload;
+  OfflineProgress downloadDetail = const OfflineProgress(done: 3, total: 8);
+
   @override
   Future<int> downloadAll(
     List<Song> songs,
-    void Function(int done, int total) onProgress,
-  ) async {
+    void Function(int done, int total) onProgress, {
+    void Function(OfflineProgress progress)? onDetail,
+    OfflineCancel? cancel,
+  }) async {
     downloadCalls.add(songs);
+    final hold = holdDownload;
+    if (hold != null) {
+      onDetail?.call(downloadDetail);
+      cancel?.onCancel(() {
+        if (!hold.isCompleted) hold.complete();
+      });
+      await hold.future;
+    }
     return 0;
   }
 
