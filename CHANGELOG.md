@@ -1,3 +1,25 @@
+## Sin publicar: descargas y subidas en el móvil (2026-11-07, rama `feature/descargas-movil`)
+
+- **Escuchar sin conexión, más rápido** ([ADR-0033](docs/decisions/ADR-0033-descargas-y-subidas-en-movil.md)):
+  - La web y la APK bajan 4 canciones a la vez y no vuelven a bajar lo que ya está guardado.
+  - El progreso se ve así: «Descargando 3 de 8 · 2,4 MB». Pulsando el anillo se cancela, y lo ya guardado se queda.
+  - En la web, la descarga sigue al cambiar de pantalla y tras recargar la página (`js/offline-downloads.js`, `reminiscencia.descargas`).
+  - Medido en la web: un álbum de 8 canciones pasa de 5,4 s a 1,8 s.
+- **Arreglos visuales en el teléfono:**
+  - La barra de acciones del álbum ya no se sale ni se monta a 320–360 px.
+  - La línea de progreso no mueve la tabla.
+  - Los metadatos ya no se parten.
+  - En la APK, el saludo de Inicio ya no salta al descargar.
+- **Subir canciones:**
+  - Los estados pasan a «Esperando para subir» y «Subiendo…», en vez de «Subiendo… 0 %».
+  - «Reintentar» va debajo del texto.
+  - En el teléfono, «Publicándose N canciones» aparece en Tu biblioteca.
+  - La hoja respeta la barra de gestos.
+  - En la APK se pueden elegir más archivos y reintentar mientras otros se suben (cola de tandas).
+  - El panel ya no repinta toda la biblioteca en cada trozo.
+- `SHELL_VERSION = 32`.
+- **Pruebas:** backend 1415; web 863 unitarias y 213 de extremo a extremo (nuevas: `movil.e2e.mjs` y 3 pantallas de accesibilidad); Flutter 552; `flutter analyze` y `actionlint` sin avisos. Comprobado que no tocan producción.
+
 ## Sin publicar: títulos limpios (2026-11-06, rama `feature/titulos-limpios`)
 
 - **Títulos limpios** ([ADR-0032](docs/decisions/ADR-0032-titulos-limpios.md)): las canciones nuevas del buzón entran limpias.
