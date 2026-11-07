@@ -51,7 +51,8 @@ const String kOfflineMessage =
 /// Motivo corto de «sin red» para el estado de un archivo.
 const String kNoConnectionReason = 'no hay conexión a internet.';
 
-const String _pausedMessage =
+/// Motivo de lo que no llegó a subirse porque se salió de la app (lo que estaba en cola también; ADR-0033).
+const String kPausedUploadMessage =
     'pendiente: la subida se paró al salir de la app. Vuelve a subirlo.';
 const String _lostConnectionMessage =
     'pendiente: se perdió la conexión. Vuelve a subirlo cuando tengas red.';
@@ -442,7 +443,7 @@ class SharedUploader {
         }
         final file = files[index];
         final title = titleFromFileName(file.name);
-        if (_cancelled) stopReason ??= _pausedMessage;
+        if (_cancelled) stopReason ??= kPausedUploadMessage;
         final reason = stopReason;
         if (reason != null) {
           add(index, UploadOutcome.pending, reason);
@@ -468,7 +469,7 @@ class SharedUploader {
             await extractZipSong(zip, extracted.path);
             input = extracted.path;
             if (_cancelled) {
-              stopReason ??= _pausedMessage;
+              stopReason ??= kPausedUploadMessage;
               add(index, UploadOutcome.pending, stopReason!);
               continue;
             }
@@ -482,7 +483,7 @@ class SharedUploader {
             );
           } catch (error) {
             if (!_cancelled) rethrow;
-            stopReason ??= _pausedMessage;
+            stopReason ??= kPausedUploadMessage;
             add(index, UploadOutcome.pending, stopReason!);
             continue;
           }

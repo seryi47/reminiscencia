@@ -31,7 +31,8 @@ import {
   SHELL_VERSION,
   shellCacheName,
 } from '../../frontend/web/js/offline-core.js';
-import { cachedAudioPaths, registerPwa, removeOfflineSongs, saveLibraryOffline } from '../../frontend/web/js/pwa.js';
+import { cachedAudioPaths, downloadAudioToCache, registerPwa, removeOfflineSongs } from '../../frontend/web/js/pwa.js';
+import { createOfflineDownloads } from '../../frontend/web/js/offline-downloads.js';
 import { normalizeApiBase, WORKER_API_BASE } from '../../frontend/web/js/api-config.js';
 
 const WEB_DIR = fileURLToPath(new URL('../../frontend/web/', import.meta.url));
@@ -803,48 +804,42 @@ describe('guardado sin conexión (pwa.js)', () => {
   beforeEach(resetEnvironment);
   after(restoreGlobals);
 
-  test('saveLibraryOffline descarga solo lo pendiente e informa del progreso', async () => {
-    env.routes.set(`${ORIGIN}audio/demo-1.opus`, { body: 'aaaa' });
-    env.routes.set(`${ORIGIN}audio/demo-3.opus`, { body: 'cccc' });
-    await putIn(AUDIO, '/audio/demo-2.opus', new Response('bbbb'));
-
-    const events = [];
-    const result = await saveLibraryOffline(
-      [{ id: 'demo-1' }, { id: 'demo-2' }, { id: 'demo-3' }],
-      (event) => events.push(event),
-    );
-
-    assert.deepEqual(result, { added: 2, skipped: 1, failed: [] });
-    assert.deepEqual(
-      events.map((event) => [event.done, event.total, event.url, event.ok]),
-      [
-        [1, 2, 'audio/demo-1.opus', true],
-        [2, 2, 'audio/demo-3.opus', true],
-      ],
-    );
-    assert.deepEqual(await urlsIn(AUDIO), [
-      `${ORIGIN}audio/demo-1.opus`,
-      `${ORIGIN}audio/demo-2.opus`,
-      `${ORIGIN}audio/demo-3.opus`,
-    ]);
+  test('downloadAudioToCache guarda la canción entera, con su tipo, y cuenta los bytes recibidos', async () => {
+    env.routes.set(`${ORIGIN}audio/demo-1.opus`, { body: 'aaaa', headers: { 'Content-Type': 'audio/ogg' } });
+    const bytes = [];
+    await downloadAudioToCache('audio/demo-1.opus', { onBytes: (count) => bytes.push(count) });
+    assert.equal(bytes.reduce((a, b) => a + b, 0), 4);
+    const cache = await caches.open(AUDIO);
+    const saved = await cache.match(`${ORIGIN}audio/demo-1.opus`);
+    assert.equal(await saved.text(), 'aaaa');
+    assert.equal(saved.headers.get('content-type'), 'audio/ogg');
+    assert.equal(saved.headers.get('content-length'), '4');
   });
 
-  test('un tema que falla no detiene la descarga del resto', async () => {
+  test('downloadAudioToCache no guarda nada si la respuesta falla o se cancela', async () => {
+    await assert.rejects(downloadAudioToCache('audio/demo-2.opus'), /HTTP 404/);
+    env.routes.set(`${ORIGIN}audio/demo-3.opus`, { body: 'cccc' });
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(downloadAudioToCache('audio/demo-3.opus', { signal: controller.signal }), { name: 'AbortError' });
+    assert.deepEqual(await urlsIn(AUDIO), []);
+  });
+
+  test('con el gestor (ADR-0033) baja solo lo pendiente y una canción que falla no detiene el resto', async () => {
     env.routes.set(`${ORIGIN}audio/demo-1.opus`, { body: 'aaaa' });
     env.routes.set(`${ORIGIN}audio/demo-3.opus`, { body: 'cccc' });
-
-    const events = [];
-    const result = await saveLibraryOffline(
-      [{ id: 'demo-1' }, { id: 'demo-2' }, { id: 'demo-3' }],
-      (event) => events.push(event),
-    );
-
+    await putIn(AUDIO, '/audio/demo-4.opus', new Response('dddd'));
+    const manager = createOfflineDownloads({ listCached: cachedAudioPaths, download: downloadAudioToCache, retries: 0 });
+    const result = await manager.start('album:F1', [{ id: 'demo-1' }, { id: 'demo-2' }, { id: 'demo-3' }, { id: 'demo-4' }]);
     assert.equal(result.added, 2);
-    assert.equal(result.failed.length, 1);
-    assert.equal(result.failed[0].url, 'audio/demo-2.opus');
-    assert.deepEqual(events.map((event) => event.ok), [true, false, true]);
-    assert.equal(events.at(-1).done, 3);
-    assert.deepEqual(await urlsIn(AUDIO), [`${ORIGIN}audio/demo-1.opus`, `${ORIGIN}audio/demo-3.opus`]);
+    assert.equal(result.skipped, 1);
+    assert.deepEqual(result.failed.map((item) => item.url), ['audio/demo-2.opus']);
+    assert.deepEqual(await urlsIn(AUDIO), [
+      `${ORIGIN}audio/demo-1.opus`,
+      `${ORIGIN}audio/demo-3.opus`,
+      `${ORIGIN}audio/demo-4.opus`,
+    ]);
+    assert.equal(env.requests.filter((request) => request.url.endsWith('demo-4.opus')).length, 0, 'lo ya guardado no se pide');
   });
 
   test('removeOfflineSongs quita de la caché solo las canciones indicadas', async () => {

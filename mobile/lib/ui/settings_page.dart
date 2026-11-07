@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_settings.dart';
+import '../offline_downloads.dart';
 import '../services.dart';
 import '../settings_store.dart';
 import '../theme.dart';
@@ -105,18 +106,33 @@ class SettingsPage extends StatelessWidget {
                 enabled: !library.loading,
                 onTap: () => library.load(),
               ),
-              ListTile(
-                leading: const Icon(Icons.download_for_offline_outlined),
-                title: const Text('Guardar para escuchar sin conexión'),
-                subtitle: Text(
-                  library.downloading
-                      ? 'Guardando: ${library.progress}'
-                      : library.offlineWanted
-                      ? 'Activado: lo nuevo se guarda solo, también con datos móviles.'
-                      : 'Descarga el catálogo en este teléfono.',
+              // Solo el subtítulo escucha el progreso (ADR-0033). Mientras guarda, tocar la fila cancela.
+              ValueListenableBuilder<OfflineProgress?>(
+                valueListenable: library.offlineProgress,
+                builder: (context, progress, _) => ListTile(
+                  key: const Key('settings-offline'),
+                  leading: Icon(
+                    progress != null
+                        ? Icons.close_rounded
+                        : Icons.download_for_offline_outlined,
+                  ),
+                  title: Text(
+                    progress != null
+                        ? 'Cancelar la descarga'
+                        : 'Guardar para escuchar sin conexión',
+                  ),
+                  subtitle: Text(
+                    progress != null
+                        ? progress.text
+                        : library.offlineWanted
+                        ? 'Activado: lo nuevo se guarda solo, también con datos móviles.'
+                        : 'Descarga el catálogo en este teléfono.',
+                  ),
+                  enabled: progress != null || library.songs.isNotEmpty,
+                  onTap: progress != null
+                      ? () => cancelOfflineFlow(context, services)
+                      : () => downloadForOfflineFlow(context, services),
                 ),
-                enabled: !library.downloading && library.songs.isNotEmpty,
-                onTap: () => downloadForOfflineFlow(context, services),
               ),
               const _SectionTitle('Acerca de'),
               ListTile(

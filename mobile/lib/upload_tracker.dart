@@ -183,6 +183,9 @@ class UploadEntry {
   int part = 0;
   int parts = 0;
 
+  /// Convertida, esperando hueco para enviarse (ADR-0030): «Esperando para subir», sin barra (ADR-0033).
+  bool waitingToSend = false;
+
   /// Copia Opus local: suena mientras se publica y sirve para reintentar sin convertir otra vez.
   String? opusPath;
   double durationS;
@@ -223,7 +226,14 @@ class UploadEntry {
   String get statusText => switch (stage) {
     UploadStage.queued => 'En espera',
     UploadStage.converting => 'Convirtiendo a Opus…',
-    UploadStage.sending => 'Subiendo… $percent %',
+    // Sin ningún trozo confirmado (un archivo de un trozo pasa así casi todo el envío) no se dice «0 %»: la barra se
+    // mueve sin porcentaje y no parece parada (ADR-0033, igual que la web).
+    UploadStage.sending =>
+      waitingToSend
+          ? 'Esperando para subir'
+          : percent > 0
+          ? 'Subiendo… $percent %'
+          : 'Subiendo…',
     UploadStage.saved => 'Guardada en GitHub',
     UploadStage.publishing => 'Publicándose… (suele tardar 2–3 minutos)',
     UploadStage.published =>
@@ -232,16 +242,24 @@ class UploadEntry {
     UploadStage.failed => 'Error: ${error ?? 'no se pudo subir.'}',
   };
 
-  /// Valor de la barra: null es indeterminada (convirtiendo o publicándose).
+  /// Valor de la barra: null es indeterminada (convirtiendo, enviando sin ningún trozo confirmado o publicándose).
+  /// Si [showsBar] es false, la barra no se ve (pero guarda su hueco).
   double? get progress => switch (stage) {
     UploadStage.queued => 0,
     UploadStage.converting => null,
-    UploadStage.sending => parts <= 0 ? 0 : part / parts,
+    UploadStage.sending => parts <= 0 || part <= 0 ? null : part / parts,
     UploadStage.saved => 1,
     UploadStage.publishing => null,
     UploadStage.published => 1,
     UploadStage.slow => 1,
     UploadStage.failed => 0,
+  };
+
+  /// ¿Hay algo que medir? En espera, esperando para subir, con error o pendiente de aparecer, no (como la web).
+  bool get showsBar => switch (stage) {
+    UploadStage.queued || UploadStage.failed || UploadStage.slow => false,
+    UploadStage.sending => !waitingToSend,
+    _ => true,
   };
 
   /// Canción provisional para la biblioteca: suena desde la copia Opus local.
@@ -515,7 +533,17 @@ class UploadTracker extends ChangeNotifier {
   final List<String> _layout = [];
   final StreamController<UploadNotice> _notices =
       StreamController<UploadNotice>.broadcast();
-  bool _busy = false;
+
+  /// Tandas en cola o en marcha (se hacen de una en una, en orden: ver [_serial]).
+  int _jobs = 0;
+
+  /// Selecciones que se están preparando (abrir ZIP, aviso de duplicados).
+  int _preparing = 0;
+  final List<Future<void> Function()> _queue = [];
+  bool _draining = false;
+
+  /// Veces que se ha salido de la app: una tanda que esperaba su turno no empieza si se salió mientras tanto.
+  int _pauses = 0;
   bool _foreground = true;
   bool _checking = false;
   bool _restored = false;
@@ -526,6 +554,24 @@ class UploadTracker extends ChangeNotifier {
   final Set<Future<void>> _background = {};
 
   List<UploadEntry> get entries => List.unmodifiable(_entries);
+
+  /// Solo pruebas: muestra subidas ya en un paso concreto (la hoja a anchos pequeños y sus capturas; ADR-0033). Con
+  /// [group], van juntas bajo su ZIP.
+  @visibleForTesting
+  void debugShow(List<UploadEntry> entries, {UploadGroup? group}) {
+    _entries.addAll(entries);
+    if (group != null) {
+      _groups[group.key] = group;
+      _layout.add(group.key);
+    } else {
+      _layout.addAll(entries.map((entry) => entry.key));
+    }
+    _changed();
+  }
+
+  /// Solo pruebas: avisa de un cambio hecho a mano en una subida (por ejemplo, su porcentaje).
+  @visibleForTesting
+  void debugChanged() => _changed();
 
   /// Termina cuando no queda trabajo en segundo plano, también el que lance ese mismo trabajo. Después, el estado
   /// guardado refleja lo que se ve. Las pruebas lo esperan en vez de dormir un tiempo fijo.
@@ -563,11 +609,61 @@ class UploadTracker extends ChangeNotifier {
     ];
   }
 
-  /// True mientras se convierte o se envía algo.
-  bool get busy => _busy;
+  /// True mientras se prepara, se convierte o se envía algo, o hay una tanda esperando su turno.
+  bool get busy => _jobs > 0 || _preparing > 0;
 
-  /// True mientras hay un temporizador de comprobación activo.
-  bool get polling => _timer != null;
+  /// Pone una tanda (o un reintento) en la cola: se hacen de una en una y en orden, porque el destino (Worker o Vercel)
+  /// se fija al empezar cada tanda y nunca cambia a mitad de un archivo. Así se pueden elegir más archivos, o reintentar
+  /// uno, mientras otros se suben (como en la web; ADR-0033). Si se sale de la app mientras espera su turno, no empieza
+  /// (la conversión no sigue en segundo plano): sus archivos quedan con error y «Reintentar», como los de la tanda que
+  /// se estaba subiendo.
+  Future<T> _serial<T>(
+    List<UploadEntry> entries,
+    Future<T> Function() job,
+    T Function() skipped,
+  ) {
+    final pausesAtStart = _pauses;
+    final done = Completer<T>();
+    _jobs += 1;
+    _changed();
+    _queue.add(() async {
+      try {
+        if (_pauses != pausesAtStart || _disposed) {
+          for (final entry in entries) {
+            if (entry.stage.index >= UploadStage.saved.index) continue;
+            entry
+              ..stage = UploadStage.failed
+              ..waitingToSend = false
+              ..error = failureReason(kPausedUploadMessage);
+          }
+          _changed();
+          await _persist();
+          done.complete(skipped());
+        } else {
+          done.complete(await job());
+        }
+      } catch (error, stack) {
+        done.completeError(error, stack);
+      } finally {
+        _jobs -= 1;
+        _changed();
+      }
+    });
+    _drain();
+    return done.future;
+  }
+
+  /// Hace las tandas de la cola de una en una. La primera empieza ya, en la misma llamada.
+  void _drain() {
+    if (_draining) return;
+    _draining = true;
+    unawaited(() async {
+      while (_queue.isNotEmpty) {
+        await _queue.removeAt(0)();
+      }
+      _draining = false;
+    }());
+  }
 
   /// Avisos para mostrar en la interfaz.
   Stream<UploadNotice> get notices => _notices.stream;
@@ -614,11 +710,11 @@ class UploadTracker extends ChangeNotifier {
         'Subir canciones no está disponible en este teléfono.',
       );
     }
-    if (files.isEmpty || _busy) return const SharedUploadResult([]);
+    if (files.isEmpty) return const SharedUploadResult([]);
     if (!await shared.hasConnection()) {
       throw const AppException(kOfflineMessage);
     }
-    _busy = true;
+    _preparing += 1;
     _changed();
     final batch = <UploadEntry>[];
     final songs = <PickedAudioFile>[];
@@ -673,7 +769,7 @@ class UploadTracker extends ChangeNotifier {
         }
       }
     } finally {
-      _busy = false;
+      _preparing -= 1;
     }
     _entries.addAll(batch);
     _layout.addAll(layout);
@@ -681,7 +777,21 @@ class UploadTracker extends ChangeNotifier {
       _changed();
       return const SharedUploadResult([]);
     }
-    return _run(batch, songs);
+    // Se ven ya «En espera» aunque otra tanda se esté subiendo.
+    _changed();
+    return _serial(
+      batch,
+      () => _run(batch, songs),
+      () => SharedUploadResult([
+        for (final entry in batch)
+          UploadItemResult(
+            name: entry.name,
+            title: entry.title,
+            outcome: UploadOutcome.pending,
+            message: kPausedUploadMessage,
+          ),
+      ]),
+    );
   }
 
   UploadEntry _newEntry(PickedAudioFile file, {UploadGroup? group}) =>
@@ -726,37 +836,17 @@ class UploadTracker extends ChangeNotifier {
   Future<void> retry(String key) async {
     final entry = entryOrNull(key);
     final shared = uploader;
-    if (entry == null || !entry.canRetry || _busy || shared == null) return;
+    if (entry == null || !entry.canRetry || shared == null) return;
     final opus = entry.opusPath == null ? null : File(entry.opusPath!);
     if (opus != null && await opus.exists()) {
-      _busy = true;
+      // «En espera» al momento; el envío, cuando le toque (puede haber otra tanda subiéndose; ADR-0033).
       entry
-        ..stage = UploadStage.sending
+        ..stage = UploadStage.queued
         ..error = null
         ..part = 0
         ..parts = 0;
       _changed();
-      final baseline = _fetchBaseline();
-      try {
-        await _chooseRoute(shared);
-        final item = await shared.resend(
-          opus,
-          entry.name,
-          albumId: entry.youtubePlaylistId,
-          albumName: entry.youtubePlaylistName,
-          artist: entry.artist,
-          onPart: (part, parts) {
-            entry
-              ..part = part
-              ..parts = parts;
-            _changed();
-          },
-        );
-        _applyResult(entry, item, baseline);
-      } finally {
-        _busy = false;
-        _changed();
-      }
+      await _serial([entry], () => _resend(shared, entry, opus), () {});
       return;
     }
     final source = entry.source;
@@ -769,13 +859,54 @@ class UploadTracker extends ChangeNotifier {
       ..stage = UploadStage.queued
       ..error = null
       ..opusPath = null;
+    _changed();
     try {
-      await _run([entry], [source]);
+      await _serial(
+        [entry],
+        () => _run([entry], [source]),
+        () => const SharedUploadResult([]),
+      );
     } on AppException catch (error) {
       entry
         ..stage = UploadStage.failed
         ..error = error.message;
       _changed();
+    }
+  }
+
+  /// Reenvía el Opus ya convertido de una subida con error.
+  Future<void> _resend(
+    SharedUploader shared,
+    UploadEntry entry,
+    File opus,
+  ) async {
+    entry.stage = UploadStage.sending;
+    _changed();
+    final baseline = _fetchBaseline();
+    try {
+      await _chooseRoute(shared);
+      final item = await shared.resend(
+        opus,
+        entry.name,
+        albumId: entry.youtubePlaylistId,
+        albumName: entry.youtubePlaylistName,
+        artist: entry.artist,
+        onPart: (part, parts) {
+          entry
+            ..part = part
+            ..parts = parts;
+          _changed();
+        },
+      );
+      _applyResult(entry, item, baseline);
+    } catch (error) {
+      entry
+        ..stage = UploadStage.failed
+        ..error = error is AppException
+            ? error.message
+            : 'error inesperado al subir.';
+      _changed();
+      _inBackground(_persist());
     }
   }
 
@@ -785,8 +916,6 @@ class UploadTracker extends ChangeNotifier {
   ) async {
     final shared = uploader!;
     final saveTo = store;
-    _busy = true;
-    _changed();
     final baseline = _fetchBaseline();
     try {
       await _chooseRoute(shared);
@@ -797,18 +926,38 @@ class UploadTracker extends ChangeNotifier {
             : (index) => saveTo.opusFile(batch[index].key),
         onProgress: (progress) {
           final entry = batch[progress.index];
+          final stage = progress.sending
+              ? UploadStage.sending
+              : UploadStage.converting;
+          final part = progress.part ?? 0;
+          final parts = progress.parts ?? 0;
+          // Un aviso que no cambia nada visible no repinta (ADR-0033).
+          if (entry.stage == stage &&
+              entry.part == part &&
+              entry.parts == parts &&
+              !entry.waitingToSend) {
+            return;
+          }
           entry
-            ..stage = progress.sending
-                ? UploadStage.sending
-                : UploadStage.converting
-            ..part = progress.part ?? 0
-            ..parts = progress.parts ?? 0;
+            ..stage = stage
+            ..waitingToSend = false
+            ..part = part
+            ..parts = parts;
           _changed();
         },
         onConverted: (index, opus, audio) {
-          batch[index]
+          final entry = batch[index];
+          entry
             ..opusPath = opus.path
             ..durationS = audio.durationS;
+          // Convertida: hasta que empiece su envío, «Esperando para subir» (no «Convirtiendo»).
+          if (entry.stage == UploadStage.converting) {
+            entry
+              ..stage = UploadStage.sending
+              ..waitingToSend = true
+              ..part = 0
+              ..parts = 0;
+          }
           _changed();
           _inBackground(_persist());
         },
@@ -826,7 +975,6 @@ class UploadTracker extends ChangeNotifier {
       }
       rethrow;
     } finally {
-      _busy = false;
       _changed();
       // La subida no se considera terminada hasta que el estado guardado refleja
       // al menos la etapa actual. Si se deja en segundo plano, otra instancia
@@ -888,8 +1036,9 @@ class UploadTracker extends ChangeNotifier {
 
   /// Al salir de la app: para la conversión en curso (no sigue en segundo plano) y deja de comprobar.
   Future<void> pause() async {
+    _pauses += 1;
     setForeground(false);
-    if (_busy) await uploader?.cancel();
+    if (_jobs > 0) await uploader?.cancel();
   }
 
   void _ensurePolling() {

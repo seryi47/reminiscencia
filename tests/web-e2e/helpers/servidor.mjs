@@ -108,12 +108,14 @@ async function readBody(request) {
 
 /**
  * Arranca el servidor en un puerto libre de 127.0.0.1.
- * overrides: Map de ruta (por ejemplo "/data/songs.json") a { body, type } o a { file, type }.
+ * overrides: Map de ruta (por ejemplo "/data/songs.json") a { body, type } o a { file, type }; con delayMs, la respuesta
+ * tarda ese tiempo (por ejemplo, para ver «Descargando 3 de 8» en la descarga sin conexión).
  * functions: Map de ruta (por ejemplo "/api/subir") a una función async ({ method, headers, body, query }) que devuelve
  * { status, json }: simula una función de Vercel para cualquier método que no sea GET ni HEAD. Si la función tiene
  * acceptsGet = true, también atiende GET (por ejemplo, GET /api/editar?incidencia=N; query es un URLSearchParams).
  * extraConnectSrc: orígenes que se añaden a connect-src de la CSP (por ejemplo, el Worker simulado de
  * helpers/worker.mjs, que escucha en otro puerto: otro origen, como el Worker real en workers.dev).
+ * onRequest(pathname, request): se llama con cada petición (por ejemplo, para contar cuántas veces se pide un audio).
  * Devuelve { url, port, close() }.
  */
 /** js/api-config.js de la web con WORKER_API_BASE = [base], sea cual sea la dirección de producción (ADR-0029). */
@@ -128,7 +130,7 @@ export function apiConfigWithBase(base) {
 // servidor de pruebas), aunque js/api-config.js tenga la dirección de producción.
 const NO_WORKER_API_CONFIG = apiConfigWithBase("");
 
-export async function startStaticServer({ root = WEB_ROOT, overrides = new Map(), functions = new Map(), extraConnectSrc = [] } = {}) {
+export async function startStaticServer({ root = WEB_ROOT, overrides = new Map(), functions = new Map(), extraConnectSrc = [], onRequest = null } = {}) {
   const absoluteRoot = resolve(root);
   const rootInfo = await stat(absoluteRoot).catch(() => null);
   if (!rootInfo?.isDirectory()) {
@@ -143,6 +145,7 @@ export async function startStaticServer({ root = WEB_ROOT, overrides = new Map()
     try {
       const { pathname, searchParams } = new URL(request.url ?? "/", "http://127.0.0.1");
       const decoded = decodeURIComponent(pathname);
+      onRequest?.(decoded, request);
 
       const handler = functions.get(decoded);
       if (handler && ((request.method !== "GET" && request.method !== "HEAD") || (request.method === "GET" && handler.acceptsGet === true))) {
@@ -154,6 +157,7 @@ export async function startStaticServer({ root = WEB_ROOT, overrides = new Map()
 
       const override = overrides.get(decoded) ?? (decoded === "/js/api-config.js" ? NO_WORKER_API_CONFIG : undefined);
       if (override) {
+        if (override.delayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, override.delayMs));
         if (override.file && !(await isFile(override.file))) {
           return sendText(response, 404, "No encontrado", request.method, csp);
         }

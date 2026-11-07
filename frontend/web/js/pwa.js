@@ -1,6 +1,6 @@
 // Registro del service worker y descarga de canciones para escuchar sin conexión.
 // Se ejecuta en el navegador; la lógica de nombres y rutas está en offline-core.js.
-import { audioCacheName, listAudioUrls, planOfflineDownload } from './offline-core.js';
+import { audioCacheName, listAudioUrls } from './offline-core.js';
 
 const SW_URL = '/sw.js';
 const SW_SCOPE = '/';
@@ -50,32 +50,40 @@ export async function registerPwa() {
   }
 }
 
-/** Guarda en la caché de audio las canciones que aún no están. Descarga en serie y un fallo
- *  no detiene el resto. onProgress recibe tras cada tema { done, total, url, ok, error? }.
- *  Devuelve { added, skipped, failed: [{ url, error }] }. */
-export async function saveLibraryOffline(songs, onProgress = () => {}) {
-  const cache = await caches.open(audioCacheName());
-  const requests = await cache.keys();
-  const { toDownload, alreadyCached } = planOfflineDownload(
-    songs,
-    requests.map((request) => request.url),
-  );
-  const total = toDownload.length;
-  const failed = [];
-  let done = 0;
-  for (const url of toDownload) {
-    try {
-      await cache.add(`/${url}`);
-      done += 1;
-      onProgress({ done, total, url, ok: true });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      done += 1;
-      failed.push({ url, error: message });
-      onProgress({ done, total, url, ok: false, error: message });
-    }
+/**
+ * Baja una canción ('audio/<id>.opus') y la guarda en la caché de audio para escucharla sin conexión. La petición pasa
+ * por el service worker, que la pide al Worker (o a sus respaldos; ADR-0031). Se lee entera, contando los bytes
+ * (onBytes), y solo entonces se guarda: nunca queda una canción a medias. Con signal se puede cortar. Lanza si la
+ * respuesta no es correcta. La usa el gestor de descargas (js/offline-downloads.js, ADR-0033).
+ */
+export async function downloadAudioToCache(path, { signal, onBytes = () => {}, fetchImpl = globalThis.fetch } = {}) {
+  const response = await fetchImpl(`/${path}`, { signal, credentials: 'same-origin' });
+  if (!response.ok || response.status !== 200) {
+    await response.body?.cancel?.().catch(() => {});
+    throw new Error(`${path}: HTTP ${response.status}`);
   }
-  return { added: total - failed.length, skipped: alreadyCached.length, failed };
+  const type = response.headers.get('content-type') || 'audio/ogg';
+  const chunks = [];
+  if (response.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      onBytes(value.byteLength);
+    }
+  } else {
+    const buffer = new Uint8Array(await response.arrayBuffer());
+    chunks.push(buffer);
+    onBytes(buffer.byteLength);
+  }
+  if (signal?.aborted) throw Object.assign(new Error('Descarga cancelada.'), { name: 'AbortError' });
+  const blob = new Blob(chunks, { type });
+  const cache = await caches.open(audioCacheName());
+  await cache.put(`/${path}`, new Response(blob, {
+    status: 200,
+    headers: { 'Content-Type': type, 'Content-Length': String(blob.size) },
+  }));
 }
 
 /** Quita de la caché de audio las canciones indicadas (la descarga de una carpeta o una lista). */

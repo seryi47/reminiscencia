@@ -359,6 +359,8 @@ void main() {
       const workerBase = 'https://reminiscencia-api.prueba.workers.dev';
       final workerHost = Uri.parse(workerBase).host;
 
+      // De una en una: estas pruebas miran el orden de las peticiones entre canciones (en la app van varias a la vez,
+      // ADR-0033; la concurrencia se prueba aparte).
       LibraryStore storeWith(
         ApiRoutes routes,
         Future<http.StreamedResponse> Function(http.BaseRequest) reply,
@@ -366,6 +368,7 @@ void main() {
         root: () async => Directory('${tmp.path}/biblioteca'),
         routes: routes,
         client: MockClient.streaming((request, _) => reply(request)),
+        concurrency: 1,
       );
 
       test(

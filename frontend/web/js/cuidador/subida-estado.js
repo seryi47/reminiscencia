@@ -103,6 +103,7 @@ export function createItem({ key, name, title, createdAt = 0, group = null, albu
 const FROM = Object.freeze({
   convert: [S.QUEUED, S.CONVERTING],
   converted: [S.QUEUED, S.CONVERTING],
+  transmit: [S.SENDING],
   send: [S.SENDING],
   saved: [S.SENDING],
   publishing: [S.SAVED],
@@ -117,7 +118,7 @@ const clamp01 = (value) => (Number.isFinite(value) ? Math.min(1, Math.max(0, val
 /**
  * Aplica un evento a una subida y devuelve la subida nueva (sin cambiar la original). Un evento que no vale en el
  * estado actual devuelve la misma subida (el mismo objeto). Eventos:
- * convert { fraction }, converted { localId }, send { fraction }, saved { serverName, at, knownIds }, publishing,
+ * convert { fraction }, converted { localId }, transmit (empieza el envío), send { fraction }, saved { serverName, at, knownIds }, publishing,
  * published { songId, songTitle, alreadyPresent }, slow, fail { message, retryable }, retry.
  */
 export function transition(item, event) {
@@ -128,9 +129,12 @@ export function transition(item, event) {
     case 'convert':
       return { ...item, state: S.CONVERTING, fraction: clamp01(event.fraction) };
     case 'converted':
-      return { ...item, state: S.SENDING, fraction: 0, localId: event.localId ?? item.localId ?? null };
+      // Convertida, esperando hueco para enviarse (ADR-0030): «Esperando para subir» hasta que empieza el envío.
+      return { ...item, state: S.SENDING, fraction: 0, waiting: true, localId: event.localId ?? item.localId ?? null };
+    case 'transmit':
+      return item.waiting ? { ...item, waiting: false } : item;
     case 'send':
-      return { ...item, fraction: Math.max(item.fraction, clamp01(event.fraction)) };
+      return { ...item, waiting: false, fraction: Math.max(item.fraction, clamp01(event.fraction)) };
     case 'saved':
       return {
         ...item,
@@ -168,7 +172,13 @@ export function statusText(item) {
   switch (item?.state) {
     case S.QUEUED: return 'En cola';
     case S.CONVERTING: return 'Convirtiendo a Opus…';
-    case S.SENDING: return `Subiendo… ${Math.round(clamp01(item.fraction) * 100)}${NBSP}%`;
+    // Sin ningún trozo confirmado aún (un archivo de un solo trozo pasa así casi todo el envío) no se dice «0 %»: la
+    // barra se mueve sin porcentaje y no parece parada (ADR-0033).
+    case S.SENDING: {
+      if (item.waiting) return 'Esperando para subir';
+      const percent = Math.round(clamp01(item.fraction) * 100);
+      return percent > 0 ? `Subiendo… ${percent}${NBSP}%` : 'Subiendo…';
+    }
     case S.SAVED: return 'Guardada en GitHub';
     case S.PUBLISHING: return 'Publicándose… (suele tardar 2–3 minutos)';
     case S.PUBLISHED: return item.alreadyPresent ? 'Ya estaba en la biblioteca' : 'Publicada';
@@ -179,14 +189,19 @@ export function statusText(item) {
 }
 
 /**
- * Barra de progreso del paso actual: { value } de 0 a 100, { value: null } si no se puede medir (publicándose) y
- * { hidden: true } cuando ya no hay nada que esperar (error o «sigue procesándose»).
+ * Barra de progreso del paso actual: { value } de 0 a 100, { value: null } si no se puede medir (publicándose, o
+ * enviándose sin ningún trozo confirmado aún) y { hidden: true } cuando no hay nada que medir (en cola, error o «sigue
+ * procesándose»). La hoja reserva el hueco de la barra oculta: la fila no cambia de alto al pasar de un paso a otro.
  */
 export function progressOf(item) {
   switch (item?.state) {
-    case S.QUEUED: return { value: 0, hidden: false };
-    case S.CONVERTING:
-    case S.SENDING: return { value: Math.round(clamp01(item.fraction) * 100), hidden: false };
+    case S.QUEUED: return { value: null, hidden: true };
+    case S.CONVERTING: return { value: Math.round(clamp01(item.fraction) * 100), hidden: false };
+    case S.SENDING: {
+      if (item.waiting) return { value: null, hidden: true };
+      const value = Math.round(clamp01(item.fraction) * 100);
+      return { value: value > 0 ? value : null, hidden: false };
+    }
     case S.SAVED:
     case S.PUBLISHED: return { value: 100, hidden: false };
     case S.PUBLISHING: return { value: null, hidden: false };
@@ -522,7 +537,12 @@ export function createUploadTracker(deps = {}) {
   function dispatch(entry, event) {
     const next = transition(entry.item, event);
     if (next === entry.item) return false;
+    const previous = entry.item;
     entry.item = next;
+    // Un avance que no cambia el porcentaje (la conversión avisa cada segundo de audio) no se pinta: en el móvil, pintar
+    // la hoja cientos de veces por canción frenaba la conversión (ADR-0033).
+    if ((event.type === 'convert' || event.type === 'send') && previous.state === next.state
+      && Math.round(previous.fraction * 100) === Math.round(next.fraction * 100)) return true;
     emit();
     return true;
   }
@@ -648,6 +668,7 @@ export function createUploadTracker(deps = {}) {
       if (entry.item.state !== S.SENDING || entry.run === undefined) continue;
       const { run } = entry;
       sending.add(entry);
+      dispatch(entry, { type: 'transmit' });
       inBackground((async () => {
         try {
           await transmit(entry, run);
