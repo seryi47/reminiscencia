@@ -1,3 +1,14 @@
+## Sin publicar: la web en Cloudflare (2026-11-08, rama `feature/web-en-cloudflare`)
+
+- **Motivo:** Vercel ha bloqueado el equipo Hobby (HTTP 402 `DEPLOYMENT_DISABLED`) hasta el 2026-12-07. Se mueve a Cloudflare todo lo que se puede tal como está, sin funciones nuevas ([ADR-0034](docs/decisions/ADR-0034-web-en-cloudflare.md)).
+- **Un solo dominio, https://reminiscencia.cometia.es:** el Worker `reminiscencia-api` sirve también la web estática (`[assets]` de `worker/wrangler.toml`, con `run_worker_first` solo para `/api/*` y `/audio/*`). Sigue en `workers.dev` para las APK instaladas.
+- Se publica solo la web: `frontend/web/.assetsignore` deja fuera las funciones de Vercel, `server/`, `package.json` y `vercel.json`. La CSP de `vercel.json` pasa también a `frontend/web/_headers`.
+- **YouTube sigue en Vercel:** el Worker reenvía `/api/youtube/*` tal cual a https://reminiscencia.vercel.app. Mientras dure el bloqueo, «En YouTube» y Homeostasia fallan.
+- **Direcciones:** `WORKER_API_BASE` de la web, `kLibraryBase`, `kWorkerApiBase` y `kEmbedOrigin` de la APK y la redirección y la CSP de `vercel.json` pasan al dominio propio. El Worker admite ese origen con CORS (y sigue admitiendo `vercel.app`). `scripts/smoke_produccion.mjs` comprueba por defecto el dominio propio.
+- **Despliegue continuo:** Cloudflare Workers Builds despliega con cada push a `main` (se configura en el panel; pasos en el ADR). Sin workflows ni secretos nuevos en GitHub.
+- `SHELL_VERSION = 33`; APK 1.2.5+9.
+- **Pruebas:** web 873 unitarias (nuevas: web estática, reenvío de YouTube con un Vercel simulado, CORS del dominio propio, `_headers`, `wrangler.toml` y `.assetsignore`) y 214 de extremo a extremo; Flutter 554; `flutter analyze` sin avisos; backend 1414 de 1415 (falla `test_the_real_catalog_cleans_once_and_then_nothing`, ya fallaba en `main`: el catálogo ya se limpió con la incidencia #58). Siguen sin tocar producción: Chrome de las E2E tampoco resuelve `cometia.es`, `vercel.app` ni `api.github.com`, y las de Flutter mandan esos nombres a un proxy inexistente.
+
 ## Sin publicar: descargas y subidas en el móvil (2026-11-07, rama `feature/descargas-movil`)
 
 - **Escuchar sin conexión, más rápido** ([ADR-0033](docs/decisions/ADR-0033-descargas-y-subidas-en-movil.md)):

@@ -98,7 +98,7 @@ void main() {
       expect(cache.uriFor(ks).toString(), '$kCoverBucketBase$ks');
       expect(
         cache.uriFor('covers/$s1.jpg').toString(),
-        'https://reminiscencia.vercel.app/covers/$s1.jpg',
+        'https://reminiscencia.cometia.es/covers/$s1.jpg',
       );
       cache.dispose();
     },

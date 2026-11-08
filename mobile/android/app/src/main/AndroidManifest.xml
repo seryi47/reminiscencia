@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- audio_service mantiene un bloqueo de CPU mientras suena con la pantalla apagada. -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <!-- La biblioteca se lee de reminiscencia.vercel.app y se guarda en el dispositivo. -->
+    <!-- La biblioteca se lee de reminiscencia.cometia.es y se guarda en el dispositivo. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- connectivity_plus: saber si hay Wi-Fi para descargar solo sin datos móviles. No envía nada. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>

@@ -6,12 +6,19 @@
 #
 # Wrangler empaqueta src/index.js con sus importaciones relativas (también las de ../frontend/web/server/ y
 # ../frontend/web/js/, el código compartido con las funciones de Vercel). No hay dependencias en tiempo de ejecución.
+#
+# Desde ADR-0034 el mismo Worker sirve también la web estática (frontend/web) en https://reminiscencia.cometia.es.
+# Cloudflare Workers Builds lo despliega solo con cada push a main (directorio raíz «worker»; ver ADR-0034).
 
 name = "reminiscencia-api"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
-# Dirección pública https://reminiscencia-api.<subdominio>.workers.dev (el subdominio es el de la cuenta).
+# Dirección pública https://reminiscencia-api.<subdominio>.workers.dev (el subdominio es el de la cuenta). Se mantiene:
+# las APK ya instaladas llaman a esa dirección (ADR-0034).
 workers_dev = true
+# Dominio propio (ADR-0034): la web y el API en el mismo origen. Cloudflare crea el registro DNS del subdominio en la
+# zona cometia.es al desplegar.
+routes = [{ pattern = "reminiscencia.cometia.es", custom_domain = true }]
 # Sin direcciones de vista previa por versión: solo la dirección principal sirve el API.
 preview_urls = false
 
@@ -24,6 +31,14 @@ bucket_name = "reminiscencia-audio-privado"
 [[r2_buckets]]
 binding = "PUBLIC_BUCKET"
 bucket_name = "reminiscencia-audio"
+
+# La web estática (ADR-0034): los ficheros de frontend/web, menos lo que no es web (frontend/web/.assetsignore: las
+# funciones de Vercel, server/, package.json, vercel.json…). Las cabeceras (CSP) van en frontend/web/_headers. Solo
+# /api/* y /audio/* pasan primero por el Worker; lo demás lo sirve Cloudflare directamente desde los ficheros.
+[assets]
+directory = "../frontend/web"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/audio/*"]
 
 [vars]
 # ALLOW_LOCALHOST no va aquí NUNCA: en producción el Worker no admite localhost (incidente del 2026-11-06). Para

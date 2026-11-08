@@ -3,13 +3,15 @@
  * pública (páginas, datos, tipos de contenido, audio y privacidad).
  *
  * Uso: node scripts/smoke_produccion.mjs [url] [--concurrencia=N] [--catalogo=ruta]
- *   url: por defecto, https://reminiscencia.vercel.app
+ *   url: por defecto, https://reminiscencia.cometia.es (la web en Cloudflare, ADR-0034). La de Vercel se comprueba
+ *     pasándola: node scripts/smoke_produccion.mjs https://reminiscencia.vercel.app
  *   --concurrencia=N: cuántos audios se piden a la vez (por defecto 6; 1 = de uno en uno). Antes iban todos a la vez
  *     y r2.dev, con su límite de velocidad, cortaba algunos (UND_ERR_CONNECT_TIMEOUT).
  *   --catalogo=ruta: catálogo con el que se calcula la privacidad (por defecto audio-library/indexes/catalog.json;
  *     lo usan las pruebas, tests/web-unit/smoke-produccion.test.mjs, contra un servidor local).
  *
- * El audio (/audio/<id>.opus) lo redirige vercel.json al Worker (ADR-0031), que lo lee del bucket público: las
+ * El audio (/audio/<id>.opus) lo sirve el Worker (en Cloudflare, en el mismo origen; en Vercel, vercel.json lo
+ * redirige allí; ADR-0031 y ADR-0034), que lo lee del bucket público: las
  * canciones públicas dan 200 con audio/ogg; codecs=opus y las privadas 404 (no están en el bucket público). Además se
  * comprueba un rango (206 con Content-Range, para poder buscar dentro del tema) y se informa de cuántos audios ha
  * servido el Worker (cabecera X-Reminiscencia-Api) y cuántos otro sitio (r2.dev si la redirección aún va allí).
@@ -22,7 +24,7 @@
 
 import { readFileSync } from 'node:fs';
 
-const DEFAULT_URL = 'https://reminiscencia.vercel.app';
+const DEFAULT_URL = 'https://reminiscencia.cometia.es';
 const TIMEOUT_MS = 20_000;
 
 // Marcas fijas de frontend/web/index.html (interfaz sin usuarios con el aspecto de Spotify, ADR-0015).

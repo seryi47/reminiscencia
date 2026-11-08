@@ -7,6 +7,8 @@ import { AUDIO_ORIGIN, WORKER_AUDIO_ORIGIN } from "../../frontend/web/js/offline
 import { normalizeApiBase, WORKER_API_BASE } from "../../frontend/web/js/api-config.js";
 
 const WORKERS_DEV = "https://*.workers.dev";
+/** La web en Cloudflare (ADR-0034): el mismo origen que el Worker en su dominio propio. */
+const SITE = "https://reminiscencia.cometia.es";
 
 const WEB = new URL("../../frontend/web/", import.meta.url);
 const read = (path) => readFileSync(new URL(path, WEB), "utf8");
@@ -32,9 +34,9 @@ describe("vercel.json: Content-Security-Policy", () => {
     assert.deepEqual(directives.get("object-src"), ["'none'"]);
     // El audio: el Worker (ADR-0031; WORKER_API_BASE de js/api-config.js) y r2.dev de respaldo (ADR-0020).
     assert.deepEqual(directives.get("media-src"), ["'self'", AUDIO_ORIGIN, ...(WORKER_AUDIO_ORIGIN ? [WORKER_AUDIO_ORIGIN] : [])]);
-    // Además de la propia web, el bucket de R2 (audio, ADR-0020; índice de portadas, ADR-0029) y el Worker del API en
-    // workers.dev (ADR-0029; su subdominio exacto se conoce al desplegarlo).
-    assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN, WORKERS_DEV]);
+    // Además de la propia web, el bucket de R2 (audio, ADR-0020; índice de portadas, ADR-0029), el Worker del API en
+    // workers.dev (ADR-0029) y en su dominio propio (ADR-0034: la web de Vercel lo llama con CORS).
+    assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN, WORKERS_DEV, SITE]);
     // Las portadas del índice se sirven desde el bucket público.
     assert.deepEqual(directives.get("img-src"), ["'self'", "data:", AUDIO_ORIGIN]);
     assert.deepEqual(directives.get("frame-ancestors"), ["'none'"]);
@@ -74,6 +76,62 @@ describe("vercel.json: Content-Security-Policy", () => {
     assert.ok(directives.get("img-src").includes("data:"));
     assert.equal(header.value.includes("unsafe-eval"), false);
     assert.equal(directives.get("script-src").includes("'unsafe-inline'"), false);
+  });
+});
+
+describe("_headers: la misma CSP en Cloudflare (ADR-0034)", () => {
+  /** Reglas de un fichero _headers de Cloudflare: una ruta sin sangría y debajo sus cabeceras con sangría. */
+  function parseHeadersFile(text) {
+    const rules = [];
+    for (const line of text.split("\n")) {
+      if (line.trim() === "" || line.trim().startsWith("#")) continue;
+      if (!/^\s/.test(line)) {
+        rules.push({ path: line.trim(), headers: {} });
+        continue;
+      }
+      const index = line.indexOf(":");
+      assert.ok(rules.length > 0 && index > 0, `línea no válida en _headers: ${line}`);
+      rules.at(-1).headers[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+    }
+    return rules;
+  }
+
+  it("aplica a todas las rutas la misma política que vercel.json", () => {
+    const rules = parseHeadersFile(read("_headers"));
+    assert.deepEqual(rules.map((rule) => rule.path), ["/*"]);
+    const config = JSON.parse(read("vercel.json"));
+    const vercel = config.headers.find((item) => item.source === "/(.*)").headers.find((item) => item.key === "Content-Security-Policy");
+    assert.equal(rules[0].headers["Content-Security-Policy"], vercel.value);
+  });
+
+  it("en el dominio propio, el API y el audio son el propio origen", () => {
+    assert.equal(normalizeApiBase(WORKER_API_BASE), SITE);
+    assert.equal(WORKER_AUDIO_ORIGIN, SITE);
+  });
+});
+
+describe("Cloudflare: solo se publica la web estática (ADR-0034)", () => {
+  const wrangler = readFileSync(new URL("../../worker/wrangler.toml", import.meta.url), "utf8");
+
+  it("wrangler.toml sirve frontend/web con el Worker delante solo de /api/* y /audio/*, en el dominio propio", () => {
+    const assets = /^\[assets\]\n((?:[^\[\n].*\n?)*)/m.exec(wrangler)?.[1] ?? "";
+    assert.match(assets, /^directory = "\.\.\/frontend\/web"$/m);
+    assert.match(assets, /^binding = "ASSETS"$/m);
+    assert.match(assets, /^run_worker_first = \["\/api\/\*", "\/audio\/\*"\]$/m);
+    assert.match(wrangler, /^routes = \[\{ pattern = "reminiscencia\.cometia\.es", custom_domain = true \}\]$/m);
+    // workers.dev sigue activo: las APK ya instaladas usan esa dirección.
+    assert.match(wrangler, /^workers_dev = true$/m);
+  });
+
+  it(".assetsignore deja fuera las funciones de Vercel, su código de servidor y la configuración de Node", () => {
+    const ignored = read(".assetsignore").split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+    for (const entry of ["api", "server", "node_modules", "package.json", "package-lock.json", "vercel.json"]) {
+      assert.ok(ignored.includes(entry), `falta ${entry} en .assetsignore`);
+    }
+    // Nada de lo que la web necesita queda fuera.
+    for (const entry of ["index.html", "sw.js", "manifest.webmanifest", "js", "css", "fonts", "icons", "data", "covers", "_headers"]) {
+      assert.ok(!ignored.includes(entry), `${entry} no debe estar en .assetsignore`);
+    }
   });
 });
 

@@ -9,7 +9,7 @@ class YoutubeEmbed {
 }
 
 /// Origen que se declara al incrustar: YouTube rechaza los reproductores sin referencia (error 153).
-const String kEmbedOrigin = 'https://reminiscencia.vercel.app/';
+const String kEmbedOrigin = 'https://reminiscencia.cometia.es/';
 
 /// Dirección del reproductor incrustado. youtube-nocookie evita las cookies de seguimiento hasta que se pulsa.
 Uri youtubeEmbedUri(String videoId) => Uri.https(

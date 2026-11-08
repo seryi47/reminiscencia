@@ -73,7 +73,7 @@ erDiagram
 
 Fuente: `mobile/lib/`. Todo vive en el almacenamiento privado de la app. Lo único que sale del teléfono es el audio que se elige en «Subir canciones», que va a la biblioteca común por `/api/subir` (ADR-0017, `shared_upload.dart`) y no se guarda en el teléfono.
 
-- Biblioteca: `library_store.dart` descarga `https://reminiscencia.vercel.app/data/songs.json` y `data/folders.json`, guarda copias en `<documentos>/biblioteca/` y, si no hay red, usa esas copias. El audio descargado va a `<documentos>/biblioteca/audio/<id>.opus`.
+- Biblioteca: `library_store.dart` descarga `https://reminiscencia.cometia.es/data/songs.json` (ADR-0034) y `data/folders.json`, guarda copias en `<documentos>/biblioteca/` y, si no hay red, usa esas copias. El audio descargado va a `<documentos>/biblioteca/audio/<id>.opus`.
 - `song.dart`: `id`, `title`, `duration_s` y `audio` son obligatorios; `artist`, `year`, `tags`, `folder_id`, `license`, `cover` y `track` (número de pista en su álbum, ADR-0026) son opcionales. En las carpetas, `id` y `name` son obligatorios y `parent_id`, `artist` y `cover` son opcionales.
 - Listas y «Me gusta»: `collections_store.dart` guarda un único `colecciones.json` en el directorio de documentos, con `version` (1), `favorites` (lista de identificadores) y `playlists` (`id`, `name` y `songs`). Escribe en un fichero temporal y lo renombra.
 - Audio subido antes «Solo en este teléfono» (ADR-0013): `biblioteca-local/audio/<id>.opus` y el índice `biblioteca-local/pistas.json`. Ya no se guardan nuevas (ADR-0017); las que existan suenan y se borran. Excluido de la copia automática de Android y del traspaso entre dispositivos (`backup_rules.xml`, `data_extraction_rules.xml`).
@@ -91,7 +91,7 @@ La versión anterior de esta página describía la base `reminiscencia` (versió
 
 ### 4.1 Ficheros que sirve la web
 
-Están en `frontend/web/data/`. Vercel sirve solo `frontend/web` (`CLAUDE.md`). Los genera `sync_public` en `backend/sonidos/publish.py`.
+Están en `frontend/web/data/`. Los sirven el Worker de Cloudflare (ADR-0034) y Vercel, que solo publican `frontend/web` (`CLAUDE.md`). Los genera `sync_public` en `backend/sonidos/publish.py`.
 
 - `songs.json` (en `main`): solo las canciones públicas, ordenadas por título en minúsculas. Campos: `id`, `title`, `artist`, `year`, `tags` (lista), `folder_id`, `duration_s`, `license`, `audio` (ruta relativa `audio/<id>.opus`) `cover` (`covers/<id>.jpg`) si tiene portada (ADR-0016) y `track` (entero desde 1, su número de pista en el álbum) si lo tiene (ADR-0026).
 - `folders.json` (en `main`): todas las carpetas (álbumes). Campos: `id`, `name` y `parent_id` (null en el nivel superior), y `artist` y `cover` si tienen valor (ADR-0016).
@@ -121,7 +121,7 @@ Están en `frontend/web/data/`. Vercel sirve solo `frontend/web` (`CLAUDE.md`). 
 ### 4.4 Quién lee
 
 - `frontend/web/js/app.js` (`loadPublicCatalog`): lee `data/songs.json` y `data/folders.json` y los junta con las canciones guardadas antes en este navegador (`js/catalog.js`). El service worker precarga los tres JSON de `data/` para el uso sin conexión (`SHELL_ASSETS` en `js/offline-core.js`).
-- `mobile/lib/library_store.dart` (la app Android): descarga `https://reminiscencia.vercel.app/data/songs.json` y `data/folders.json`, guarda copias en `<documentos>/biblioteca/` y, si no hay red, usa esas copias. Los audios van a `<documentos>/biblioteca/audio/<id>.opus`.
+- `mobile/lib/library_store.dart` (la app Android): descarga `https://reminiscencia.cometia.es/data/songs.json` (ADR-0034) y `data/folders.json`, guarda copias en `<documentos>/biblioteca/` y, si no hay red, usa esas copias. Los audios van a `<documentos>/biblioteca/audio/<id>.opus`.
 - `mobile/lib/song.dart`: `id`, `title`, `duration_s` y `audio` son obligatorios; `artist`, `year`, `tags`, `folder_id`, `license`, `cover` y `track` (número de pista en su álbum, ADR-0026) son opcionales. En las carpetas, `id` y `name` son obligatorios y `parent_id`, `artist` y `cover` son opcionales.
 - `catalog.json`: la interfaz no lo lee ni la app tampoco; el service worker lo precarga. Lo comprueban las pruebas del backend (`backend/tests/test_publish.py` y `test_ci_library.py`) y `scripts/smoke_produccion.mjs`, que además compara la web con `audio-library/indexes/catalog.json` para comprobar que no se sirve nada privado.
 

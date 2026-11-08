@@ -2,13 +2,15 @@
 // Cloudflare «reminiscencia-api» si WORKER_API_BASE tiene su dirección, y si no (o si el Worker no responde) a las
 // funciones de Vercel del propio origen, como antes. La APK tiene su equivalente en mobile/lib/api_config.dart.
 //
-// ÚNICO SITIO QUE HAY QUE CAMBIAR al desplegar el Worker: WORKER_API_BASE, sin barra final, por ejemplo
-// 'https://reminiscencia-api.<subdominio>.workers.dev'. Vacía = todo por Vercel. Añadir también ese origen a la CSP
-// de vercel.json (connect-src); la prueba tests/web-unit/cabeceras.test.mjs lo comprueba.
+// ÚNICO SITIO QUE HAY QUE CAMBIAR si cambia la dirección del Worker: WORKER_API_BASE, sin barra final. Desde ADR-0034
+// es el dominio propio, https://reminiscencia.cometia.es, donde el mismo Worker sirve también la web: allí el API es
+// el propio origen. La web de Vercel (si vuelve) lo llama con CORS. Vacía = todo por el propio origen. Añadir también
+// ese origen a la CSP de vercel.json y de _headers (connect-src y media-src) y a la redirección del audio de
+// vercel.json; la prueba tests/web-unit/cabeceras.test.mjs lo comprueba.
 //
 // Lógica pura (fetch inyectable): tests/web-unit/api-config.test.mjs.
 
-export const WORKER_API_BASE = 'https://reminiscencia-api.reminiscencia-app.workers.dev';
+export const WORKER_API_BASE = 'https://reminiscencia.cometia.es';
 
 /**
  * Tamaño de trozo de /api/subir (y máximo que admite cada servidor; server/upload-core.js los usa): 4 MB en Vercel

@@ -6,10 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reminiscencia/api_config.dart';
+import 'package:reminiscencia/covers.dart';
 import 'package:reminiscencia/edit_remote.dart';
 import 'package:reminiscencia/library_requests.dart';
+import 'package:reminiscencia/library_store.dart';
 import 'package:reminiscencia/local_audio.dart';
 import 'package:reminiscencia/shared_upload.dart';
+import 'package:reminiscencia/youtube_embed.dart';
 
 // Dirección del API con respaldo en Vercel (lib/api_config.dart; ADR-0029), igual que la web (js/api-config.js).
 
@@ -43,6 +46,57 @@ void main() {
         multiLine: true,
       ).firstMatch(web)!.group(1);
       expect(normalizeApiBase(webBase!), normalizeApiBase(kWorkerApiBase));
+    },
+  );
+
+  test(
+    'web en Cloudflare (ADR-0034): la web, el API, las portadas y el reproductor incrustado van al dominio propio',
+    () {
+      const site = 'https://reminiscencia.cometia.es';
+      expect(kLibraryBase, '$site/');
+      expect(normalizeApiBase(kWorkerApiBase), site);
+      expect(kEmbedOrigin, '$site/');
+      expect(kUploadEndpoint, Uri.parse('$site/api/subir'));
+      expect(kEditEndpoint, Uri.parse('$site/api/editar'));
+      final covers = CoverCache(root: () async => Directory.systemTemp);
+      expect(covers.base, kLibraryBase);
+      covers.dispose();
+      // Ninguna dirección de Vercel ni de workers.dev queda en el código de la app.
+      for (final file in Directory(
+        'lib',
+      ).listSync(recursive: true).whereType<File>()) {
+        if (!file.path.endsWith('.dart')) continue;
+        final text = file.readAsStringSync();
+        expect(text.contains('vercel.app'), isFalse, reason: file.path);
+        expect(text.contains('workers.dev'), isFalse, reason: file.path);
+      }
+    },
+  );
+
+  test(
+    'las pruebas nunca salen a producción: test/flutter_test_config.dart manda esos nombres a un proxy inexistente',
+    () {
+      final overrides = HttpOverrides.current!;
+      for (final url in [
+        'https://reminiscencia.cometia.es/data/songs.json',
+        'https://reminiscencia.vercel.app/api/youtube/search',
+        'https://reminiscencia-api.reminiscencia-app.workers.dev/api/salud',
+        'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/audio/x.opus',
+        'https://api.github.com/repos',
+      ]) {
+        expect(
+          overrides.findProxyFromEnvironment(Uri.parse(url), const {}),
+          'PROXY 127.0.0.1:9',
+          reason: url,
+        );
+      }
+      expect(
+        overrides.findProxyFromEnvironment(
+          Uri.parse('http://127.0.0.1:8080/'),
+          const {},
+        ),
+        'DIRECT',
+      );
     },
   );
 
@@ -103,7 +157,7 @@ void main() {
     await routes.send(client, 'POST', '/api/editar', body: '{}');
     expect(
       seen.single,
-      Uri.parse('https://reminiscencia.vercel.app/api/editar'),
+      Uri.parse('https://reminiscencia.cometia.es/api/editar'),
     );
     final route = await routes.uploadRoute(client);
     expect(route.worker, isFalse);
@@ -151,13 +205,13 @@ void main() {
       expect(jsonDecode(response.body)['de'], 'vercel');
       expect(seen, [
         '$base/api/editar',
-        'https://reminiscencia.vercel.app/api/editar',
+        'https://reminiscencia.cometia.es/api/editar',
       ]);
       expect(routes.usesWorker, isFalse);
       await routes.send(client, 'GET', '/api/editar?incidencia=1');
       expect(
         seen.last,
-        'https://reminiscencia.vercel.app/api/editar?incidencia=1',
+        'https://reminiscencia.cometia.es/api/editar?incidencia=1',
       );
       now = now.add(kRetryWorkerAfter);
       workerFails = false;
@@ -259,7 +313,7 @@ void main() {
       expect(other.cover, isNull);
       // Organizar por el Worker caído vuelve a Vercel.
       final fallback = MockClient(
-        (request) async => request.url.host == 'reminiscencia.vercel.app'
+        (request) async => request.url.host == 'reminiscencia.cometia.es'
             ? http.Response('{"ok":true,"incidencia":5}', 200)
             : throw const SocketException('no'),
       );

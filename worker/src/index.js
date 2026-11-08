@@ -12,9 +12,14 @@
 //   GET  /api/portadas              el índice de portadas leído del bucket, sin caché.
 //   GET  /audio/<id>.opus           audio público del bucket público, con rangos, ETag y caché de un año (también
 //   HEAD                            HEAD); id S + 16 hex, nada fuera de audio/ (ADR-0031, worker/src/audio.js).
+//   *    /api/youtube/*             se reenvía tal cual a las funciones de YouTube, que siguen en Vercel (ADR-0034):
+//                                   mismo método, consulta, cuerpo y cabeceras útiles; la respuesta vuelve en flujo.
+//   lo demás                        la web estática (binding ASSETS, frontend/web; ADR-0034). En producción solo
+//                                   /api/* y /audio/* llegan al Worker (run_worker_first de wrangler.toml).
 //
-// CORS solo para el origen de la web (https://reminiscencia.vercel.app; más los de ALLOWED_ORIGINS). localhost y
-// 127.0.0.1 solo con ALLOW_LOCALHOST="1" (el Worker simulado de las pruebas o «wrangler dev»), NUNCA en producción: el
+// CORS solo para los orígenes de la web (https://reminiscencia.cometia.es y https://reminiscencia.vercel.app; más los
+// de ALLOWED_ORIGINS). localhost y 127.0.0.1 solo con ALLOW_LOCALHOST="1" (el Worker simulado de las pruebas o
+// «wrangler dev»), NUNCA en producción: el
 // 2026-11-06 el navegador de las pruebas habló con el Worker real por esa puerta y abrió incidencias y subidas reales.
 // Una petición con otro Origin se rechaza con 403 sin hacer nada. Sin Origin (la APK, curl, el elemento <audio> tras
 // la redirección de vercel.json) se atiende. Todas las respuestas llevan X-Reminiscencia-Api: así los clientes
@@ -32,7 +37,18 @@ import { serializeCoverIndex } from '../../frontend/web/js/cover-index.js';
 
 export const SERVICE = 'reminiscencia-api';
 export const API_HEADER = 'X-Reminiscencia-Api';
+/** La web en Cloudflare (ADR-0034): el mismo origen que el Worker en su dominio propio. */
+export const SITE_ORIGIN = 'https://reminiscencia.cometia.es';
+/** La web en Vercel (se conserva: vuelve a funcionar cuando Vercel la desbloquee). */
 export const WEB_ORIGIN = 'https://reminiscencia.vercel.app';
+/** Las funciones de YouTube siguen en Vercel (ADR-0034): el Worker les reenvía /api/youtube/*. */
+export const YOUTUBE_UPSTREAM = WEB_ORIGIN;
+const YOUTUBE_PREFIX = '/api/youtube/';
+/** Cabeceras de la petición que se reenvían a Vercel (las que usan las funciones de YouTube). */
+const YOUTUBE_FORWARD_HEADERS = Object.freeze([
+  'accept', 'accept-language', 'content-type', 'range', 'if-none-match', 'user-agent',
+  'x-homeostasia-trace', 'x-homeostasia-poll',
+]);
 export const ALLOWED_HEADERS = Object.freeze([
   'Content-Type', 'X-Nombre-Archivo', 'X-Subida-Id', 'X-Parte', 'X-Partes', 'X-Album-Id', 'X-Album-Name',
   'X-Artista-Cancion', 'X-Portada-Id', 'Range', 'If-None-Match', 'If-Range',
@@ -42,10 +58,10 @@ export const COVER_DONE_MESSAGE = 'Portada guardada: ya la ven todos.';
 const NOT_CONFIGURED_UPLOAD = 'La subida no está configurada en el servidor (falta GITHUB_TOKEN o el bucket privado). Avisa a quien mantiene la web.';
 const NOT_CONFIGURED_COVER = 'Las portadas no están configuradas en el servidor (falta el bucket público). Avisa a quien mantiene la web.';
 
-/** Orígenes admitidos: la web, los de env.ALLOWED_ORIGINS (separados por comas) y, solo con env.ALLOW_LOCALHOST
- *  === "1", localhost y 127.0.0.1 (pruebas y desarrollo local; nunca en producción). */
+/** Orígenes admitidos: la web (en Cloudflare y en Vercel), los de env.ALLOWED_ORIGINS (separados por comas) y, solo
+ *  con env.ALLOW_LOCALHOST === "1", localhost y 127.0.0.1 (pruebas y desarrollo local; nunca en producción). */
 export function isAllowedOrigin(origin, env = {}) {
-  if (origin === WEB_ORIGIN) return true;
+  if (origin === SITE_ORIGIN || origin === WEB_ORIGIN) return true;
   if (LOCAL_ORIGIN.test(origin)) return env.ALLOW_LOCALHOST === '1';
   const extra = typeof env.ALLOWED_ORIGINS === 'string' ? env.ALLOWED_ORIGINS.split(',').map((item) => item.trim()) : [];
   return extra.includes(origin);
@@ -109,10 +125,32 @@ async function handleCoverIndex(request, env) {
   }
 }
 
+/** Reenvía /api/youtube/* a Vercel sin tocar nada (ADR-0034): método, ruta, consulta, cuerpo y las cabeceras de
+ *  YOUTUBE_FORWARD_HEADERS. La respuesta (también la descarga del WAV) vuelve en flujo, con su estado y sus cabeceras;
+ *  las redirecciones no se siguen. Si Vercel no responde, 502. */
+async function forwardYoutube(request, fetchImpl) {
+  const source = new URL(request.url);
+  const headers = new Headers();
+  for (const name of YOUTUBE_FORWARD_HEADERS) {
+    const value = request.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  const init = { method: request.method, headers, redirect: 'manual' };
+  if (request.method !== 'GET' && request.method !== 'HEAD') init.body = await request.arrayBuffer();
+  try {
+    return await fetchImpl(`${YOUTUBE_UPSTREAM}${source.pathname}${source.search}`, init);
+  } catch (error) {
+    console.error('youtube: Vercel no responde', error?.name ?? 'Error');
+    return jsonResponse(502, { ok: false, error: 'El servicio de YouTube no responde ahora mismo. Inténtalo más tarde.' });
+  }
+}
+
 /** Atiende una petición (también en las pruebas: tests/web-unit/worker.test.mjs, con bindings simulados). */
 export async function handleRequest(request, env = {}, { fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
   const origin = request.headers.get('origin');
   const path = new URL(request.url).pathname;
+  // La web estática no pasa por CORS ni por las rutas del API: la sirve el binding ASSETS (ADR-0034).
+  if (!path.startsWith('/api/') && !path.startsWith('/audio/') && env.ASSETS) return env.ASSETS.fetch(request);
   if (origin !== null && !isAllowedOrigin(origin, env)) {
     return finish(jsonResponse(403, { ok: false, error: 'Origen no permitido.' }), null);
   }
@@ -126,6 +164,7 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
       },
     }), origin);
   }
+  if (path.startsWith(YOUTUBE_PREFIX)) return finish(await forwardYoutube(request, fetchImpl), origin);
   const audio = await handleAudioRequest(request, env.PUBLIC_BUCKET);
   if (audio) return finish(audio, origin, AUDIO_EXPOSE_HEADERS);
   let response;

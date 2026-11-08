@@ -114,7 +114,7 @@ class CoverCache extends ChangeNotifier implements CoverImages, CoverStore {
   CoverCache({
     Future<Directory> Function()? root,
     http.Client? client,
-    this.base = 'https://reminiscencia.vercel.app/',
+    this.base = 'https://reminiscencia.cometia.es/',
     this.bucketBase = kCoverBucketBase,
     DateTime Function()? clock,
   }) : _resolveRoot = root ?? _documentsRoot,

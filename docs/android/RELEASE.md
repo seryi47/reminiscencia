@@ -2,7 +2,7 @@
 
 Procedimiento para publicar una versión nueva de la app Android (`mobile/`, paquete `es.orbitalabs.reminiscencia`). La compilación, la firma y la release de GitHub las hace el workflow [android](../../.github/workflows/android.yml).
 
-> **Estado a 2026-11-04: versión en `main` 1.2.4+8; no hay release de producción nueva.** El workflow [android](../../.github/workflows/android.yml) pasó análisis, pruebas y APK de depuración en la ejecución [41801316025](https://github.com/seryi47/reminiscencia/actions/runs/41801316025); producción se omitió porque los cuatro secretos de firma no están en GitHub. La clave no se sube al repositorio, por decisión del propietario. Una etiqueta `android-v*` no puede publicar el APK de producción sin la firma original.
+> **Estado a 2026-11-04: versión en `main` 1.2.4+8 (1.2.5+9 en la rama `feature/web-en-cloudflare`, ADR-0034); no hay release de producción nueva.** El workflow [android](../../.github/workflows/android.yml) pasó análisis, pruebas y APK de depuración en la ejecución [41801316025](https://github.com/seryi47/reminiscencia/actions/runs/41801316025); producción se omitió porque los cuatro secretos de firma no están en GitHub. La clave no se sube al repositorio, por decisión del propietario. Una etiqueta `android-v*` no puede publicar el APK de producción sin la firma original.
 
 ## Antes de empezar
 
@@ -16,7 +16,7 @@ En `mobile/pubspec.yaml`, la línea `version:` tiene la forma `X.Y.Z+B`:
 - `X.Y.Z` es el nombre de versión (versionName) que ve el usuario.
 - `B` es el número de compilación (versionCode). Es un entero que debe ser mayor que el de la versión publicada antes.
 
-Versión preparada: `version: 1.2.4+8`. La etiqueta de la release debe ser `android-v1.2.4`.
+Versión preparada: `version: 1.2.5+9` (ADR-0034: lee la web y el API de https://reminiscencia.cometia.es). La etiqueta de la release debe ser `android-v1.2.5`.
 
 ## 2. Comprobar el código
 

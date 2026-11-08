@@ -3,6 +3,7 @@
 - Estado: aceptada. Los puntos 4 y 5 están superados por ADR-0008; su texto se conserva como historial.
 - Fecha: 2026-10-31
 - Sustituye: la base de datos SQLite local como fuente de verdad (ADR-0001 para la base de datos local queda para desarrollo sin Vercel)
+- Modificada por: [ADR-0034](ADR-0034-web-en-cloudflare.md) (2026-11-08): la web estática la sirve también el Worker de Cloudflare en https://reminiscencia.cometia.es; en Vercel quedan las funciones de YouTube.
 - Nota de estado (2026-10-31): **administración retirada.** Los puntos 4 y 5 (administración en Vercel, funciones `api/*` y el workflow `library.yml`) quedan sustituidos por ADR-0008: toda escritura es una petición en una incidencia del propietario y el workflow es `biblioteca.yml`. Siguen vigentes el catálogo versionado, el audio en el repositorio, la publicación por `public` y el límite de los ficheros de GitHub (puntos 1 a 3 y 6).
 - Nota de estado (2026-11-02): en main ya no hay administración. No existen `frontend/web/admin`, `api/` ni `frontend/web/lib`, y ningún código lee `ADMIN_PASSWORD` ni `GITHUB_TOKEN`. El punto 6 (la app Android) está implementado.
 

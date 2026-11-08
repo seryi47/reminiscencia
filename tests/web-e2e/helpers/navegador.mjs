@@ -72,8 +72,10 @@ export async function launchBrowser() {
       // (ADR-0029) falla al momento en lugar de depender de la red. Aunque una sustitución de js/api-config.js fallara
       // y la web o el service worker usaran la dirección de producción (API o audio, ADR-0031), el nombre no se
       // resuelve. worker.e2e.mjs sirve el bucket simulado interceptando las peticiones, antes de resolver el nombre, y
-      // su Worker simulado escucha en 127.0.0.1.
-      "--host-resolver-rules=MAP *.r2.dev ~NOTFOUND, MAP *.workers.dev ~NOTFOUND",
+      // su Worker simulado escucha en 127.0.0.1. Desde ADR-0034 la web y el API de producción están también en
+      // reminiscencia.cometia.es, y las funciones de YouTube en reminiscencia.vercel.app: tampoco se resuelven, ni la
+      // API de GitHub.
+      "--host-resolver-rules=MAP *.r2.dev ~NOTFOUND, MAP *.workers.dev ~NOTFOUND, MAP *.cometia.es ~NOTFOUND, MAP cometia.es ~NOTFOUND, MAP *.vercel.app ~NOTFOUND, MAP api.github.com ~NOTFOUND",
       // Chrome en Linux dentro de contenedores de CI necesita desactivar el sandbox.
       ...(process.platform === "linux" ? ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"] : []),
     ],
