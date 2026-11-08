@@ -220,7 +220,8 @@ def _apply(data, changes):
 def test_the_real_catalog_cleans_once_and_then_nothing():
     data = json.loads(REAL_CATALOG.read_text(encoding="utf-8"))
     changes = titulos.plan_clean(data)
-    assert changes  # el catálogo de main tiene títulos de YouTube por limpiar
+    # No se exige que haya cambios: tras la limpieza de la incidencia #58 el catálogo de main ya está limpio y el plan
+    # puede venir vacío. Lo que se comprueba vale en los dos casos: cambios válidos y una segunda pasada sin nada.
     ids = {song["id"] for song in data["songs"]}
     for change in changes:
         assert change["id"] in ids
