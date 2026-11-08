@@ -4,6 +4,8 @@ Revisión del 3 de noviembre de 2026 sobre `main` (`b058a0c`), con la interfaz s
 
 > **Nota (2026-11-06, [ADR-0029](docs/decisions/ADR-0029-worker-cloudflare-y-portadas.md), rama `feature/worker-portadas`, sin desplegar):** un Worker de Cloudflare (`worker/`) puede atender `/api/subir`, `/api/editar` y `/api/portada` con los buckets de R2 por *binding* (sin claves de R2) y el `GITHUB_TOKEN` como secreto del Worker. CORS solo para la web y `localhost`; otro `Origin` recibe 403. Las portadas cambiadas por él se publican al momento en el bucket público, sin pasar por GitHub (cualquiera con la web puede cambiarlas, como ya podía por `/api/editar`). La CSP admite el bucket en `img-src` y `connect-src` y `https://*.workers.dev` en `connect-src`. La migración de portadas solo sube las ya publicadas, nunca las de canciones privadas.
 
+> **Nota (2026-11-08, [ADR-0034](docs/decisions/ADR-0034-web-en-cloudflare.md), rama `feature/web-en-cloudflare`, sin desplegar):** el Worker sirve también la web estática en https://reminiscencia.cometia.es (solo los ficheros de la web: `.assetsignore` deja fuera `api/`, `server/`, `package.json` y `vercel.json`; la CSP va en `_headers`, igual que en `vercel.json`). CORS admite ese origen y `https://reminiscencia.vercel.app`. `/api/youtube/*` se reenvía a Vercel sin `Cookie`, `Authorization` ni `Origin`, y solo a `https://reminiscencia.vercel.app`. Las pruebas no resuelven ningún nombre de producción (Chrome de las E2E y un proxy inexistente en las de Flutter).
+
 Este documento describe lo que el código de `main` hace hoy, separa lo implementado de lo previsto en el diseño y recoge lo pendiente. No es asesoramiento jurídico ni una evaluación de impacto (ver §5).
 
 ## 0. Alcance, estado y convenciones

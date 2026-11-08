@@ -6,6 +6,7 @@
 - Modifica: [ADR-0016](ADR-0016-portadas-y-albumes.md), decisión 4: el campo `cover` del catálogo deja de ser la única fuente; el índice de portadas de R2 manda sobre él.
 - Relacionadas: [ADR-0020](ADR-0020-audio-en-r2.md) (bucket público) y [ADR-0028](ADR-0028-contrato-comun-y-busqueda.md) (contrato común).
 - Ampliada por: [ADR-0031](ADR-0031-audio-por-el-worker.md) (el Worker sirve también el audio público, `GET`/`HEAD /audio/<id>.opus`).
+- Modificada por: [ADR-0034](ADR-0034-web-en-cloudflare.md) (el Worker sirve también la web estática en su dominio propio, https://reminiscencia.cometia.es, admite ese origen con CORS y reenvía `/api/youtube/*` a Vercel).
 
 ## Contexto
 

@@ -5,6 +5,7 @@
 - Modifica: [ADR-0020](ADR-0020-audio-en-r2.md), fase 3 (el audio ya no se pide primero a `r2.dev` ni la redirección de `vercel.json` va al bucket).
 - Amplía: [ADR-0029](ADR-0029-worker-cloudflare-y-portadas.md) (el Worker sirve también el audio, con el *binding* `PUBLIC_BUCKET` que ya tenía).
 - Relacionadas: [ADR-0024](ADR-0024-audio-privado-en-r2.md) (solo el audio de las canciones públicas está en el bucket público).
+- Modificada por: [ADR-0034](ADR-0034-web-en-cloudflare.md) (`WORKER_API_BASE` y `kWorkerApiBase` pasan al dominio propio, donde el audio es del mismo origen; la redirección de `vercel.json` va a `https://reminiscencia.cometia.es/audio/:file`).
 
 ## Contexto
 

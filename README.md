@@ -6,14 +6,14 @@ Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la 
 
 | Qué | Dónde |
 |---|---|
-| Escuchar (público) | https://reminiscencia.vercel.app |
-| App Android | `mobile/` (lee la biblioteca de la web; versión 1.2.4+8) |
+| Escuchar (público) | https://reminiscencia.cometia.es (Cloudflare, ADR-0034; pendiente del primer despliegue) y https://reminiscencia.vercel.app (bloqueada por Vercel hasta el 2026-12-07) |
+| App Android | `mobile/` (lee la biblioteca de la web; versión 1.2.5+9) |
 | Cambios en la biblioteca | Incidencias con la etiqueta `biblioteca`, procesadas por el workflow `biblioteca` |
 | Subir canciones para todos | «Subir canciones» en la web o en la APK (función `/api/subir`), procesada por el workflow `buzon`; con permiso de escritura, también la página de subida de `audio-library/buzon/` |
 
 ## Cómo se usa la web
 
-https://reminiscencia.vercel.app abre directamente en **Inicio** con la música. No hay cuentas ni hay que elegir nada: todos ven la misma biblioteca pública. Vercel sirve la carpeta `frontend/web/`, y los datos que lee son los que genera el repositorio (`data/`). El audio lo sirve el Worker de Cloudflare desde el bucket de R2, con `r2.dev` de respaldo: Vercel redirige `/audio/<id>.opus` al Worker ([ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md) y [ADR-0031](docs/decisions/ADR-0031-audio-por-el-worker.md)).
+https://reminiscencia.cometia.es abre directamente en **Inicio** con la música. No hay cuentas ni hay que elegir nada: todos ven la misma biblioteca pública. El Worker de Cloudflare sirve la carpeta `frontend/web/` ([ADR-0034](docs/decisions/ADR-0034-web-en-cloudflare.md); también Vercel, en https://reminiscencia.vercel.app, cuando no está bloqueado), y los datos que lee son los que genera el repositorio (`data/`). El audio lo sirve el Worker de Cloudflare desde el bucket de R2, con `r2.dev` de respaldo: en Cloudflare es el mismo origen y Vercel redirige `/audio/<id>.opus` al Worker ([ADR-0020](docs/decisions/ADR-0020-audio-en-r2.md) y [ADR-0031](docs/decisions/ADR-0031-audio-por-el-worker.md)).
 
 - **Inicio**: saludo, accesos rápidos y estantes con las carpetas, lo añadido y tus listas.
 - **Buscar**: por título, artista, álbum, año y etiquetas, sin tildes ni mayúsculas, con una errata permitida en palabras de 4 letras o más y lo más parecido primero (ADR-0028), con «Explorar todo»; si la canción no está, también en YouTube con «Escuchar» y «Descargar» (ADR-0021).
@@ -77,7 +77,7 @@ Las portadas se suben al mismo buzón, en su carpeta `portadas` (ADR-0016): http
 
 Homeostasia sirve para importar vídeos o playlists públicas y accesibles de YouTube. Quien importa debe tener derecho a publicar el audio: que una playlist sea pública no significa que tenga licencia. La subida manual de archivos está en su opción independiente, «Subir canciones». Los WAV importados terminan en `ctx.addUploads`, se convierten a Ogg Opus, se envían por fragmentos a `/api/subir` y los publica el workflow `buzon`; la importación no crea una ruta alternativa de publicación.
 
-La APK ofrece el mismo flujo desde `mobile/lib/ui/homeostasia.dart`: consulta los proxies `/api/youtube/*`, convierte y valida los WAV en el teléfono y después llama a `LibraryController.uploadShared`, de modo que también termina en `/api/subir` y en el workflow `buzon`. Ambas interfaces limitan las creaciones a una cada dos segundos, reintentan errores transitorios de creación hasta seis veces respetando `Retry-After`, reintentan cinco errores temporales de consulta de estado, muestran la posición y el progreso de la cola externa, y envían un UUID de traza para diagnóstico sin registrar datos de la canción.
+Las funciones `/api/youtube/*` siguen en Vercel; en https://reminiscencia.cometia.es el Worker se las reenvía tal cual (ADR-0034), así que no funcionan mientras Vercel esté bloqueado. La APK ofrece el mismo flujo desde `mobile/lib/ui/homeostasia.dart`: consulta los proxies `/api/youtube/*`, convierte y valida los WAV en el teléfono y después llama a `LibraryController.uploadShared`, de modo que también termina en `/api/subir` y en el workflow `buzon`. Ambas interfaces limitan las creaciones a una cada dos segundos, reintentan errores transitorios de creación hasta seis veces respetando `Retry-After`, reintentan cinco errores temporales de consulta de estado, muestran la posición y el progreso de la cola externa, y envían un UUID de traza para diagnóstico sin registrar datos de la canción.
 
 El flujo de YouTube es:
 

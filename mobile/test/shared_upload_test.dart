@@ -132,7 +132,7 @@ void main() {
         expect(request.method, 'POST');
         expect(
           request.url,
-          Uri.parse('https://reminiscencia.vercel.app/api/subir'),
+          Uri.parse('https://reminiscencia.cometia.es/api/subir'),
         );
         expect(request.headers['Content-Type'], startsWith('audio/ogg'));
         expect(request.headers['X-Nombre-Archivo'], 'Charleston.mp3');

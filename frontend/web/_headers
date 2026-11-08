@@ -1,0 +1,5 @@
+# Cabeceras de la web estática en Cloudflare (ADR-0034): la misma política de contenido (CSP) que vercel.json, para
+# todas las rutas. Cloudflare solo las aplica a los ficheros de la web; las respuestas del Worker (/api/*, /audio/*)
+# llevan las suyas. tests/web-unit/cabeceras.test.mjs comprueba que las dos copias son iguales.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; media-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://reminiscencia.cometia.es; connect-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://*.workers.dev https://reminiscencia.cometia.es; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'

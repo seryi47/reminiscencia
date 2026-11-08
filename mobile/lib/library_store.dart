@@ -13,12 +13,13 @@ import 'local_audio.dart';
 import 'offline_downloads.dart';
 import 'song.dart';
 
-/// Origen de la biblioteca. La web de Vercel es la fuente; la app guarda copias para usarla sin conexión.
-const String kLibraryBase = 'https://reminiscencia.vercel.app/';
+/// Origen de la biblioteca. La web es la fuente (desde ADR-0034, en Cloudflare: el mismo Worker sirve la web y el API);
+/// la app guarda copias para usarla sin conexión.
+const String kLibraryBase = 'https://reminiscencia.cometia.es/';
 
 /// Bucket público de R2 por r2.dev (ADR-0020): las portadas y, desde ADR-0031, el primer respaldo del audio. El audio
 /// se pide antes al Worker (`ApiRoutes.audioBase`, derivado de kWorkerApiBase en lib/api_config.dart) y, si también
-/// falla r2.dev, a la web (kLibraryBase), que lo redirige al Worker.
+/// falla r2.dev, a la web (kLibraryBase), donde también lo sirve el Worker.
 const String kR2AudioBase =
     'https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev/';
 

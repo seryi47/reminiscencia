@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, test } from 'node:test';
 
-import { handleRequest, isAllowedOrigin, ALLOWED_HEADERS, API_HEADER, COVER_DONE_MESSAGE, WEB_ORIGIN } from '../../worker/src/index.js';
+import { handleRequest, isAllowedOrigin, ALLOWED_HEADERS, API_HEADER, COVER_DONE_MESSAGE, SITE_ORIGIN, WEB_ORIGIN, YOUTUBE_UPSTREAM } from '../../worker/src/index.js';
 import { IMAGE_CACHE_CONTROL, INDEX_CACHE_CONTROL, updateCoverIndex } from '../../worker/src/portadas.js';
 import { COVER_INDEX_KEY, COVER_KEY, parseCoverIndex } from '../../frontend/web/js/cover-index.js';
 import { WORKER_MAX_CHUNK_BYTES } from '../../frontend/web/server/upload-core.js';
@@ -536,5 +536,137 @@ describe('audio público por el Worker (ADR-0031)', () => {
     const response = await call(AUDIO_PATH, { headers: { Range: 'bytes=0-9' } });
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('retry-after'), '1');
+  });
+});
+
+describe('web en Cloudflare (ADR-0034): web estática, CORS del dominio propio y YouTube por Vercel', () => {
+  const SITE = 'https://reminiscencia.cometia.es';
+  /** Binding ASSETS simulado: anota lo que se le pide. */
+  const fakeAssets = () => {
+    const seen = [];
+    return {
+      seen,
+      fetch: async (request) => {
+        seen.push(new URL(request.url).pathname);
+        return new Response('<!doctype html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+      },
+    };
+  };
+  /** Vercel simulado (nunca el real): anota la petición y responde con un cuerpo en flujo. */
+  const fakeVercel = (reply = () => new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json', 'X-Vercel-Id': 'v1' } })) => {
+    const calls = [];
+    const fetchImpl = async (url, init = {}) => {
+      const target = new URL(url);
+      assert.equal(target.origin, YOUTUBE_UPSTREAM, 'solo se reenvía a las funciones de Vercel');
+      calls.push({ url: target.href, method: init.method, headers: new Headers(init.headers), body: init.body, redirect: init.redirect });
+      return reply(target, init);
+    };
+    return { calls, fetchImpl };
+  };
+
+  test('el dominio propio es un origen admitido; la web de Vercel también sigue', async () => {
+    assert.equal(SITE_ORIGIN, SITE);
+    assert.ok(isAllowedOrigin(SITE));
+    assert.ok(isAllowedOrigin(WEB_ORIGIN));
+    assert.ok(!isAllowedOrigin('https://otra.cometia.es'));
+    assert.ok(!isAllowedOrigin('https://reminiscencia.cometia.es.malo.example'));
+    const { call } = setup();
+    const response = await call('/api/salud', { headers: { Origin: SITE } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), SITE);
+  });
+
+  test('lo que no es /api/* ni /audio/* lo sirve ASSETS, sin pasar por CORS ni por las rutas del API', async () => {
+    const assets = fakeAssets();
+    const env = { ASSETS: assets, PUBLIC_BUCKET: fakeR2() };
+    const paths = ['/', '/index.html', '/data/songs.json', '/js/app.js', '/api', '/apis/x'];
+    for (const path of paths) {
+      const response = await handleRequest(new Request(`${SITE}${path}`, { headers: { Origin: 'https://malo.example' } }), env);
+      assert.equal(response.status, 200, path);
+      assert.equal(response.headers.get(API_HEADER), null, path);
+    }
+    assert.deepEqual(assets.seen, paths);
+    // El API y el audio siguen siendo del Worker.
+    const health = await handleRequest(new Request(`${SITE}/api/salud`), env);
+    assert.equal(health.headers.get(API_HEADER), '1');
+    const audio = await handleRequest(new Request(`${SITE}/audio/S0000000000000001.opus`), env);
+    assert.equal(audio.status, 404);
+    assert.equal(audio.headers.get(API_HEADER), '1');
+    assert.equal(assets.seen.length, paths.length);
+  });
+
+  test('/api/youtube/* se reenvía a Vercel tal cual: método, ruta, consulta, cuerpo y cabeceras útiles', async () => {
+    const { calls, fetchImpl } = fakeVercel();
+    const body = JSON.stringify({ url: 'https://www.youtube.com/watch?v=abcdefghijk' });
+    const response = await handleRequest(new Request(`${SITE}/api/youtube/convert?x=1&y=2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: SITE, 'X-Homeostasia-Trace': 't1', Cookie: 'no', Authorization: 'no' },
+      body,
+    }), {}, { fetchImpl });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.equal(response.headers.get('access-control-allow-origin'), SITE);
+    assert.equal(response.headers.get('x-vercel-id'), 'v1');
+    assert.equal(calls.length, 1);
+    const [sent] = calls;
+    assert.equal(sent.url, `${YOUTUBE_UPSTREAM}/api/youtube/convert?x=1&y=2`);
+    assert.equal(sent.method, 'POST');
+    assert.equal(new TextDecoder().decode(sent.body), body);
+    assert.equal(sent.headers.get('content-type'), 'application/json');
+    assert.equal(sent.headers.get('x-homeostasia-trace'), 't1');
+    assert.equal(sent.headers.get('cookie'), null);
+    assert.equal(sent.headers.get('authorization'), null);
+    assert.equal(sent.headers.get('origin'), null);
+    assert.equal(sent.redirect, 'manual');
+
+    const search = await handleRequest(new Request(`${SITE}/api/youtube/search?q=bolero`), {}, { fetchImpl });
+    assert.equal(search.status, 200);
+    assert.equal(calls[1].url, `${YOUTUBE_UPSTREAM}/api/youtube/search?q=bolero`);
+    assert.equal(calls[1].method, 'GET');
+    assert.equal(calls[1].body, undefined);
+  });
+
+  test('la respuesta de Vercel vuelve en flujo con su estado y sus cabeceras (también los errores)', async () => {
+    const chunks = [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5])];
+    const { fetchImpl } = fakeVercel((target) => {
+      if (target.pathname.endsWith('/status')) return new Response('{"ok":false}', { status: 429, headers: { 'Retry-After': '7' } });
+      const stream = new ReadableStream({
+        pull(controller) {
+          const next = chunks.shift();
+          if (next) controller.enqueue(next);
+          else controller.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { 'Content-Type': 'audio/wav', 'Content-Disposition': 'attachment; filename="a.wav"' } });
+    });
+    const download = await handleRequest(new Request(`${SITE}/api/youtube/download?id=1`), {}, { fetchImpl });
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get('content-type'), 'audio/wav');
+    assert.equal(download.headers.get('content-disposition'), 'attachment; filename="a.wav"');
+    assert.ok(download.body instanceof ReadableStream);
+    assert.deepEqual([...new Uint8Array(await download.arrayBuffer())], [1, 2, 3, 4, 5]);
+    const limited = await handleRequest(new Request(`${SITE}/api/youtube/status?id=1`, { method: 'POST', body: '{}' }), {}, { fetchImpl });
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get('retry-after'), '7');
+  });
+
+  test('si Vercel no responde, 502 con la cabecera del Worker; otro origen, 403 sin reenviar', async () => {
+    const failing = async () => { throw new TypeError('fetch failed'); };
+    const down = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`), {}, { fetchImpl: failing });
+    assert.equal(down.status, 502);
+    assert.equal(down.headers.get(API_HEADER), '1');
+    assert.equal((await down.json()).ok, false);
+    const { calls, fetchImpl } = fakeVercel();
+    const foreign = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`, { headers: { Origin: 'https://malo.example' } }), {}, { fetchImpl });
+    assert.equal(foreign.status, 403);
+    assert.equal(calls.length, 0);
+  });
+
+  test('/api/subir sigue siendo del Worker en el dominio propio (no se reenvía a Vercel)', async () => {
+    const { call, privateBucket } = setup();
+    const response = await call('/api/subir', chunkInit({ index: 0, total: 1, body: OPUS, origin: SITE }));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), SITE);
+    assert.ok(privateBucket.objects.size > 0);
   });
 });

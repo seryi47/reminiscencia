@@ -9,10 +9,10 @@ import 'library_store.dart' show kLibraryBase;
 // /api/editar y /api/portadas van al Worker de Cloudflare «reminiscencia-api» si [kWorkerApiBase] tiene su dirección,
 // y si no (o si el Worker no responde) a las funciones de Vercel, como antes.
 
-/// ÚNICO SITIO QUE HAY QUE CAMBIAR al desplegar el Worker: su dirección, sin barra final, por ejemplo
-/// `https://reminiscencia-api.SUBDOMINIO.workers.dev`. Vacía = todo por Vercel.
-const String kWorkerApiBase =
-    'https://reminiscencia-api.reminiscencia-app.workers.dev';
+/// ÚNICO SITIO QUE HAY QUE CAMBIAR si cambia la dirección del Worker: su dirección, sin barra final. Desde ADR-0034
+/// es el dominio propio, donde el mismo Worker sirve también la web ([kLibraryBase]). Vacía = todo por
+/// [kLibraryBase].
+const String kWorkerApiBase = 'https://reminiscencia.cometia.es';
 
 /// Trozo de /api/subir: 4 MB en Vercel (admite 4,5 MB por petición) y 32 MB en el Worker. Los mismos valores que
 /// VERCEL_CHUNK_BYTES y WORKER_CHUNK_BYTES de la web (lo comprueba test/api_config_test.dart).

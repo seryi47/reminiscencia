@@ -262,3 +262,19 @@ describe("Worker de Cloudflare (ADR-0029)", () => {
     }),
   );
 });
+
+describe("Aislamiento de producción (incidente del 2026-11-06; ADR-0034)", () => {
+  prueba("Chrome de las pruebas no resuelve ningún nombre de producción (web, API, YouTube, R2, GitHub)", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      for (const url of [
+        "https://reminiscencia.cometia.es/api/salud",
+        "https://reminiscencia.vercel.app/api/youtube/search?q=x",
+        "https://reminiscencia-api.reminiscencia-app.workers.dev/api/salud",
+        `${AUDIO_ORIGIN}/portadas/indice.json`,
+        "https://api.github.com/",
+      ]) {
+        await assert.rejects(page.goto(url), /ERR_NAME_NOT_RESOLVED/, url);
+      }
+    }),
+  );
+});

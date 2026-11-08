@@ -1,6 +1,6 @@
 import 'covers.dart';
 
-/// Una canción del catálogo público (https://reminiscencia.vercel.app/data/songs.json).
+/// Una canción del catálogo público (https://reminiscencia.cometia.es/data/songs.json).
 class Song {
   const Song({
     required this.id,
@@ -87,7 +87,7 @@ List<Song> sortByTrack(Iterable<Song> songs) {
   return [for (final entry in indexed) entry.value];
 }
 
-/// Álbum del catálogo (https://reminiscencia.vercel.app/data/folders.json). En los datos se llama «carpeta» (folder).
+/// Álbum del catálogo (https://reminiscencia.cometia.es/data/folders.json). En los datos se llama «carpeta» (folder).
 class Folder {
   const Folder({
     required this.id,

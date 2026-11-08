@@ -607,7 +607,7 @@ void main() {
       final songs = await source.fetch();
       expect(
         seen.single.url,
-        Uri.parse('https://reminiscencia.vercel.app/data/songs.json'),
+        Uri.parse('https://reminiscencia.cometia.es/data/songs.json'),
       );
       expect(seen.single.headers['Cache-Control'], 'no-cache');
       expect(songs.single.title, 'Canción');
