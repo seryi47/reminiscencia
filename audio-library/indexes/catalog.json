@@ -5225,6 +5225,22 @@
       "size_bytes": 1236104,
       "added_at": "2026-11-06T20:09:00+00:00",
       "public": true
+    },
+    {
+      "id": "Sbe4fc4751acbd4b5",
+      "title": "Bring Me to Life",
+      "artist": "Evanescence",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "be4fc4751acbd4b5be9406ab259db1d17efb4fd13ea62e6214cfd355eda3e9f5",
+      "duration_s": 237.338,
+      "codec": "opus",
+      "size_bytes": 1409118,
+      "added_at": "2026-11-09T10:47:19+00:00",
+      "public": true
     }
   ]
 }
