@@ -31,7 +31,16 @@ import {
   SHELL_VERSION,
   shellCacheName,
 } from '../../frontend/web/js/offline-core.js';
-import { cachedAudioPaths, downloadAudioToCache, registerPwa, removeOfflineSongs } from '../../frontend/web/js/pwa.js';
+import {
+  cachedAudioPaths,
+  downloadAudioToCache,
+  pageHasMedia,
+  registerPwa,
+  removeOfflineSongs,
+  requestPersistentStorage,
+  UPDATE_NOTICE,
+  updateAction,
+} from '../../frontend/web/js/pwa.js';
 import { createOfflineDownloads } from '../../frontend/web/js/offline-downloads.js';
 import { normalizeApiBase, WORKER_API_BASE } from '../../frontend/web/js/api-config.js';
 
@@ -876,6 +885,124 @@ describe('guardado sin conexión (pwa.js)', () => {
     } finally {
       restoreNavigator();
     }
+  });
+
+  test('updateAction: sin versión anterior no hace nada; sin nada cargado recarga; con algo cargado solo avisa', () => {
+    assert.equal(updateAction({ hadController: false, hasMedia: false }), 'none');
+    assert.equal(updateAction({ hadController: false, hasMedia: true }), 'none');
+    assert.equal(updateAction({ hadController: true, hasMedia: false }), 'reload');
+    assert.equal(updateAction({ hadController: true, hasMedia: true }), 'notice');
+    assert.equal(updateAction({ hadController: true, handled: true, hasMedia: false }), 'none');
+    assert.equal(UPDATE_NOTICE, 'Hay una versión nueva de Reminiscencia.');
+  });
+
+  /** navigator.serviceWorker simulado que ya controla la página y guarda el manejador de controllerchange. */
+  function controlledServiceWorker() {
+    const listeners = [];
+    return {
+      listeners,
+      fire: () => listeners.forEach((listener) => listener()),
+      serviceWorker: {
+        controller: {},
+        addEventListener(type, listener) {
+          if (type === 'controllerchange') listeners.push(listener);
+        },
+        async register(url, options) {
+          return { scope: options.scope };
+        },
+      },
+    };
+  }
+
+  test('registerPwa: una versión nueva con una canción cargada avisa una vez y no recarga', async () => {
+    const sw = controlledServiceWorker();
+    setNavigator({ serviceWorker: sw.serviceWorker });
+    try {
+      let reloads = 0;
+      let notices = 0;
+      await registerPwa({ hasMedia: () => true, onUpdate: () => { notices += 1; }, reload: () => { reloads += 1; } });
+      sw.fire();
+      sw.fire();
+      assert.equal(reloads, 0);
+      assert.equal(notices, 1);
+    } finally {
+      restoreNavigator();
+    }
+  });
+
+  test('registerPwa: una versión nueva sin nada cargado recarga la página (una vez)', async () => {
+    const sw = controlledServiceWorker();
+    setNavigator({ serviceWorker: sw.serviceWorker });
+    try {
+      let reloads = 0;
+      let notices = 0;
+      await registerPwa({ hasMedia: () => false, onUpdate: () => { notices += 1; }, reload: () => { reloads += 1; } });
+      sw.fire();
+      sw.fire();
+      assert.equal(reloads, 1);
+      assert.equal(notices, 0);
+    } finally {
+      restoreNavigator();
+    }
+  });
+
+  test('registerPwa: en la primera visita (sin versión anterior) no recarga ni avisa', async () => {
+    const sw = controlledServiceWorker();
+    sw.serviceWorker.controller = null;
+    setNavigator({ serviceWorker: sw.serviceWorker });
+    try {
+      let calls = 0;
+      await registerPwa({ hasMedia: () => false, onUpdate: () => { calls += 1; }, reload: () => { calls += 1; } });
+      sw.fire();
+      assert.equal(calls, 0);
+    } finally {
+      restoreNavigator();
+    }
+  });
+
+  test('registerPwa: si no se puede saber qué hay cargado, avisa en lugar de recargar', async () => {
+    const sw = controlledServiceWorker();
+    setNavigator({ serviceWorker: sw.serviceWorker });
+    try {
+      const done = [];
+      await registerPwa({ hasMedia: () => { throw new Error('sin reproductor'); }, onUpdate: () => done.push('aviso'), reload: () => done.push('recarga') });
+      sw.fire();
+      assert.deepEqual(done, ['aviso']);
+    } finally {
+      restoreNavigator();
+    }
+  });
+
+  test('pageHasMedia: audio con fuente o vídeo de YouTube abierto', () => {
+    const doc = (src, dock) => ({
+      getElementById: () => ({ getAttribute: (name) => (name === 'src' ? src : null) }),
+      querySelector: () => (dock ? {} : null),
+    });
+    assert.equal(pageHasMedia(doc(null, false)), false);
+    assert.equal(pageHasMedia(doc('', false)), false);
+    assert.equal(pageHasMedia(doc('audio/S1.opus', false)), true);
+    assert.equal(pageHasMedia(doc(null, true)), true);
+    assert.equal(pageHasMedia(null), false);
+  });
+
+  test('requestPersistentStorage pide no borrar lo guardado y nunca lanza', async () => {
+    assert.equal(await requestPersistentStorage(undefined), 'unsupported');
+    assert.equal(await requestPersistentStorage({}), 'unsupported');
+    let asked = 0;
+    const storage = (persisted, granted) => ({
+      persisted: async () => persisted,
+      persist: async () => {
+        asked += 1;
+        return granted;
+      },
+    });
+    assert.equal(await requestPersistentStorage(storage(true, false)), 'granted');
+    assert.equal(asked, 0, 'si ya es persistente, no lo vuelve a pedir');
+    assert.equal(await requestPersistentStorage(storage(false, true)), 'granted');
+    assert.equal(await requestPersistentStorage(storage(false, false)), 'denied');
+    assert.equal(asked, 2);
+    assert.equal(await requestPersistentStorage({ persist: async () => { throw new Error('no'); } }), 'denied');
+    assert.equal(await requestPersistentStorage({ persist: async () => true }), 'granted');
   });
 
   test('registerPwa no lanza si el registro falla', async () => {

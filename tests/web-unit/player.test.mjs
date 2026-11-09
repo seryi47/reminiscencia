@@ -1,5 +1,6 @@
 // Pruebas del reproductor (frontend/web/js/player.js): funciones puras, cola, aleatorio, repetir, volumen,
-// canciones no disponibles sin conexión, errores y Media Session. Sin DOM: el elemento de audio, los temporizadores
+// canciones no disponibles sin conexión, errores, parones de la red (vigilante), preferencias guardadas solo al cambiar
+// y Media Session. Sin DOM: el elemento de audio, los temporizadores
 // y el navegador son dobles de prueba. Las pistas son ficticias.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,8 +9,10 @@ import {
   NOTICES,
   PREVIOUS_RESTART_SECONDS,
   REPEAT_MODES,
+  STALL_TIMEOUT_MS,
   clampVolume,
   createPlayer,
+  createPrefsSaver,
   nextRepeatMode,
   shuffledIndexes,
 } from '../../frontend/web/js/player.js';
@@ -40,6 +43,8 @@ class FakeAudio {
     this.volumeValue = 1;
     this.currentSrc = '';
     this.playCalls = 0;
+    this.loadCalls = 0;
+    this.seeking = false;
   }
 
   get volume() {
@@ -73,6 +78,7 @@ class FakeAudio {
   }
 
   load() {
+    this.loadCalls += 1;
     this.paused = true;
   }
 
@@ -120,6 +126,14 @@ function createTimers() {
       }
     },
     pending: () => [...timers.values()].map((timer) => timer.ms),
+    // Ejecuta solo los temporizadores de esa duración (por ejemplo, el del vigilante de parones).
+    run(ms) {
+      for (const [id, timer] of [...timers]) {
+        if (timer.ms !== ms) continue;
+        timers.delete(id);
+        timer.fn();
+      }
+    },
   };
 }
 
@@ -156,6 +170,7 @@ function setup(options = {}) {
     onChange: (state) => changes.push(state),
     onNotice: (text) => notices.push(text),
     isAvailable: options.isAvailable,
+    isOnDevice: options.isOnDevice,
     shuffle: options.shuffle,
     repeat: options.repeat,
     volume: options.volume,
@@ -481,6 +496,198 @@ describe('sin conexión y errores', () => {
     player.load([{ ...A, audioUrl: null }], 0);
     assert.equal(player.getState().playing, false);
     assert.deepEqual(notices, [NOTICES.noneAvailable]);
+  });
+});
+
+describe('parones de la red (vigilante)', () => {
+  // El elemento avanza: cambia currentTime y avisa con timeupdate.
+  const advanceTo = (audio, seconds) => {
+    audio.currentTime = seconds;
+    audio.emit('timeupdate');
+  };
+
+  test('un waiting con la reproducción pedida arma el plazo y un avance real lo quita', () => {
+    const { player, audio, timers } = setup();
+    player.load([A, B], 0);
+    audio.emit('waiting');
+    assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS]);
+    audio.emit('stalled');
+    assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS], 'no se acumulan plazos');
+    advanceTo(audio, 0.3);
+    assert.deepEqual(timers.pending(), []);
+    assert.equal(STALL_TIMEOUT_MS >= 15_000 && STALL_TIMEOUT_MS <= 20_000, true);
+  });
+
+  test('sin avance, primero vuelve a pedir la misma canción desde el mismo punto y después la trata como un error', () => {
+    const { player, audio, timers, notices } = setup();
+    player.load([A, B], 0);
+    advanceTo(audio, 42);
+    audio.emit('waiting');
+    const plays = audio.playCalls;
+    timers.run(STALL_TIMEOUT_MS);
+    // Reintento: misma fuente, recargada, en el mismo segundo y sonando.
+    assert.equal(audio.loadCalls, 1);
+    assert.equal(audio.src, A.audioUrl);
+    assert.equal(audio.currentTime, 42);
+    assert.equal(audio.playCalls, plays + 1);
+    assert.equal(player.getState().playing, true);
+    assert.equal(player.getState().track.id, A.id);
+    assert.deepEqual(notices, []);
+    assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS]);
+    // Tampoco avanza: como un error de reproducción (aviso y, tras ERROR_SKIP_MS, la siguiente).
+    timers.run(STALL_TIMEOUT_MS);
+    assert.deepEqual(notices, [NOTICES.error]);
+    assert.equal(player.getState().playing, false);
+    assert.deepEqual(timers.pending(), [ERROR_SKIP_MS]);
+    timers.runAll();
+    assert.equal(player.getState().track.id, B.id);
+    assert.equal(player.getState().playing, true);
+  });
+
+  test('si tras el reintento vuelve a avanzar, un parón posterior se reintenta otra vez (no salta)', () => {
+    const { player, audio, timers, notices } = setup();
+    player.load([A, B], 0);
+    audio.emit('waiting');
+    timers.run(STALL_TIMEOUT_MS);
+    advanceTo(audio, 5);
+    assert.deepEqual(timers.pending(), []);
+    audio.emit('waiting');
+    timers.run(STALL_TIMEOUT_MS);
+    assert.equal(audio.loadCalls, 2);
+    assert.deepEqual(notices, []);
+    assert.equal(player.getState().track.id, A.id);
+  });
+
+  test('en pausa no vigila, y pausar, pasar de canción o terminar quitan el plazo', () => {
+    const { player, audio, timers } = setup();
+    player.load([A, B, C], 0, { autoplay: false });
+    audio.emit('waiting');
+    assert.deepEqual(timers.pending(), [], 'en pausa (sin reproducción pedida)');
+    player.play();
+    audio.emit('waiting');
+    player.pause();
+    assert.deepEqual(timers.pending(), [], 'al pausar');
+    player.play();
+    audio.emit('waiting');
+    player.next();
+    assert.deepEqual(timers.pending(), [], 'al pasar de canción');
+    audio.emit('waiting');
+    player.load([C], 0);
+    assert.deepEqual(timers.pending(), [], 'al cargar otra colección');
+    audio.emit('waiting');
+    audio.emit('error');
+    assert.deepEqual(timers.pending(), [ERROR_SKIP_MS], 'tras un error solo queda el salto');
+    player.destroy();
+  });
+
+  test('un salto dentro de la canción empieza un plazo nuevo y no cuenta como avance', () => {
+    const { player, audio, timers } = setup();
+    player.load([A], 0);
+    advanceTo(audio, 10);
+    audio.emit('waiting');
+    // La persona salta a 90 s: el elemento busca (seeking) y avisa con timeupdate en el destino, aún sin datos.
+    audio.seeking = true;
+    audio.currentTime = 90;
+    audio.emit('seeking');
+    audio.emit('timeupdate');
+    assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS]);
+    audio.seeking = false;
+    audio.emit('timeupdate');
+    assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS], 'seguir en el destino no es avanzar');
+    advanceTo(audio, 90.25);
+    assert.deepEqual(timers.pending(), []);
+  });
+
+  test('una canción guardada en el dispositivo no se recarga ni se salta: solo se anota', (t) => {
+    const warn = t.mock.method(console, 'warn', () => {});
+    const { player, audio, timers, notices } = setup({ isOnDevice: (item) => item.id === A.id });
+    player.load([A, B], 0);
+    audio.emit('waiting');
+    audio.emit('stalled');
+    assert.equal(warn.mock.callCount(), 0, 'esperar datos al empezar no se anota');
+    timers.run(STALL_TIMEOUT_MS);
+    assert.deepEqual(timers.pending(), []);
+    assert.equal(audio.loadCalls, 0);
+    assert.deepEqual(notices, []);
+    assert.equal(player.getState().track.id, A.id);
+    assert.equal(warn.mock.callCount() >= 1, true);
+    // La siguiente llega por la red: esa sí se vigila.
+    player.next();
+    audio.emit('waiting');
+    assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS]);
+  });
+
+  test('si isOnDevice falla, la canción se trata como de la red', () => {
+    const { player, audio, timers } = setup({ isOnDevice: () => { throw new Error('sin caché'); } });
+    player.load([A], 0);
+    audio.emit('waiting');
+    assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS]);
+  });
+});
+
+describe('estado con cada avance del tiempo', () => {
+  test('la cola que queda es la misma copia mientras no cambia, y otra al cambiar', () => {
+    const { player, audio, changes } = setup();
+    player.load([A, B, C], 0);
+    audio.currentTime = 1;
+    audio.emit('timeupdate');
+    audio.currentTime = 2;
+    audio.emit('timeupdate');
+    const [first, second] = changes.slice(-2);
+    assert.equal(first.position, 1);
+    assert.equal(second.position, 2);
+    assert.equal(first.upcoming, second.upcoming);
+    assert.equal(Object.isFrozen(second.upcoming), true);
+    player.addToQueue(D);
+    assert.notEqual(player.getState().upcoming, second.upcoming);
+    assert.deepEqual(ids(player.getState()), [A.id, D.id, B.id, C.id]);
+    player.next();
+    assert.deepEqual(ids(player.getState()), [D.id, B.id, C.id]);
+    player.replaceTrack(C.id, { ...C, id: 'cancion-c2' });
+    assert.deepEqual(ids(player.getState()), [D.id, B.id, 'cancion-c2']);
+    // Con aleatorio, la actual (añadida a la cola) sigue delante y detrás va todo el contexto barajado.
+    player.setShuffle(true);
+    const shuffled = ids(player.getState());
+    assert.equal(shuffled[0], D.id);
+    assert.deepEqual(shuffled.slice(1).sort(), [A.id, B.id, 'cancion-c2'].sort());
+  });
+});
+
+describe('preferencias guardadas (createPrefsSaver)', () => {
+  test('solo escribe cuando cambian el volumen, el aleatorio o la repetición', () => {
+    const writes = [];
+    const { player, audio } = setup();
+    const save = createPrefsSaver((prefs) => writes.push(prefs), player.getState());
+    player.load([A, B], 0);
+    for (let second = 1; second <= 20; second += 1) {
+      audio.currentTime = second;
+      audio.emit('timeupdate');
+      save(player.getState());
+    }
+    assert.deepEqual(writes, [], 'el avance del tiempo no escribe');
+    player.setVolume(0.5);
+    save(player.getState());
+    save(player.getState());
+    player.setShuffle(true);
+    save(player.getState());
+    player.setRepeat('one');
+    save(player.getState());
+    player.pause();
+    save(player.getState());
+    assert.deepEqual(writes, [
+      { volume: 0.5, shuffle: false, repeat: 'off' },
+      { volume: 0.5, shuffle: true, repeat: 'off' },
+      { volume: 0.5, shuffle: true, repeat: 'one' },
+    ]);
+  });
+
+  test('sin estado inicial, la primera llamada escribe una vez', () => {
+    const writes = [];
+    const save = createPrefsSaver((prefs) => writes.push(prefs));
+    const state = { volume: 1, shuffle: false, repeat: 'off', position: 3 };
+    assert.equal(save(state), true);
+    assert.equal(save({ ...state, position: 4 }), false);
+    assert.equal(writes.length, 1);
   });
 });
 

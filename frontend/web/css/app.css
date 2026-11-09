@@ -2712,6 +2712,59 @@ button:disabled {
   transform: translate(-50%, 0);
 }
 
+/* Versión nueva de la web con algo cargado en el reproductor: se queda hasta pulsar «Recargar» (no tapa los avisos
+   breves, que suben por encima). */
+.update-notice {
+  position: fixed;
+  bottom: calc(var(--player-h) + 24px);
+  left: 50%;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--radius);
+  background: var(--text);
+  color: var(--bg);
+  font-size: var(--text-s);
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.update-notice:empty {
+  padding: 0;
+}
+
+.update-notice.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+.update-notice-action {
+  flex: none;
+  min-height: 32px;
+  padding: 0 16px;
+  border: 1px solid var(--bg);
+  border-radius: 500px;
+  color: var(--bg);
+  font-size: var(--text-s);
+  font-weight: 700;
+}
+
+.update-notice-action:focus-visible {
+  outline-color: var(--bg);
+}
+
+.update-notice.is-visible ~ .toast {
+  bottom: calc(var(--player-h) + 24px + 64px);
+}
+
 /* ---- Hoja «Subir canciones» ---- */
 
 .upload-back {
@@ -3266,8 +3319,13 @@ button:disabled {
     background: var(--text);
   }
 
-  .toast {
+  .toast,
+  .update-notice {
     bottom: calc(var(--tabbar-h) + var(--mini-h) + 16px);
+  }
+
+  .update-notice.is-visible ~ .toast {
+    bottom: calc(var(--tabbar-h) + var(--mini-h) + 16px + 72px);
   }
 
   /* Objetivos táctiles de 44 px (DESIGN §12). */
@@ -3284,6 +3342,7 @@ button:disabled {
   .now-open-queue,
   .library-search-toggle,
   .library-filter-input,
+  .update-notice-action,
   .action-icon {
     min-width: 44px;
     min-height: 44px;

@@ -10,6 +10,9 @@
 export const REPEAT_MODES = Object.freeze(['off', 'all', 'one']);
 export const PREVIOUS_RESTART_SECONDS = 3;
 export const ERROR_SKIP_MS = 3000;
+/** Si una canción que llega por la red se queda esperando datos (eventos waiting o stalled) y no avanza en este tiempo,
+ *  se vuelve a pedir una vez desde el mismo punto; si tampoco avanza, se trata como un error (aviso y siguiente). */
+export const STALL_TIMEOUT_MS = 15_000;
 export const NOTICES = Object.freeze({
   unavailable: 'Algunas canciones no están disponibles sin conexión y se han saltado.',
   noneAvailable: 'No hay canciones disponibles sin conexión.',
@@ -84,13 +87,35 @@ function detectVolumeControl(audio) {
 }
 
 /**
+ * Guarda las preferencias del reproductor (volumen, aleatorio y repetir) solo cuando cambian: onChange llega con cada
+ * avance del tiempo (unas 4 veces por segundo) y no hace falta escribir en localStorage cada vez. write(prefs) recibe
+ * { volume, shuffle, repeat }; initial (un estado del reproductor) es lo que ya está guardado. Devuelve save(state), que
+ * dice si ha escrito.
+ */
+export function createPrefsSaver(write, initial = null) {
+  const pick = (state) => ({ volume: state.volume, shuffle: state.shuffle, repeat: state.repeat });
+  let last = initial ? JSON.stringify(pick(initial)) : null;
+  return function save(state) {
+    const prefs = pick(state);
+    const key = JSON.stringify(prefs);
+    if (key === last) return false;
+    last = key;
+    write(prefs);
+    return true;
+  };
+}
+
+/**
  * Crea el reproductor. Opciones: audio (elemento), isAvailable(track) (sin conexión, solo lo guardado),
- * onChange(state), onNotice(text), volume, shuffle, repeat (estado inicial) y env.
+ * isOnDevice(track) (la canción se sirve desde este dispositivo, descargada o subida aquí, y no por la red: un parón no
+ * puede ser de la red y el vigilante de parones no la toca), onChange(state), onNotice(text), volume, shuffle, repeat
+ * (estado inicial) y env.
  */
 export function createPlayer(options = {}) {
   const {
     audio,
     isAvailable = () => true,
+    isOnDevice = () => false,
     onChange = () => {},
     onNotice = () => {},
     volume: initialVolume = 1,
@@ -120,6 +145,13 @@ export function createPlayer(options = {}) {
   let errored = false;
   let sourceLoaded = false;
   let errorTimer = null;
+  // Vigilante de parones de red: temporizador, posición al armarlo, si ya se ha reintentado esta fuente y si la fuente
+  // se sirve desde el dispositivo (se decide al cargarla, no con cada avance del tiempo).
+  let stallTimer = null;
+  let stallFrom = 0;
+  let stallRetried = false;
+  let sourceOnDevice = false;
+  let cachedUpcoming = null;
   const cleanups = [];
 
   const current = () => (pos >= 0 ? seq[pos] ?? null : null);
@@ -178,6 +210,31 @@ export function createPlayer(options = {}) {
     }
   }
 
+  function clearStallTimer() {
+    if (stallTimer !== null) {
+      runtime.clearTimeout(stallTimer);
+      stallTimer = null;
+    }
+  }
+
+  function elementTime() {
+    const value = Number(audio.currentTime);
+    return Number.isFinite(value) ? value : position;
+  }
+
+  function onDevice(track) {
+    try {
+      return Boolean(track && isOnDevice(track));
+    } catch {
+      return false;
+    }
+  }
+
+  // La cola que se ve («A continuación») solo cambia con la secuencia o la posición, no con el tiempo.
+  function queueChanged() {
+    cachedUpcoming = null;
+  }
+
   function applyVolume() {
     try {
       audio.volume = muted ? 0 : volume;
@@ -188,6 +245,9 @@ export function createPlayer(options = {}) {
 
   function setSource(track) {
     errored = false;
+    clearStallTimer();
+    stallRetried = false;
+    sourceOnDevice = onDevice(track);
     sourceLoaded = Boolean(track && track.audioUrl);
     try {
       if (sourceLoaded) audio.src = track.audioUrl;
@@ -218,12 +278,70 @@ export function createPlayer(options = {}) {
 
   function stopPlayback() {
     playing = false;
+    clearStallTimer();
     try {
       audio.pause();
     } catch {
       // Sin elemento que pausar.
     }
     updateMediaSession();
+  }
+
+  // ---- Vigilante de parones ----
+  // Con la reproducción pedida, un waiting o stalled arma el temporizador; cualquier avance real del tiempo lo quita.
+  // Pausar, cambiar de canción, terminar o fallar también lo quitan (stopPlayback y setSource), así que no se acumula.
+  function armStallWatch() {
+    if (destroyed || !playing || !sourceLoaded || errored || stallTimer !== null) return;
+    stallFrom = elementTime();
+    stallTimer = runtime.setTimeout(onStallTimeout, STALL_TIMEOUT_MS);
+  }
+
+  function onStallTimeout() {
+    stallTimer = null;
+    const item = current();
+    if (destroyed || !item || !playing || !sourceLoaded || errored) return;
+    if (sourceOnDevice) {
+      // Descargada o subida aquí: no depende de la red, así que no se recarga ni se salta; solo se anota.
+      console.warn('Reproductor: una canción guardada en este dispositivo lleva un rato sin avanzar.');
+      return;
+    }
+    if (stallRetried) {
+      handleError();
+      return;
+    }
+    // Primer intento: se vuelve a pedir la misma fuente desde el mismo punto (la conexión colgada se descarta).
+    stallRetried = true;
+    const at = elementTime();
+    sourceOnDevice = onDevice(item.track);
+    try {
+      audio.load();
+    } catch {
+      // Sin elemento que recargar: el siguiente plazo lo trata como error.
+    }
+    if (at > 0) seekElement(at);
+    let attempt;
+    try {
+      attempt = audio.play();
+    } catch (error) {
+      attempt = Promise.reject(error);
+    }
+    if (attempt && typeof attempt.catch === 'function') attempt.catch(handlePlayFailure);
+    stallFrom = at;
+    stallTimer = runtime.setTimeout(onStallTimeout, STALL_TIMEOUT_MS);
+  }
+
+  function noteProgress() {
+    if (stallTimer === null || audio.seeking) return;
+    if (elementTime() === stallFrom) return;
+    clearStallTimer();
+    stallRetried = false;
+  }
+
+  // Un salto pedido (barra de progreso, teclas multimedia) empieza un plazo nuevo desde el punto de destino.
+  function handleSeeking() {
+    if (stallTimer === null) return;
+    clearStallTimer();
+    armStallWatch();
   }
 
   function handlePlayFailure(error) {
@@ -265,6 +383,7 @@ export function createPlayer(options = {}) {
     stopPlayback();
     clearErrorTimer();
     pos = target;
+    queueChanged();
     const item = current();
     position = 0;
     duration = item?.track.durationS ?? 0;
@@ -313,6 +432,7 @@ export function createPlayer(options = {}) {
   function handleEnded() {
     if (destroyed || !current() || !sourceLoaded || errored) return;
     if (repeat === 'one') {
+      clearStallTimer();
       position = 0;
       seekElement(0);
       playing = false;
@@ -327,6 +447,7 @@ export function createPlayer(options = {}) {
     if (destroyed || !current() || !sourceLoaded || errored) return;
     const wasPlaying = playing;
     errored = true;
+    clearStallTimer();
     stopPlayback();
     setNotice(NOTICES.error);
     if (wasPlaying) {
@@ -377,8 +498,20 @@ export function createPlayer(options = {}) {
       shuffle,
       repeat,
       notice,
-      upcoming: pos >= 0 ? seq.slice(pos + 1).map((next) => ({ key: next.key, track: { ...next.track }, fromQueue: next.fromQueue })) : [],
+      upcoming: upcomingCopy(),
     };
+  }
+
+  // Copia de la cola que queda. Se rehace solo cuando cambia (queueChanged): los avisos con cada avance del tiempo
+  // reciben la misma copia, sin copiar cientos de canciones cuatro veces por segundo.
+  function upcomingCopy() {
+    if (cachedUpcoming === null) {
+      cachedUpcoming = pos >= 0
+        ? seq.slice(pos + 1).map((next) => Object.freeze({ key: next.key, track: Object.freeze({ ...next.track }), fromQueue: next.fromQueue }))
+        : [];
+      Object.freeze(cachedUpcoming);
+    }
+    return cachedUpcoming;
   }
 
   /** Carga un contexto. startAt: índice de la canción en `tracks`; null con aleatorio empieza por una al azar. */
@@ -393,6 +526,7 @@ export function createPlayer(options = {}) {
     if (base.length === 0) {
       seq = [];
       pos = -1;
+      queueChanged();
       setSource(null);
       setNotice(null);
       notify();
@@ -405,9 +539,11 @@ export function createPlayer(options = {}) {
     const first = shuffle ? 0 : start;
     seq.splice(first + 1, 0, ...queued);
     pos = -1;
+    queueChanged();
     const found = scan(first, 1, true);
     if (!found) {
       pos = first;
+      queueChanged();
       position = 0;
       duration = seq[first].track.durationS ?? 0;
       setSource(null);
@@ -491,6 +627,7 @@ export function createPlayer(options = {}) {
     let at = pos + 1;
     while (at < seq.length && seq[at].fromQueue) at += 1;
     seq.splice(at, 0, entry(copyTrack(track), null, true));
+    queueChanged();
     notify();
   }
 
@@ -515,6 +652,7 @@ export function createPlayer(options = {}) {
       }
     }
     if (changed) {
+      queueChanged();
       updateMediaSession();
       notify();
     }
@@ -540,6 +678,7 @@ export function createPlayer(options = {}) {
         seq = [item, ...queued, ...base.map((track, i) => entry(track, i))];
         pos = 0;
       }
+      queueChanged();
     }
     notify();
   }
@@ -602,6 +741,7 @@ export function createPlayer(options = {}) {
     if (destroyed) return;
     destroyed = true;
     clearErrorTimer();
+    clearStallTimer();
     for (const cleanup of cleanups.splice(0)) cleanup();
     try {
       audio.pause();
@@ -622,6 +762,7 @@ export function createPlayer(options = {}) {
     if (destroyed || !sourceLoaded) return;
     const value = Number(audio.currentTime);
     if (Number.isFinite(value)) position = value;
+    noteProgress();
     notify();
   });
   listen('loadedmetadata', onMetadata);
@@ -630,6 +771,9 @@ export function createPlayer(options = {}) {
   listen('error', handleError);
   listen('pause', handleElementPause);
   listen('play', handleElementPlay);
+  listen('waiting', armStallWatch);
+  listen('stalled', armStallWatch);
+  listen('seeking', handleSeeking);
   installMediaActions();
 
   return {
