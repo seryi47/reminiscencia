@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!-- Pantalla de apertura de Android 7 a 11 (ADR-0035): la misma composición que la de Android 12+ (values-v31):
+     fondo de la app, el emblema de 240 dp centrado y el nombre (200x80 dp) a 60 dp del borde inferior. Todo vectorial:
+     nítido en cualquier densidad, sin deformarse ni recortarse. Los dibujos los genera scripts/splash/generar_splash.py. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="?android:colorBackground" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+    <item android:drawable="@color/splash_background" />
+    <item
+        android:width="240dp"
+        android:height="240dp"
+        android:drawable="@drawable/splash_mark"
+        android:gravity="center" />
+    <item
+        android:width="200dp"
+        android:height="80dp"
+        android:bottom="60dp"
+        android:drawable="@drawable/splash_wordmark"
+        android:gravity="bottom|center_horizontal" />
 </layer-list>

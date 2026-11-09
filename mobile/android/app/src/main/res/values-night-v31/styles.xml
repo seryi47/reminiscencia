@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pantalla de apertura de Android 12+ (API de SplashScreen del sistema; ADR-0035). Sin esto, el sistema muestra
+         el icono de la app recortado en un círculo. Emblema propio (vectorial, cabe entero en el círculo de 160 dp),
+         el nombre abajo y el fondo de la app. Los dibujos los genera scripts/splash/generar_splash.py. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark</item>
+        <item name="android:windowSplashScreenBrandingImage">@drawable/splash_wordmark</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+</resources>
