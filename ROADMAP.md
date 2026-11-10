@@ -76,6 +76,7 @@ Se trabaja en paralelo, cada frente en su propia rama, y se integra en `main` po
 ## Fase 4: web pública (implementada sin usuarios)
 - [x] Desplegada en https://reminiscencia.vercel.app (Git integration, Root Directory `frontend/web`).
 - [x] En Cloudflare, con el Worker, en https://reminiscencia.cometia.es (ADR-0034; Vercel bloqueado hasta el 2026-12-07): primer `wrangler deploy`, Workers Builds y APK 1.2.5+9 (2026-11-09). Las funciones de YouTube siguen en Vercel.
+- [ ] Segunda dirección en Netlify, https://reminiscencia.netlify.app (ADR-0037), mientras Vercel está bloqueado; comprobar producción tras fusionar y retirarla o mantenerla cuando vuelva Vercel.
 - [ ] APK 1.2.6+10: pantalla de apertura propia (ADR-0035) y reproductor estable en sesiones largas y sin canción al abrir (ADR-0036); probada en el emulador, falta un teléfono real.
 - [x] Interfaz sin usuarios con el aspecto de Spotify (ADR-0015, DESIGN 3.0), en `main` el 2026-11-03: Inicio, Buscar, Tu biblioteca, páginas de carpeta y lista, reproductor con cola, aleatorio y repetir.
 - [x] Listas y «Me gusta» solo en este navegador (`js/local-library.js`).
