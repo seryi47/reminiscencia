@@ -1,3 +1,11 @@
+## Sin publicar: «Transferir música» desde Spotify — diseño + motor de identificación (2026-11-10)
+
+- **Nueva funcionalidad en desarrollo** ([ADR-0044](docs/decisions/ADR-0044-transferir-musica-desde-spotify.md)): transferir canciones/álbumes/playlists de Spotify a Reminiscencia por el recorrido **Spotify → YouTube → biblioteca**, con mejor precisión que TuneMyMusic.
+- **Investigación:** la importación de YouTube actual ya es solo un front-end que entrega audio al pipeline genérico de subida→publicación, así que el importador de Spotify se engancha en el mismo punto (`addUploads`/`uploadShared`) y hereda descarga, Opus, álbum/orden, dedup, publicación y segundo plano. Spotify cerró las señales acústicas (2024): la identificación es por **metadatos** (duración exacta, título, artista, versión, ISRC).
+- **Etapa 1 — motor de identificación** (`frontend/web/server/spotify-match.js`, en el servidor para que web y APK compartan una sola implementación): puntúa candidatos de YouTube por duración (±2 s), título y artista normalizados (reutiliza `catalog.js`), **consistencia de versión** (estudio vs directo/acústico/remix/instrumental/karaoke/cover/…), fuente oficial («Topic»/VEVO) e ISRC. Devuelve confianza **alta** (aceptar solo), **media** (elegir) o **baja** (revisión manual).
+- **Pruebas:** set «dorado» (`tests/web-unit/spotify-match.test.mjs`, 15 casos) con el ejemplo *The Scientist* y los casos difíciles (directo, cover, tributo que nombra al artista original, karaoke, remix, instrumental, colisión de subcadena/demo, acentos, feat., ambigüedad, ISRC decisivo, sin coincidencia). Web **922** verde.
+- Pendiente (etapas 2-6): OAuth + ingesta de Spotify, resolver en vivo, UI de revisión (web+APK), enganche al pipeline y cola grande en segundo plano. El registro de la app de Spotify (una vez) solo hace falta para el flujo en vivo; el resto se construye y prueba contra respuestas simuladas.
+
 ## Sin publicar: el buzón publica en dos jobs, con los secretos por paso (2026-11-10)
 
 - **Menos arranques de runner = publicación más rápida** ([ADR-0043](docs/decisions/ADR-0043-buzon-dos-jobs-secretos-por-paso.md)). Tras quitar ffmpeg (ADR-0042), lo que quedaba eran los arranques de los **cuatro** runners del buzón y el traspaso de artefactos entre ellos.
