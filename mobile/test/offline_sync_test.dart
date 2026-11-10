@@ -494,6 +494,10 @@ void main() {
         await controller.load();
         await writeCachedAudio(kA);
         await writeCachedAudio(kB);
+        // Suena B: la cola es toda la biblioteca (A y B).
+        await controller.playSong(
+          controller.songs.firstWhere((song) => song.id == kB),
+        );
 
         // B se retira de la web, pero sigue en la cola cargada: no se borra todavía.
         web.catalogIds = [kA];

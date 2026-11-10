@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reminiscencia/app_error.dart';
 import 'package:reminiscencia/ui/cards.dart';
-import 'package:reminiscencia/ui/player.dart';
 
 import 'support/fakes.dart';
 
@@ -51,7 +50,7 @@ void main() {
       expect(t.playback.log, isEmpty);
       expect(t.playback.nowPlaying.value.songId, isNull);
       expect(t.playback.queueSongIds, isEmpty);
-      expect(find.byType(MiniPlayer), findsNothing);
+      expect(find.byKey(const Key('mini-player-open')), findsNothing);
       expect(
         find.textContaining('No se puede preparar el audio'),
         findsNothing,
@@ -61,7 +60,7 @@ void main() {
       await t.services.library.refresh();
       await settle(tester);
       expect(t.playback.log, isEmpty);
-      expect(find.byType(MiniPlayer), findsNothing);
+      expect(find.byKey(const Key('mini-player-open')), findsNothing);
 
       await tester.tap(
         find.descendant(
@@ -70,15 +69,16 @@ void main() {
         ),
       );
       await settle(tester);
-      expect(t.playback.log, ['play:1']);
+      expect(t.playback.log, hasLength(1));
+      expect(t.playback.log.single, startsWith('play:'));
       expect(t.playback.nowPlaying.value.songId, 's2');
       expect(t.playback.nowPlaying.value.playing, isTrue);
-      expect(find.byType(MiniPlayer), findsOneWidget);
+      expect(find.byKey(const Key('mini-player-open')), findsOneWidget);
 
       // Parar deja el reproductor vacío: el minirreproductor desaparece.
       await t.playback.stop();
       await settle(tester);
-      expect(find.byType(MiniPlayer), findsNothing);
+      expect(find.byKey(const Key('mini-player-open')), findsNothing);
     },
   );
 

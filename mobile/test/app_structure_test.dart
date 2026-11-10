@@ -138,6 +138,8 @@ void main() {
         setWindow(tester, const Size(400, 800));
         final t = buildTestServices(songs: songs);
         await pumpApp(tester, t.services);
+        t.playback.cue(songs, 0);
+        await settle(tester);
         await openPlayer(tester);
 
         for (final key in const [
@@ -203,6 +205,8 @@ void main() {
       setWindow(tester, const Size(400, 800));
       final t = buildTestServices(songs: songs);
       await pumpApp(tester, t.services);
+      t.playback.cue(songs, 0);
+      await settle(tester);
       await openPlayer(tester);
 
       final player = find.byType(FullPlayerPage);
@@ -230,6 +234,7 @@ void main() {
       setWindow(tester, const Size(400, 800));
       final t = buildTestServices(songs: songs);
       await pumpApp(tester, t.services);
+      t.playback.cue(songs, 0);
       t.playback.setProgress(
         const PlaybackProgress(
           position: Duration(seconds: 60),
@@ -838,6 +843,8 @@ void main() {
       setWindow(tester, const Size(400, 800));
       final t = buildTestServices(songs: songs, folders: folders);
       await pumpApp(tester, t.services);
+      // s1 sonó y está en pausa.
+      t.playback.cue(songs, 0);
 
       await tester.tap(find.text('Jazz').first);
       await tester.pumpAndSettle();

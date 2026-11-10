@@ -148,6 +148,20 @@ class FakePlaybackPort implements PlaybackPort {
     _now.value = NowPlaying.none;
   }
 
+  /// Solo para pruebas: deja [songs] como cola con la canción [index] cargada y en pausa, como tras tocarla y
+  /// pausarla. (Al abrir la app no hay nada cargado.)
+  void cue(List<Song> songs, int index) {
+    final song = songs[index];
+    _queue
+      ..clear()
+      ..addAll(songs.map((item) => item.id));
+    _now.value = NowPlaying(
+      songId: song.id,
+      title: song.title,
+      artist: song.artist,
+    );
+  }
+
   @override
   Future<void> playStream({
     required String id,
