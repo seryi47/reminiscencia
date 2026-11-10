@@ -504,6 +504,15 @@ function playContext(contextId) {
   playSongs(context.songs, player.getState().shuffle ? null : 0, { contextId });
 }
 
+/** Botón «Aleatorio» de un álbum/colección: activa el aleatorio y reproduce SOLO las canciones de ESE contexto (la cola
+ *  pasa a ser la de este álbum), así nunca se cuelan canciones de otros álbumes. Empieza en una pista al azar del álbum. */
+function shufflePlayContext(contextId) {
+  const context = getContext(contextId);
+  if (!context || context.songs.length === 0) return;
+  player.setShuffle(true);
+  playSongs(context.songs, null, { contextId });
+}
+
 function toggleContext(contextId) {
   const current = player.getState();
   if (current.track && current.contextId === contextId) player.toggle();
@@ -1061,6 +1070,7 @@ const ctx = {
   isContextPlaying,
   toggleContext,
   playSongs,
+  shufflePlayContext,
   toggleShuffle: () => player.setShuffle(!player.getState().shuffle),
   cycleRepeat: () => player.setRepeat(nextRepeatMode(player.getState().repeat)),
   setVolume: (value) => player.setVolume(value),

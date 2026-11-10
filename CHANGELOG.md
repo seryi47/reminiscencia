@@ -1,3 +1,11 @@
+## Sin publicar: el aleatorio de un álbum se queda dentro del álbum (2026-11-10)
+
+- **Bug corregido: pulsar «Aleatorio» en un álbum podía reproducir canciones de otros álbumes.**
+  - Web: el botón «Aleatorio» del álbum llamaba a `toggleShuffle()`, que solo conmutaba el aleatorio **global** sobre la cola que hubiera cargada (p. ej. toda la biblioteca). Ahora llama a `shufflePlayContext(contextId)`: activa el aleatorio y reproduce **solo las canciones de ese álbum** (la cola pasa a ser ese contexto), empezando en una pista al azar. `js/app.js`, `js/views/collection.js`.
+  - APK: el álbum ya reproducía con la cola acotada (`playAt`), pero no tenía botón propio de aleatorio. Se añade uno (`collection-shuffle`) para paridad con la web: carga el álbum como cola y baraja dentro (`lib/ui/collection_page.dart`).
+  - Siguiente/anterior y el aleatorio siguen operando sobre esa cola, así que nunca se cuelan otros álbumes. El aleatorio general de la biblioteca sigue igual.
+- **Pruebas:** e2e web real en Chrome (`tests/web-e2e/funcional.e2e.mjs`: abrir álbum A con otra cosa sonando, pulsar aleatorio → suena una canción de A y A es el contexto) y widget en la APK (`test/album_shuffle_test.dart`: la cola queda exactamente con las canciones del álbum). Suites verdes (web-unit 904, móvil + e2e del caso).
+
 ## Sin publicar: la descarga de YouTube en la APK es persistente y se reanuda sola (2026-11-10)
 
 - **APK, la descarga de YouTube ya no se pierde al cerrar la app** ([ADR-0039](docs/decisions/ADR-0039-descarga-youtube-persistente.md)):

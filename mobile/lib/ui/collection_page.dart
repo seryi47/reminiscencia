@@ -400,6 +400,24 @@ class _Header extends StatelessWidget {
                     label: const Text('Seleccionar'),
                   ),
                 const Spacer(),
+                // Aleatorio del álbum: reproduce EN ALEATORIO solo las canciones de ESTE álbum (la cola pasa a ser este
+                // álbum), para que nunca se cuelen canciones de otros álbumes. Igual que el botón «Aleatorio» de la web.
+                IconButton(
+                  key: const Key('collection-shuffle'),
+                  tooltip: 'Reproducir en aleatorio',
+                  icon: const Icon(Icons.shuffle_rounded),
+                  onPressed: songs.isEmpty
+                      ? null
+                      : () => runWithNotice(
+                          context,
+                          () async {
+                            await services.playback.playAt(songs, 0);
+                            await services.playback.setShuffle(true);
+                          },
+                          failurePrefix: 'No se pudo reproducir',
+                        ),
+                ),
+                const SizedBox(width: 8),
                 ValueListenableBuilder<NowPlaying>(
                   valueListenable: services.playback.nowPlaying,
                   builder: (context, now, _) {

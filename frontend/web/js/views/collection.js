@@ -113,7 +113,7 @@ export function renderCollection(main, ctx, contextId) {
   const actions = el('div', { class: 'action-bar', 'data-testid': 'action-bar' });
   if (songs.length > 0) {
     actions.append(playButton(ctx, contextId, context.title, { size: 'big', testid: 'collection-play' }));
-    actions.append(shuffleToggle(ctx));
+    actions.append(shuffleToggle(ctx, contextId));
     if (context.kind !== 'liked') actions.append(likeAllButton(ctx, context));
     const downloadable = songs.filter((song) => !song.local);
     if (downloadable.length > 0) actions.append(...downloadButton(ctx, contextId, downloadable));
@@ -294,8 +294,9 @@ function emptyText(kind) {
   }
 }
 
-/** Botón «Aleatorio» de la barra de acciones: refleja y cambia el aleatorio del reproductor. */
-function shuffleToggle(ctx) {
+/** Botón «Aleatorio» del álbum: al pulsarlo reproduce EN ALEATORIO solo las canciones de ESTE álbum (la cola pasa a ser
+ *  este contexto), para que nunca se cuelen canciones de otros álbumes. El indicador refleja el aleatorio del reproductor. */
+function shuffleToggle(ctx, contextId) {
   const on = ctx.player.getState().shuffle;
   return el('button', {
     type: 'button',
@@ -305,7 +306,7 @@ function shuffleToggle(ctx) {
     'data-shuffle-toggle': '',
     'data-testid': 'collection-shuffle',
     'data-key': 'collection-shuffle',
-    on: { click: () => ctx.toggleShuffle() },
+    on: { click: () => ctx.shufflePlayContext(contextId) },
   }, icon('shuffle', { size: 32 }));
 }
 

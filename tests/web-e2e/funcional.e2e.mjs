@@ -235,6 +235,26 @@ describe("Reproducir", () => {
     }),
   );
 
+  prueba("El aleatorio de un álbum reproduce SOLO canciones de ese álbum (nunca de otro)", () =>
+    withPage(browser, VIEWPORTS.escritorio, async (page) => {
+      await openApp(page, server.url);
+      // Primero suena algo de la biblioteca general, para que la cola NO sea ya el álbum.
+      await openCollection(page, "#/canciones");
+      await playRow(page, 0);
+      await page.waitForFunction(() => !document.getElementById("audio").paused, { timeout: 10000 });
+      // Ahora entro en el álbum A y pulso su botón «Aleatorio».
+      await openCollection(page, FOLDER_A);
+      await clickTestid(page, "collection-shuffle", "aleatorio del álbum");
+      await page.waitForFunction(() => !document.getElementById("audio").paused, { timeout: 10000 });
+      // Debe sonar una canción del álbum A (S01..S08), nunca de otro álbum (B = S09..S16).
+      const estado = await audioState(page);
+      assert.match(estado.src, /\/audio\/S000000000000000[1-8]\.opus$/, `Sonó ${estado.src}, que no es del álbum A.`);
+      // El álbum A es el contexto que suena, y el aleatorio está activo.
+      assert.equal(await page.$eval(`[data-testid="sidebar-item"][data-context="album:${ALBUM_A_ID}"]`, (el) => el.classList.contains("is-playing")), true, "El álbum A debe ser el contexto que suena.");
+      assert.equal(await page.$eval('[data-testid="player-shuffle"]', (el) => el.getAttribute("aria-pressed")), "true", "El aleatorio queda activo.");
+    }),
+  );
+
   prueba("Aleatorio, repetir y volumen cambian el estado del reproductor", () =>
     withPage(browser, VIEWPORTS.escritorio, async (page) => {
       await openApp(page, server.url);
