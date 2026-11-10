@@ -351,6 +351,15 @@ class LibraryStore implements LibrarySource {
           stopListening?.call();
           await sink.close();
         }
+        // Si el servidor dijo cuánto mide, el fichero tiene que medir eso: nunca se da por guardada una canción
+        // cortada (el reproductor la tomaría como completa y sonaría a medias).
+        final expected = response.contentLength;
+        if (expected != null && expected >= 0 && received != expected) {
+          throw HttpException(
+            'descarga incompleta: $received de $expected bytes',
+            uri: uri,
+          );
+        }
         await part.rename(file.path);
         return true;
       } catch (error) {

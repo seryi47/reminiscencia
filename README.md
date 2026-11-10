@@ -7,7 +7,7 @@ Proyecto doctoral y plataforma para estudiar y acompañar la relación entre la 
 | Qué | Dónde |
 |---|---|
 | Escuchar (público) | https://reminiscencia.cometia.es (Cloudflare, ADR-0034; pendiente del primer despliegue) y https://reminiscencia.vercel.app (bloqueada por Vercel hasta el 2026-12-07) |
-| App Android | `mobile/` (lee la biblioteca de la web; versión 1.2.5+9) |
+| App Android | `mobile/` (lee la biblioteca de la web; versión 1.2.6+10) |
 | Cambios en la biblioteca | Incidencias con la etiqueta `biblioteca`, procesadas por el workflow `biblioteca` |
 | Subir canciones para todos | «Subir canciones» en la web o en la APK (función `/api/subir`), procesada por el workflow `buzon`; con permiso de escritura, también la página de subida de `audio-library/buzon/` |
 

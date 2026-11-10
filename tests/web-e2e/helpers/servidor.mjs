@@ -109,7 +109,9 @@ async function readBody(request) {
 /**
  * Arranca el servidor en un puerto libre de 127.0.0.1.
  * overrides: Map de ruta (por ejemplo "/data/songs.json") a { body, type } o a { file, type }; con delayMs, la respuesta
- * tarda ese tiempo (por ejemplo, para ver «Descargando 3 de 8» en la descarga sin conexión).
+ * tarda ese tiempo (por ejemplo, para ver «Descargando 3 de 8» en la descarga sin conexión); con stallAfterBytes, responde
+ * 200 con el tamaño completo pero manda solo esos bytes y deja la conexión abierta sin más datos, sin error ni cierre
+ * (una red que se queda colgada a media canción).
  * functions: Map de ruta (por ejemplo "/api/subir") a una función async ({ method, headers, body, query }) que devuelve
  * { status, json }: simula una función de Vercel para cualquier método que no sea GET ni HEAD. Si la función tiene
  * acceptsGet = true, también atiende GET (por ejemplo, GET /api/editar?incidencia=N; query es un URLSearchParams).
@@ -162,6 +164,12 @@ export async function startStaticServer({ root = WEB_ROOT, overrides = new Map()
           return sendText(response, 404, "No encontrado", request.method, csp);
         }
         const body = override.file ? await readFile(override.file) : Buffer.from(override.body ?? "", "utf8");
+        if (Number.isInteger(override.stallAfterBytes)) {
+          response.writeHead(200, { "Content-Type": override.type ?? mimeTypeOf(decoded), "Content-Length": body.length, "Cache-Control": "no-store", ...(csp ? { "Content-Security-Policy": csp } : {}) });
+          if (request.method === "HEAD") return response.end();
+          response.write(body.subarray(0, override.stallAfterBytes));
+          return undefined;
+        }
         return sendBody(request, response, body, override.type ?? mimeTypeOf(decoded), csp);
       }
 

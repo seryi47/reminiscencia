@@ -26,8 +26,16 @@ import {
 import { cachedDominantColor } from './cover-color.js';
 import { isSongId } from './cuidador/incidencias.js';
 import { openLocalLibrary } from './local-library.js';
-import { createPlayer, nextRepeatMode } from './player.js';
-import { cachedAudioPaths, downloadAudioToCache, registerPwa, removeOfflineSongs } from './pwa.js';
+import { createPlayer, createPrefsSaver, nextRepeatMode } from './player.js';
+import {
+  cachedAudioPaths,
+  downloadAudioToCache,
+  pageHasMedia,
+  registerPwa,
+  removeOfflineSongs,
+  requestPersistentStorage,
+  UPDATE_NOTICE,
+} from './pwa.js';
 import { createOfflineDownloads, downloadResultText, downloadStatusText } from './offline-downloads.js';
 import {
   convertToOpus,
@@ -146,6 +154,8 @@ let playerUi = null;
 let userNavigated = false;
 let keepFocusOnce = false;
 let persistenceRequested = false;
+// Guarda volumen, aleatorio y repetir solo cuando cambian (no con cada avance del tiempo); se crea con el reproductor.
+let savePlayerPrefs = () => {};
 let lastSync = '';
 let uploads = null;
 let uploadSignature = '';
@@ -206,10 +216,6 @@ function rebuildCatalog() {
     const target = state.catalog.songById.get(edit.targetId) ?? state.catalog.folderById.get(edit.targetId);
     if (target) target.cover = edit.preview;
   }
-}
-
-function savePlayerPrefs(playerState) {
-  writeJson(PLAYER_PREFS_KEY, { volume: playerState.volume, shuffle: playerState.shuffle, repeat: playerState.repeat });
 }
 
 // ---------------------------------------------------------------------------
@@ -462,6 +468,14 @@ function isPlayable(song) {
   return state.cached.has(song.audio ?? song.audioUrl);
 }
 
+/** ¿Se sirve la canción desde este dispositivo y no por la red? Las descargadas (caché de audio) y las subidas a este
+ *  navegador (audio/L….opus, IndexedDB) las sirve el service worker, así que solo cuentan si controla la página. Es una
+ *  consulta a un Set: el reproductor la hace al cargar cada canción, no con cada avance del tiempo. */
+function isOnDevice(track) {
+  if (!navigator.serviceWorker?.controller) return false;
+  return track.local === true || state.cached.has(track.audioUrl);
+}
+
 function trackOf(song) {
   return {
     id: song.id,
@@ -538,10 +552,30 @@ function onPlayerChange(playerState) {
 // Acciones sobre la biblioteca local
 // ---------------------------------------------------------------------------
 
+/** Versión nueva de la web con algo cargado en el reproductor: un aviso que no tapa nada y se queda, con «Recargar».
+ *  La página no se recarga sola, para no perder la canción, la cola ni la posición. */
+function showUpdateNotice() {
+  const region = document.querySelector('[data-testid="update-notice"]');
+  if (!region || region.childElementCount > 0) return;
+  // Como los avisos breves: el contenido llega en el siguiente fotograma para que el lector de pantalla lo anuncie.
+  requestAnimationFrame(() => {
+    region.replaceChildren(
+      el('span', { class: 'update-notice-text' }, UPDATE_NOTICE),
+      el('button', {
+        type: 'button',
+        class: 'update-notice-action',
+        'data-testid': 'update-notice-reload',
+        on: { click: () => window.location.reload() },
+      }, 'Recargar'),
+    );
+    region.classList.add('is-visible');
+  });
+}
+
 function requestPersistence() {
   if (persistenceRequested) return;
   persistenceRequested = true;
-  navigator.storage?.persist?.().catch?.(() => {});
+  requestPersistentStorage().catch(() => {});
 }
 
 async function refreshLibrary() {
@@ -1488,12 +1522,14 @@ async function start() {
   player = createPlayer({
     audio: document.getElementById('audio'),
     isAvailable: (track) => isPlayable({ ...track, audio: track.audioUrl }),
+    isOnDevice,
     onChange: onPlayerChange,
     onNotice: (text) => toast(text),
     volume: prefs.volume ?? 1,
     shuffle: prefs.shuffle === true,
     repeat: prefs.repeat ?? 'off',
   });
+  savePlayerPrefs = createPrefsSaver((next) => writeJson(PLAYER_PREFS_KEY, next), player.getState());
   playerUi = mountPlayerUi(ctx, {
     bar: document.getElementById('player-bar'),
     mini: document.getElementById('mini-player'),
@@ -1538,7 +1574,11 @@ async function start() {
   state.route = parseRoute(location.hash);
   render();
 
-  registerPwa().catch(() => {});
+  registerPwa({
+    // Con una canción cargada (sonando o en pausa) o el vídeo de YouTube abierto, una versión nueva no recarga la página.
+    hasMedia: () => Boolean(player?.getState().track) || pageHasMedia(),
+    onUpdate: showUpdateNotice,
+  }).catch(() => {});
   library = await openLocalLibrary();
   // El índice de portadas (ADR-0029) no retrasa la apertura más de COVER_INDEX_WAIT_MS: si tarda, se aplica al llegar.
   const coverIndexReady = loadCoverIndex();

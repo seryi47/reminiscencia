@@ -118,9 +118,6 @@ class FakePlaybackPort implements PlaybackPort {
   final ValueNotifier<PlaybackProgress> _progress =
       ValueNotifier<PlaybackProgress>(PlaybackProgress.zero);
 
-  /// Si no es null, loadQueue lanza este error (audio que no se puede preparar).
-  Object? loadError;
-
   /// Si no es null, playAt lanza este error (canción que no se puede reproducir).
   Object? playError;
 
@@ -143,23 +140,25 @@ class FakePlaybackPort implements PlaybackPort {
   /// Fija la posición que publica el reproductor (para probar la barra de progreso).
   void setProgress(PlaybackProgress value) => _progress.value = value;
 
-  @override
-  Future<void> loadQueue(List<Song> songs) async {
-    log.add('load:${songs.length}');
-    final failure = loadError;
-    if (failure != null) throw failure;
+  /// Como el real al parar (quitar de recientes, cerrar la notificación o el cierre por inactividad): sin canción
+  /// ni cola.
+  Future<void> stop() async {
+    log.add('stop');
+    _queue.clear();
+    _now.value = NowPlaying.none;
+  }
+
+  /// Solo para pruebas: deja [songs] como cola con la canción [index] cargada y en pausa, como tras tocarla y
+  /// pausarla. (Al abrir la app no hay nada cargado.)
+  void cue(List<Song> songs, int index) {
+    final song = songs[index];
     _queue
       ..clear()
-      ..addAll(songs.map((song) => song.id));
-    if (songs.isEmpty) {
-      _now.value = NowPlaying.none;
-      return;
-    }
-    final first = songs.first;
+      ..addAll(songs.map((item) => item.id));
     _now.value = NowPlaying(
-      songId: first.id,
-      title: first.title,
-      artist: first.artist,
+      songId: song.id,
+      title: song.title,
+      artist: song.artist,
     );
   }
 
@@ -364,7 +363,6 @@ TestServices buildTestServices({
   List<Song> songs = const [],
   List<Folder> folders = const [],
   Object? libraryError,
-  Object? audioError,
   AppSettings settings = AppSettings.defaults,
   Collections? collections,
   DateTime? now,
@@ -390,7 +388,7 @@ TestServices buildTestServices({
     folders: folders,
     error: libraryError,
   );
-  final playback = FakePlaybackPort()..loadError = audioError;
+  final playback = FakePlaybackPort();
   final repository = MemoryCollectionsRepository(collections);
   var ids = 0;
   final opened = <Uri>[];

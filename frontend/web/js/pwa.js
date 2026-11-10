@@ -5,39 +5,51 @@ import { audioCacheName, listAudioUrls } from './offline-core.js';
 const SW_URL = '/sw.js';
 const SW_SCOPE = '/';
 
-/** ¿Está sonando algo? El audio de la biblioteca o el vídeo de «Escuchar» de YouTube. */
-function isPlayingMedia() {
-  const audio = typeof document !== 'undefined' ? document.getElementById('audio') : null;
-  const playing = Boolean(audio && !audio.paused && !audio.ended);
-  return playing || Boolean(document.querySelector('.yt-dock'));
+/** Aviso de versión nueva cuando hay algo cargado en el reproductor (va con el botón «Recargar»). */
+export const UPDATE_NOTICE = 'Hay una versión nueva de Reminiscencia.';
+
+/** ¿Hay algo cargado en la página? Una canción en el elemento de audio (sonando o en pausa) o el vídeo de «Escuchar»
+ *  de YouTube. */
+export function pageHasMedia(doc = globalThis.document) {
+  if (!doc) return false;
+  const audio = doc.getElementById('audio');
+  return Boolean(audio?.getAttribute('src')) || Boolean(doc.querySelector('.yt-dock'));
 }
 
-/** Recarga para estrenar la versión nueva, pero sin cortar lo que suena: espera a que pare. */
-function reloadWhenIdle() {
-  if (!isPlayingMedia()) {
-    window.location.reload();
-    return;
-  }
-  const timer = setInterval(() => {
-    if (isPlayingMedia()) return;
-    clearInterval(timer);
-    window.location.reload();
-  }, 3000);
+/**
+ * Qué hacer cuando una versión nueva del service worker toma el control de la página: 'none' en la primera visita
+ * (no había versión anterior) o si ya se ha decidido; 'reload' si no se ha cargado nada todavía (nada que perder); y
+ * 'notice' si hay una canción cargada, sonando o en pausa: recargar perdería la canción, la cola y la posición, así que
+ * solo se avisa y la persona recarga cuando quiera.
+ */
+export function updateAction({ hadController, handled = false, hasMedia }) {
+  if (!hadController || handled) return 'none';
+  return hasMedia ? 'notice' : 'reload';
 }
 
 /** Registra sw.js como módulo con alcance '/'. Si el navegador no tiene service workers
  *  o el registro falla, devuelve null y la web sigue funcionando en línea.
- *  Cuando una versión nueva toma el control de una página que ya tenía una anterior, la página se recarga
- *  una vez: así nadie se queda viendo la interfaz vieja guardada en caché. En la primera visita no recarga. */
-export async function registerPwa() {
+ *  Cuando una versión nueva toma el control de una página que ya tenía una anterior (updateAction): sin nada cargado,
+ *  la página se recarga para que nadie se quede con la interfaz vieja; con algo cargado, se llama a onUpdate (el aviso
+ *  «Hay una versión nueva…» con «Recargar») y no se recarga sola. En la primera visita no hace nada.
+ *  hasMedia, onUpdate y reload se pueden sustituir (la app pasa su reproductor; las pruebas, dobles). */
+export async function registerPwa({ hasMedia = () => pageHasMedia(), onUpdate = () => {}, reload = () => window.location.reload() } = {}) {
   if (!('serviceWorker' in navigator)) return null;
   const hadController = Boolean(navigator.serviceWorker.controller);
-  let reloaded = false;
+  let handled = false;
   if (typeof navigator.serviceWorker.addEventListener === 'function') {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadController || reloaded) return;
-      reloaded = true;
-      reloadWhenIdle();
+      let loaded = true;
+      try {
+        loaded = Boolean(hasMedia());
+      } catch {
+        // Ante la duda, no se recarga: se avisa.
+      }
+      const action = updateAction({ hadController, handled, hasMedia: loaded });
+      if (action === 'none') return;
+      handled = true;
+      if (action === 'reload') reload();
+      else onUpdate();
     });
   }
   try {
@@ -47,6 +59,22 @@ export async function registerPwa() {
   } catch (error) {
     console.warn('Reminiscencia: el modo sin conexión no está disponible.', error);
     return null;
+  }
+}
+
+/**
+ * Pide al navegador que no borre lo guardado aquí (canciones descargadas, listas, subidas) cuando le falte espacio:
+ * sin esto, un móvil puede vaciar la caché de audio y una canción «descargada» volvería a pedirse por la red.
+ * Devuelve 'granted', 'denied' o 'unsupported' y nunca lanza. No muestra nada: Chrome lo concede o lo niega solo,
+ * según el uso de la web, y un aviso cada vez que lo niega sería ruido.
+ */
+export async function requestPersistentStorage(storage = globalThis.navigator?.storage) {
+  if (!storage || typeof storage.persist !== 'function') return 'unsupported';
+  try {
+    if (typeof storage.persisted === 'function' && (await storage.persisted())) return 'granted';
+    return (await storage.persist()) ? 'granted' : 'denied';
+  } catch {
+    return 'denied';
   }
 }
 

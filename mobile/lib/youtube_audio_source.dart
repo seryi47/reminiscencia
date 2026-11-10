@@ -14,7 +14,10 @@ class YoutubeAudioSource extends StreamAudioSource {
     http.Client? client,
     this.chunkBytes = 512 * 1024,
     super.tag,
-  }) : _client = client ?? http.Client();
+  }) : _client = client ?? _sharedClient;
+
+  /// Un solo cliente para todas las fuentes de YouTube: antes cada fuente creaba el suyo y nunca lo cerraba.
+  static final http.Client _sharedClient = http.Client();
 
   final Uri uri;
   final Map<String, String>? headers;

@@ -20,6 +20,9 @@ void main() {
       setWindow(tester, const Size(400, 800));
       final t = buildTestServices(songs: songs);
       await pumpApp(tester, t.services);
+      // El minirreproductor aparece cuando hay una canción cargada (al abrir no hay ninguna).
+      t.playback.cue(songs, 0);
+      await settle(tester);
 
       final bar = find.byType(NavigationBar);
       expect(bar, findsOneWidget);
@@ -64,6 +67,8 @@ void main() {
       setWindow(tester, const Size(1000, 700));
       final t = buildTestServices(songs: songs);
       await pumpApp(tester, t.services);
+      t.playback.cue(songs, 0);
+      await settle(tester);
 
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);

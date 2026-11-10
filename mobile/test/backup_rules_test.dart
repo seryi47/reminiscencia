@@ -38,6 +38,14 @@ void main() {
     );
   });
 
+  test('el registro de errores (lib/error_log.dart) no sale del teléfono', () {
+    const log = '<exclude domain="file" path="registro/" />';
+    final old = File('$xmlDir/backup_rules.xml').readAsStringSync();
+    expect(old, contains(log));
+    final xml = File('$xmlDir/data_extraction_rules.xml').readAsStringSync();
+    expect(RegExp(log).allMatches(xml).length, 2);
+  });
+
   test('el manifiesto apunta a las dos reglas', () {
     final manifest = File(
       'android/app/src/main/AndroidManifest.xml',

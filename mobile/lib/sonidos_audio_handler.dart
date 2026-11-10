@@ -14,50 +14,169 @@ import 'playback_plan.dart';
 import 'song.dart';
 import 'youtube_audio_source.dart';
 
+/// Configuración del servicio de audio (notificación y servicio en primer plano).
+///
+/// En una pausa de verdad el servicio sale de primer plano y suelta el bloqueo de CPU
+/// (`androidStopForegroundOnPause: true`). Lo que no se publica como pausa es una interrupción pasajera (una
+/// llamada): ver [SonidosAudioHandler]. Mantener el primer plano en toda pausa no sirve: audio_service solo lo suelta
+/// al pausar o al destruirse el servicio, y mientras la app está abierta el servicio sigue enlazado, así que tras
+/// parar quedaría en primer plano y con el bloqueo de CPU sin fin (comprobado en el emulador).
+const AudioServiceConfig kAudioServiceConfig = AudioServiceConfig(
+  androidNotificationChannelId: 'es.orbitalabs.reminiscencia.audio',
+  androidNotificationChannelName: 'Reproducción',
+  androidNotificationOngoing: true,
+  androidStopForegroundOnPause: true,
+);
+
+/// Tiempo sin sonar (en pausa, al acabar la cola o tras un error sin salida) tras el que se cierra el reproductor,
+/// su servicio y su notificación.
+const Duration kIdleStopAfter = Duration(minutes: 15);
+
+/// Si una canción que llega por la red se queda esperando datos este tiempo sin avanzar, se reintenta una vez desde
+/// el mismo punto; si sigue parada, se trata como un error. Igual que la web (`STALL_TIMEOUT_MS`, js/player.js).
+/// No se aplica a las canciones que suenan desde un fichero del teléfono.
+const Duration kStallTimeout = Duration(seconds: 15);
+
+/// Espera máxima de una búsqueda (siguiente, anterior, saltar a un punto): just_audio no la da por acabada si la
+/// canción de destino falla, y la orden no debe quedarse colgada.
+const Duration kSeekWait = Duration(seconds: 5);
+
+/// Estado que se publica al servicio de audio. Mientras haya una cola activa nunca se publica `idle`: para
+/// audio_service, `idle` significa «parar el servicio» (stopSelf), y un error que se está reintentando o saltando
+/// (just_audio queda en `idle` tras cualquier error) cerraría el servicio en primer plano mientras la música sigue.
+/// Con la reproducción pedida se publica `buffering`; en pausa, `ready`. Durante una interrupción pasajera
+/// ([suspended]), `buffering`: la música espera para seguir.
+AudioProcessingState serviceProcessingState(
+  ProcessingState state, {
+  required bool active,
+  required bool playing,
+  bool suspended = false,
+}) {
+  if (suspended && active) return AudioProcessingState.buffering;
+  if (state == ProcessingState.idle && active) {
+    return playing
+        ? AudioProcessingState.buffering
+        : AudioProcessingState.ready;
+  }
+  return AudioProcessingState.values.byName(state.name);
+}
+
+/// Si el reproductor está sonando de verdad (o preparándose para sonar enseguida). En pausa, al acabar la cola o
+/// parado tras un error, no: es cuando corre el cierre por inactividad.
+bool isAudiblyPlaying({
+  required bool playing,
+  required ProcessingState state,
+}) =>
+    playing &&
+    (state == ProcessingState.ready ||
+        state == ProcessingState.buffering ||
+        state == ProcessingState.loading);
+
 /// Reproductor en segundo plano con controles del sistema y el contrato [PlaybackPort] para la interfaz.
+///
+/// Interrupciones (llamadas, avisos de navegación): las atiende este handler, no just_audio. Una interrupción
+/// pasajera (pérdida transitoria del foco de audio) para el sonido pero no se publica como pausa: para el servicio
+/// sigue «sonando» (esperando), así no sale de primer plano y, al acabar la llamada, sigue sin tener que volver a
+/// entrar en primer plano desde segundo plano, algo que Android 12+ prohíbe (ForegroundServiceStartNotAllowedException,
+/// que audio_service se traga: la música seguía sin servicio ni bloqueo de CPU y el sistema mataba la app). Una
+/// pérdida definitiva del foco, desenchufar los auriculares o pausar a mano son pausas de verdad.
 /// Si la canción está guardada se reproduce desde el fichero local; si no, se transmite
 /// y se guarda mientras suena (LockCachingAudioSource), así la siguiente vez funciona sin conexión.
+/// Al abrir la app no hay nada cargado: la cola se prepara cuando el usuario toca una canción.
 class SonidosAudioHandler extends BaseAudioHandler
     with QueueHandler, SeekHandler
     implements PlaybackPort {
-  SonidosAudioHandler(this._store, [this._covers]) {
-    _player.playbackEventStream.listen(
-      (_) => _broadcastState(),
-      onError: (Object error, StackTrace stackTrace) => _onPlaybackError(error),
-    );
-    _player.playingStream.listen((_) => _publish());
+  SonidosAudioHandler(
+    this._store, {
+    CoverCache? covers,
+    AudioPlayer? player,
+    bool configureSession = true,
+    this.idleStopAfter = kIdleStopAfter,
+    this.stallTimeout = kStallTimeout,
+    this.seekWait = kSeekWait,
+  }) : // Las interrupciones las atiende el handler (ver la clase), no just_audio.
+       _player = player ?? AudioPlayer(handleInterruptions: false),
+       // ignore: prefer_initializing_formals
+       _covers = covers {
+    _player.playbackEventStream.listen((_) => _broadcastState());
+    // just_audio 0.10 da los errores por errorStream (ya no por el onError de playbackEventStream).
+    _player.errorStream.listen(_onPlayerError);
+    _player.playingStream.listen((_) => _broadcastState());
     // Aleatorio, repetir y saltos de posición (por ejemplo, al repetir una canción) cambian lo que se ve.
     _player.shuffleModeEnabledStream.listen((_) => _broadcastState());
     _player.loopModeStream.listen((_) => _broadcastState());
     _player.positionDiscontinuityStream.listen((_) => _broadcastState());
     _player.currentIndexStream.listen((index) {
       final items = queue.value;
-      if (index != null && index >= 0 && index < items.length) {
+      if (_active && index != null && index >= 0 && index < items.length) {
         mediaItem.add(items[index]);
         _fillArtwork(index);
       }
+      // Otra canción: el reintento por parón vuelve a estar disponible.
+      if (index != _lastIndex) _stallRetried = false;
+      _lastIndex = index;
       _publish();
     });
-    unawaited(_configureSession());
+    if (configureSession) unawaited(_configureSession());
   }
 
   final LibraryStore _store;
 
+  /// Cierre por inactividad ([kIdleStopAfter]); en pruebas, más corto.
+  final Duration idleStopAfter;
+
+  /// Vigilante de parones de la red ([kStallTimeout]); en pruebas, más corto.
+  final Duration stallTimeout;
+
+  /// Espera máxima de una búsqueda ([kSeekWait]); en pruebas, más corta.
+  final Duration seekWait;
+
   /// Portadas guardadas: la notificación usa el fichero local (file://), nunca descarga por su cuenta.
   final CoverCache? _covers;
-  final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _player;
   final ValueNotifier<NowPlaying> _now = ValueNotifier<NowPlaying>(
     NowPlaying.none,
   );
   final ValueNotifier<PlaybackProgress> _progress =
       ValueNotifier<PlaybackProgress>(PlaybackProgress.zero);
   final ValueNotifier<String?> _error = ValueNotifier<String?>(null);
+
+  // Cola cargada. Vacía hasta que el usuario toca una canción y otra vez vacía tras stop().
   List<String> _queueIds = const [];
-  // Canciones de la cola cargada y si cada una puede sonar sin red (local o ya guardada).
   List<Song> _queueSongs = const [];
-  List<bool> _playableOffline = const [];
-  // Direcciones de audio ya probadas en la cola actual, por canción (la primera y cada reintento; ADR-0031).
+  // Fichero de cada canción (null en YouTube) y si su fuente actual es ese fichero (si no, llega por la red).
+  List<File?> _queueFiles = const [];
+  List<bool> _fromFile = const [];
+  // Dirección de audio en uso por canción transmitida y las ya probadas en esta cola (ADR-0031).
+  final Map<String, Uri> _streamUris = <String, Uri>{};
   final Map<String, Set<Uri>> _sourcesTried = <String, Set<Uri>>{};
+  // Fuente transmitida de cada canción de la cola, reutilizada en cada recarga mientras su dirección no cambie:
+  // just_audio registra cada fuente nueva en su servidor local y no la quita nunca, y así una descarga en curso
+  // tampoco se repite.
+  // ignore: experimental_member_use
+  final Map<String, LockCachingAudioSource> _streamSources =
+      // ignore: experimental_member_use
+      <String, LockCachingAudioSource>{};
+  // Escuchar de YouTube (ADR-0021): su dirección, para poder recargarla.
+  Uri? _youtubeUri;
+  Map<String, String>? _youtubeHeaders;
+
+  /// Hay una cola cargada y no se ha parado. Solo entonces se protege el servicio de un `idle` pasajero.
+  bool _active = false;
+
+  /// Parada por una interrupción pasajera (una llamada); sigue sola al acabar. Para el servicio y la interfaz sigue
+  /// sonando.
+  bool _suspended = false;
+
+  /// Número de la última carga de fuentes: un error de una carga anterior ya no se atiende.
+  int _loadSeq = 0;
+
+  int? _lastIndex;
+  Timer? _idleStop;
+  Timer? _stall;
+  Duration _stallFrom = Duration.zero;
+  bool _stallRetried = false;
+
   Future<void> _serial = Future<void>.value();
 
   @override
@@ -72,90 +191,57 @@ class SonidosAudioHandler extends BaseAudioHandler
   @override
   Set<String> get queueSongIds => _queueIds.toSet();
 
-  /// Error de un elemento de la cola. Si es la canción que suena y no se puede reproducir sin red, primero se
-  /// reintenta con las otras direcciones de su audio (Worker, r2.dev y la web; ADR-0031); si todas fallan, se pasa a
-  /// la siguiente sin cerrar la reproducción. Un error de un elemento que no suena (precarga) se ignora.
-  void _onPlaybackError(Object error) {
-    final failed =
-        (error is PlayerException ? error.index : null) ?? _player.currentIndex;
-    if (failed == null || failed != _player.currentIndex) {
-      debugPrint('reproductor: error de un elemento que no suena: $error');
-      return;
-    }
-    if (failed < 0 ||
-        failed >= _playableOffline.length ||
-        _playableOffline[failed]) {
-      _reportError(error);
-      return;
-    }
-    final next = failed < _queueSongs.length
-        ? nextFallbackUri(
-            song: _queueSongs[failed],
-            cached: _playableOffline[failed],
-            sources: _store.audioUris(_queueSongs[failed]),
-            tried: _sourcesTried[_queueSongs[failed].id] ?? const <Uri>{},
-          )
-        : null;
-    if (next != null) {
-      unawaited(_retryFromFallback(failed, next));
-      return;
-    }
-    unawaited(_skipUnavailable(failed));
-  }
-
-  /// Vuelve a cargar la canción [index] desde [uri], la siguiente dirección de su audio (tras el Worker, r2.dev; tras
-  /// r2.dev, la web, que la redirige al Worker), y la reproduce desde el principio.
-  /// Va en la cola de operaciones para no pisar un cambio de cola; si la cola cambió mientras tanto, no hace nada.
-  /// Si el reintento no se puede preparar, se salta como antes.
-  Future<void> _retryFromFallback(int index, Uri uri) => _exclusive(() async {
-    final ids = _queueIds;
-    if (index >= _queueSongs.length) return;
-    final song = _queueSongs[index];
-    (_sourcesTried[song.id] ??= <Uri>{}).add(uri);
-    debugPrint(
-      'reproductor: «${song.title}» falló; reintento desde ${uri.host}',
-    );
-    try {
-      final file = await _store.audioFile(song);
-      if (!identical(ids, _queueIds)) return;
-      await _player.removeAudioSourceAt(index);
-      await _player.insertAudioSource(
-        index,
-        // ignore: experimental_member_use
-        LockCachingAudioSource(uri, cacheFile: file, tag: song.id),
-      );
-      await _player.seek(Duration.zero, index: index);
-      _startPlayback();
-    } catch (error) {
-      debugPrint('reproductor: el reintento falló: $error');
-      if (identical(ids, _queueIds)) await _skipUnavailable(index);
-    }
-  });
-
-  Future<void> _skipUnavailable(int index) async {
-    final title = _queueSongs[index].title;
-    final next = nextAvailableIndex(_playableOffline, index);
-    try {
-      if (next != null) {
-        await _player.seek(Duration.zero, index: next);
-        _startPlayback();
-      }
-    } catch (error) {
-      _reportError(error);
-    }
-    // Se muestra después de arrancar, porque _startPlayback limpia el error anterior.
-    _error.value = next == null
-        ? '«$title» no está guardada y no hay conexión. No quedan canciones que sonar sin conexión.'
-        : '«$title» no está guardada y no hay conexión. Paso a la siguiente.';
-  }
-
   Future<void> _configureSession() async {
     try {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
+      session.interruptionEventStream.listen(handleInterruption);
+      session.becomingNoisyEventStream.listen((_) => handleBecomingNoisy());
     } catch (error) {
       _reportError(error);
     }
+  }
+
+  /// Si suena para el usuario: sonando de verdad o parada por una interrupción pasajera.
+  bool get _playingForUser => _player.playing || _suspended;
+
+  /// Interrupción del foco de audio (ver la clase). Pasajera (`pause`): se para sin publicarlo como pausa y sigue
+  /// al acabar. Definitiva (`unknown`): pausa de verdad. Atenuar (`duck`): Android baja el volumen solo.
+  @visibleForTesting
+  void handleInterruption(AudioInterruptionEvent event) {
+    if (event.begin) {
+      switch (event.type) {
+        case AudioInterruptionType.pause:
+          if (_player.playing) {
+            // Antes de pausar: la pausa se publica ya como «suspendida», nunca como pausa.
+            _suspended = true;
+            unawaited(_guardQuiet(_player.pause));
+          }
+        case AudioInterruptionType.unknown:
+          if (_playingForUser) {
+            _suspended = false;
+            unawaited(_guardQuiet(_player.pause));
+            _broadcastState();
+          }
+        case AudioInterruptionType.duck:
+          break;
+      }
+      return;
+    }
+    if (event.type == AudioInterruptionType.pause && _suspended) {
+      // play() marca playing antes de volver: el servicio nunca ve una pausa entre medias.
+      _startPlayback();
+      _broadcastState();
+    }
+  }
+
+  /// Auriculares desenchufados: pausa de verdad.
+  @visibleForTesting
+  void handleBecomingNoisy() {
+    if (!_playingForUser) return;
+    _suspended = false;
+    unawaited(_guardQuiet(_player.pause));
+    _broadcastState();
   }
 
   /// Las operaciones de cola se ejecutan una detrás de otra, para que dos toques seguidos no se pisen.
@@ -165,11 +251,13 @@ class SonidosAudioHandler extends BaseAudioHandler
     return run;
   }
 
-  @override
-  Future<void> loadQueue(List<Song> songs) =>
-      _exclusive(() => _loadQueue(songs));
+  // ---------------------------------------------------------------------------------------------------------------
+  // Cola y fuentes
 
-  Future<void> _loadQueue(List<Song> songs) async {
+  /// Prepara [songs] como cola, empezando por [initialIndex] (la canción tocada se prepara primero: sin red, una
+  /// primera canción no guardada ya no impide oír la tocada). Un fallo de la canción inicial al prepararse no
+  /// rompe la cola: lo atiende el camino de error (otra dirección, o saltar a la siguiente que pueda sonar).
+  Future<bool> _loadQueue(List<Song> songs, int initialIndex) async {
     if (songs.isEmpty) {
       throw const AppException('La biblioteca no tiene canciones.');
     }
@@ -185,54 +273,104 @@ class SonidosAudioHandler extends BaseAudioHandler
           ),
         )
         .toList();
-    queue.add(items);
-    final tried = <String, Set<Uri>>{};
-    try {
-      final sources = <AudioSource>[];
-      final playable = <bool>[];
-      for (final song in songs) {
-        // Las canciones locales (ADR-0013) tienen su fichero en `audio` y nunca se transmiten.
-        final file = song.local
-            ? File(song.audio)
-            : await _store.audioFile(song);
-        final cached = await file.exists();
-        playable.add(playableOffline(song: song, cached: cached));
-        if (cached) {
-          sources.add(AudioSource.file(file.path, tag: song.id));
-        } else if (song.local) {
-          throw AppException(
-            'Falta el archivo de «${song.title}». Bórrala de la lista y vuelve a añadirla.',
-          );
-        } else {
-          // LockCachingAudioSource (experimental en just_audio 0.10) transmite y guarda a la vez.
-          final uri = _store.audioUri(song);
-          (tried[song.id] ??= <Uri>{}).add(uri);
-          sources.add(
-            // ignore: experimental_member_use
-            LockCachingAudioSource(uri, cacheFile: file, tag: song.id),
-          );
-        }
-      }
-      await _player.setAudioSources(sources);
-      _playableOffline = playable;
-    } catch (error) {
-      queue.add(const []);
-      mediaItem.add(null);
-      _queueIds = const [];
-      _queueSongs = const [];
-      _playableOffline = const [];
-      _publish();
-      throw AppException(describePlayerError(error));
+    final files = <File?>[];
+    for (final song in songs) {
+      // Las canciones locales (ADR-0013) tienen su fichero en `audio` y nunca se transmiten.
+      files.add(song.local ? File(song.audio) : await _store.audioFile(song));
     }
+    final initial = songs[initialIndex];
+    if (initial.local && !await files[initialIndex]!.exists()) {
+      throw AppException(
+        'Falta el archivo de «${initial.title}». Bórrala de la lista y vuelve a añadirla.',
+      );
+    }
+    _cancelTimers();
+    _youtubeUri = null;
+    _youtubeHeaders = null;
     _queueSongs = songs;
     _queueIds = [for (final song in songs) song.id];
-    _sourcesTried
-      ..clear()
-      ..addAll(tried);
-    mediaItem.add(items.first);
-    _fillArtwork(0);
+    _queueFiles = files;
+    _streamUris.clear();
+    _streamSources.clear();
+    _sourcesTried.clear();
+    _active = true;
+    queue.add(items);
+    mediaItem.add(items[initialIndex]);
+    _fillArtwork(initialIndex);
     _publish();
+    return _setSources(initialIndex, Duration.zero);
   }
+
+  /// Fuente de la canción [index] de la cola: su fichero si ya está en el teléfono (aunque se descargara después de
+  /// cargar la cola), o la transmisión que la guarda mientras suena.
+  Future<(AudioSource, bool fromFile)> _sourceFor(int index) async {
+    final song = _queueSongs[index];
+    final youtube = _youtubeUri;
+    if (youtube != null) {
+      return (
+        YoutubeAudioSource(uri: youtube, headers: _youtubeHeaders, tag: song.id)
+            as AudioSource,
+        false,
+      );
+    }
+    final file = _queueFiles[index]!;
+    if (song.local || await file.exists()) {
+      // Una local sin fichero falla al llegar a ella y se salta.
+      return (AudioSource.file(file.path, tag: song.id) as AudioSource, true);
+    }
+    final uri = _streamUris[song.id] ??= _store.audioUri(song);
+    (_sourcesTried[song.id] ??= <Uri>{}).add(uri);
+    final reused = _streamSources[song.id];
+    if (reused != null && reused.uri == uri) {
+      return (reused as AudioSource, false);
+    }
+    // LockCachingAudioSource (experimental en just_audio 0.10) transmite y guarda a la vez. Si al pedirla el
+    // fichero ya está completo, lo sirve desde el disco sin red.
+    // ignore: experimental_member_use
+    final source = LockCachingAudioSource(uri, cacheFile: file, tag: song.id);
+    _streamSources[song.id] = source;
+    return (source as AudioSource, false);
+  }
+
+  /// (Re)carga todas las fuentes de la cola, comprobando de nuevo qué está guardado, y prepara [index] en
+  /// [position]. Es también la forma de recuperarse de un error: tras un error just_audio queda parado y solo una
+  /// carga nueva lo vuelve a preparar. Devuelve false si la canción [index] no se pudo preparar (ya se está
+  /// atendiendo el error).
+  Future<bool> _setSources(int index, Duration position) async {
+    final sources = <AudioSource>[];
+    final fromFile = <bool>[];
+    for (var i = 0; i < _queueSongs.length; i++) {
+      final (source, file) = await _sourceFor(i);
+      sources.add(source);
+      fromFile.add(file);
+    }
+    _fromFile = fromFile;
+    _stallRetried = false;
+    final seq = ++_loadSeq;
+    try {
+      await _player.setAudioSources(
+        sources,
+        initialIndex: index,
+        initialPosition: position,
+      );
+      return true;
+    } on PlayerInterruptedException catch (error) {
+      // Otra carga la sustituyó: no es un fallo.
+      debugPrint('reproductor: carga interrumpida: $error');
+      return false;
+    } on PlayerException catch (error) {
+      // La canción inicial no se pudo preparar: se atiende como cualquier error (errorStream también lo avisa; el
+      // número de carga evita atenderlo dos veces).
+      debugPrint(
+        'reproductor: no se pudo preparar «${_titleAt(index)}»: $error',
+      );
+      unawaited(_exclusive(() => _recover(index, seq, error)));
+      return false;
+    }
+  }
+
+  String _titleAt(int index) =>
+      index >= 0 && index < _queueSongs.length ? _queueSongs[index].title : '';
 
   Uri? _artUriOf(Song song) {
     final file = _covers?.fileFor(song.cover);
@@ -266,18 +404,233 @@ class SonidosAudioHandler extends BaseAudioHandler
     );
   }
 
+  // ---------------------------------------------------------------------------------------------------------------
+  // Errores, parones y recuperación
+
+  void _onPlayerError(PlayerException error) {
+    final index = error.index ?? _player.currentIndex;
+    if (index == null) return;
+    final seq = _loadSeq;
+    unawaited(_exclusive(() => _recover(index, seq, error)));
+  }
+
+  /// Error (o parón sin salida) de la canción [index]. Por orden: si ya está guardada y no sonaba desde el fichero,
+  /// se recarga desde el fichero en el mismo punto; si se transmitía, se prueba la siguiente dirección de su audio
+  /// (Worker, r2.dev y la web; ADR-0031) en el mismo punto; si no, se salta a la siguiente que pueda sonar sin red. Si
+  /// no queda ninguna, se pausa con un aviso. Si la cola cambió o se recargó desde el error, no hace nada.
+  Future<void> _recover(int index, int seq, Object error) async {
+    if (!_active || seq != _loadSeq) return;
+    if (index < 0 || index >= _queueSongs.length) return;
+    if (index != (_player.currentIndex ?? index)) {
+      debugPrint('reproductor: error de un elemento que no suena: $error');
+      return;
+    }
+    final song = _queueSongs[index];
+    final position = _player.position;
+    debugPrint('reproductor: «${song.title}» falló: $error');
+    if (_youtubeUri != null) {
+      _reportError(error);
+      _suspended = false;
+      await _guardQuiet(_player.pause);
+      return;
+    }
+    final file = _queueFiles[index];
+    if (!_fromFile[index] && file != null && await file.exists()) {
+      debugPrint(
+        'reproductor: «${song.title}» ya está guardada; sigue desde el fichero',
+      );
+      if (await _setSources(index, position)) {
+        _startPlayback();
+      }
+      return;
+    }
+    final next = _fromFile[index]
+        ? null
+        : nextFallbackUri(
+            song: song,
+            cached: false,
+            sources: _store.audioUris(song),
+            tried: _sourcesTried[song.id] ?? const <Uri>{},
+          );
+    if (next != null) {
+      debugPrint('reproductor: «${song.title}»: reintento desde ${next.host}');
+      _streamUris[song.id] = next;
+      if (await _setSources(index, position)) {
+        _startPlayback();
+      }
+      return;
+    }
+    await _skipUnavailable(index);
+  }
+
+  /// Salta a la siguiente canción que puede sonar sin red (comprobando de nuevo lo guardado). Si no hay, pausa.
+  Future<void> _skipUnavailable(int index) async {
+    final song = _queueSongs[index];
+    final streamed = !_fromFile[index];
+    final playable = [
+      for (var i = 0; i < _queueSongs.length; i++)
+        playableOffline(
+          song: _queueSongs[i],
+          cached: _queueFiles[i] != null && await _queueFiles[i]!.exists(),
+        ),
+    ];
+    // La que acaba de fallar no se vuelve a intentar en este salto.
+    final next = nextAvailableIndex(playable, index);
+    if (next != null) {
+      if (await _setSources(next, Duration.zero)) {
+        _startPlayback();
+      }
+    } else {
+      _suspended = false;
+      await _guardQuiet(_player.pause);
+    }
+    // Se muestra después de arrancar, porque _startPlayback limpia el error anterior.
+    final reason = streamed
+        ? '«${song.title}» no está guardada y no hay conexión.'
+        : 'No se pudo reproducir «${song.title}».';
+    _error.value = next == null
+        ? '$reason No quedan canciones que sonar sin conexión.'
+        : '$reason Paso a la siguiente.';
+  }
+
+  Future<void> _guardQuiet(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (error) {
+      debugPrint('reproductor: $error');
+    }
+  }
+
+  /// Arma o quita el vigilante de parones: solo con la reproducción pedida, esperando datos y con una canción que
+  /// llega por la red. Cualquier avance real de la posición lo deja listo para otro reintento.
+  void _updateStallWatch() {
+    final index = _player.currentIndex;
+    final state = _player.processingState;
+    final streamed =
+        _active &&
+        index != null &&
+        index >= 0 &&
+        index < _fromFile.length &&
+        !_fromFile[index];
+    final waiting =
+        streamed &&
+        _player.playing &&
+        (state == ProcessingState.buffering ||
+            state == ProcessingState.loading);
+    if (!waiting) {
+      _stall?.cancel();
+      _stall = null;
+      if (state == ProcessingState.ready &&
+          _player.playing &&
+          _player.position > _stallFrom) {
+        _stallRetried = false;
+      }
+      return;
+    }
+    if (_stall != null) return;
+    _stallFrom = _player.position;
+    _stall = Timer(stallTimeout, _onStall);
+  }
+
+  void _onStall() {
+    _stall = null;
+    final index = _player.currentIndex;
+    final state = _player.processingState;
+    if (!_active ||
+        index == null ||
+        index >= _fromFile.length ||
+        _fromFile[index] ||
+        !_player.playing ||
+        !(state == ProcessingState.buffering ||
+            state == ProcessingState.loading)) {
+      return;
+    }
+    if (_player.position > _stallFrom) {
+      _updateStallWatch();
+      return;
+    }
+    final seq = _loadSeq;
+    if (!_stallRetried) {
+      debugPrint(
+        'reproductor: «${_titleAt(index)}» parada; reintento desde el mismo punto',
+      );
+      final position = _player.position;
+      unawaited(
+        _exclusive(() async {
+          if (!_active || seq != _loadSeq) return;
+          if (await _setSources(index, position)) {
+            _stallRetried = true;
+            _startPlayback();
+          }
+        }),
+      );
+      return;
+    }
+    unawaited(
+      _exclusive(
+        () => _recover(index, seq, const AppException('la red no responde')),
+      ),
+    );
+  }
+
+  /// Cierre por inactividad: corre mientras hay cola y no suena nada; si llega a [idleStopAfter], para todo.
+  void _updateIdleStop() {
+    final audible = isAudiblyPlaying(
+      playing: _player.playing,
+      state: _player.processingState,
+    );
+    if (!_active || audible) {
+      _idleStop?.cancel();
+      _idleStop = null;
+      return;
+    }
+    _idleStop ??= Timer(idleStopAfter, () {
+      _idleStop = null;
+      if (_suspended) {
+        // Una interrupción que no acaba (o una llamada muy larga) pasa a ser una pausa: el servicio sale de primer
+        // plano y suelta el bloqueo de CPU. Si sigue sin sonar, el siguiente plazo lo cierra.
+        debugPrint(
+          'reproductor: interrumpido desde hace $idleStopAfter; queda en pausa',
+        );
+        _suspended = false;
+        _broadcastState();
+        return;
+      }
+      debugPrint('reproductor: sin sonar desde hace $idleStopAfter; se cierra');
+      unawaited(stop());
+    });
+  }
+
+  void _cancelTimers() {
+    _idleStop?.cancel();
+    _idleStop = null;
+    _stall?.cancel();
+    _stall = null;
+  }
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Órdenes
+
   @override
   Future<void> playAt(List<Song> songs, int index) => _exclusive(() async {
     if (index < 0 || index >= songs.length) {
       throw const AppException('Esa canción ya no está disponible.');
     }
-    if (!_sameQueue(songs)) await _loadQueue(songs);
+    bool ready;
     try {
-      await _player.seek(Duration.zero, index: index);
+      // Siempre se carga (nunca se busca): una carga acaba siempre, lista o con error, y vuelve a mirar lo guardado.
+      // Buscar no sirve: tras un error just_audio queda parado y no se prepara, y si la fuente de destino falla, la
+      // búsqueda no acaba nunca y bloquearía la cola de órdenes (y con ella la recuperación del error).
+      ready = _sameQueue(songs)
+          ? await _setSources(index, Duration.zero)
+          : await _loadQueue(songs, index);
+    } on AppException {
+      rethrow;
     } catch (error) {
       throw AppException(describePlayerError(error));
     }
-    _startPlayback();
+    // Si no se pudo preparar, el camino de error ya decide (otra dirección o la siguiente que pueda sonar).
+    if (ready) _startPlayback();
   });
 
   @override
@@ -297,20 +650,10 @@ class SonidosAudioHandler extends BaseAudioHandler
       album: 'YouTube',
       duration: duration,
     );
+    _cancelTimers();
     queue.add([item]);
-    try {
-      await _player.setAudioSources([
-        YoutubeAudioSource(uri: uri, headers: headers, tag: queueId),
-      ]);
-    } catch (error) {
-      queue.add(const []);
-      mediaItem.add(null);
-      _queueIds = const [];
-      _queueSongs = const [];
-      _playableOffline = const [];
-      _publish();
-      throw AppException(describePlayerError(error));
-    }
+    _youtubeUri = uri;
+    _youtubeHeaders = headers;
     // Marcador para la cola: nunca se busca en la biblioteca ni se guarda.
     _queueSongs = [
       Song(
@@ -326,8 +669,21 @@ class SonidosAudioHandler extends BaseAudioHandler
       ),
     ];
     _queueIds = [queueId];
+    _queueFiles = const [null];
+    _fromFile = const [false];
+    _streamUris.clear();
+    _streamSources.clear();
     _sourcesTried.clear();
-    _playableOffline = const [false];
+    _active = true;
+    _loadSeq += 1;
+    try {
+      await _player.setAudioSources([
+        YoutubeAudioSource(uri: uri, headers: headers, tag: queueId),
+      ]);
+    } catch (error) {
+      await _clearQueue();
+      throw AppException(describePlayerError(error));
+    }
     mediaItem.add(item);
     _publish();
     _startPlayback();
@@ -336,13 +692,15 @@ class SonidosAudioHandler extends BaseAudioHandler
   /// Arranca la reproducción sin esperar a que termine la canción (el Future de just_audio dura hasta el final).
   void _startPlayback() {
     _error.value = null;
+    // Al pedir que suene, deja de estar suspendida; play() marca playing antes de volver.
     unawaited(_player.play().catchError((Object error) => _reportError(error)));
+    _suspended = false;
   }
 
   @override
   Future<void> togglePlayPause() async {
-    if (_player.playing) {
-      await _guard(_player.pause);
+    if (_playingForUser) {
+      await pause();
       return;
     }
     if (_queueIds.isEmpty) {
@@ -352,15 +710,15 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> playNext() => _guard(_player.seekToNext);
+  Future<void> playNext() => _guard(() => _bounded(_player.seekToNext()));
 
   /// Como en cualquier reproductor: pasados unos segundos, «Anterior» vuelve al principio de la canción.
   @override
   Future<void> playPrevious() => _guard(() {
     if (_player.position > kRestartThreshold || !_player.hasPrevious) {
-      return _player.seek(Duration.zero);
+      return _bounded(_player.seek(Duration.zero));
     }
-    return _player.seekToPrevious();
+    return _bounded(_player.seekToPrevious());
   });
 
   @override
@@ -370,12 +728,43 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> pause() => _guard(_player.pause);
+  Future<void> pause() async {
+    final wasSuspended = _suspended;
+    _suspended = false;
+    await _guard(_player.pause);
+    // Si ya estaba parada por una interrupción, pausar no cambia el reproductor: hay que publicarlo.
+    if (wasSuspended) _broadcastState();
+  }
 
+  /// Para la música, cierra el servicio y su notificación y deja el reproductor vacío: sin canción ni cola, así
+  /// la interfaz no muestra una canción que ya no está cargada.
   @override
   Future<void> stop() async {
-    await _player.stop();
+    _active = false;
+    _suspended = false;
+    _loadSeq += 1;
+    _cancelTimers();
+    await _guardQuiet(_player.stop);
+    await _clearQueue();
     await super.stop();
+  }
+
+  Future<void> _clearQueue() async {
+    _active = false;
+    _queueIds = const [];
+    _queueSongs = const [];
+    _queueFiles = const [];
+    _fromFile = const [];
+    _streamUris.clear();
+    _streamSources.clear();
+    _sourcesTried.clear();
+    _youtubeUri = null;
+    _youtubeHeaders = null;
+    _suspended = false;
+    queue.add(const []);
+    mediaItem.add(null);
+    _publish();
+    _publishProgress();
   }
 
   /// Al quitar la app de recientes se para la música y se cierra el servicio y su notificación.
@@ -390,12 +779,20 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToQueueItem(int index) async {
-    await _guard(() => _player.seek(Duration.zero, index: index));
+    await _guard(() => _bounded(_player.seek(Duration.zero, index: index)));
     _startPlayback();
   }
 
   @override
-  Future<void> seek(Duration position) => _guard(() => _player.seek(position));
+  Future<void> seek(Duration position) =>
+      _guard(() => _bounded(_player.seek(position)));
+
+  /// Espera una búsqueda de just_audio como mucho [seekWait]: solo acaba cuando la canción queda lista, y si su
+  /// fuente falla no acaba nunca (el error llega por errorStream y lo atiende el camino de error).
+  Future<void> _bounded(Future<void> seek) => seek.timeout(
+    seekWait,
+    onTimeout: () => debugPrint('reproductor: la búsqueda no terminó'),
+  );
 
   @override
   Future<void> setShuffle(bool enabled) => _guard(() async {
@@ -428,6 +825,7 @@ class SonidosAudioHandler extends BaseAudioHandler
       });
 
   bool _sameQueue(List<Song> songs) {
+    if (!_active || _youtubeUri != null) return false;
     if (songs.length != _queueIds.length) return false;
     for (var i = 0; i < songs.length; i++) {
       if (songs[i].id != _queueIds[i]) return false;
@@ -453,16 +851,18 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   /// Recalcula lo que ve la interfaz a partir de la canción actual y del estado del reproductor.
   void _publish() {
-    final item = mediaItem.value;
+    final item = _active ? mediaItem.value : null;
     final state = _player.processingState;
+    final playing = _active && _playingForUser;
     final now = NowPlaying(
       songId: item?.id,
       title: item?.title ?? '',
       artist: item?.artist ?? '',
-      playing: _player.playing,
+      playing: playing,
       buffering:
           state == ProcessingState.loading ||
-          state == ProcessingState.buffering,
+          state == ProcessingState.buffering ||
+          (state == ProcessingState.idle && _player.playing),
       shuffle: _player.shuffleModeEnabled,
       repeat: _repeatOf(_player.loopMode),
     );
@@ -478,6 +878,10 @@ class SonidosAudioHandler extends BaseAudioHandler
   /// Publica la posición solo cuando el reproductor informa de un cambio (sin sondeos):
   /// la interfaz la extrapola mientras está a la vista.
   void _publishProgress() {
+    if (!_active) {
+      _progress.value = PlaybackProgress.zero;
+      return;
+    }
     final duration = _player.duration ?? mediaItem.value?.duration;
     _progress.value = PlaybackProgress(
       position: _player.position,
@@ -489,7 +893,7 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   void _broadcastState() {
-    final playing = _player.playing;
+    final playing = _playingForUser;
     playbackState.add(
       playbackState.value.copyWith(
         controls: [
@@ -506,8 +910,11 @@ class SonidosAudioHandler extends BaseAudioHandler
           MediaAction.setRepeatMode,
         },
         androidCompactActionIndices: const [0, 1, 2],
-        processingState: AudioProcessingState.values.byName(
-          _player.processingState.name,
+        processingState: serviceProcessingState(
+          _player.processingState,
+          active: _active,
+          playing: _player.playing,
+          suspended: _suspended,
         ),
         playing: playing,
         updatePosition: _player.position,
@@ -526,6 +933,8 @@ class SonidosAudioHandler extends BaseAudioHandler
     );
     _publish();
     _publishProgress();
+    _updateIdleStop();
+    _updateStallWatch();
   }
 }
 

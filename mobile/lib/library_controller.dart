@@ -113,7 +113,6 @@ class LibraryController extends ChangeNotifier {
   bool _loading = false;
   bool _online = false;
   String? _loadError;
-  String? _audioNotice;
   bool _downloading = false;
   bool _offlineWanted = false;
   OfflineCancel? _offlineCancel;
@@ -138,9 +137,6 @@ class LibraryController extends ChangeNotifier {
 
   /// Error que impide mostrar la biblioteca (no hay ni red ni copia). Null si todo va bien.
   String? get loadError => _loadError;
-
-  /// Aviso cuando la biblioteca se ve pero el audio no está listo. La lista sigue visible.
-  String? get audioNotice => _audioNotice;
 
   bool get downloading => _downloading;
 
@@ -335,7 +331,6 @@ class LibraryController extends ChangeNotifier {
   Future<void> _sync() async {
     _loading = true;
     _loadError = null;
-    _audioNotice = null;
     notifyListeners();
     _localSongs = await _readLocalSongs();
     _offlineWanted = await offline?.read() ?? false;
@@ -350,7 +345,6 @@ class LibraryController extends ChangeNotifier {
       // Sin biblioteca web se siguen viendo las canciones de este teléfono.
       _rebuildSongs();
       notifyListeners();
-      await _applyQueue();
       return;
     }
     _catalogKnown = true;
@@ -363,7 +357,8 @@ class LibraryController extends ChangeNotifier {
     _rebuildSongs();
     _loading = false;
     notifyListeners();
-    await _applyQueue();
+    // Nada se prepara para sonar al abrir la app ni al sincronizar (DESIGN.md §10, «nada suena al abrir»): la
+    // cola se carga cuando el usuario toca una canción, así que una sincronización tampoco corta lo que suena.
     if (data.fromNetwork) {
       // Lo subido que ya está en el catálogo sustituye a su canción provisional.
       uploads.reconcile(data.songs);
@@ -386,30 +381,6 @@ class LibraryController extends ChangeNotifier {
       );
       return const [];
     }
-  }
-
-  /// Prepara la cola solo si cambió y no hay una canción cargada: así una sincronización no corta lo que suena.
-  /// Si hay una canción cargada, playAt rehace la cola al tocar otra.
-  Future<void> _applyQueue() async {
-    if (_songs.isEmpty) return;
-    if (playback.nowPlaying.value.songId != null) return;
-    final wanted = _songs.map((song) => song.id).toSet();
-    if (setEquals(wanted, playback.queueSongIds)) return;
-    await _prepareAudio();
-  }
-
-  /// Vuelve a intentar preparar el audio tras un fallo.
-  Future<void> retryAudio() => _prepareAudio();
-
-  Future<void> _prepareAudio() async {
-    try {
-      await playback.loadQueue(_songs);
-      _audioNotice = null;
-    } catch (error) {
-      debugPrint('biblioteca: no se pudo preparar el audio: $error');
-      _audioNotice = describeAudioError(error);
-    }
-    notifyListeners();
   }
 
   /// Borra el audio guardado de las canciones que ya no están en la web y no están sonando ni en la cola.
@@ -639,12 +610,6 @@ String describeLoadError(Object error) {
     return 'La web de la biblioteca no respondió bien (${error.message}). Vuelve a intentarlo en unos minutos.';
   }
   return 'No se pudo leer la biblioteca. Vuelve a intentarlo.';
-}
-
-/// Texto para el usuario cuando el audio no se puede preparar, con el motivo.
-String describeAudioError(Object error) {
-  final reason = error is AppException ? error.message : '$error';
-  return 'No se puede preparar el audio. Motivo: $reason';
 }
 
 bool _isConnectionError(Object error) =>

@@ -1,3 +1,30 @@
+## Sin publicar: apertura propia y reproductor estable (2026-11-10, rama `feature/estabilidad-apk`)
+
+- **APK, cierres tras 30–40 minutos** ([ADR-0036](docs/decisions/ADR-0036-estabilidad-del-reproductor.md)):
+  - La causa: una llamada en segundo plano sacaba el servicio de primer plano y Android 12+ no le dejaba volver, así que el sistema acababa matando la app.
+  - Ahora una llamada para la música sin salir de primer plano y, al colgar, sigue sola.
+  - La recuperación de errores no se ejecutaba nunca (just_audio 0.10 da los errores por `errorStream`). Ahora prueba el fichero, otra dirección del audio o la siguiente canción que pueda sonar, y las órdenes ya no se quedan colgadas.
+  - Tras 15 minutos sin sonar se cierran el servicio y la notificación.
+- **APK, canción fantasma al abrir:** ya no se carga la biblioteca entera como cola al arrancar. No hay nada cargado hasta tocar una canción, la cola empieza por la tocada (también sin conexión) y parar deja el reproductor vacío.
+- **Canciones guardadas:**
+  - En la APK suenan siempre desde el fichero, también las guardadas después de empezar la cola.
+  - Una descarga cortada a medias ya no se da por buena (`Content-Length`).
+  - En la web, el service worker ya las servía sin red; ahora además se pide almacenamiento persistente con prueba.
+- **Red colgada:** en la web y en la APK, una canción transmitida que se queda 15 s sin datos se reintenta una vez desde el mismo punto y después pasa a la siguiente con aviso.
+- **Web, versión nueva:** con una canción cargada ya no se recarga sola; avisa «Hay una versión nueva de Reminiscencia.» con «Recargar». Las preferencias del reproductor solo se guardan al cambiar. `SHELL_VERSION = 34`.
+- **APK, pantalla de apertura propia** ([ADR-0035](docs/decisions/ADR-0035-pantalla-de-apertura.md)):
+  - Sustituye a la foto: emblema y nombre vectoriales sobre `#121212`, generados por `scripts/splash/generar_splash.py`.
+  - Usa la caja de Android 12+ y la misma composición en versiones anteriores.
+  - Sin fotograma blanco en modo claro.
+- **APK, registro de errores** en `files/registro/` (`lib/error_log.dart`) y un solo cliente HTTP para YouTube.
+- APK 1.2.6+10.
+- **Pruebas:**
+  - Flutter 585 (nuevas: el handler real con just_audio simulado, el registro de errores y las descargas cortadas); `flutter analyze` sin avisos.
+  - Web: 890 unitarias y 218 de extremo a extremo (nuevas en `estabilidad.e2e.mjs`).
+  - Backend: 1426 (12 nuevas de la pantalla de apertura en `test_splash.py`).
+  - En el emulador (Android 15): 5 arranques en frío, 3 llamadas con `am kill`, modo avión, descargas mientras suena y 50 minutos seguidos sin crecer la memoria (113–125 MB) ni los hilos o descriptores.
+  - Sin probar en un teléfono real.
+
 ## Sin publicar: la web en Cloudflare (2026-11-08, rama `feature/web-en-cloudflare`)
 
 - **Motivo:** Vercel ha bloqueado el equipo Hobby (HTTP 402 `DEPLOYMENT_DISABLED`) hasta el 2026-12-07. Se mueve a Cloudflare todo lo que se puede tal como está, sin funciones nuevas ([ADR-0034](docs/decisions/ADR-0034-web-en-cloudflare.md)).

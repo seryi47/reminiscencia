@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fondo de la app (lib/theme.dart, AppPalette.standard.background). La pantalla de apertura y la ventana que hay
+         detrás de Flutter usan el mismo color en modo claro y oscuro: la app es siempre oscura (ADR-0035). -->
+    <color name="splash_background">#121212</color>
+</resources>

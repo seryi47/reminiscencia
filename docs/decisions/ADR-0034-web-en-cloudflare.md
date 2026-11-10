@@ -1,6 +1,6 @@
 # ADR-0034: La web en Cloudflare, con el Worker, en reminiscencia.cometia.es
 
-- Estado: aceptada (2026-11-08), en la rama `feature/web-en-cloudflare`. **Sin desplegar**: falta el primer `wrangler deploy` y conectar Cloudflare Workers Builds (ver «Despliegue»).
+- Estado: aceptada (2026-11-08) y desplegada (2026-11-09): fusionada en `main`, primer `wrangler deploy` hecho y Cloudflare Workers Builds desplegando con cada push a `main` (ver «Despliegue»).
 - Fecha: 2026-11-08
 - Modifica: [ADR-0007](ADR-0007-catalogo-y-flujo-desde-vercel.md) (la web estática deja de servirse solo desde Vercel), [ADR-0029](ADR-0029-worker-cloudflare-y-portadas.md) (el Worker sirve también la web y tiene dominio propio) y [ADR-0031](ADR-0031-audio-por-el-worker.md) (en el dominio propio el audio es del mismo origen; la redirección de `vercel.json` va al dominio propio).
 - Relacionadas: [ADR-0021](ADR-0021-buscar-en-youtube.md) y [ADR-0019](ADR-0019-playlists-de-youtube-como-albumes.md) (las funciones de YouTube, que siguen en Vercel).
@@ -98,7 +98,7 @@ Requisito: la zona `cometia.es` debe estar en **la misma cuenta de Cloudflare** 
    - Build watch paths: los de por defecto (todo el repositorio), para que los commits del buzón que solo tocan `frontend/web/data/` también desplieguen.
    - No hace falta ninguna variable: el token de la API de Cloudflare lo crea Workers Builds, y el nombre del Worker (`reminiscencia-api`) debe coincidir con `name` de `wrangler.toml` (coincide).
 5. **Comprobar el despliegue continuo:** el siguiente push a `main` (o «Retry build» en el panel) debe terminar en verde en la pestaña Deployments del Worker.
-6. **APK:** compilar y publicar la 1.2.5+9 (desde `mobile/`: `flutter build apk --release --split-per-abi`, o lanzar `android.yml` a mano con los secretos de firma, o la etiqueta `android-v1.2.5`).
+6. **APK:** compilar y publicar la 1.2.5+9 (desde `mobile/`: `flutter build apk --release`, un APK universal para instalar a mano; o lanzar `android.yml` a mano con los secretos de firma, o la etiqueta `android-v1.2.5`).
 
 ### Volver atrás
 

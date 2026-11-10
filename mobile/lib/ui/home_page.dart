@@ -81,17 +81,8 @@ class HomePage extends StatelessWidget {
 
   List<Widget> _notices() {
     final library = services.library;
-    final notice = library.audioNotice;
+    // Los fallos del audio se avisan al tocar una canción (runWithNotice) y en el reproductor, no al abrir.
     return [
-      if (notice != null)
-        SliverToBoxAdapter(
-          child: InlineBanner(
-            icon: Icons.volume_off_outlined,
-            message: notice,
-            actionLabel: 'Reintentar',
-            onAction: () => library.retryAudio(),
-          ),
-        ),
       if (library.loadError != null && library.songs.isNotEmpty)
         SliverToBoxAdapter(
           child: InlineBanner(

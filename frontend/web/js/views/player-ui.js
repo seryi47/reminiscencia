@@ -79,7 +79,13 @@ function controlButton(name, label, testid, onClick, size = 16, attrs = {}) {
   return iconButton(name, label, { class: 'control-button', 'data-testid': testid, on: { click: onClick }, ...attrs }, size);
 }
 
+// Icono que lleva cada botón: el estado llega con cada avance del tiempo y el SVG solo se cambia si cambia el icono.
+const shownIcons = new WeakMap();
+
 function setIcon(button, name, size) {
+  const key = `${name}|${size}`;
+  if (shownIcons.get(button) === key) return;
+  shownIcons.set(button, key);
   button.replaceChildren(icon(name, { size }));
 }
 
@@ -325,6 +331,10 @@ export function mountPlayerUi(ctx, { bar, mini, nowPanel }) {
   // undefined fuerza la primera pintura (sin canción, key y liked valen null).
   let lastTrackKey;
   let lastLiked;
+  // Claves de la cola que queda: el reproductor da la misma copia mientras la cola no cambia, así que se recalculan
+  // solo con una copia nueva (no con cada avance del tiempo).
+  let upcomingSeen = null;
+  let upcomingKeys = '';
   function update(state) {
     const track = state.track;
     const liked = track ? ctx.isLiked(track.id) : null;
@@ -363,7 +373,11 @@ export function mountPlayerUi(ctx, { bar, mini, nowPanel }) {
     setIcon(miniPlay, state.playing ? 'pause' : 'play', 24);
     mini.style.setProperty('--ratio', String(state.duration > 0 ? Math.min(1, state.position / state.duration) : 0));
     // El panel y la cola solo se vuelven a pintar cuando cambian (no con cada avance del tiempo), para no perder el foco.
-    const signature = `${state.key}|${liked}|${state.contextName}|${state.upcoming.map((item) => item.key).join(',')}`;
+    if (state.upcoming !== upcomingSeen) {
+      upcomingSeen = state.upcoming;
+      upcomingKeys = state.upcoming.map((item) => item.key).join(',');
+    }
+    const signature = `${state.key}|${liked}|${state.contextName}|${upcomingKeys}`;
     if (!nowPanel.hidden && nowBody.dataset.signature !== `${panel.mode}|${signature}`) {
       const focusedKey = document.activeElement && nowBody.contains(document.activeElement) ? document.activeElement.dataset.testid : null;
       nowBody.dataset.signature = `${panel.mode}|${signature}`;

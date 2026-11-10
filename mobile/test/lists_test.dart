@@ -60,6 +60,8 @@ void main() {
     setWindow(tester, const Size(400, 800));
     final t = buildTestServices(songs: [fakeSong('s1')]);
     await pumpApp(tester, t.services);
+    t.playback.cue(t.services.library.songs, 0);
+    await settle(tester);
 
     await tester.tap(find.byTooltip('Añadir a Me gusta'));
     await settle(tester);
