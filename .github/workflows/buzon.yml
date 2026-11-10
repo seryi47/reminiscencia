@@ -235,104 +235,39 @@ jobs:
         with:
           python-version: "3.12"
 
-      # ffmpeg solo se instala si puede hacer falta (ADR-0042): las subidas de la web y la APK (repository_dispatch) ya
+      # ffmpeg solo se prepara si puede hacer falta (ADR-0042): las subidas de la web y la APK (repository_dispatch) ya
       # llegan en Opus y se publican SIN ffmpeg (metadatos en Python puro y copia del fichero), así que para ellas se
-      # salta toda la instalación (antes ~7 min). La página de GitHub (push) y el reproceso manual (workflow_dispatch)
-      # pueden traer otros formatos: ahí sí se instala.
-      # ffmpeg desde una caché de sus .deb (ADR-0030). La clave es el hash de la lista exacta de paquetes que apt
-      # instalaría ahora (URL, nombre, tamaño y hash de su índice firmado): si cambia una versión, cambia la clave.
-      - name: Calcular la clave de la caché de ffmpeg
-        id: ffmpeg_clave
-        if: github.event_name != 'repository_dispatch'
-        run: |
-          LISTA="$RUNNER_TEMP/ffmpeg-paquetes.txt"
-          if apt-get install --print-uris -qq --no-install-recommends ffmpeg > "$LISTA" && [ -s "$LISTA" ]; then
-            echo "Paquetes de ffmpeg: $(wc -l < "$LISTA")"
-            echo "clave=ffmpeg-debs-${ImageOS:-ubuntu}-$(sha256sum "$LISTA" | cut -c1-32)" >> "$GITHUB_OUTPUT"
-            echo "lista=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No se ha podido saber qué paquetes instalaría apt: se instala ffmpeg sin caché."
-            : > "$LISTA"
-            echo "clave=ffmpeg-debs-sin-lista-$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
-            echo "lista=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Restaurar los paquetes de ffmpeg
+      # salta todo esto. La página de GitHub (push) y el reproceso manual (workflow_dispatch) pueden traer otros formatos
+      # (WAV, MP3, FLAC…): para ellos se usa un ffmpeg ESTÁTICO fijado por SHA256 y cacheado. Sustituye a la caché de .deb
+      # de ADR-0030, que estaba rota (acertaba la clave pero descartaba sus 87 paquetes y los re-descargaba de un mirror
+      # lento → ~7 min); ahora es una sola descarga de ~145 MB de GitHub, cacheada: en caliente, unos segundos.
+      - name: Preparar ffmpeg (estático, cacheado)
         id: ffmpeg_cache
-        if: github.event_name != 'repository_dispatch' && steps.ffmpeg_clave.outputs.lista == 'true'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'repository_dispatch'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/ffmpeg-debs
-          key: ${{ steps.ffmpeg_clave.outputs.clave }}
+          path: ~/ffmpeg-bin
+          key: ffmpeg-static-btbn-n8.1.3-34-ga35157abb9-gpl
 
-      # apt solo compara el tamaño de un .deb que ya tiene en su carpeta de descargas, no su hash (pkgAcqArchive en
-      # apt-pkg/acquire-item.cc): aquí se compara el de cada uno con el de la lista de apt, que sale de su índice
-      # firmado. Lo que no esté en la lista o no coincida se borra, y apt lo vuelve a descargar.
-      - name: Comprobar los paquetes de ffmpeg de la caché
+      - name: Descargar ffmpeg estático si no está en caché
+        if: github.event_name != 'repository_dispatch' && steps.ffmpeg_cache.outputs.cache-hit != 'true'
+        env:
+          # Build estático de BtbN/FFmpeg-Builds (GitHub), con ffmpeg y ffprobe. Fijado por tag y verificado por SHA256.
+          FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-09-12-42/ffmpeg-n8.1.3-34-ga35157abb9-linux64-gpl-8.1.tar.xz
+          FFMPEG_SHA256: 23c6279d9f10afbcc273082256ae2073495595ab53fbcd729a5a93913b3fdd75
+        run: |
+          curl -fsSL "$FFMPEG_URL" -o "$RUNNER_TEMP/ffmpeg.tar.xz"
+          echo "$FFMPEG_SHA256  $RUNNER_TEMP/ffmpeg.tar.xz" | sha256sum -c -
+          mkdir -p ~/ffmpeg-bin
+          tar -xJf "$RUNNER_TEMP/ffmpeg.tar.xz" --wildcards --strip-components=2 -C ~/ffmpeg-bin '*/bin/ffmpeg' '*/bin/ffprobe'
+
+      - name: Poner ffmpeg en el PATH
         if: github.event_name != 'repository_dispatch'
         run: |
-          DEBS="$HOME/ffmpeg-debs"
-          LISTA="$RUNNER_TEMP/ffmpeg-paquetes.txt"
-          mkdir -p "$DEBS"
-          BUENOS=0
-          DESCARTADOS=0
-          for DEB in "$DEBS"/* "$DEBS"/.[!.]*; do
-            if [ ! -e "$DEB" ] && [ ! -L "$DEB" ]; then
-              continue
-            fi
-            NOMBRE=$(basename -- "$DEB")
-            ESPERADO=$(awk -v nombre="$NOMBRE" '$2 == nombre { print $4; exit }' "$LISTA")
-            REAL=""
-            if [ -f "$DEB" ] && [ ! -L "$DEB" ]; then
-              case "$ESPERADO" in
-                SHA256:*) REAL="SHA256:$(sha256sum -- "$DEB" | cut -d ' ' -f 1)" ;;
-                SHA512:*) REAL="SHA512:$(sha512sum -- "$DEB" | cut -d ' ' -f 1)" ;;
-              esac
-            fi
-            if [ -n "$REAL" ] && [ "$REAL" = "$ESPERADO" ]; then
-              BUENOS=$((BUENOS + 1))
-            else
-              rm -rf -- "$DEB"
-              DESCARTADOS=$((DESCARTADOS + 1))
-            fi
-          done
-          echo "Paquetes de ffmpeg en la caché: $BUENOS comprobados, $DESCARTADOS descartados."
-
-      - name: Instalar ffmpeg
-        if: github.event_name != 'repository_dispatch'
-        # apt a veces se cuelga en el runner y bloquea la cola `library-catalog` entera: cada intento tiene 180 s y hay
-        # tres; si otro proceso tiene el bloqueo de dpkg, se espera hasta 60 s. Con la caché, apt no descarga nada. Sin
-        # regenerar el índice de las páginas de manual (man-db) y sin sincronizar cada fichero con el disco: es una
-        # máquina de usar y tirar.
-        run: |
-          DEBS="$HOME/ffmpeg-debs"
-          sudo mkdir -p "$DEBS/partial"
-          sudo rm -f /var/lib/man-db/auto-update
-          for INTENTO in 1 2 3; do
-            if timeout 180 sudo apt-get install -y -q --no-install-recommends -o DPkg::Lock::Timeout=60 \
-                -o Dir::Cache::Archives="$DEBS" -o Dpkg::Options::=--force-unsafe-io ffmpeg; then
-              break
-            fi
-            if [ "$INTENTO" -eq 3 ]; then
-              echo "No se ha podido instalar ffmpeg tras tres intentos." >&2
-              exit 1
-            fi
-            echo "La instalación de ffmpeg ha fallado (intento $INTENTO de 3): se actualiza el índice de apt."
-            timeout 180 sudo apt-get update -q -o DPkg::Lock::Timeout=60 || echo "apt-get update también ha fallado."
-          done
-          ffmpeg -version | head -n 1
-          ffprobe -version | head -n 1
-          sudo rm -rf "$DEBS/partial" "$DEBS/lock"
-          sudo chown -R "$(id -u):$(id -g)" "$DEBS"
-
-      # Se guarda ANTES de que el job toque nada subido: lo que entra en la caché solo lo ha escrito apt. La caché es
-      # de main (este job solo corre en main) y una clave no se sobrescribe.
-      - name: Guardar los paquetes de ffmpeg en la caché
-        if: github.event_name != 'repository_dispatch' && steps.ffmpeg_clave.outputs.lista == 'true' && steps.ffmpeg_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/ffmpeg-debs
-          key: ${{ steps.ffmpeg_clave.outputs.clave }}
+          chmod +x ~/ffmpeg-bin/ffmpeg ~/ffmpeg-bin/ffprobe
+          echo "$HOME/ffmpeg-bin" >> "$GITHUB_PATH"
+          ~/ffmpeg-bin/ffmpeg -version | head -n 1
+          ~/ffmpeg-bin/ffprobe -version | head -n 1
 
       # Las subidas de la web que bajó 'recoger' (trozos y manifiesto de cada una, y su orden), fuera del repositorio.
       - name: Descargar las subidas de la web

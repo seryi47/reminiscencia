@@ -17,7 +17,7 @@
 
 - **Corrige el diagnóstico anterior.** Midiendo una ejecución real (`gh run view`), el «+3 min» no era la arquitectura ni la seguridad: era **un solo paso, «Instalar ffmpeg» = 419 s** (de 431 de `procesar`), por una **caché de `.deb` rota** que re-descargaba ffmpeg de un mirror lento. El audio ya está en R2 (subirlo tarda 5 s); moverlo no influía. [ADR-0042](docs/decisions/ADR-0042-publicacion-rapida-sin-ffmpeg-para-opus.md).
 - **Las subidas de la web y la APK (Opus) ya no necesitan ffmpeg:** se leen los metadatos del Ogg Opus en **Python puro** (sin `ffprobe`), se **copia el fichero** (sin remuxear) y el workflow **salta la instalación de ffmpeg** para `repository_dispatch`. **La publicación baja de ~8 min a ~1 min**, sin tocar seguridad.
-- La vía por la página de GitHub (`push`, formatos variados) sigue instalando ffmpeg; es rara (colaboradores) y queda como pendiente mejorar su caché.
+- La vía por la página de GitHub (`push`/`workflow_dispatch`, formatos variados) y las importaciones por incidencia (`biblioteca.yml`) ya **no usan apt**: instalan un **ffmpeg estático de BtbN (GitHub), fijado por SHA256 y cacheado** (`~/ffmpeg-bin`). Una descarga la primera vez; luego, segundos. Se acabó el apt lento para todas las vías.
 - **Pruebas:** backend **1431** (el `.opus` publicado es idéntico al subido; procesar una subida Opus no llama a ningún subproceso de ffmpeg/ffprobe; lector Opus comprobado contra ffprobe ±6 ms).
 
 ## Sin publicar: publicación sin recodificar el Opus ya subido (2026-11-10)

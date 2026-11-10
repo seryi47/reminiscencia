@@ -130,14 +130,32 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Instalar ffmpeg
-        # apt a veces se cuelga en el runner y bloquea la cola `library-catalog` entera: cada intento tiene 120 s y hay tres.
+      # ffmpeg ESTÁTICO fijado por SHA256 y cacheado (ADR-0042), en vez de apt (que descargaba de un mirror lento y
+      # colgaba la cola). Las importaciones por incidencia traen formatos variados, así que aquí siempre hace falta.
+      - name: Preparar ffmpeg (estático, cacheado)
+        id: ffmpeg_cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/ffmpeg-bin
+          key: ffmpeg-static-btbn-n8.1.3-34-ga35157abb9-gpl
+
+      - name: Descargar ffmpeg estático si no está en caché
+        if: steps.ffmpeg_cache.outputs.cache-hit != 'true'
+        env:
+          FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-09-12-42/ffmpeg-n8.1.3-34-ga35157abb9-linux64-gpl-8.1.tar.xz
+          FFMPEG_SHA256: 23c6279d9f10afbcc273082256ae2073495595ab53fbcd729a5a93913b3fdd75
         run: |
-          for _ in 1 2 3; do
-            timeout 120 sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null 2>&1 && break
-            timeout 120 sudo apt-get update -qq > /dev/null 2>&1 || true
-          done
-          ffmpeg -version | head -1
+          curl -fsSL "$FFMPEG_URL" -o "$RUNNER_TEMP/ffmpeg.tar.xz"
+          echo "$FFMPEG_SHA256  $RUNNER_TEMP/ffmpeg.tar.xz" | sha256sum -c -
+          mkdir -p ~/ffmpeg-bin
+          tar -xJf "$RUNNER_TEMP/ffmpeg.tar.xz" --wildcards --strip-components=2 -C ~/ffmpeg-bin '*/bin/ffmpeg' '*/bin/ffprobe'
+
+      - name: Poner ffmpeg en el PATH
+        run: |
+          chmod +x ~/ffmpeg-bin/ffmpeg ~/ffmpeg-bin/ffprobe
+          echo "$HOME/ffmpeg-bin" >> "$GITHUB_PATH"
+          ~/ffmpeg-bin/ffmpeg -version | head -n 1
+          ~/ffmpeg-bin/ffprobe -version | head -n 1
 
       - name: Instalar el backend
         run: pip install -q -e backend

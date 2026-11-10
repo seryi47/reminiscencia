@@ -26,7 +26,7 @@ Las subidas de la web y la APK (`/api/subir` → `repository_dispatch`) ya llega
 - **La publicación de lo que sube la app pasa de ~8 min a ~1 min** (solo los tiempos de arranque de los 4 jobs + el trabajo real, que son segundos): se elimina el paso de 419 s. Sin tocar seguridad, sin mover audio, sin recodificar.
 - **Mejor calidad** (ya desde ADR-0040): cero recodificación; además ahora el `.opus` publicado es **byte a byte idéntico** al subido.
 - **El id/dedup no cambian** (salen del `sha256` del fichero subido).
-- **La ruta por `push`/`workflow_dispatch`** (subidas por la página de GitHub, formatos variados) **sigue instalando ffmpeg** y conserva la lentitud de la caché rota de ADR-0030. Es una vía rara (colaboradores, no la app). Queda pendiente arreglar esa caché o pasar a un ffmpeg estático (`- [ ]`); no afecta a cómo sube el usuario.
+- **La ruta por `push`/`workflow_dispatch`** (subidas por la página de GitHub, formatos variados) y las **importaciones por incidencia** (`biblioteca.yml`, Internet Archive) ya **no usan apt**: instalan un **ffmpeg estático de BtbN/FFmpeg-Builds (GitHub), fijado por tag y verificado por SHA256, cacheado** (`~/ffmpeg-bin`, clave estable `ffmpeg-static-btbn-…`). Una sola descarga (~145 MB) la primera vez; en caliente, restauración de la caché en segundos. Sustituye la caché de `.deb` rota de ADR-0030. Para subir la versión de ffmpeg se cambian URL + SHA256 + la clave de caché.
 - **Pruebas:** `backend/tests/test_buzon.py`: el `.opus` publicado es idéntico al subido (md5 del flujo), y procesar una subida Opus **no llama a ningún subproceso** (ffmpeg/ffprobe prohibidos con monkeypatch). Lector Opus comprobado contra ffprobe (±6 ms). Suite backend verde (1431).
 
 ## Lección
