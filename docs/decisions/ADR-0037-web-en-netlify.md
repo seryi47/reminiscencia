@@ -1,6 +1,6 @@
 # ADR-0037: Segunda dirección de la web en Netlify, mientras Vercel está bloqueado
 
-- Estado: aceptada (2026-11-10), rama `feature/web-en-netlify`. La vista previa de la rama se compiló bien en Netlify; la comprobación en producción se hace al fusionar en `main`.
+- Estado: aceptada y desplegada (2026-11-10, `main` 40f1546). Producción comprobada en https://reminiscencia.netlify.app (ver «Comprobado en producción»).
 - Fecha: 2026-11-10.
 - Relacionadas: [ADR-0034](ADR-0034-web-en-cloudflare.md) (la web y el API en el Worker de Cloudflare), [ADR-0031](ADR-0031-audio-por-el-worker.md) (audio por el Worker) y [ADR-0029](ADR-0029-worker-cloudflare-y-portadas.md) (el Worker y su CORS).
 
@@ -52,6 +52,22 @@ Netlify es una **segunda dirección de la web**, https://reminiscencia.netlify.a
   - que el audio nunca pasa por Netlify;
   - que el Worker admite el origen de Netlify y no otros.
 - **Comprobar producción:** `node scripts/smoke_produccion.mjs https://reminiscencia.netlify.app`.
+- **Netlify añade a `index.html`** un comentario y su script de insignia (`/.netlify/scripts/hud?variant=public`, plan gratuito). Ese script intenta ejecutar código en línea y la CSP lo bloquea (un aviso en la consola), sin efecto en la web. No se puede quitar por la API (`built_with_badge_enabled` no cambia en el plan gratuito), y no se abre la CSP por él.
+- **En el panel**, un push a `main` que no cambia la web aparece como despliegue fallido («Canceled build due to no content change»): es la regla `ignore`, y no gasta créditos.
+
+### Comprobado en producción (2026-11-10)
+
+- **Despliegue:** `main` 40f1546 en estado `ready`. Netlify procesó 4 reglas de redirección y 1 de cabeceras, sin funciones.
+- **Comprobador de producción:** 620 OK, 0 fallos, igual que en https://reminiscencia.cometia.es. El Worker sirve 308 de 308 audios (307 desde Netlify), con rangos (206), las privadas dan 404 y los JSON tienen su tipo.
+- **No se publica:** `api/subir.js`, `vercel.json` y `server/` dan 404 en Netlify. Una portada de `covers/` llega por el Worker (200, `image/jpeg`).
+- **CORS:** el Worker responde a `Origin: https://reminiscencia.netlify.app` con `Access-Control-Allow-Origin` de ese origen.
+- **Chrome** (solo lectura):
+  - abre en Inicio;
+  - un enlace directo a `#/album/<id>` abre el álbum;
+  - reproduce (el audio avanza y el reproductor muestra la canción);
+  - «Descargar» deja la canción en la caché de audio («Descargada. Ya se puede escuchar sin conexión.»);
+  - sin red, la página abre y la canción descargada suena.
+  - El único error propio de Netlify es el aviso de la CSP del script de insignia.
 
 ### Volver a Vercel (o dejar Netlify)
 
