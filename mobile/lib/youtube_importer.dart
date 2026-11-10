@@ -217,6 +217,17 @@ class YoutubeImporter {
     cancellation?.throwIfCancelled();
     final tracks = await listPlaylist(playlistUrl, cancellation: cancellation);
     cancellation?.throwIfCancelled();
+    return importTracks(tracks, onProgress: onProgress, cancellation: cancellation);
+  }
+
+  /// Convierte una lista de pistas ya conocidas (p. ej. coincidencias de Spotify ya resueltas a YouTube; ADR-0044) sin
+  /// volver a leer YouTube: cada [YoutubeTrack] ya trae su URL, título y artista. Mismo camino que una playlist.
+  Future<List<YoutubeImportedAudio>> importTracks(
+    List<YoutubeTrack> tracks, {
+    YoutubeImportProgressCallback? onProgress,
+    YoutubeImportCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
     final root = await _tempDir();
     final importDir = Directory(
       '${root.path}/youtube-import-${DateTime.now().microsecondsSinceEpoch}-${_random.nextInt(1 << 20)}',
