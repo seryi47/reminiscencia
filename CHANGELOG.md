@@ -13,6 +13,13 @@
   - «Añadidas recientemente» lo refleja solo (la canción sale del catálogo; la vista es reactiva en ambas plataformas).
 - **Pruebas:** backend 1430, web 907, APK 599 (contrato común web+APK+backend, apply/reflected, factoría y cuerpo de la petición). Pendiente verificar en un dispositivo el ciclo completo en la APK.
 
+## Sin publicar: publicación rápida — las subidas en Opus no instalan ffmpeg (2026-11-10)
+
+- **Corrige el diagnóstico anterior.** Midiendo una ejecución real (`gh run view`), el «+3 min» no era la arquitectura ni la seguridad: era **un solo paso, «Instalar ffmpeg» = 419 s** (de 431 de `procesar`), por una **caché de `.deb` rota** que re-descargaba ffmpeg de un mirror lento. El audio ya está en R2 (subirlo tarda 5 s); moverlo no influía. [ADR-0042](docs/decisions/ADR-0042-publicacion-rapida-sin-ffmpeg-para-opus.md).
+- **Las subidas de la web y la APK (Opus) ya no necesitan ffmpeg:** se leen los metadatos del Ogg Opus en **Python puro** (sin `ffprobe`), se **copia el fichero** (sin remuxear) y el workflow **salta la instalación de ffmpeg** para `repository_dispatch`. **La publicación baja de ~8 min a ~1 min**, sin tocar seguridad.
+- La vía por la página de GitHub (`push`, formatos variados) sigue instalando ffmpeg; es rara (colaboradores) y queda como pendiente mejorar su caché.
+- **Pruebas:** backend **1431** (el `.opus` publicado es idéntico al subido; procesar una subida Opus no llama a ningún subproceso de ffmpeg/ffprobe; lector Opus comprobado contra ffprobe ±6 ms).
+
 ## Sin publicar: publicación sin recodificar el Opus ya subido (2026-11-10)
 
 - **El buzón ya no recodifica el audio que sube la app** ([ADR-0040](docs/decisions/ADR-0040-publicacion-mas-rapida-y-sin-recodificar.md)).

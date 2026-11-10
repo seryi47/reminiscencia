@@ -8,6 +8,7 @@ el vídeo.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,10 +50,13 @@ def produce_opus(source: Path, destination_dir: Path, source_codec: str, fallbac
     indicado.
     """
     if source_codec == "opus":
-        try:
-            return transcode(source, destination_dir, "opus-copy")
-        except TranscodeError:
-            pass  # el flujo Opus no se puede copiar (contenedor raro): se recodifica como respaldo.
+        # Ya es Ogg Opus (lo convierte la web/APK en el propio dispositivo): se copia el fichero tal cual, **sin ffmpeg**
+        # (ADR-0042). Byte a byte idéntico (ni siquiera se recontenariza) y, sobre todo, la publicación de estas subidas
+        # deja de necesitar ffmpeg en el runner (antes su instalación tardaba ~7 min).
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / "opus-copy.opus"
+        shutil.copyfile(source, destination)
+        return destination
     return transcode(source, destination_dir, fallback_profile)
 
 

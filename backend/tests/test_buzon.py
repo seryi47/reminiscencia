@@ -210,6 +210,27 @@ def test_una_subida_ya_en_opus_se_copia_sin_recodificar(repo):
     assert _audio_stream_md5(publicado) == md5_origen
 
 
+def test_una_subida_en_opus_no_usa_ffmpeg_ni_ffprobe(repo, monkeypatch):
+    # La publicación de lo que sube la app (ya en Opus) NO debe invocar ningún subproceso de ffmpeg/ffprobe (ADR-0042):
+    # los metadatos se leen en Python puro y el audio se copia. Así el runner no necesita instalar ffmpeg (~7 min menos).
+    nombre = "Sin ffmpeg.opus"
+    make_tone(repo / BUZON / nombre, seconds=1.0, sample_rate=48000)  # el tono se genera con ffmpeg ANTES de prohibirlo
+    ruta = f"{BUZON}/{nombre}"
+    _commit(repo, CON_LICENCIA)
+
+    def _prohibido(*args, **kwargs):
+        raise AssertionError("procesar una subida Opus no debe llamar a ffmpeg/ffprobe")
+
+    monkeypatch.setattr(subprocess, "run", _prohibido)
+    result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+
+    [entrada] = result["publicas"]
+    song = _cancion(repo, entrada["song_id"])
+    assert song["codec"] == "opus"
+    assert song["duration_s"] > 0  # la duración se leyó en Python puro
+    assert (repo / "audio-library" / "audio" / f"{song['id']}.opus").exists()
+
+
 @pytest.mark.parametrize("extension", [".mp3", ".flac", ".ogg", ".m4a", ".WAV"])
 def test_cada_formato_admitido_se_convierte_a_opus(repo, extension):
     ruta = _subir(repo, f"Formato{extension}")

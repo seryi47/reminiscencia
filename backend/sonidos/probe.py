@@ -23,6 +23,62 @@ class AudioInfo:
 
 
 def probe(path: Path) -> AudioInfo:
+    """Metadatos de audio. Para Ogg Opus (lo que suben la web y la APK, ya convertido en el dispositivo) se leen en
+    **Python puro**, sin ffprobe: así la publicación de esas subidas no necesita ffmpeg (ADR-0042; evita los ~7 min que
+    tardaba instalarlo en el runner). Para cualquier otro formato se usa ffprobe como siempre."""
+    with path.open("rb") as handle:
+        head = handle.read(4096)
+    if head[:4] == b"OggS" and b"OpusHead" in head:
+        info = _opus_info(path, head)
+        if info is not None:
+            return info
+    return _ffprobe(path)
+
+
+def _opus_info(path: Path, head: bytes) -> AudioInfo | None:
+    """Lee codec, canales, tasa de entrada y duración de un Ogg Opus sin ffprobe. La duración sale de la posición de
+    grano (granule) de la última página Ogg, en muestras a 48 kHz, menos el pre-skip de OpusHead. Devuelve None si el
+    fichero no encaja (entonces se cae a ffprobe)."""
+    try:
+        marker = head.index(b"OpusHead")
+        opus_head = head[marker:marker + 19]
+        if len(opus_head) < 19:
+            return None
+        channels = opus_head[9]
+        pre_skip = int.from_bytes(opus_head[10:12], "little")
+        input_rate = int.from_bytes(opus_head[12:16], "little") or 48000
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            size = handle.tell()
+            handle.seek(max(0, size - 65536))
+            tail = handle.read()
+        # Última página Ogg (cabecera «OggS», versión 0): su granule es el total de muestras de salida a 48 kHz.
+        page = tail.rfind(b"OggS")
+        while page >= 0 and not (page + 14 <= len(tail) and tail[page + 4] == 0):
+            page = tail.rfind(b"OggS", 0, page)
+        if page < 0:
+            return None
+        granule = int.from_bytes(tail[page + 6:page + 14], "little")
+        if granule == 0xFFFFFFFFFFFFFFFF:  # página sin fin de paquete: no da la duración
+            return None
+        samples = max(0, granule - pre_skip)
+        duration = samples / 48000.0
+        if duration <= 0 or channels <= 0:
+            return None
+        bitrate = int(size * 8 / duration)
+        return AudioInfo(
+            codec="opus",
+            sample_rate=input_rate,
+            channels=channels,
+            duration_s=duration,
+            bitrate=bitrate,
+            size_bytes=size,
+        )
+    except (ValueError, IndexError, OSError):
+        return None
+
+
+def _ffprobe(path: Path) -> AudioInfo:
     result = subprocess.run(
         [
             "ffprobe",

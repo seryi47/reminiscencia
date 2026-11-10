@@ -235,10 +235,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      # ffmpeg solo se instala si puede hacer falta (ADR-0042): las subidas de la web y la APK (repository_dispatch) ya
+      # llegan en Opus y se publican SIN ffmpeg (metadatos en Python puro y copia del fichero), así que para ellas se
+      # salta toda la instalación (antes ~7 min). La página de GitHub (push) y el reproceso manual (workflow_dispatch)
+      # pueden traer otros formatos: ahí sí se instala.
       # ffmpeg desde una caché de sus .deb (ADR-0030). La clave es el hash de la lista exacta de paquetes que apt
       # instalaría ahora (URL, nombre, tamaño y hash de su índice firmado): si cambia una versión, cambia la clave.
       - name: Calcular la clave de la caché de ffmpeg
         id: ffmpeg_clave
+        if: github.event_name != 'repository_dispatch'
         run: |
           LISTA="$RUNNER_TEMP/ffmpeg-paquetes.txt"
           if apt-get install --print-uris -qq --no-install-recommends ffmpeg > "$LISTA" && [ -s "$LISTA" ]; then
@@ -254,7 +259,7 @@ jobs:
 
       - name: Restaurar los paquetes de ffmpeg
         id: ffmpeg_cache
-        if: steps.ffmpeg_clave.outputs.lista == 'true'
+        if: github.event_name != 'repository_dispatch' && steps.ffmpeg_clave.outputs.lista == 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/ffmpeg-debs
@@ -264,6 +269,7 @@ jobs:
       # apt-pkg/acquire-item.cc): aquí se compara el de cada uno con el de la lista de apt, que sale de su índice
       # firmado. Lo que no esté en la lista o no coincida se borra, y apt lo vuelve a descargar.
       - name: Comprobar los paquetes de ffmpeg de la caché
+        if: github.event_name != 'repository_dispatch'
         run: |
           DEBS="$HOME/ffmpeg-debs"
           LISTA="$RUNNER_TEMP/ffmpeg-paquetes.txt"
@@ -293,6 +299,7 @@ jobs:
           echo "Paquetes de ffmpeg en la caché: $BUENOS comprobados, $DESCARTADOS descartados."
 
       - name: Instalar ffmpeg
+        if: github.event_name != 'repository_dispatch'
         # apt a veces se cuelga en el runner y bloquea la cola `library-catalog` entera: cada intento tiene 180 s y hay
         # tres; si otro proceso tiene el bloqueo de dpkg, se espera hasta 60 s. Con la caché, apt no descarga nada. Sin
         # regenerar el índice de las páginas de manual (man-db) y sin sincronizar cada fichero con el disco: es una
@@ -321,7 +328,7 @@ jobs:
       # Se guarda ANTES de que el job toque nada subido: lo que entra en la caché solo lo ha escrito apt. La caché es
       # de main (este job solo corre en main) y una clave no se sobrescribe.
       - name: Guardar los paquetes de ffmpeg en la caché
-        if: steps.ffmpeg_clave.outputs.lista == 'true' && steps.ffmpeg_cache.outputs.cache-hit != 'true'
+        if: github.event_name != 'repository_dispatch' && steps.ffmpeg_clave.outputs.lista == 'true' && steps.ffmpeg_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/ffmpeg-debs

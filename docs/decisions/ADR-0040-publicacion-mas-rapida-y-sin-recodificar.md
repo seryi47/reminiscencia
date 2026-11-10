@@ -21,7 +21,7 @@ El tiempo lo domina el **overhead de GitHub Actions**, no el trabajo en sí:
 - Si hay otra publicación en curso, la cola (`concurrency: library-catalog`, `queue: max`) hace esperar a la siguiente.
 - La conversión de audio de una canción es de segundos; no es el cuello de botella.
 
-**El suelo que no se puede bajar** sin cambiar el modelo: los cuatro jobs están separados **a propósito, por seguridad** (ADR-0024): el token de GitHub y las credenciales de R2 nunca coinciden con el código que procesa subidas ajenas. Juntarlos aceleraría algo, pero concentraría los secretos con el procesado de contenido no confiable; no compensa. El tiempo de aprovisionamiento y de cola de los runners es de la infraestructura de GitHub, fuera de nuestro control. Por eso una publicación tiene un suelo estructural de ~1,5–2,5 min.
+**El suelo que no se puede bajar** sin cambiar el modelo: los cuatro jobs están separados **a propósito, por seguridad** (ADR-0024)… — **CORRECCIÓN (ADR-0042, 2026-11-10): este análisis era erróneo.** Al medir los tiempos reales (`gh run view`), el 97 % del tiempo era un único paso, «Instalar ffmpeg» (419 s de 431 en `procesar`), por una **caché de `.deb` rota** que re-descargaba ffmpeg cada vez de un mirror lento. No era la arquitectura ni la seguridad. Ver [ADR-0042](ADR-0042-publicacion-rapida-sin-ffmpeg-para-opus.md): las subidas de la app (Opus) ya no instalan ffmpeg, y la publicación baja de ~8 min a ~1 min.
 
 ## Decisión
 
