@@ -19,13 +19,14 @@ export const LIBRARY_SORTS = Object.freeze([
   Object.freeze({ key: 'creador', label: 'Creador' }),
 ]);
 
-/** Abre el menú «Crear»: Lista, Álbum, Subir canciones y Homeostasia. */
+/** Abre el menú «Crear»: Lista, Álbum, Subir canciones, Homeostasia y Transferir música. */
 function openCreateMenu(ctx, anchor) {
   openMenu(anchor, [
     { label: 'Lista', description: 'Crea una lista con canciones. Se guarda en este navegador.', icon: 'list', testid: 'menu-create-playlist', action: () => { ctx.createPlaylist(); return false; } },
     { label: 'Álbum', description: 'Pide un álbum nuevo en la biblioteca para todos (en GitHub).', icon: 'album', testid: 'menu-create-album', action: viaDialog(() => ctx.createAlbum()) },
     { label: 'Subir canciones', description: 'Para todos: canciones sueltas o un ZIP. También desde Internet Archive.', icon: 'upload', testid: 'menu-upload', action: viaDialog(() => ctx.openUpload()) },
     { label: 'Homeostasia', description: 'Importa música desde un vídeo o playlist de YouTube.', icon: 'note', testid: 'menu-homeostasia', action: viaDialog(() => ctx.openHomeostasia()) },
+    { label: 'Transferir música', description: 'Trae tus canciones, álbumes y playlists de Spotify.', icon: 'note', testid: 'menu-transferir', action: viaDialog(() => ctx.openTransferir()) },
   ], { label: 'Crear' });
 }
 

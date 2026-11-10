@@ -690,6 +690,25 @@ export async function importYoutubeVideo(ctx, url, { signal, onStatus, fallbackA
 }
 
 // ==================================================
+// TRANSFERIR DESDE SPOTIFY (ADR-0044)
+// ==================================================
+
+/** Convierte una lista de pistas ya resueltas a YouTube [{url, title, artist}] y las entrega a la cola de subidas bajo un
+ *  mismo álbum (el de la colección de Spotify), por el MISMO camino que una playlist de YouTube: convertir a WAV, pasar a
+ *  Opus y publicar, conservando orden (UUIDv7) y con el dedup del pipeline. Devuelve {files, trackArtists, completedIds,
+ *  errors, total, processed}. */
+export async function importYoutubeTracks(ctx, tracks, { album = null, onProgress = () => {}, signal } = {}) {
+  const items = (tracks ?? []).filter((track) => track && track.url);
+  if (items.length === 0) return { files: [], trackArtists: [], completedIds: [], errors: [], total: 0, processed: 0 };
+  const result = await convertirPlaylist(items, onProgress, signal);
+  if (result.files.length > 0) {
+    await ctx.addUploads(result.files, { album, trackArtists: result.trackArtists });
+    result.completedIds.forEach((id) => { completedVideos.add(id); saveImportRecord(id, { state: 'queued' }); });
+  }
+  return result;
+}
+
+// ==================================================
 // ABRIR HOJA HOMEOSTASIA
 // ==================================================
 

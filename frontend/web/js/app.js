@@ -83,6 +83,7 @@ import { libraryPanel, renderLibraryPage, renderSection } from './views/library.
 import { mountPlayerUi } from './views/player-ui.js';
 import { askDuplicate, openUploadSheet } from './views/upload.js';
 import { openHomeostasiaSheet } from './views/homeostasia.js';
+import { openTransferirSheet } from './views/transferir.js';
 
 const DATA_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
 const PLAYER_PREFS_KEY = 'reminiscencia.reproductor';
@@ -1137,6 +1138,9 @@ const ctx = {
   changeCover: (target) => openCoverSheet(ctx, target),
   openUpload: () => openUploadSheet(ctx),
   openHomeostasia: () => openHomeostasiaSheet(ctx),
+  openTransferir: () => openTransferirSheet(ctx),
+  // Canciones publicadas de la biblioteca, para el dedup de «Transferir música» (ADR-0044).
+  librarySongs: () => state.catalog?.songs ?? [],
   addUploads: (files, options) => addUploads(files, options),
   get uploads() {
     return uploads;
@@ -1573,6 +1577,12 @@ async function start() {
   });
   window.addEventListener('hashchange', () => {
     userNavigated = true;
+    // «Transferir música» (ADR-0044) es una hoja, no una ruta: al volver del login de Spotify (returnTo = #transferir) se
+    // abre sobre la vista actual y se limpia el hash para que no se reabra al recargar.
+    if (location.hash === '#transferir') {
+      history.replaceState(null, '', '#/');
+      openTransferirSheet(ctx);
+    }
     onRoute();
   });
   // Un clic en un enlace interno cuenta como navegación (aunque lleve al mismo hash).
@@ -1598,8 +1608,11 @@ async function start() {
     if (document.visibilityState === 'visible') edits.check();
   });
 
+  const openTransferirOnLoad = location.hash === '#transferir'; // vuelta del login de Spotify (ADR-0044)
+  if (openTransferirOnLoad) history.replaceState(null, '', '#/');
   state.route = parseRoute(location.hash);
   render();
+  if (openTransferirOnLoad) openTransferirSheet(ctx);
 
   registerPwa({
     // Con una canción cargada (sonando o en pausa) o el vídeo de YouTube abierto, una versión nueva no recarga la página.
