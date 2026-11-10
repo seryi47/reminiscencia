@@ -1,6 +1,6 @@
 # ADR-0044: «Transferir música» — importar de Spotify vía YouTube a la biblioteca
 
-- Estado: **en curso** (2026-11-10). Diseño aceptado; implementación por etapas. Etapa 1 (motor de identificación) en construcción con un set de pruebas «dorado».
+- Estado: **implementada en web y APK** (2026-11-10), a falta de la verificación de extremo a extremo en vivo (el usuario la hace: login real de Spotify + descarga + publicación, en web y en dispositivo). Todo el código está en `main` con pruebas; las ejecuciones de Actions y el comportamiento en dispositivo no se pueden correr desde el entorno de desarrollo. Client ID real configurado (público, en `spotify-config.js`, sobreescribible por env). El Worker se auto-despliega al hacer push, así que los endpoints quedan vivos en `reminiscencia.cometia.es`.
 - Fecha: 2026-11-10.
 - Relacionadas: [ADR-0021](ADR-0021-buscar-en-youtube.md) (resolver una consulta a candidatos de YouTube), [ADR-0019](ADR-0019-playlists-de-youtube-como-albumes.md) (playlist → álbum, artista y orden), [ADR-0017](ADR-0017-subida-directa-github-web-publica.md)/[ADR-0024](ADR-0024-audio-privado-en-r2.md)/[ADR-0030](ADR-0030-subida-rapida.md) (pipeline de subida), [ADR-0026](ADR-0026-albumes-orden-seleccion-duplicados.md) (duplicados y orden), [ADR-0028](ADR-0028-contrato-comun-y-busqueda.md) (búsqueda/normalización), [ADR-0032](ADR-0032-titulos-limpios.md) (títulos limpios), [ADR-0039](ADR-0039-descarga-youtube-persistente.md) (persistir la intención de importar), [ADR-0029](ADR-0029-worker-cloudflare.md)/[ADR-0038](ADR-0038-youtube-en-netlify-con-failover.md) (dónde viven el código servidor y los secretos).
 
@@ -49,14 +49,18 @@ Las coincidencias aceptadas producen, por pista, lo mismo que hoy produce la imp
 
 Un apartado propio, coherente con el diseño actual: conectar Spotify → listar/elegir contenido → analizar → **revisar coincidencias** (con alternativas y búsqueda manual) → confirmar → progreso de descarga/publicación → resumen. Debe distinguir identificadas / pendientes / descargando / disponibles.
 
-## Etapas (cada una con pruebas, verificada en web y APK)
+## Etapas (cada una con pruebas)
 
-1. **Motor de identificación** (servidor, puro) + set de pruebas «dorado» (tipo *The Scientist*, directos, covers, remix, instrumental, colisiones de subcadena, acentos, feat., sin candidato). ← *en curso*
-2. **Ingesta de Spotify** (OAuth + leer canción/álbum/playlist/varias), con respuestas simuladas hasta tener credenciales.
-3. **Resolver en vivo**: unir el motor a la búsqueda real de YouTube.
-4. **UI de revisión** (web y APK) sobre el resultado del motor.
-5. **Enganche al pipeline** (producir Files + `{album, trackArtists}` y llamar a `addUploads`/`uploadShared`), con dedup y orden.
-6. **Cola grande / segundo plano / notificaciones** para playlists de cientos/miles, y verificación de extremo a extremo en ambas plataformas.
+1. ✅ **Motor de identificación** (`server/spotify-match.js`, puro) + set «dorado» (`tests/web-unit/spotify-match.test.mjs`).
+2. ✅ **Ingesta de Spotify** (`server/spotify-core.js` parseo/normalización; `server/spotify-auth.js` OAuth PKCE; `server/spotify-fetch.js` transporte) con fixtures.
+3. ✅ **Resolver + endpoints** (`server/spotify-resolve.js`, `server/spotify-endpoints.js`) enrutados en Worker (nativo), Vercel (shims) y Netlify (redirect); la búsqueda de YouTube se inyecta.
+4. ✅ **UI de revisión** — web (`js/views/transferir.js` + lógica `js/spotify-transfer.js`) y APK (`lib/ui/spotify_transfer_page.dart` + `lib/spotify_transfer.dart`), con alternativas y búsqueda manual.
+5. ✅ **Enganche al pipeline** — web `importYoutubeTracks` (homeostasia.js) → `addUploads`; APK `importTracks` (youtube_importer.dart) → `uploadShared`. Dedup (regla común) y orden (álbum de Spotify).
+6. ⏳ **Segundo plano / escala**: hereda la cola de subidas persistente y la descarga reanudable que ya existen; el `resolve` pagina (offset/limit) para playlists grandes. La verificación de extremo a extremo en vivo (login real + descarga + publicación, web y APK) la hace el usuario.
+
+## Límite conocido del login web
+
+El Redirect URI registrado es el del Worker (`reminiscencia.cometia.es`), así que el callback siempre cae ahí y lee el `verifier` de `sessionStorage` del mismo origen: **el login web funciona servido desde cometia** (el dominio principal). Desde los dominios de Vercel/Netlify el `sessionStorage` sería de otro origen; para esos casos se usaría un redirect propio o se conecta desde cometia. La APK no se ve afectada (su login va por un WebView que intercepta la vuelta).
 
 ## Consecuencias
 
