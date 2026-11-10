@@ -5257,6 +5257,22 @@
       "size_bytes": 1543672,
       "added_at": "2026-11-10T12:26:11+00:00",
       "public": false
+    },
+    {
+      "id": "Se3c157c7cad630ae",
+      "title": "Yonaguni",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "e3c157c7cad630aea7a491c7a3c4352669d24c32d131695dfc7e2a399e32e016",
+      "duration_s": 211.011,
+      "codec": "opus",
+      "size_bytes": 1496237,
+      "added_at": "2026-11-10T15:23:24+00:00",
+      "public": true
     }
   ]
 }
