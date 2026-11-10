@@ -126,7 +126,9 @@ class PlaybackProgress {
 
 /// Contrato entre la interfaz y el reproductor. La implementación real es SonidosAudioHandler.
 abstract interface class PlaybackPort {
-  /// Canción actual, si está sonando y los modos aleatorio y repetir.
+  /// Canción actual, si está sonando y los modos aleatorio y repetir. Sin canción hasta que el usuario toca una y
+  /// otra vez sin canción cuando el reproductor se para (quitar la app de recientes, cerrar la notificación o
+  /// `kIdleStopAfter` sin sonar).
   ValueListenable<NowPlaying> get nowPlaying;
 
   /// Posición y duración de la canción actual (ver [PlaybackProgress]).
@@ -138,12 +140,9 @@ abstract interface class PlaybackPort {
   /// Ids de las canciones que están en la cola cargada. Sus ficheros no se borran aunque la web los retire.
   Set<String> get queueSongIds;
 
-  /// Prepara la cola con estas canciones sin empezar a sonar.
-  /// Lanza AppException con el motivo si no se puede.
-  Future<void> loadQueue(List<Song> songs);
-
-  /// Reproduce la canción [index] de [songs]; si la cola no es esa, la recarga.
-  /// Lanza AppException si no se puede reproducir.
+  /// Reproduce la canción [index] de [songs]; si la cola no es esa, la carga empezando por [index]. Es la única
+  /// forma de cargar una cola: al abrir la app no hay nada cargado ([nowPlaying] sin canción) hasta que el
+  /// usuario toca una. Lanza AppException si no se puede reproducir.
   Future<void> playAt(List<Song> songs, int index);
 
   /// Reproduce una dirección de audio de internet (resultado de YouTube, ADR-0021) como cola de una sola canción.

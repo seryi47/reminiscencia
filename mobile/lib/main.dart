@@ -6,6 +6,7 @@ import 'app.dart';
 import 'collections_controller.dart';
 import 'collections_store.dart';
 import 'covers.dart';
+import 'error_log.dart';
 import 'library_controller.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
@@ -23,6 +24,12 @@ import 'youtube_stream.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Antes que nada: en la versión de producción un error no capturado queda registrado en lugar de perderse.
+  try {
+    installErrorHandlers(await ErrorLog.open());
+  } catch (error) {
+    debugPrint('registro: no se pudo preparar: $error');
+  }
   registerFontLicense();
   final libraryStore = LibraryStore();
   final covers = CoverCache(base: kLibraryBase);
@@ -37,12 +44,8 @@ Future<void> main() async {
   final SonidosAudioHandler handler;
   try {
     handler = await AudioService.init(
-      builder: () => SonidosAudioHandler(libraryStore, covers),
-      config: const AudioServiceConfig(
-        androidNotificationChannelId: 'es.orbitalabs.reminiscencia.audio',
-        androidNotificationChannelName: 'Reproducción',
-        androidNotificationOngoing: true,
-      ),
+      builder: () => SonidosAudioHandler(libraryStore, covers: covers),
+      config: kAudioServiceConfig,
     );
   } catch (error) {
     debugPrint('reproductor: no se pudo iniciar: $error');

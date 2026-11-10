@@ -5,4 +5,6 @@
 <full-backup-content>
     <exclude domain="root" path="app_flutter/biblioteca-local/" />
     <exclude domain="root" path="app_flutter/listas-portadas/" />
+    <!-- Registro de errores de la app (lib/error_log.dart): solo sirve en este teléfono. -->
+    <exclude domain="file" path="registro/" />
 </full-backup-content>

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reminiscencia/app_error.dart';
 import 'package:reminiscencia/ui/cards.dart';
+import 'package:reminiscencia/ui/player.dart';
 
 import 'support/fakes.dart';
 
@@ -40,35 +41,44 @@ void main() {
   );
 
   testWidgets(
-    'si el audio no se puede preparar, las canciones siguen visibles y se indica el motivo',
+    'arranque en frío: sin minirreproductor ni canción marcada hasta que se toca una; entonces suena',
     (tester) async {
       setWindow(tester, const Size(400, 800));
-      final t = buildTestServices(
-        songs: [fakeSong('s1'), fakeSong('s2')],
-        audioError: const AppException('Falta espacio en el dispositivo.'),
-      );
+      final t = buildTestServices(songs: [fakeSong('s1'), fakeSong('s2')]);
       await pumpApp(tester, t.services);
 
-      expect(find.text('Canción s1'), findsOneWidget);
-      expect(find.text('Canción s2'), findsOneWidget);
-      expect(
-        find.textContaining('No se puede preparar el audio'),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('Falta espacio en el dispositivo.'),
-        findsOneWidget,
-      );
-      expect(find.text('Reintentar'), findsOneWidget);
-
-      t.playback.loadError = null;
-      await tester.tap(find.text('Reintentar'));
-      await settle(tester);
-
+      // Nada se prepara al abrir (DESIGN.md §10): ni cola, ni canción actual, ni minirreproductor.
+      expect(t.playback.log, isEmpty);
+      expect(t.playback.nowPlaying.value.songId, isNull);
+      expect(t.playback.queueSongIds, isEmpty);
+      expect(find.byType(MiniPlayer), findsNothing);
       expect(
         find.textContaining('No se puede preparar el audio'),
         findsNothing,
       );
+
+      // Una sincronización tampoco carga nada.
+      await t.services.library.refresh();
+      await settle(tester);
+      expect(t.playback.log, isEmpty);
+      expect(find.byType(MiniPlayer), findsNothing);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ShelfCard),
+          matching: find.text('Canción s2'),
+        ),
+      );
+      await settle(tester);
+      expect(t.playback.log, ['play:1']);
+      expect(t.playback.nowPlaying.value.songId, 's2');
+      expect(t.playback.nowPlaying.value.playing, isTrue);
+      expect(find.byType(MiniPlayer), findsOneWidget);
+
+      // Parar deja el reproductor vacío: el minirreproductor desaparece.
+      await t.playback.stop();
+      await settle(tester);
+      expect(find.byType(MiniPlayer), findsNothing);
     },
   );
 
