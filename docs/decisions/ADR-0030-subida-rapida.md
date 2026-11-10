@@ -1,6 +1,6 @@
 # ADR-0030: Subida rápida: una ejecución publica todo lo pendiente y el cliente canaliza
 
-- Estado: aceptada (rama `feature/subida-rapida`, 2026-11-06; pendiente de fusionar en main). Sin verificar todavía en vivo (ver «Qué no se ha verificado»).
+- Estado: aceptada (rama `feature/subida-rapida`, 2026-11-06; pendiente de fusionar en main). Sin verificar todavía en vivo (ver «Qué no se ha verificado»). **Actualizado por [ADR-0043](ADR-0043-buzon-dos-jobs-secretos-por-paso.md):** los jobs `autorizar`, `recoger` y `procesar` del buzón se fusionaron en un job `preparar` (secretos por paso); y por [ADR-0042](ADR-0042-publicacion-rapida-sin-ffmpeg-para-opus.md): la caché de `.deb` de ffmpeg se sustituyó por un binario estático (las subidas en Opus ya no instalan ffmpeg).
 - Fecha: 2026-11-06.
 - Modifica: [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) (el cliente ya no envía «de uno en uno y en orden») y [ADR-0024](ADR-0024-audio-privado-en-r2.md), decisión 3 (qué recoge `recoger` y en qué orden se cataloga).
 - Relacionadas: [ADR-0010](ADR-0010-procesado-y-publicacion-separados.md) (procesado sin secretos), [ADR-0014](ADR-0014-buzon-de-canciones.md) (buzón), [ADR-0025](ADR-0025-publicar-robusto.md) (publicar robusto) y [ADR-0026](ADR-0026-albumes-orden-seleccion-duplicados.md) (número de pista).

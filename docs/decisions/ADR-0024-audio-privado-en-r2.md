@@ -1,6 +1,6 @@
 # ADR-0024: Todo el audio en un bucket privado de R2; Git solo guarda el catálogo
 
-- Estado: aceptada (2026-11-05), en dos partes que se despliegan por orden (ver «Despliegue»). Parte 2 en la rama `feature/audio-fuera-de-git`. Sin verificar todavía en vivo.
+- Estado: aceptada (2026-11-05), en dos partes que se despliegan por orden (ver «Despliegue»). Parte 2 en la rama `feature/audio-fuera-de-git`. Sin verificar todavía en vivo. **Actualizado por [ADR-0043](ADR-0043-buzon-dos-jobs-secretos-por-paso.md):** el job `recoger` de la decisión 3 se fusionó con `autorizar` y `procesar` en un job `preparar`, sin el artefacto `buzon-entrada`; el aislamiento del token de escritura se mantiene (otro runner), y las claves de R2 de solo lectura pasan de aislarse por runner a aislarse por paso.
 - Fecha: 2026-11-05
 - Modifica: [ADR-0017](ADR-0017-subida-directa-github-web-publica.md) (los trozos de `/api/subir` ya no van a `main`), [ADR-0020](ADR-0020-audio-en-r2.md) (el audio público ya no se toma de `audio-library/audio/`), [ADR-0011](ADR-0011-publicar-regenera-parte-publica.md), decisión 6 (la parada por falta de audio pasa a `sync_r2.py`), y [ADR-0003](ADR-0003-almacenamiento-audio-github.md) y [ADR-0007](ADR-0007-catalogo-y-flujo-desde-vercel.md) en lo que dicen de versionar el audio en Git.
 - Relacionadas: [ADR-0010](ADR-0010-procesado-y-publicacion-separados.md) (procesado sin secretos), [ADR-0014](ADR-0014-buzon-de-canciones.md) (buzón) y [ADR-0025](ADR-0025-publicar-robusto.md) (publicar aunque main avance).

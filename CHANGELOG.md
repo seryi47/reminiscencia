@@ -1,3 +1,10 @@
+## Sin publicar: el buzón publica en dos jobs, con los secretos por paso (2026-11-10)
+
+- **Menos arranques de runner = publicación más rápida** ([ADR-0043](docs/decisions/ADR-0043-buzon-dos-jobs-secretos-por-paso.md)). Tras quitar ffmpeg (ADR-0042), lo que quedaba eran los arranques de los **cuatro** runners del buzón y el traspaso de artefactos entre ellos.
+- **`autorizar` + `recoger` + `procesar` se fusionan en un job `preparar`**, y se elimina el artefacto intermedio `buzon-entrada`. Quedan **dos jobs** (`preparar` y `publicar`).
+- **Se toca seguridad lo mínimo, con autorización del usuario:** los secretos van **por paso**, no por job. El token de **lectura** solo en los pasos de permiso y de pendiente; las claves de R2 (solo lectura) solo en el de recoger; y el paso que ejecuta **`buzon.py`** (código sobre subidas ajenas) **sin ningún secreto**. El token de **escritura** sigue **aislado en otro runner** (`publicar`), que no ejecuta nada del procesado: lo único cuya fuga tomaría el repositorio no se mueve.
+- **Pruebas:** `test_buzon_workflow.py` reescrito para dos jobs, con una invariante nueva y explícita (el paso de procesado no tiene ningún secreto en su entorno). Backend **1430** verde. El tiempo real y el funcionamiento de extremo a extremo se confirman en la **siguiente subida real** (las ejecuciones de Actions no se pueden correr desde aquí). Sin afirmar un número sin medir (lección de ADR-0042).
+
 ## Sin publicar: avisos de subida que se descartan deslizando (2026-11-10)
 
 - **Los avisos de subida/publicación se pueden descartar con un gesto** (punto 4 del encargo):

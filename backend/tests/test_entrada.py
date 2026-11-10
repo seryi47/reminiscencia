@@ -397,7 +397,7 @@ def test_the_job_script_reads_the_event_name_and_the_collected_folder(repo, tmp_
 
 
 def test_processing_in_the_sparse_checkout_of_the_job_packages_the_same_as_a_full_checkout(repo, tmp_path, opus_bytes):
-    # ADR-0030: 'procesar' solo baja de main lo de su sparse-checkout (modo cone). El paquete debe ser el mismo.
+    # ADR-0030 y ADR-0043: 'preparar' solo baja de main lo de su sparse-checkout (modo cone). El paquete debe ser el mismo.
     from test_buzon_workflow import _jobs, _sparse, _text
 
     for ruta, texto in {"docs/nota.md": "nota\n", "mobile/lib/app.dart": "// app\n", "frontend/web/js/app.js": "//\n",
@@ -406,13 +406,13 @@ def test_processing_in_the_sparse_checkout_of_the_job_packages_the_same_as_a_ful
         (repo / ruta).write_text(texto, encoding="utf-8")
     _git(repo, "add", "-A")
     _git(repo, "-c", "user.name=p", "-c", "user.email=p@example.invalid", "commit", "-qm", "más árbol")
-    _, _, procesar, _ = _jobs(_text())
+    preparar, _ = _jobs(_text())
     clones = {}
     for name in ("completo", "sparse"):
         clone = tmp_path / name
         subprocess.run(["git", "clone", "-q", "--no-local", str(repo), str(clone)], check=True)
         if name == "sparse":
-            _git(clone, "sparse-checkout", "set", "--cone", *_sparse(procesar))
+            _git(clone, "sparse-checkout", "set", "--cone", *_sparse(preparar))
             assert not (clone / "docs").exists() and not (clone / "mobile").exists()
             assert not (clone / "frontend/web/js").exists() and (clone / "frontend/web/data/songs.json").is_file()
         clones[name] = clone

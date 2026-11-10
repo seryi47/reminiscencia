@@ -13,18 +13,21 @@ name: buzon
 # Portadas (ADR-0016): audio-library/buzon/portadas/<ID>.<jpg|jpeg|png|webp>, con el id de una canción o de una
 # carpeta, hasta 10 MiB. 'procesar' la convierte con ffmpeg a JPEG de 640x640 en audio-library/covers/<ID>.jpg y el
 # catálogo apunta a ella; 'publicar' copia a frontend/web/covers/ las de canciones públicas y carpetas. Sin licencia.
-# Jobs (ADR-0008, ADR-0010, ADR-0011, ADR-0024): 'autorizar' comprueba el permiso de quien hizo el push o el dispatch.
-# 'recoger' baja del bucket privado las subidas completas de la web (credenciales de R2, solo lectura de entrada/, sin
-# token de GitHub) y se las pasa a 'procesar' como artefacto. 'procesar' convierte sin token ni credenciales y deja un
-# paquete con el catálogo, el audio y los borrados del buzón. 'publicar' valida el paquete, lo aplica, regenera la
-# parte pública desde el catálogo, confirma, sube el audio a R2, sube a main y borra de entrada/ lo recogido; el token
-# de GitHub solo llega al paso que sube a main y las credenciales de R2 solo a los pasos de R2. Publicar no ejecuta
-# ffmpeg ni código del procesado.
-# Subida rápida (ADR-0030): cada subida de la web lanza su ejecución, pero la primera que llega recoge TODO lo completo
-# del bucket (por orden de llegada, con tope) y lo publica de una vez; las siguientes de la cola no encuentran nada y
-# terminan tras 'recoger' (cantidad=0), sin procesar ni instalar ffmpeg. 'recoger' y 'procesar' solo bajan de main lo
-# que usan (sparse-checkout), 'procesar' no instala el backend (no tiene dependencias: los scripts lo importan desde
-# backend/) y toma los .deb de ffmpeg de una caché comprobada contra el índice de apt.
+# Jobs (ADR-0008, ADR-0010, ADR-0011, ADR-0024, ADR-0043): dos jobs. 'preparar' comprueba el permiso de quien hizo el
+# push o el dispatch, mira si queda algo en el buzón de main, baja del bucket privado las subidas completas de la web y
+# convierte a Opus, y deja un paquete con el catálogo, el audio y los borrados del buzón. Los secretos van POR PASO: el
+# token de LECTURA solo en los pasos del permiso y de lo pendiente, y las credenciales de R2 (solo lectura de entrada/)
+# solo en el paso de recoger; el paso que ejecuta código sobre las subidas ajenas (scripts/buzon.py) NO tiene ningún
+# secreto en su entorno. 'publicar' (otro runner) valida el paquete, lo aplica, regenera la parte pública desde el
+# catálogo, confirma, sube el audio a R2, sube a main y borra de entrada/ lo recogido; el token de ESCRITURA solo llega
+# al paso que sube a main y las credenciales de R2 solo a los pasos de R2. Publicar no ejecuta ffmpeg ni código del
+# procesado: ahí sigue aislado el token con el que se puede escribir en el repositorio (ADR-0024).
+# Subida rápida (ADR-0030, ADR-0042, ADR-0043): cada subida de la web lanza su ejecución, pero la primera que llega
+# recoge TODO lo completo del bucket (por orden de llegada, con tope) y lo publica de una vez; las siguientes de la cola
+# no encuentran nada y terminan en 'preparar' (publicar=false), sin procesar ni instalar ffmpeg, y sin lanzar
+# 'publicar'. 'preparar' solo baja de main lo que usa (sparse-checkout) y no instala el backend (no tiene dependencias:
+# los scripts lo importan desde backend/). Las subidas de la web y la APK llegan en Opus y se publican SIN ffmpeg
+# (ADR-0042); para otros formatos (push/dispatch manual) se usa un ffmpeg estático fijado por SHA256 y cacheado.
 # El push del bot no vuelve a lanzar este workflow: GitHub no lanza workflows con pushes hechos con GITHUB_TOKEN.
 # Ningún nombre de archivo ni mensaje de commit se interpola en un script: el procesado los lee del evento.
 
@@ -52,21 +55,26 @@ concurrency:
   queue: max
 
 jobs:
-  autorizar:
-    # Quien hizo el push (y quien relanza una ejecución) debe tener permiso de escritura (admin, maintain o write). En
-    # un repository_dispatch es la cuenta del token de /api/subir.
+  preparar:
+    # Fusiona autorizar + recoger + procesar en un solo runner (ADR-0043): menos arranques de runner y sin el artefacto
+    # «entrada» intermedio. Los secretos van POR PASO, no por job: el token de LECTURA solo en los pasos del permiso y de
+    # lo pendiente; las claves de R2 (solo lectura) solo en el paso de recoger. El paso que ejecuta código sobre subidas
+    # ajenas (scripts/buzon.py) NO tiene ningún secreto en su entorno, como antes. El token de ESCRITURA sigue aislado en
+    # el job 'publicar' (otro runner), que no ejecuta código del procesado. 'publicar' no cambia.
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
     permissions:
       contents: read
     defaults:
       run:
         shell: bash
     outputs:
-      permitido: ${{ steps.permiso.outputs.permitido }}
-      pendiente: ${{ steps.pendiente.outputs.pendiente }}
+      cantidad: ${{ steps.recoger.outputs.cantidad }}
+      ids: ${{ steps.recoger.outputs.ids }}
+      publicar: ${{ steps.plan.outputs.publicar }}
     steps:
-      # Sin checkout: este job no ejecuta código del repositorio. Solo consulta el permiso.
+      # Quien hizo el push (y quien relanza) debe tener permiso de escritura (admin, maintain o write). En un
+      # repository_dispatch es la cuenta del token de /api/subir. Solo token de LECTURA (consultar colaboradores).
       - name: Comprobar el permiso de quien sube
         id: permiso
         env:
@@ -76,7 +84,6 @@ jobs:
         run: |
           permitido=true
           for CUENTA in "$ACTOR" "$RELANZA"; do
-            # Si la consulta falla (por ejemplo, la cuenta no es colaboradora), cuenta como sin permiso.
             if ! PERMISO=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$CUENTA/permission" --jq .permission); then
               PERMISO=none
             fi
@@ -86,17 +93,13 @@ jobs:
               *) permitido=false ;;
             esac
           done
-          echo "permitido=$permitido" >> "$GITHUB_OUTPUT"
           if [ "$permitido" != "true" ]; then
             echo "Solo las cuentas con permiso de escritura pueden subir canciones al buzón." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-      # Cada subida lanza un run, pero el primero ya procesa todo lo que hay en main. Los runs que llegan después
-      # de que el buzón se vaciara no tienen nada que hacer: se omiten procesar y publicar (sin ffmpeg ni commits).
-      # Se mira main ahora, no el evento. Se cuentan los archivos del buzón y los manifiestos de partes. En un aviso de
-      # la web (repository_dispatch) el buzón de main no se procesa (ADR-0024): solo cuentan los manifiestos de partes
-      # antiguos de .partes, que sí se unen. Lo pendiente en el bucket privado lo cuenta 'recoger' (ADR-0030).
+      # ¿Queda algo en el buzón de main? Se mira main ahora, no el evento. En un aviso de la web (repository_dispatch) el
+      # buzón de main no se procesa (ADR-0024): solo cuentan los manifiestos de partes antiguos de .partes.
       - name: Comprobar si queda algo pendiente en el buzón
         id: pendiente
         env:
@@ -124,29 +127,9 @@ jobs:
             echo "pendiente=true" >> "$GITHUB_OUTPUT"
           else
             echo "pendiente=false" >> "$GITHUB_OUTPUT"
-            echo "El buzón de main ya está vacío." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  recoger:
-    # Baja del bucket privado de R2 las subidas completas de la web y la APK (entrada/<UUID>/ con manifiesto; ADR-0024)
-    # y las deja en un artefacto para 'procesar', que no tiene secretos. Solo en un repository_dispatch o a mano: un push
-    # de la página de GitHub no las toca (cada subida de la web lanza su propio run). Ejecuta solo código de main, con
-    # la biblioteca estándar de Python: no instala nada. Sin token de GitHub. Solo lee del bucket.
-    needs: autorizar
-    if: needs.autorizar.outputs.permitido == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: bash
-    outputs:
-      cantidad: ${{ steps.recoger.outputs.cantidad }}
-      ids: ${{ steps.recoger.outputs.ids }}
-    steps:
-      # Solo lo que ejecuta este job (scripts/entrada_r2.py y backend/sonidos), sin el historial ni el resto del árbol
-      # (ADR-0030). Con sparse-checkout, el checkout baja además sin el contenido de lo demás (blob:none).
+      # Solo lo que usa este job (ADR-0030): scripts, backend y la biblioteca; sin historial ni contenido del resto.
       - name: Obtener main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -155,14 +138,26 @@ jobs:
           sparse-checkout: |
             scripts
             backend/sonidos
+            audio-library
+            frontend/web/data
+            frontend/web/covers
 
-      - name: Preparar Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - name: Guarda de rama
+        run: |
+          mkdir -p "$RUNNER_TEMP/paquete"
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "El buzón solo se procesa desde main (ejecución desde $GITHUB_REF_NAME)." >&2
+            exit 1
+          fi
+
+      # Sin instalar el backend con pip: no tiene dependencias y los scripts lo importan desde backend/ (sys.path).
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
-      # Recoge TODAS las subidas completas del bucket, no solo la del aviso, por orden de llegada y como mucho 50 o
-      # 2 GiB (sonidos.entrada; ADR-0030). Si no hay ninguna, cantidad=0 y la ejecución termina aquí.
+      # Recoge TODAS las subidas completas del bucket privado (sonidos.entrada; ADR-0030), no solo la del aviso. Claves de
+      # R2 de SOLO LECTURA, y solo en este paso. Si no hay ninguna, cantidad=0. En un push de la página de GitHub no se
+      # recoge nada de R2 (cada subida de la web lanza su propio run).
       - name: Recoger las subidas de la web del bucket privado
         id: recoger
         env:
@@ -183,74 +178,33 @@ jobs:
           fi
           python scripts/entrada_r2.py recoger --salida "$RUNNER_TEMP/entrada"
 
-      - name: Pasar las subidas a procesar
-        if: steps.recoger.outputs.cantidad != '0'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: buzon-entrada
-          path: ${{ runner.temp }}/entrada
-          retention-days: 1
-          if-no-files-found: error
-
-  procesar:
-    needs: [autorizar, recoger]
-    if: >-
-      needs.autorizar.outputs.permitido == 'true' &&
-      (needs.autorizar.outputs.pendiente == 'true' || needs.recoger.outputs.cantidad != '0')
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: bash
-    steps:
-      # Sin credenciales en el disco: el procesado no tiene nada con que escribir en el repositorio. Se procesa main
-      # tal como está ahora (una ejecución relanzada no trabaja sobre una copia antigua). Solo lo que usa el procesado
-      # (ADR-0030): los scripts, el backend, la biblioteca (catálogo, buzón y portadas) y la parte pública que
-      # regenera; sin la web, la APK, las pruebas ni la documentación. Con el modo «cone», también los ficheros sueltos
-      # de la raíz y de las carpetas que llevan a esas (frontend/, frontend/web/ y backend/).
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          persist-credentials: false
-          sparse-checkout: |
-            scripts
-            backend/sonidos
-            audio-library
-            frontend/web/data
-            frontend/web/covers
-
-      # Solo main procesa. Va antes de ejecutar nada del árbol.
-      - name: Guarda de rama
+      # Si no hay nada en el buzón de main ni subidas de la web, no se procesa ni se publica (se salta lo demás).
+      - name: Plan de publicación
+        id: plan
+        env:
+          PENDIENTE: ${{ steps.pendiente.outputs.pendiente }}
+          CANTIDAD: ${{ steps.recoger.outputs.cantidad }}
         run: |
-          mkdir -p "$RUNNER_TEMP/paquete"
-          if [ "$GITHUB_REF_NAME" != "main" ]; then
-            echo "El buzón solo se procesa desde main (ejecución desde $GITHUB_REF_NAME)." >&2
-            exit 1
+          if [ "$PENDIENTE" = "true" ] || [ "$CANTIDAD" != "0" ]; then
+            echo "publicar=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publicar=false" >> "$GITHUB_OUTPUT"
+            echo "El buzón de main ya está vacío y no hay subidas de la web: nada que procesar." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # Sin instalar el backend con pip: no tiene dependencias y los scripts lo importan desde backend/ (sys.path).
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
-
-      # ffmpeg solo se prepara si puede hacer falta (ADR-0042): las subidas de la web y la APK (repository_dispatch) ya
-      # llegan en Opus y se publican SIN ffmpeg (metadatos en Python puro y copia del fichero), así que para ellas se
-      # salta todo esto. La página de GitHub (push) y el reproceso manual (workflow_dispatch) pueden traer otros formatos
-      # (WAV, MP3, FLAC…): para ellos se usa un ffmpeg ESTÁTICO fijado por SHA256 y cacheado. Sustituye a la caché de .deb
-      # de ADR-0030, que estaba rota (acertaba la clave pero descartaba sus 87 paquetes y los re-descargaba de un mirror
-      # lento → ~7 min); ahora es una sola descarga de ~145 MB de GitHub, cacheada: en caliente, unos segundos.
+      # ffmpeg solo si hay algo que procesar y no es una subida de la app (ADR-0042): las subidas de la web/APK
+      # (repository_dispatch) llegan en Opus y se publican sin ffmpeg. El resto usa un ffmpeg ESTÁTICO fijado por SHA256
+      # y cacheado (sustituye a la caché de .deb rota de ADR-0030; una sola descarga, luego segundos).
       - name: Preparar ffmpeg (estático, cacheado)
         id: ffmpeg_cache
-        if: github.event_name != 'repository_dispatch'
+        if: steps.plan.outputs.publicar == 'true' && github.event_name != 'repository_dispatch'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/ffmpeg-bin
           key: ffmpeg-static-btbn-n8.1.3-34-ga35157abb9-gpl
 
       - name: Descargar ffmpeg estático si no está en caché
-        if: github.event_name != 'repository_dispatch' && steps.ffmpeg_cache.outputs.cache-hit != 'true'
+        if: steps.plan.outputs.publicar == 'true' && github.event_name != 'repository_dispatch' && steps.ffmpeg_cache.outputs.cache-hit != 'true'
         env:
           # Build estático de BtbN/FFmpeg-Builds (GitHub), con ffmpeg y ffprobe. Fijado por tag y verificado por SHA256.
           FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-09-12-42/ffmpeg-n8.1.3-34-ga35157abb9-linux64-gpl-8.1.tar.xz
@@ -262,35 +216,29 @@ jobs:
           tar -xJf "$RUNNER_TEMP/ffmpeg.tar.xz" --wildcards --strip-components=2 -C ~/ffmpeg-bin '*/bin/ffmpeg' '*/bin/ffprobe'
 
       - name: Poner ffmpeg en el PATH
-        if: github.event_name != 'repository_dispatch'
+        if: steps.plan.outputs.publicar == 'true' && github.event_name != 'repository_dispatch'
         run: |
           chmod +x ~/ffmpeg-bin/ffmpeg ~/ffmpeg-bin/ffprobe
           echo "$HOME/ffmpeg-bin" >> "$GITHUB_PATH"
           ~/ffmpeg-bin/ffmpeg -version | head -n 1
           ~/ffmpeg-bin/ffprobe -version | head -n 1
 
-      # Las subidas de la web que bajó 'recoger' (trozos y manifiesto de cada una, y su orden), fuera del repositorio.
-      - name: Descargar las subidas de la web
-        if: needs.recoger.outputs.cantidad != '0'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: buzon-entrada
-          path: ${{ runner.temp }}/entrada
-
-      # Lee los archivos del push en el evento (GITHUB_EVENT_PATH) y escribe el resumen del job: canciones públicas,
-      # privadas por falta de licencia, duplicadas, portadas, rechazadas y lo que hay que revisar a mano. En un
-      # repository_dispatch solo procesa las subidas de la web (GITHUB_EVENT_NAME).
+      # Lee los archivos del push del evento y las subidas recogidas de R2 (ya en $RUNNER_TEMP/entrada, sin artefacto
+      # intermedio). Escribe el resumen del job y SIN NINGÚN SECRETO en su entorno.
       - name: Procesar el buzón
+        if: steps.plan.outputs.publicar == 'true'
         env:
           ACTOR: ${{ github.actor }}
         run: python scripts/buzon.py --resultado "$RUNNER_TEMP/paquete/resultado.json" --entrada "$RUNNER_TEMP/entrada"
 
       - name: Empaquetar los cambios
+        if: steps.plan.outputs.publicar == 'true'
         env:
           ACTION: buzon
         run: python scripts/empaquetar_cambios.py --salida "$RUNNER_TEMP/paquete"
 
       - name: Subir el paquete
+        if: steps.plan.outputs.publicar == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: buzon-paquete
@@ -299,10 +247,8 @@ jobs:
           if-no-files-found: error
 
   publicar:
-    needs: [autorizar, recoger, procesar]
-    if: >-
-      needs.autorizar.outputs.permitido == 'true' &&
-      (needs.autorizar.outputs.pendiente == 'true' || needs.recoger.outputs.cantidad != '0')
+    needs: preparar
+    if: needs.preparar.outputs.publicar == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -437,13 +383,13 @@ jobs:
       # ejecución siguiente. Si este paso fallara, la siguiente las vuelve a recoger y salen como duplicadas, sin cambiar
       # nada (mismo SHA-256; ADR-0030).
       - name: Borrar del bucket privado las subidas ya procesadas
-        if: needs.recoger.outputs.cantidad != '0'
+        if: needs.preparar.outputs.cantidad != '0'
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}
-          IDS: ${{ needs.recoger.outputs.ids }}
+          IDS: ${{ needs.preparar.outputs.ids }}
         run: |
           if [ "$GITHUB_REF_NAME" != "main" ]; then
             echo "El bucket solo se limpia desde main (ejecución desde $GITHUB_REF_NAME)." >&2
