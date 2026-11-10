@@ -87,6 +87,30 @@ void main() {
     expect((await store.read())!.accessToken, 'NEW');
   });
 
+  test('mine lista la biblioteca del usuario', () async {
+    final store = _MemStore()..write(SpotifySession(accessToken: 'AT', refreshToken: 'RT', expiresAt: DateTime.now().millisecondsSinceEpoch + 3600000));
+    final client = MockClient((req) async => req.url.path == '/api/spotify/mine'
+        ? _json({'playlists': [{'id': 'p1', 'name': 'Fiesta', 'total': 3, 'image': 'i.jpg'}], 'liked': 5})
+        : _json({}, 404));
+    final t = SpotifyTransfer(client: client, store: store, base: base);
+    final lib = await t.mine();
+    expect(lib.liked, 5);
+    expect(lib.playlists.first.name, 'Fiesta');
+    expect(lib.playlists.first.total, 3);
+  });
+
+  test('resolveSource(liked) resuelve las favoritas', () async {
+    final store = _MemStore()..write(SpotifySession(accessToken: 'AT', refreshToken: 'RT', expiresAt: DateTime.now().millisecondsSinceEpoch + 3600000));
+    final client = MockClient((req) async {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      expect(body['source'], 'liked');
+      return _json({'total': 1, 'hasMore': false, 'results': [_result(0, 'alta', 'Fav', best: _candidate('u0', 'Fav', 200))]});
+    });
+    final t = SpotifyTransfer(client: client, store: store, base: base);
+    final out = await t.resolveSource('liked');
+    expect(out.results.length, 1);
+  });
+
   test('markTransferDuplicates y selectedTransferTracks', () {
     final results = [
       TransferMatch(index: 0, tier: 'alta', track: const SpotifyTrackMeta(title: 'Uno', artists: ['A'], durationMs: 200000), best: const TransferCandidate(url: 'u0', title: 'Uno', durationS: 200)),

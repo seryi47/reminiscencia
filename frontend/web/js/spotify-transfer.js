@@ -43,7 +43,8 @@ export function createTransferApi(fetchImpl = globalThis.fetch, base = '') {
     login: () => post('/api/spotify/login'),
     token: (code, verifier) => post('/api/spotify/token', { code, verifier }),
     refresh: (refreshToken) => post('/api/spotify/refresh', { refreshToken }),
-    resolve: ({ url, accessToken, offset, limit }) => post('/api/spotify/resolve', { url, accessToken, offset, limit }),
+    mine: (accessToken) => post('/api/spotify/mine', { accessToken }),
+    resolve: (params) => post('/api/spotify/resolve', params), // { url|source|ref, accessToken, offset, limit }
   };
 }
 
@@ -76,7 +77,8 @@ async function freshAccessToken({ api, storage, now }) {
  * Resuelve una colección entera llamando a /resolve por páginas (y refrescando el token si caduca a mitad). Devuelve
  * { album, results, total, summary }. `onPage({ loaded, total, album })` informa del avance.
  */
-export async function resolveCollection({ api, url, storage = globalThis.localStorage, onPage, now = () => Date.now(), pageLimit = 25 }) {
+export async function resolveCollection({ api, url, source, ref, storage = globalThis.localStorage, onPage, now = () => Date.now(), pageLimit = 25 }) {
+  const target = ref ? { ref } : (source ? { source } : { url }); // qué se resuelve: enlace, «Me gusta» o una referencia
   let accessToken = await freshAccessToken({ api, storage, now });
   const results = [];
   const summary = { total: 0, alta: 0, media: 0, baja: 0, error: 0 };
@@ -86,11 +88,11 @@ export async function resolveCollection({ api, url, storage = globalThis.localSt
   for (;;) {
     let page;
     try {
-      page = await api.resolve({ url, accessToken, offset, limit: pageLimit });
+      page = await api.resolve({ ...target, accessToken, offset, limit: pageLimit });
     } catch (error) {
       if (!error.needsAuth) throw error;
       accessToken = await refreshNow({ api, storage }); // token caducado a mitad: refresca y reintenta la misma página
-      page = await api.resolve({ url, accessToken, offset, limit: pageLimit });
+      page = await api.resolve({ ...target, accessToken, offset, limit: pageLimit });
     }
     album = page.album ?? album;
     total = page.total ?? results.length + page.results.length;
@@ -102,6 +104,17 @@ export async function resolveCollection({ api, url, storage = globalThis.localSt
     offset += pageLimit;
   }
   return { album, results, total, summary };
+}
+
+/** Lista la biblioteca del usuario (playlists + «Me gusta») para elegir qué transferir. Refresca el token si hace falta. */
+export async function listLibrary({ api, storage = globalThis.localStorage, now = () => Date.now() }) {
+  const accessToken = await freshAccessToken({ api, storage, now });
+  try {
+    return await api.mine(accessToken);
+  } catch (error) {
+    if (!error.needsAuth) throw error;
+    return api.mine(await refreshNow({ api, storage }));
+  }
 }
 
 // --- Dedup y selección -----------------------------------------------------------------------------------------------

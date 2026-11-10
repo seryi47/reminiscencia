@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
-  handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyResolve, handleSpotifyCallback,
+  handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyCallback,
 } from '../../frontend/web/server/spotify-endpoints.js';
 
 const PL = '3n3Ppam7vgaVa1iaRUc9Lp';
@@ -94,6 +94,32 @@ describe('resolve', () => {
       { search: goodSearch, fetchImpl: expired });
     assert.equal(res.status, 401);
     assert.equal((await res.json()).needsAuth, true);
+  });
+});
+
+describe('mine / resolve liked', () => {
+  test('mine lista la biblioteca del usuario', async () => {
+    const fetchImpl = async (url) => (url.includes('/v1/me/playlists')
+      ? okJson({ items: [{ id: 'p1', name: 'Fiesta', tracks: { total: 3 }, images: [], owner: {} }], next: null })
+      : okJson({ items: [], total: 5 }));
+    const res = await handleSpotifyMine(post({ accessToken: 'AT' }), { fetchImpl });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.liked, 5);
+    assert.equal(body.playlists[0].name, 'Fiesta');
+  });
+  test('mine sin token → 401 needsAuth', async () => {
+    const res = await handleSpotifyMine(post({}), { fetchImpl: async () => okJson({}) });
+    assert.equal(res.status, 401);
+    assert.equal((await res.json()).needsAuth, true);
+  });
+  test('resolve con source=liked resuelve las favoritas', async () => {
+    const fetchImpl = async (url) => (url.includes('/v1/me/tracks')
+      ? okJson({ items: [{ track: { id: 't', name: 'Fav', type: 'track', duration_ms: 200000, artists: [{ name: 'Coldplay' }], album: { name: 'X', release_date: '2001' } } }], next: null })
+      : okJson({}));
+    const res = await handleSpotifyResolve(post({ source: 'liked', accessToken: 'AT' }), { search: goodSearch, fetchImpl });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).results.length, 1);
   });
 });
 

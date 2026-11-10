@@ -10,13 +10,12 @@ import '../theme.dart';
 import '../youtube_importer.dart';
 import 'common.dart';
 
-// «Transferir música» en la APK (ADR-0044): conectar Spotify (OAuth en un WebView que intercepta la vuelta) → pegar un
-// enlace → analizar → revisar coincidencias → transferir por el pipeline de subida que ya existe. Comparte motor y
-// endpoints con la web.
+// «Transferir música» en la APK (ADR-0044): conectar Spotify (OAuth en un WebView que intercepta la vuelta) → ELEGIR de
+// tu biblioteca (playlists + «Me gusta», como TuneMyMusic) o pegar un enlace → revisar coincidencias → transferir por el
+// pipeline de subida que ya existe. Comparte motor y endpoints con la web.
 
 class TransferirButton extends StatelessWidget {
   const TransferirButton({super.key, required this.services});
-
   final AppServices services;
 
   @override
@@ -33,36 +32,20 @@ class TransferirButton extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              colors: [palette.accent.withValues(alpha: 0.2), palette.card],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: LinearGradient(colors: [palette.accent.withValues(alpha: 0.2), palette.card], begin: Alignment.topLeft, end: Alignment.bottomRight),
             border: Border.all(color: palette.accent.withValues(alpha: 0.24)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(color: palette.accent, borderRadius: BorderRadius.circular(18)),
-                child: Icon(Icons.swap_horiz_rounded, color: palette.onAccent, size: 27),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Transferir música', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Text('Desde Spotify (canciones, álbumes y playlists)', style: theme.textTheme.bodySmall),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_rounded, color: palette.ink, size: 19),
-            ],
-          ),
+          child: Row(children: [
+            Container(width: 52, height: 52, decoration: BoxDecoration(color: palette.accent, borderRadius: BorderRadius.circular(18)), child: Icon(Icons.swap_horiz_rounded, color: palette.onAccent, size: 27)),
+            const SizedBox(width: 16),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Transferir música', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text('Desde Spotify (playlists y favoritas)', style: theme.textTheme.bodySmall),
+            ])),
+            Icon(Icons.arrow_forward_rounded, color: palette.ink, size: 19),
+          ]),
         ),
       ),
     );
@@ -82,28 +65,42 @@ Future<void> openTransferirSheet(BuildContext context, AppServices services) {
 class _TransferirSheet extends StatefulWidget {
   const _TransferirSheet({required this.services});
   final AppServices services;
-
   @override
   State<_TransferirSheet> createState() => _TransferirSheetState();
 }
 
-enum _Stage { loading, connect, input, analyzing, review, transferring, done }
+enum _Stage { loading, connect, browse, working, review, done }
+
+class _Collection {
+  _Collection({required this.name, required this.album, required this.results});
+  final String name;
+  final TransferAlbum? album;
+  final List<TransferMatch> results;
+}
 
 class _TransferirSheetState extends State<_TransferirSheet> {
   late final http.Client _client = http.Client();
   late final SpotifyTransfer _spotify = widget.services.spotify ?? SpotifyTransfer(client: _client);
   final TextEditingController _link = TextEditingController();
+  final TextEditingController _search = TextEditingController();
 
   _Stage _stage = _Stage.loading;
   String _message = '';
   String _error = '';
-  TransferResolution? _resolution;
+  SpotifyLibrary? _library;
+  final Set<String> _selected = {}; // 'liked' | 'pl:<id>' | 'url:<url>'
+  List<_Collection> _collections = [];
 
   @override
   void initState() {
     super.initState();
     _spotify.isConnected().then((connected) {
-      if (mounted) setState(() => _stage = connected ? _Stage.input : _Stage.connect);
+      if (!mounted) return;
+      if (connected) {
+        _loadLibrary();
+      } else {
+        setState(() => _stage = _Stage.connect);
+      }
     });
   }
 
@@ -111,10 +108,11 @@ class _TransferirSheetState extends State<_TransferirSheet> {
   void dispose() {
     _client.close();
     _link.dispose();
+    _search.dispose();
     super.dispose();
   }
 
-  List<DuplicateCandidate> get _library => [
+  List<DuplicateCandidate> get _library0 => [
         for (final song in widget.services.library.catalogSongs)
           DuplicateCandidate(title: song.title, artist: song.artist, durationS: song.durationS),
       ];
@@ -126,64 +124,103 @@ class _TransferirSheetState extends State<_TransferirSheet> {
       final ok = await Navigator.of(context, rootNavigator: true).push<bool>(
         MaterialPageRoute(builder: (_) => _SpotifyLoginPage(spotify: _spotify, login: login)),
       );
-      if (ok == true && mounted) setState(() { _stage = _Stage.input; _error = ''; });
+      if (ok == true && mounted) { setState(() => _error = ''); _loadLibrary(); }
     } catch (error) {
       if (mounted) setState(() => _error = 'No se pudo iniciar sesión en Spotify: ${describeError(error)}');
     }
   }
 
-  Future<void> _analyze() async {
-    final url = _link.text.trim();
-    if (url.isEmpty) { setState(() => _error = 'Pega un enlace de Spotify.'); return; }
-    setState(() { _stage = _Stage.analyzing; _error = ''; _message = 'Analizando…'; });
+  Future<void> _loadLibrary() async {
+    setState(() { _stage = _Stage.loading; _error = ''; });
     try {
-      final resolution = await _spotify.resolve(url, onPage: (loaded, total) {
-        if (mounted) setState(() => _message = 'Analizando $loaded${total > 0 ? ' de $total' : ''} canciones…');
-      });
-      markTransferDuplicates(resolution.results, _library);
-      for (final r in resolution.results) {
-        r.excluded = r.inLibrary || (r.tier != 'alta');
-      }
-      if (mounted) setState(() { _resolution = resolution; _stage = _Stage.review; });
+      final lib = await _spotify.mine();
+      if (mounted) setState(() { _library = lib; _stage = _Stage.browse; });
     } on SpotifyNeedsAuth {
       if (mounted) setState(() { _stage = _Stage.connect; _error = 'Tu sesión de Spotify ha caducado. Conéctala de nuevo.'; });
     } catch (error) {
-      if (mounted) setState(() { _stage = _Stage.input; _error = 'No se pudo analizar: ${describeError(error)}'; });
+      if (mounted) setState(() { _stage = _Stage.connect; _error = 'No se pudo leer tu biblioteca: ${describeError(error)}'; });
     }
   }
 
-  int get _selectedCount => _resolution == null ? 0 : selectedTransferTracks(_resolution!.results, album: _resolution!.album).length;
+  Future<void> _analyze({String? extraUrl}) async {
+    final sources = <MapEntry<String, Map<String, dynamic>>>[];
+    for (final key in _selected) {
+      if (key == 'liked') {
+        sources.add(MapEntry('Canciones favoritas', {'source': 'liked'}));
+      } else if (key.startsWith('pl:')) {
+        final id = key.substring(3);
+        final name = _library?.playlists.firstWhere((p) => p.id == id, orElse: () => SpotifyPlaylistRef(id: id, name: id)).name ?? id;
+        sources.add(MapEntry(name, {'ref': {'type': 'playlist', 'id': id}}));
+      }
+    }
+    if (extraUrl != null && extraUrl.isNotEmpty) sources.add(MapEntry(extraUrl, {'url': extraUrl}));
+    if (sources.isEmpty) { setState(() => _error = 'Elige al menos una playlist, «Me gusta» o pega un enlace.'); return; }
+
+    setState(() { _stage = _Stage.working; _error = ''; _message = 'Analizando…'; });
+    final collections = <_Collection>[];
+    try {
+      for (final src in sources) {
+        if (mounted) setState(() => _message = 'Analizando «${src.key}»…');
+        final target = src.value;
+        final res = target.containsKey('source')
+            ? await _spotify.resolveSource(target['source'] as String, onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); })
+            : target.containsKey('ref')
+                ? await _spotify.resolveRef((target['ref'] as Map).cast<String, dynamic>(), onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); })
+                : await _spotify.resolve(target['url'] as String, onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); });
+        markTransferDuplicates(res.results, _library0);
+        for (final r in res.results) {
+          r.excluded = r.inLibrary || (r.tier != 'alta');
+        }
+        collections.add(_Collection(name: src.key, album: res.album, results: res.results));
+      }
+      if (mounted) setState(() { _collections = collections; _stage = _Stage.review; });
+    } on SpotifyNeedsAuth {
+      if (mounted) setState(() { _stage = _Stage.connect; _error = 'Tu sesión de Spotify ha caducado. Conéctala de nuevo.'; });
+    } catch (error) {
+      if (mounted) setState(() { _stage = _Stage.browse; _error = 'No se pudo analizar: ${describeError(error)}'; });
+    }
+  }
+
+  int get _selectedCount => _collections.fold(0, (n, c) => n + selectedTransferTracks(c.results, album: c.album).length);
 
   Future<void> _transfer() async {
-    final resolution = _resolution;
-    if (resolution == null) return;
-    final tracks = selectedTransferTracks(resolution.results, album: resolution.album);
-    if (tracks.isEmpty) { setState(() => _error = 'Elige al menos una canción.'); return; }
+    final plan = _collections
+        .map((c) => MapEntry(c, selectedTransferTracks(c.results, album: c.album)))
+        .where((e) => e.value.isNotEmpty)
+        .toList();
+    final totalTracks = plan.fold(0, (n, e) => n + e.value.length);
+    if (totalTracks == 0) { setState(() => _error = 'Elige al menos una canción.'); return; }
     final importer = widget.services.youtube;
     if (importer == null) { setState(() => _error = 'La conexión con YouTube no está disponible.'); return; }
-    setState(() { _stage = _Stage.transferring; _error = ''; _message = 'Preparando ${tracks.length} canciones…'; });
-    List<YoutubeImportedAudio>? imported;
+    setState(() { _stage = _Stage.working; _error = ''; _message = 'Preparando $totalTracks canciones…'; });
+    var added = 0;
+    var failed = 0;
+    var base = 0;
+    List<YoutubeImportedAudio>? lastImported;
     try {
-      imported = await importer.importTracks(tracks, onProgress: (p) {
-        if (mounted) setState(() => _message = 'Descargando ${p.index + 1} de ${p.total}: ${p.title}…');
-      });
-      await widget.services.library.uploadShared([
-        for (final audio in imported)
-          PickedAudioFile(
-            name: audio.name,
-            path: audio.path,
-            artist: audio.track.artist,
-            youtubePlaylistId: audio.track.playlistId,
-            youtubePlaylistName: audio.track.playlistTitle,
-          ),
-      ]);
-      if (mounted) setState(() { _stage = _Stage.done; _message = '${tracks.length} canciones añadidas. Se publicarán en un momento.'; });
+      for (final entry in plan) {
+        final tracks = entry.value;
+        final imported = await importer.importTracks(tracks, onProgress: (p) {
+          if (mounted) setState(() => _message = 'Descargando ${base + p.index + 1} de $totalTracks…');
+        });
+        lastImported = imported;
+        await widget.services.library.uploadShared([
+          for (final audio in imported)
+            PickedAudioFile(name: audio.name, path: audio.path, artist: audio.track.artist, youtubePlaylistId: audio.track.playlistId, youtubePlaylistName: audio.track.playlistTitle),
+        ]);
+        await importer.cleanup(imported);
+        lastImported = null;
+        added += imported.length;
+        failed += tracks.length - imported.length;
+        base += tracks.length;
+      }
+      if (mounted) setState(() { _stage = _Stage.done; _message = '$added canciones añadidas${failed > 0 ? ' · $failed con error' : ''}. Se publicarán en un momento.'; });
     } on SpotifyNeedsAuth {
       if (mounted) setState(() { _stage = _Stage.connect; _error = 'Tu sesión de Spotify ha caducado.'; });
     } catch (error) {
       if (mounted) setState(() { _stage = _Stage.review; _error = 'No se pudo completar: ${describeError(error)}'; });
     } finally {
-      if (imported != null) await importer.cleanup(imported);
+      if (lastImported != null) await importer.cleanup(lastImported);
     }
   }
 
@@ -191,25 +228,15 @@ class _TransferirSheetState extends State<_TransferirSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: EdgeInsets.only(
-        left: 20, right: 20, top: 8,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
+      padding: EdgeInsets.only(left: 20, right: 20, top: 8, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Transferir música', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            if (_error.isNotEmpty) Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(_error, key: const Key('transferir-error'), style: TextStyle(color: theme.colorScheme.error)),
-            ),
-            Flexible(child: _body(theme)),
-          ],
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Transferir música', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          if (_error.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_error, key: const Key('transferir-error'), style: TextStyle(color: theme.colorScheme.error))),
+          Flexible(child: _body(theme)),
+        ]),
       ),
     );
   }
@@ -217,46 +244,20 @@ class _TransferirSheetState extends State<_TransferirSheet> {
   Widget _body(ThemeData theme) {
     switch (_stage) {
       case _Stage.loading:
-        return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
+      case _Stage.working:
+        return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(_message.isEmpty ? 'Cargando…' : _message, key: const Key('transferir-progress'), textAlign: TextAlign.center),
+        ])));
       case _Stage.connect:
         return Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Conecta tu cuenta de Spotify para traer tus canciones, álbumes y playlists. Se identifican en YouTube y se añaden a tu biblioteca.',
-              style: theme.textTheme.bodyMedium),
+          Text('Conecta tu cuenta de Spotify para elegir tus playlists y tus canciones favoritas.', style: theme.textTheme.bodyMedium),
           const SizedBox(height: 16),
-          FilledButton.icon(
-            key: const Key('transferir-connect'),
-            onPressed: _connect,
-            icon: const Icon(Icons.link_rounded),
-            label: const Text('Conectar con Spotify'),
-          ),
+          FilledButton.icon(key: const Key('transferir-connect'), onPressed: _connect, icon: const Icon(Icons.link_rounded), label: const Text('Conectar con Spotify')),
         ]);
-      case _Stage.input:
-        return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Pega el enlace de una canción, un álbum o una playlist de Spotify. Un álbum o una playlist mantienen su nombre y su orden.',
-              style: theme.textTheme.bodyMedium),
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('transferir-input'),
-            controller: _link,
-            keyboardType: TextInputType.url,
-            decoration: const InputDecoration(hintText: 'https://open.spotify.com/…', border: OutlineInputBorder()),
-            onSubmitted: (_) => _analyze(),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(key: const Key('transferir-analyze'), onPressed: _analyze, icon: const Icon(Icons.search_rounded), label: const Text('Analizar')),
-          const SizedBox(height: 8),
-          TextButton(onPressed: () async { await _spotify.disconnect(); if (mounted) setState(() => _stage = _Stage.connect); }, child: const Text('Desconectar')),
-        ]);
-      case _Stage.analyzing:
-      case _Stage.transferring:
-        return Center(child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(_message, key: const Key('transferir-progress'), textAlign: TextAlign.center),
-          ]),
-        ));
+      case _Stage.browse:
+        return _browseBody(theme);
       case _Stage.review:
         return _reviewBody(theme);
       case _Stage.done:
@@ -265,40 +266,70 @@ class _TransferirSheetState extends State<_TransferirSheet> {
           const SizedBox(height: 8),
           Text('Verás el progreso de publicación en «Tu biblioteca».', style: theme.textTheme.bodySmall),
           const SizedBox(height: 16),
-          FilledButton(onPressed: () { _link.clear(); setState(() { _resolution = null; _stage = _Stage.input; }); }, child: const Text('Transferir más')),
+          FilledButton(onPressed: () { setState(() { _selected.clear(); _collections = []; _stage = _Stage.browse; }); }, child: const Text('Transferir más')),
         ]);
     }
   }
 
+  Widget _browseBody(ThemeData theme) {
+    final lib = _library;
+    if (lib == null) return const Center(child: CircularProgressIndicator());
+    final query = _search.text.trim().toLowerCase();
+    final playlists = lib.playlists.where((p) => query.isEmpty || p.name.toLowerCase().contains(query)).toList();
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('Elige qué traer. Las playlists mantienen su nombre y su orden. (En modo desarrollo, Spotify solo da el contenido de tus propias listas.)', style: theme.textTheme.bodySmall),
+      const SizedBox(height: 8),
+      Flexible(child: ListView(shrinkWrap: true, children: [
+        if (lib.liked > 0)
+          CheckboxListTile(
+            key: const Key('transferir-source-liked'),
+            value: _selected.contains('liked'),
+            onChanged: (v) => setState(() => v == true ? _selected.add('liked') : _selected.remove('liked')),
+            title: const Text('Canciones favoritas'),
+            subtitle: Text('${lib.liked} canciones'),
+            secondary: const Icon(Icons.favorite_rounded),
+          ),
+        Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text('Tus playlists (${lib.playlists.length})', style: theme.textTheme.labelLarge)),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(controller: _search, decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search), hintText: 'Buscar playlists'), onChanged: (_) => setState(() {}))),
+        for (final p in playlists)
+          CheckboxListTile(
+            key: Key('transferir-source-pl-${p.id}'),
+            value: _selected.contains('pl:${p.id}'),
+            onChanged: (v) => setState(() => v == true ? _selected.add('pl:${p.id}') : _selected.remove('pl:${p.id}')),
+            title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text('${p.total} canciones'),
+          ),
+      ])),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: TextField(controller: _link, keyboardType: TextInputType.url, decoration: const InputDecoration(isDense: true, hintText: 'o pega un enlace (álbum/canción)'))),
+        TextButton(onPressed: () { final u = _link.text.trim(); if (u.isNotEmpty) { _analyze(extraUrl: u); _link.clear(); } }, child: const Text('Analizar')),
+      ]),
+      const SizedBox(height: 8),
+      FilledButton.icon(key: const Key('transferir-analyze'), onPressed: _selected.isEmpty ? null : () => _analyze(), icon: const Icon(Icons.search_rounded), label: Text('Analizar ${_selected.length} selección${_selected.length == 1 ? '' : 'es'}')),
+      TextButton(onPressed: () async { await _spotify.disconnect(); if (mounted) setState(() { _library = null; _selected.clear(); _stage = _Stage.connect; }); }, child: const Text('Desconectar')),
+    ]);
+  }
+
   Widget _reviewBody(ThemeData theme) {
-    final resolution = _resolution!;
-    if (resolution.results.isEmpty) {
+    final nonEmpty = _collections.where((c) => c.results.isNotEmpty).toList();
+    if (nonEmpty.isEmpty) {
       return Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('No hay canciones accesibles aquí. En modo desarrollo, Spotify solo da el contenido de tus propias listas; '
-            'prueba con un álbum, una canción suelta o una lista tuya.', style: theme.textTheme.bodyMedium),
+        Text('No hay canciones accesibles en lo que elegiste. En modo desarrollo, Spotify solo da el contenido de tus propias listas; prueba con otra lista tuya, un álbum o una canción.', style: theme.textTheme.bodyMedium),
         const SizedBox(height: 16),
-        FilledButton(onPressed: () { _link.clear(); setState(() { _resolution = null; _stage = _Stage.input; }); }, child: const Text('Otro enlace')),
+        FilledButton(onPressed: () => setState(() => _stage = _Stage.browse), child: const Text('Volver')),
       ]);
     }
-    final already = resolution.results.where((r) => r.inLibrary).length;
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('${resolution.album != null ? '«${resolution.album!.name}» · ' : ''}${resolution.results.length} canciones'
-          '${already > 0 ? ' · $already ya en tu biblioteca' : ''}',
-          key: const Key('transferir-summary'), style: theme.textTheme.bodyMedium),
-      const SizedBox(height: 8),
-      Flexible(child: ListView.separated(
-        shrinkWrap: true,
-        itemCount: resolution.results.length,
-        separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (_, i) => _row(resolution.results[i], theme),
-      )),
+      Flexible(child: ListView(shrinkWrap: true, children: [
+        for (final collection in nonEmpty) ...[
+          Padding(padding: const EdgeInsets.fromLTRB(4, 10, 4, 4), child: Text('${collection.name} · ${collection.results.length} canciones', style: theme.textTheme.labelLarge)),
+          for (final result in collection.results) _row(result, theme),
+        ],
+      ])),
       const SizedBox(height: 12),
-      FilledButton.icon(
-        key: const Key('transferir-go'),
-        onPressed: _transfer,
-        icon: const Icon(Icons.download_rounded),
-        label: Text('Transferir $_selectedCount canciones'),
-      ),
+      FilledButton.icon(key: const Key('transferir-go'), onPressed: _transfer, icon: const Icon(Icons.download_rounded), label: Text('Transferir $_selectedCount canciones')),
+      TextButton(onPressed: () => setState(() => _stage = _Stage.browse), child: const Text('Elegir otra cosa')),
     ]);
   }
 
@@ -317,7 +348,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
             onChanged: dupe ? null : (v) => setState(() => result.excluded = !(v ?? false)),
           ),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(result.track.title, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Text(result.track.title, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
             Text('${result.track.artist} · ${_fmt(result.track.durationS)}', style: theme.textTheme.bodySmall),
           ])),
           _tierChip(result, dupe, theme),
@@ -330,20 +361,12 @@ class _TransferirSheetState extends State<_TransferirSheet> {
             value: chosen?.url,
             hint: const Text('Elige una versión'),
             items: [for (final c in options) DropdownMenuItem(value: c.url, child: Text('${c.title} · ${_fmt(c.durationS)} · ${_sourceLabel(c.source)}', overflow: TextOverflow.ellipsis))],
-            onChanged: (url) => setState(() {
-              final pick = options.firstWhere((c) => c.url == url);
-              result.override = pick;
-              result.excluded = false;
-            }),
+            onChanged: (url) => setState(() { result.override = options.firstWhere((c) => c.url == url); result.excluded = false; }),
           ),
         ),
         if (!dupe && needsChoice) Padding(
           padding: const EdgeInsets.only(left: 48),
-          child: _ManualSearch(spotify: _spotify, onPicked: (candidate) => setState(() {
-            result.alternatives = [candidate, ...result.alternatives];
-            result.override = candidate;
-            result.excluded = false;
-          })),
+          child: _ManualSearch(spotify: _spotify, onPicked: (candidate) => setState(() { result.alternatives = [candidate, ...result.alternatives]; result.override = candidate; result.excluded = false; })),
         ),
       ]),
     );
@@ -385,7 +408,6 @@ class _ManualSearch extends StatefulWidget {
   const _ManualSearch({required this.spotify, required this.onPicked});
   final SpotifyTransfer spotify;
   final void Function(TransferCandidate) onPicked;
-
   @override
   State<_ManualSearch> createState() => _ManualSearchState();
 }
@@ -397,25 +419,18 @@ class _ManualSearchState extends State<_ManualSearch> {
   @override
   void dispose() { _query.dispose(); super.dispose(); }
 
-  Future<void> _search() async {
+  Future<void> _run() async {
     final q = _query.text.trim();
     if (q.isEmpty) return;
     setState(() => _busy = true);
     try {
       final results = await widget.spotify.searchYoutube(q);
       if (!mounted) return;
-      if (results.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sin resultados en YouTube.')));
-        return;
-      }
+      if (results.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sin resultados en YouTube.'))); return; }
       final picked = await showModalBottomSheet<TransferCandidate>(
         context: context,
         builder: (_) => ListView(children: [
-          for (final c in results) ListTile(
-            title: Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${_fmt(c.durationS)} · ${_sourceLabel(c.source)}'),
-            onTap: () => Navigator.of(context).pop(c),
-          ),
+          for (final c in results) ListTile(title: Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis), subtitle: Text('${_fmt(c.durationS)} · ${_sourceLabel(c.source)}'), onTap: () => Navigator.of(context).pop(c)),
         ]),
       );
       if (picked != null) widget.onPicked(picked);
@@ -429,12 +444,8 @@ class _ManualSearchState extends State<_ManualSearch> {
   @override
   Widget build(BuildContext context) {
     return Row(children: [
-      Expanded(child: TextField(
-        controller: _query,
-        decoration: const InputDecoration(isDense: true, hintText: 'Buscar en YouTube…'),
-        onSubmitted: (_) => _search(),
-      )),
-      TextButton(onPressed: _busy ? null : _search, child: const Text('Buscar')),
+      Expanded(child: TextField(controller: _query, decoration: const InputDecoration(isDense: true, hintText: 'Buscar en YouTube…'), onSubmitted: (_) => _run())),
+      TextButton(onPressed: _busy ? null : _run, child: const Text('Buscar')),
     ]);
   }
 }
@@ -445,7 +456,6 @@ class _SpotifyLoginPage extends StatefulWidget {
   const _SpotifyLoginPage({required this.spotify, required this.login});
   final SpotifyTransfer spotify;
   final SpotifyLogin login;
-
   @override
   State<_SpotifyLoginPage> createState() => _SpotifyLoginPageState();
 }
@@ -473,19 +483,19 @@ class _SpotifyLoginPageState extends State<_SpotifyLoginPage> {
     final state = uri.queryParameters['state'];
     final error = uri.queryParameters['error'];
     if (error != null || code == null || code.isEmpty) {
-      if (mounted) setState(() => _error = 'Spotify no autorizó la conexión.');
+      if (mounted) setState(() { _error = 'Spotify no autorizó la conexión.'; });
       _handling = false;
       return NavigationDecision.prevent;
     }
     if (state != widget.login.state) {
-      if (mounted) setState(() => _error = 'La respuesta de Spotify no coincide (seguridad).');
+      if (mounted) setState(() { _error = 'La respuesta de Spotify no coincide (seguridad).'; });
       _handling = false;
       return NavigationDecision.prevent;
     }
     try {
       await widget.spotify.completeLogin(code: code, verifier: widget.login.verifier);
       if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() { _error = 'No se pudo completar el inicio de sesión.'; _handling = false; });
     }
     return NavigationDecision.prevent;

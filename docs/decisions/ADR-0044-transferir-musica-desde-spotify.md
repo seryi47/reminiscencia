@@ -47,7 +47,7 @@ Las coincidencias aceptadas producen, por pista, lo mismo que hoy produce la imp
 
 ### Interfaz «Transferir música»
 
-Un apartado propio, coherente con el diseño actual: conectar Spotify → listar/elegir contenido → analizar → **revisar coincidencias** (con alternativas y búsqueda manual) → confirmar → progreso de descarga/publicación → resumen. Debe distinguir identificadas / pendientes / descargando / disponibles.
+Un apartado propio, coherente con el diseño actual: conectar Spotify → **elegir de tu biblioteca** (tus playlists y tus «Canciones favoritas», con casillas y buscador, como TuneMyMusic; o pegar un enlace de álbum/canción) → analizar → **revisar coincidencias** (con alternativas y búsqueda manual) → confirmar → progreso de descarga/publicación → resumen. El listado sale de `/api/spotify/mine` (`/v1/me/playlists` + `/v1/me/tracks`); «Me gusta» se transfiere con `source: 'liked'` (`/v1/me/tracks`).
 
 ## Etapas (cada una con pruebas)
 

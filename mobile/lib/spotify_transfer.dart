@@ -174,6 +174,34 @@ class TransferResolution {
   final int total;
 }
 
+/// Una playlist del usuario para elegir en la lista (no sus pistas todavía).
+class SpotifyPlaylistRef {
+  const SpotifyPlaylistRef({required this.id, required this.name, this.total = 0, this.image});
+  final String id;
+  final String name;
+  final int total;
+  final String? image;
+  factory SpotifyPlaylistRef.fromJson(Map<String, dynamic> json) => SpotifyPlaylistRef(
+        id: (json['id'] as String?) ?? '',
+        name: (json['name'] as String?) ?? '',
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        image: json['image'] as String?,
+      );
+}
+
+/// La biblioteca del usuario: sus playlists y cuántas canciones tiene en «Me gusta».
+class SpotifyLibrary {
+  const SpotifyLibrary({this.playlists = const [], this.liked = 0});
+  final List<SpotifyPlaylistRef> playlists;
+  final int liked;
+  factory SpotifyLibrary.fromJson(Map<String, dynamic> json) => SpotifyLibrary(
+        playlists: ((json['playlists'] as List?) ?? const [])
+            .map((p) => SpotifyPlaylistRef.fromJson((p as Map).cast<String, dynamic>()))
+            .toList(),
+        liked: (json['liked'] as num?)?.toInt() ?? 0,
+      );
+}
+
 /// Marca las pistas que ya están en la biblioteca (misma regla de duplicados: título + duración).
 void markTransferDuplicates(List<TransferMatch> results, List<DuplicateCandidate> library) {
   for (final result in results) {
@@ -277,8 +305,28 @@ class SpotifyTransfer {
     return _refresh(session);
   }
 
-  /// Resuelve una colección entera llamando a /resolve por páginas (refrescando el token si caduca a mitad).
-  Future<TransferResolution> resolve(String url, {void Function(int loaded, int total)? onPage}) async {
+  /// Lista la biblioteca del usuario (playlists + «Me gusta») para elegir qué transferir.
+  Future<SpotifyLibrary> mine() async {
+    var token = await _freshAccessToken();
+    Map<String, dynamic> data;
+    try {
+      data = await _post('/api/spotify/mine', {'accessToken': token});
+    } on SpotifyNeedsAuth {
+      token = await _refresh((await _store.read())!);
+      data = await _post('/api/spotify/mine', {'accessToken': token});
+    }
+    return SpotifyLibrary.fromJson(data);
+  }
+
+  /// Resuelve una colección por enlace, por «Me gusta» (source) o por referencia.
+  Future<TransferResolution> resolve(String url, {void Function(int loaded, int total)? onPage}) =>
+      _resolve({'url': url}, onPage: onPage);
+  Future<TransferResolution> resolveSource(String source, {void Function(int, int)? onPage}) =>
+      _resolve({'source': source}, onPage: onPage);
+  Future<TransferResolution> resolveRef(Map<String, dynamic> ref, {void Function(int, int)? onPage}) =>
+      _resolve({'ref': ref}, onPage: onPage);
+
+  Future<TransferResolution> _resolve(Map<String, dynamic> target, {void Function(int loaded, int total)? onPage}) async {
     var accessToken = await _freshAccessToken();
     final results = <TransferMatch>[];
     TransferAlbum? album;
@@ -286,11 +334,12 @@ class SpotifyTransfer {
     var offset = 0;
     while (true) {
       Map<String, dynamic> page;
+      final body = {...target, 'accessToken': accessToken, 'offset': offset, 'limit': _pageLimit};
       try {
-        page = await _post('/api/spotify/resolve', {'url': url, 'accessToken': accessToken, 'offset': offset, 'limit': _pageLimit});
+        page = await _post('/api/spotify/resolve', body);
       } on SpotifyNeedsAuth {
         accessToken = await _refresh((await _store.read())!); // token caducado a mitad: refresca y reintenta la página
-        page = await _post('/api/spotify/resolve', {'url': url, 'accessToken': accessToken, 'offset': offset, 'limit': _pageLimit});
+        page = await _post('/api/spotify/resolve', {...body, 'accessToken': accessToken});
       }
       final albumJson = page['album'];
       if (albumJson is Map) album = TransferAlbum.fromJson(albumJson.cast<String, dynamic>());

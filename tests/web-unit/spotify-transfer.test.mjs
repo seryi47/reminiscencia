@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 
 import {
   readSession, writeSession, clearSession, isConnected, createTransferApi, beginConnect,
-  resolveCollection, markDuplicates, selectedTracks, SESSION_KEY, PKCE_KEY,
+  resolveCollection, listLibrary, markDuplicates, selectedTracks, SESSION_KEY, PKCE_KEY,
 } from '../../frontend/web/js/spotify-transfer.js';
 
 const fakeStorage = () => {
@@ -97,6 +97,28 @@ describe('resolveCollection', () => {
 
   test('sin sesión lanza needsAuth', async () => {
     await assert.rejects(() => resolveCollection({ api: {}, url: 'u', storage: fakeStorage() }), (e) => e.needsAuth === true);
+  });
+});
+
+describe('listLibrary', () => {
+  test('devuelve la biblioteca (playlists + Me gusta)', async () => {
+    const storage = fakeStorage();
+    writeSession({ accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3_600_000 }, storage);
+    const api = { mine: async (token) => ({ playlists: [{ id: 'p1', name: 'X', total: 1 }], liked: 2, token }) };
+    const lib = await listLibrary({ api, storage });
+    assert.equal(lib.liked, 2);
+    assert.equal(lib.playlists[0].name, 'X');
+  });
+
+  test('refresca el token si está caducado', async () => {
+    const storage = fakeStorage();
+    writeSession({ accessToken: 'OLD', refreshToken: 'RT', expiresAt: Date.now() - 1 }, storage); // caducado
+    const api = {
+      refresh: async () => ({ accessToken: 'NEW', refreshToken: 'RT', expiresAt: Date.now() + 3_600_000 }),
+      mine: async (token) => ({ playlists: [], liked: 0, token }),
+    };
+    const lib = await listLibrary({ api, storage });
+    assert.equal(lib.token, 'NEW');
   });
 });
 

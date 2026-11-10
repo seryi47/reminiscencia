@@ -9,7 +9,7 @@
 
 import { startLogin, exchangeCode, refreshAccess } from './spotify-auth.js';
 import { parseSpotifyRef } from './spotify-core.js';
-import { fetchCollection, SpotifyApiError } from './spotify-fetch.js';
+import { fetchCollection, listMine, SpotifyApiError } from './spotify-fetch.js';
 import { resolveCollection } from './spotify-resolve.js';
 import { spotifyClientId, SPOTIFY_REDIRECT_URI } from './spotify-config.js';
 
@@ -62,8 +62,24 @@ export async function handleSpotifyRefresh(request, { env = {}, fetchImpl = fetc
   }
 }
 
+/** POST /api/spotify/mine { accessToken } → { playlists:[{id,name,total,image,ownerId,ownerName}], liked }. */
+export async function handleSpotifyMine(request, { fetchImpl = fetch } = {}) {
+  if (request.method !== 'POST') return json(405, { error: 'método no permitido' });
+  const { accessToken } = await readJson(request);
+  if (!isText(accessToken)) return json(401, { error: 'falta el token de Spotify', needsAuth: true });
+  try {
+    return json(200, await listMine({ accessToken }, fetchImpl));
+  } catch (error) {
+    if (error instanceof SpotifyApiError && error.status === 401) {
+      return json(401, { error: 'token de Spotify caducado', needsAuth: true });
+    }
+    if (error instanceof SpotifyApiError && error.status === 429) return json(429, { error: 'Spotify pide esperar un momento' });
+    return json(502, { error: String(error?.message ?? 'no se pudo leer tu biblioteca de Spotify') });
+  }
+}
+
 /**
- * POST /api/spotify/resolve { url|ref, accessToken, offset?, limit?, concurrency? }
+ * POST /api/spotify/resolve { url|ref|source, accessToken, offset?, limit?, concurrency? }
  * → { type, id, name, album, results, summary, offset, limit, total, hasMore }.
  * `search` (inyectada) recibe una consulta y devuelve candidatos de YouTube. Resuelve solo la página [offset, limit)
  * para no agotar el tiempo de la función; el cliente pide las siguientes.
@@ -72,7 +88,7 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   if (request.method !== 'POST') return json(405, { error: 'método no permitido' });
   if (typeof search !== 'function') return json(500, { error: 'búsqueda de YouTube no disponible' });
   const body = await readJson(request);
-  const ref = body.ref ?? parseSpotifyRef(body.url);
+  const ref = body.ref ?? (body.source === 'liked' ? { type: 'liked' } : parseSpotifyRef(body.url));
   if (!ref) return json(400, { error: 'enlace de Spotify no válido' });
   if (!isText(body.accessToken)) return json(401, { error: 'falta el token de Spotify', needsAuth: true });
 

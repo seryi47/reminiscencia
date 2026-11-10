@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { fetchCollection, SpotifyApiError } from '../../frontend/web/server/spotify-fetch.js';
+import { fetchCollection, listMine, SpotifyApiError } from '../../frontend/web/server/spotify-fetch.js';
 
 const ID = '3n3Ppam7vgaVa1iaRUc9Lp';
 const okJson = (data) => ({ ok: true, status: 200, json: async () => data });
@@ -86,5 +86,28 @@ describe('fetchCollection', () => {
   test('exige referencia y token', async () => {
     await assert.rejects(() => fetchCollection({ ref: null, accessToken: 'AT' }, async () => okJson({})), /referencia/);
     await assert.rejects(() => fetchCollection({ ref: { type: 'track', id: ID } }, async () => okJson({})), /token/);
+  });
+
+  test('liked (Me gusta) trae las canciones guardadas', async () => {
+    const { fetchImpl } = router([
+      ['/v1/me/tracks', okJson({ items: [{ added_at: 'x', track: { ...trackObj('Fav', 1), album: { name: 'A', release_date: '2001' } } }], next: null, total: 1 })],
+    ]);
+    const col = await fetchCollection({ ref: { type: 'liked' }, accessToken: 'AT' }, fetchImpl);
+    assert.equal(col.type, 'liked');
+    assert.deepEqual(col.tracks.map((t) => t.title), ['Fav']);
+  });
+});
+
+describe('listMine', () => {
+  test('lista las playlists y el número de «Me gusta»', async () => {
+    const { fetchImpl } = router([
+      ['/v1/me/playlists', okJson({ items: [{ id: 'p1', name: 'Fiesta', tracks: { total: 10 }, images: [{ url: 'i.jpg' }], owner: { id: 'u', display_name: 'S' } }], next: null })],
+      ['/v1/me/tracks', okJson({ items: [], total: 42 })],
+    ]);
+    const mine = await listMine({ accessToken: 'AT' }, fetchImpl);
+    assert.equal(mine.playlists[0].name, 'Fiesta');
+    assert.equal(mine.playlists[0].total, 10);
+    assert.equal(mine.playlists[0].image, 'i.jpg');
+    assert.equal(mine.liked, 42);
   });
 });

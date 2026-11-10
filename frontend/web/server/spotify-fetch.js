@@ -2,7 +2,7 @@
 // la canción, el álbum o la playlist (siguiendo la paginación) y los normaliza con spotify-core. `fetch` se inyecta, así
 // que se prueba contra respuestas simuladas sin credenciales. Respeta el tipo y el ORDEN.
 
-import { normalizeAlbum, normalizePlaylist, normalizeSingleTrack } from './spotify-core.js';
+import { normalizeAlbum, normalizePlaylist, normalizeSingleTrack, normalizeTrack } from './spotify-core.js';
 
 const API = 'https://api.spotify.com';
 
@@ -43,7 +43,7 @@ async function allItems(firstPage, accessToken, fetchImpl, cap = Infinity) {
  * ({ type, id, name, tracks:[...] }). [maxTracks] limita playlists enormes (por defecto, sin límite).
  */
 export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, { maxTracks = Infinity } = {}) {
-  if (!ref || !ref.type || !ref.id) throw new Error('referencia de Spotify inválida');
+  if (!ref || !ref.type || (ref.type !== 'liked' && !ref.id)) throw new Error('referencia de Spotify inválida');
   if (!accessToken) throw new Error('falta el token de acceso');
 
   if (ref.type === 'track') {
@@ -51,6 +51,14 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
     const collection = normalizeSingleTrack(track);
     if (!collection) throw new SpotifyApiError(404, 'canción no disponible');
     return collection;
+  }
+
+  if (ref.type === 'liked') {
+    // «Me gusta» del usuario (GET /v1/me/tracks). Cada entrada es { added_at, track }. Se trata como una colección.
+    const first = await getJson(`${API}/v1/me/tracks?limit=50`, accessToken, fetchImpl);
+    const items = await allItems(first, accessToken, fetchImpl, maxTracks);
+    const tracks = items.map((entry) => normalizeTrack(entry?.track ?? entry?.item)).filter(Boolean);
+    return { type: 'liked', id: 'liked', name: 'Canciones favoritas', cover: null, tracks };
   }
 
   if (ref.type === 'album') {
@@ -74,4 +82,29 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
   }
 
   throw new Error(`tipo de Spotify no soportado: ${ref.type}`);
+}
+
+/**
+ * Lista la biblioteca del usuario para elegir qué transferir: sus playlists (propias y seguidas) y cuántas canciones
+ * tiene en «Me gusta». Devuelve { playlists: [{ id, name, total, image, ownerId, ownerName }], liked: <número> }.
+ * En «development mode» solo se podrá traer el CONTENIDO de las propias/colaborativas; esto solo lista.
+ */
+export async function listMine({ accessToken }, fetchImpl = fetch) {
+  if (!accessToken) throw new Error('falta el token de acceso');
+  const first = await getJson(`${API}/v1/me/playlists?limit=50`, accessToken, fetchImpl);
+  const items = await allItems(first, accessToken, fetchImpl);
+  const playlists = items.filter(Boolean).map((pl) => ({
+    id: pl.id,
+    name: typeof pl.name === 'string' ? pl.name : '',
+    total: pl.tracks?.total ?? 0,
+    image: (Array.isArray(pl.images) && pl.images[0]?.url) || null,
+    ownerId: pl.owner?.id ?? null,
+    ownerName: pl.owner?.display_name ?? null,
+  }));
+  let liked = 0;
+  try {
+    const saved = await getJson(`${API}/v1/me/tracks?limit=1`, accessToken, fetchImpl);
+    liked = saved.total ?? 0;
+  } catch { /* si no hay permiso de biblioteca, se omite «Me gusta» */ }
+  return { playlists, liked };
 }
