@@ -95,6 +95,44 @@ void main() {
     File audio(String id) => File('${tmp.path}/biblioteca/audio/$id.opus');
 
     test(
+      'una descarga más corta que su Content-Length no se da por guardada ni deja «.part»',
+      () async {
+        var calls = 0;
+        final s = store((request, _) async {
+          calls += 1;
+          // El servidor anuncia 10 bytes y la conexión se cierra a los 3.
+          return http.StreamedResponse(
+            Stream.value([1, 2, 3]),
+            200,
+            contentLength: 10,
+          );
+        });
+        await expectLater(
+          s.downloadAll([song('S1')], (_, _) {}),
+          throwsA(isA<HttpException>()),
+        );
+        expect(calls, 3, reason: 'se reintenta como cualquier fallo');
+        expect(audio('S1').existsSync(), isFalse);
+        final leftovers = Directory(
+          '${tmp.path}/biblioteca/audio',
+        ).listSync().where((file) => file.path.endsWith('.part'));
+        expect(leftovers, isEmpty);
+      },
+    );
+
+    test('una descarga completa con Content-Length se guarda entera', () async {
+      final s = store(
+        (request, _) async => http.StreamedResponse(
+          Stream.value([1, 2, 3, 4]),
+          200,
+          contentLength: 4,
+        ),
+      );
+      expect(await s.downloadAll([song('S2')], (_, _) {}), 1);
+      expect(audio('S2').readAsBytesSync(), [1, 2, 3, 4]);
+    });
+
+    test(
       'baja hasta 4 a la vez, se salta lo guardado y el progreso con bytes no retrocede',
       () async {
         var active = 0;
