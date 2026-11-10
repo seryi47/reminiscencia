@@ -69,6 +69,14 @@
   status = 200
   force = true
 
+# Transferir música (ADR-0044): todo /api/spotify/* lo ejecuta el Worker (Spotify por fetch + matching en JS; la búsqueda
+# de YouTube la toma de su upstream). El Redirect URI de OAuth apunta al Worker, así que el callback también vive allí.
+[[redirects]]
+  from = "/api/spotify/*"
+  to = "https://reminiscencia.cometia.es/api/spotify/:splat"
+  status = 200
+  force = true
+
 # Funciones de Netlify (ADR-0038): solo search y playlist. youtube-dl-exec va como módulo externo (su require se captura
 # si falta); no se incluye el binario de yt-dlp, así que en Netlify el respaldo yt-dlp puede no estar y se usa la ruta
 # HTML. Con Vercel de vuelta, respaldo completo.

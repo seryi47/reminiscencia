@@ -34,6 +34,9 @@ import { handleConvert } from '../../frontend/web/server/youtube-convert.js';
 import { handleStatus } from '../../frontend/web/server/youtube-status.js';
 import { handleDownload } from '../../frontend/web/server/youtube-download.js';
 import { YOUTUBE_MARK_HEADER, markYoutube } from '../../frontend/web/server/youtube-mark.js';
+import {
+  handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyResolve, handleSpotifyCallback,
+} from '../../frontend/web/server/spotify-endpoints.js';
 import { AUDIO_EXPOSE_HEADERS, handleAudioRequest } from './audio.js';
 import { readCoverIndex, saveCoverToBucket } from './portadas.js';
 import { bindingStorage } from './r2-storage.js';
@@ -206,6 +209,35 @@ async function forwardYoutube(request, env, fetchImpl) {
   return jsonResponse(502, { ok: false, error: 'El servicio de YouTube no responde ahora mismo. Inténtalo más tarde.' });
 }
 
+const SPOTIFY_PREFIX = '/api/spotify/';
+
+/**
+ * Búsqueda de YouTube para el resolver de «Transferir música» (ADR-0044): el Worker no tiene yt-dlp, así que reutiliza su
+ * propio proxy de upstreams (forwardYoutube) para /api/youtube/search y devuelve los candidatos.
+ */
+function spotifySearch(env, fetchImpl) {
+  return async (query) => {
+    const search = new Request(`https://worker.local/api/youtube/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+    const response = await forwardYoutube(search, env, fetchImpl);
+    if (!response.ok) return [];
+    const data = await response.json().catch(() => ({}));
+    return Array.isArray(data.items) ? data.items : [];
+  };
+}
+
+/** Rutas de «Transferir música» (ADR-0044). Spotify (fetch) y el matching (JS puro) corren aquí; solo el yt-dlp de la
+ *  búsqueda se delega al upstream. El token del usuario no se guarda: llega en cada /resolve. */
+async function handleSpotify(name, request, env, fetchImpl) {
+  switch (name) {
+    case 'login': return handleSpotifyLogin(request, { env });
+    case 'token': return handleSpotifyToken(request, { env, fetchImpl });
+    case 'refresh': return handleSpotifyRefresh(request, { env, fetchImpl });
+    case 'resolve': return handleSpotifyResolve(request, { search: spotifySearch(env, fetchImpl), fetchImpl });
+    case 'callback': return handleSpotifyCallback();
+    default: return jsonResponse(404, { ok: false, error: 'No existe.' });
+  }
+}
+
 /** Atiende una petición (también en las pruebas: tests/web-unit/worker.test.mjs, con bindings simulados). */
 export async function handleRequest(request, env = {}, { fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
   const origin = request.headers.get('origin');
@@ -230,6 +262,9 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
     const native = Object.prototype.hasOwnProperty.call(YOUTUBE_NATIVE, name) ? YOUTUBE_NATIVE[name] : null;
     if (native) return finish(await youtubeNative(native, request, fetchImpl), origin);
     return finish(await forwardYoutube(request, env, fetchImpl), origin);
+  }
+  if (path.startsWith(SPOTIFY_PREFIX)) {
+    return finish(await handleSpotify(path.slice(SPOTIFY_PREFIX.length), request, env, fetchImpl), origin);
   }
   const audio = await handleAudioRequest(request, env.PUBLIC_BUCKET);
   if (audio) return finish(audio, origin, AUDIO_EXPOSE_HEADERS);

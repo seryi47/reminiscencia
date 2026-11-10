@@ -39,6 +39,19 @@ export function artistFromChannel(channel) {
   return String(channel ?? '').replace(/\s+-\s+Topic$/i, '').trim().slice(0, 200);
 }
 
+/**
+ * Fuente del candidato a partir del canal (para el motor de identificación de ADR-0044):
+ * - 'topic': canal «Artista - Topic» de YouTube Music (subida oficial de sello, metadatos limpios).
+ * - 'official': canal VEVO o del artista oficial.
+ * - 'search': un vídeo normal.
+ */
+export function sourceFromChannel(channel) {
+  const value = String(channel ?? '');
+  if (/\s+-\s+Topic$/i.test(value)) return 'topic';
+  if (/VEVO$/i.test(value) || /\bofficial\b/i.test(value)) return 'official';
+  return 'search';
+}
+
 /** «3:45» o «1:02:03» a segundos; null si no tiene el formato (por ejemplo, un directo). */
 export function parseClock(text) {
   const parts = String(text ?? '').trim().split(':');
@@ -61,6 +74,7 @@ function normalize(candidates) {
       title,
       artist: artistFromChannel(candidate.channel),
       durationS: Math.round(durationS),
+      source: sourceFromChannel(candidate.channel),
     });
     if (items.length >= MAX_RESULTS) break;
   }
@@ -168,6 +182,21 @@ function searchYtdlp(query, { spawnImpl, env }) {
   });
 }
 
+/**
+ * Candidatos de YouTube para una consulta (sin envoltorio HTTP), para reutilizarlos en el buscador y en el resolver de
+ * «Transferir música» (ADR-0044). La página de resultados es rápida; yt-dlp, más lento, solo entra si la página no da nada.
+ */
+export async function searchYoutubeCandidates(query, { spawnImpl = nodeSpawn, env = process.env, fetchImpl = globalThis.fetch } = {}) {
+  let items = [];
+  try {
+    items = await searchHtml(query, fetchImpl);
+  } catch (error) {
+    if (!(error instanceof YoutubeApiError)) throw error;
+  }
+  if (items.length === 0) items = await searchYtdlp(query, { spawnImpl, env });
+  return items;
+}
+
 export async function handleSearch(request, { spawnImpl = nodeSpawn, env = process.env, fetchImpl = globalThis.fetch } = {}) {
   try {
     if (request.method !== 'GET') throw new YoutubeApiError(405, 'Método no permitido.', { Allow: 'GET' });
@@ -175,14 +204,7 @@ export async function handleSearch(request, { spawnImpl = nodeSpawn, env = proce
     if (!query) {
       throw new YoutubeApiError(400, `Escribe entre ${MIN_QUERY_LENGTH} y ${MAX_QUERY_LENGTH} caracteres para buscar.`);
     }
-    // La página de resultados es rápida; yt-dlp, más lento, solo entra si la página no da nada.
-    let items = [];
-    try {
-      items = await searchHtml(query, fetchImpl);
-    } catch (error) {
-      if (!(error instanceof YoutubeApiError)) throw error;
-    }
-    if (items.length === 0) items = await searchYtdlp(query, { spawnImpl, env });
+    const items = await searchYoutubeCandidates(query, { spawnImpl, env, fetchImpl });
     return json(200, { items }, { 'Cache-Control': CACHE_CONTROL });
   } catch (error) {
     return publicError(error);

@@ -68,8 +68,8 @@ describe('búsqueda de YouTube', () => {
       video('HIJKLMNOPQR', 'Segunda', 'Rauw Alejandro', '3:21'),
     ));
     assert.deepEqual(items, [
-      { id: 'abcdefghijk', url: 'https://www.youtube.com/watch?v=abcdefghijk', title: 'Tití Me Preguntó', artist: 'Bad Bunny', durationS: 243 },
-      { id: 'HIJKLMNOPQR', url: 'https://www.youtube.com/watch?v=HIJKLMNOPQR', title: 'Segunda', artist: 'Rauw Alejandro', durationS: 201 },
+      { id: 'abcdefghijk', url: 'https://www.youtube.com/watch?v=abcdefghijk', title: 'Tití Me Preguntó', artist: 'Bad Bunny', durationS: 243, source: 'topic' },
+      { id: 'HIJKLMNOPQR', url: 'https://www.youtube.com/watch?v=HIJKLMNOPQR', title: 'Segunda', artist: 'Rauw Alejandro', durationS: 201, source: 'search' },
     ]);
     assert.ok(MAX_DURATION_S >= 600);
   });
