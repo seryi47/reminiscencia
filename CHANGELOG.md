@@ -1,3 +1,17 @@
+## Sin publicar: segunda dirección de la web en Netlify (2026-11-10, rama `feature/web-en-netlify`)
+
+- **https://reminiscencia.netlify.app**, mientras Vercel está bloqueado ([ADR-0037](docs/decisions/ADR-0037-web-en-netlify.md)):
+  - Netlify sirve solo los ficheros de la web.
+  - Los datos y las portadas se piden al Worker (siempre al día), el audio se redirige al Worker, el API se llama directamente en el Worker (CORS) y `/api/youtube/*` pasa por el Worker hacia Vercel.
+  - Sin funciones ni variables de entorno en Netlify.
+- `netlify.toml` (nuevo, en la raíz):
+  - publica `frontend/web` con la misma lista de exclusiones que Cloudflare (`.assetsignore`);
+  - solo despliega si cambia el código de la web, para que los commits del buzón no gasten los 300 créditos mensuales del plan gratuito (15 por despliegue de producción).
+- `worker/wrangler.toml`: `ALLOWED_ORIGINS` admite el origen de Netlify.
+- **Panel de Netlify** (por la API): el sitio pasa a llamarse `reminiscencia`, la producción es pública (antes pedía iniciar sesión en Netlify) y se permiten los despliegues de esta rama.
+- Vercel no cambia.
+- **Pruebas:** `tests/web-unit/netlify.test.mjs`.
+
 ## Sin publicar: apertura propia y reproductor estable (2026-11-10, rama `feature/estabilidad-apk`)
 
 - **APK, cierres tras 30–40 minutos** ([ADR-0036](docs/decisions/ADR-0036-estabilidad-del-reproductor.md)):

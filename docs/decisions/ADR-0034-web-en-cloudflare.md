@@ -3,6 +3,7 @@
 - Estado: aceptada (2026-11-08) y desplegada (2026-11-09): fusionada en `main`, primer `wrangler deploy` hecho y Cloudflare Workers Builds desplegando con cada push a `main` (ver «Despliegue»).
 - Fecha: 2026-11-08
 - Modifica: [ADR-0007](ADR-0007-catalogo-y-flujo-desde-vercel.md) (la web estática deja de servirse solo desde Vercel), [ADR-0029](ADR-0029-worker-cloudflare-y-portadas.md) (el Worker sirve también la web y tiene dominio propio) y [ADR-0031](ADR-0031-audio-por-el-worker.md) (en el dominio propio el audio es del mismo origen; la redirección de `vercel.json` va al dominio propio).
+- Ampliada por: [ADR-0037](ADR-0037-web-en-netlify.md) (segunda dirección de la web en Netlify, con el mismo Worker detrás).
 - Relacionadas: [ADR-0021](ADR-0021-buscar-en-youtube.md) y [ADR-0019](ADR-0019-playlists-de-youtube-como-albumes.md) (las funciones de YouTube, que siguen en Vercel).
 
 ## Contexto

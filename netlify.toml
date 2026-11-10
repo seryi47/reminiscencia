@@ -1,0 +1,50 @@
+# Netlify: segunda dirección de la web, https://reminiscencia.netlify.app, mientras Vercel está bloqueado (ADR-0037).
+#
+# Netlify sirve solo los ficheros de la web (el shell). Todo lo demás sigue en el Worker de Cloudflare, en
+# https://reminiscencia.cometia.es, como en la web de Vercel: el API va directo con CORS (WORKER_API_BASE de
+# js/api-config.js) y aquí solo se reenvían los datos, las portadas, el audio y las rutas de YouTube. No hay funciones
+# de Netlify ni variables de entorno.
+#
+# El plan gratuito da 300 créditos al mes (15 por despliegue de producción) y, si se acaban, Netlify pausa los sitios de
+# la cuenta. Por eso solo se despliega cuando cambia el código de la web (ver «ignore»): los commits del buzón solo
+# tocan data/ y covers/, que no se publican aquí sino que se leen del Worker, siempre al día.
+
+[build]
+  # Los ficheros de la web, sin lo que no es web: la misma lista que usa Cloudflare (frontend/web/.assetsignore: las
+  # funciones de Vercel, server/, package.json, vercel.json…), y sin data/ ni covers/ (se reenvían al Worker).
+  command = "rm -rf netlify-dist && rsync -a --exclude-from=frontend/web/.assetsignore --exclude=/.assetsignore --exclude=/data --exclude=/covers frontend/web/ netlify-dist/"
+  publish = "netlify-dist"
+  # Sale con 0 (y Netlify no despliega) si este commit no cambia el código de la web ni este fichero. En el primer
+  # despliegue de una rama (sin despliegue anterior), o si git no puede comparar, despliega.
+  ignore = "[ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- netlify.toml frontend/web ':(exclude)frontend/web/data' ':(exclude)frontend/web/covers' ':(exclude)frontend/web/api' ':(exclude)frontend/web/server' ':(exclude)frontend/web/vercel.json'"
+
+# Las cabeceras (la CSP) son las de frontend/web/_headers, que Netlify lee igual que Cloudflare.
+
+# Datos y portadas publicados: del Worker, sin desplegar aquí (status 200 = Netlify los pide y los sirve en este mismo
+# origen, así que la web y su service worker los ven como propios).
+[[redirects]]
+  from = "/data/*"
+  to = "https://reminiscencia.cometia.es/data/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/covers/*"
+  to = "https://reminiscencia.cometia.es/covers/:splat"
+  status = 200
+  force = true
+
+# El audio: redirección al Worker, como en vercel.json (ADR-0031). No pasa por Netlify ni gasta su ancho de banda.
+[[redirects]]
+  from = "/audio/*"
+  to = "https://reminiscencia.cometia.es/audio/:splat"
+  status = 307
+  force = true
+
+# YouTube: la web llama a /api/youtube/* en su propio origen. Se reenvía al Worker, que a su vez lo reenvía a Vercel
+# (ADR-0034): funcionará aquí cuando vuelva Vercel.
+[[redirects]]
+  from = "/api/youtube/*"
+  to = "https://reminiscencia.cometia.es/api/youtube/:splat"
+  status = 200
+  force = true
