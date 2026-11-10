@@ -150,6 +150,13 @@ class SonidosAudioHandler extends BaseAudioHandler
   // Dirección de audio en uso por canción transmitida y las ya probadas en esta cola (ADR-0031).
   final Map<String, Uri> _streamUris = <String, Uri>{};
   final Map<String, Set<Uri>> _sourcesTried = <String, Set<Uri>>{};
+  // Fuente transmitida de cada canción de la cola, reutilizada en cada recarga mientras su dirección no cambie:
+  // just_audio registra cada fuente nueva en su servidor local y no la quita nunca, y así una descarga en curso
+  // tampoco se repite.
+  // ignore: experimental_member_use
+  final Map<String, LockCachingAudioSource> _streamSources =
+      // ignore: experimental_member_use
+      <String, LockCachingAudioSource>{};
   // Escuchar de YouTube (ADR-0021): su dirección, para poder recargarla.
   Uri? _youtubeUri;
   Map<String, String>? _youtubeHeaders;
@@ -284,6 +291,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     _queueIds = [for (final song in songs) song.id];
     _queueFiles = files;
     _streamUris.clear();
+    _streamSources.clear();
     _sourcesTried.clear();
     _active = true;
     queue.add(items);
@@ -312,13 +320,16 @@ class SonidosAudioHandler extends BaseAudioHandler
     }
     final uri = _streamUris[song.id] ??= _store.audioUri(song);
     (_sourcesTried[song.id] ??= <Uri>{}).add(uri);
-    return (
-      // LockCachingAudioSource (experimental en just_audio 0.10) transmite y guarda a la vez. Si al pedirla el
-      // fichero ya está completo, lo sirve desde el disco sin red.
-      // ignore: experimental_member_use
-      LockCachingAudioSource(uri, cacheFile: file, tag: song.id) as AudioSource,
-      false,
-    );
+    final reused = _streamSources[song.id];
+    if (reused != null && reused.uri == uri) {
+      return (reused as AudioSource, false);
+    }
+    // LockCachingAudioSource (experimental en just_audio 0.10) transmite y guarda a la vez. Si al pedirla el
+    // fichero ya está completo, lo sirve desde el disco sin red.
+    // ignore: experimental_member_use
+    final source = LockCachingAudioSource(uri, cacheFile: file, tag: song.id);
+    _streamSources[song.id] = source;
+    return (source as AudioSource, false);
   }
 
   /// (Re)carga todas las fuentes de la cola, comprobando de nuevo qué está guardado, y prepara [index] en
@@ -661,6 +672,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     _queueFiles = const [null];
     _fromFile = const [false];
     _streamUris.clear();
+    _streamSources.clear();
     _sourcesTried.clear();
     _active = true;
     _loadSeq += 1;
@@ -744,6 +756,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     _queueFiles = const [];
     _fromFile = const [];
     _streamUris.clear();
+    _streamSources.clear();
     _sourcesTried.clear();
     _youtubeUri = null;
     _youtubeHeaders = null;

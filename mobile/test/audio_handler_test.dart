@@ -382,6 +382,28 @@ void main() {
     );
 
     test(
+      'las recargas reutilizan la fuente transmitida de cada canción (el servidor local de just_audio no crece)',
+      () async {
+        await handler.playAt(songs, 0);
+        await handler.playAt(songs, 1);
+        await handler.playAt(songs, 2);
+        expect(player.loads, hasLength(3));
+        for (var i = 0; i < songs.length; i++) {
+          expect(
+            identical(player.loads[0].sources[i], player.loads[2].sources[i]),
+            isTrue,
+          );
+        }
+        // Otra cola empieza de cero.
+        await handler.playAt(songs.reversed.toList(), 0);
+        expect(
+          identical(player.loads[3].sources[0], player.loads[0].sources[3]),
+          isFalse,
+        );
+      },
+    );
+
+    test(
       'cada carga vuelve a mirar lo guardado: las demás de la cola también pasan a fichero',
       () async {
         await handler.playAt(songs, 0);
