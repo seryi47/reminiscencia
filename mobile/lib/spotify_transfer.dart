@@ -3,6 +3,9 @@
 // resolución por páginas con refresco de token, dedup (regla común de duplicates.dart) y selección. Sin UI: la pantalla
 // (ui/spotify_transfer_page.dart) pinta esto y entrega las aceptadas al pipeline de subida que ya existe.
 
+// Los campos privados _client/_pageLimit se asignan desde parámetros con nombre (que no pueden empezar por «_», así que no
+// pueden ser formales de inicialización); el resto del constructor usa valores por defecto con ??.
+// ignore_for_file: prefer_initializing_formals
 import 'dart:async';
 import 'dart:convert';
 

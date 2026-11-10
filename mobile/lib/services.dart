@@ -6,6 +6,7 @@ import 'library_controller.dart';
 import 'playback.dart';
 import 'settings_store.dart';
 import 'url_opener.dart';
+import 'spotify_transfer.dart';
 import 'youtube_importer.dart';
 import 'youtube_stream.dart';
 
@@ -31,6 +32,7 @@ class AppServices {
     this.probeDuration = _unknownDuration,
     this.youtube,
     this.streamResolver,
+    this.spotify,
     this.clock = DateTime.now,
     // El campo es privado: el getter [covers] lo envuelve con las vistas previas pendientes.
     // ignore: prefer_initializing_formals
@@ -72,6 +74,9 @@ class AppServices {
 
   /// Abre el audio de un resultado de YouTube para «Escuchar» en el buscador (ADR-0021). Opcional en pruebas.
   final YoutubeStreamResolver? streamResolver;
+
+  /// Motor de «Transferir música» desde Spotify (ADR-0044). Opcional: si falta, la pantalla crea el suyo.
+  final SpotifyTransfer? spotify;
 
   /// Hora actual (saludo de Inicio). Se sustituye en pruebas.
   final DateTime Function() clock;

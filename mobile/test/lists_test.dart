@@ -122,7 +122,9 @@ void main() {
 
       await tester.tap(find.text('Tu biblioteca'));
       await settle(tester);
-      await tester.tap(find.byTooltip('Crear lista'));
+      await tester.tap(find.byTooltip('Crear')); // menú «Crear» (lista / transferir música)
+      await settle(tester);
+      await tester.tap(find.text('Crear lista').last);
       await settle(tester);
 
       await tester.enterText(find.byType(TextField), '   ');

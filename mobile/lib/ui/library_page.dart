@@ -10,6 +10,7 @@ import 'collection_ref.dart';
 import 'common.dart';
 import 'duplicate_review.dart';
 import 'homeostasia.dart';
+import 'spotify_transfer_page.dart';
 import 'pending_edits_panel.dart';
 import 'playlist_flows.dart';
 import 'uploads_panel.dart';
@@ -59,11 +60,15 @@ class _LibraryPageState extends State<LibraryPage> {
                           ),
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Crear lista',
+                      PopupMenuButton<String>(
+                        tooltip: 'Crear',
                         icon: const Icon(Icons.add_rounded),
                         iconSize: 30,
-                        onPressed: () async {
+                        onSelected: (value) async {
+                          if (value == 'transferir') {
+                            await openTransferirSheet(context, services);
+                            return;
+                          }
                           final created = await createPlaylistFlow(
                             context,
                             collections,
@@ -76,6 +81,10 @@ class _LibraryPageState extends State<LibraryPage> {
                             );
                           }
                         },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'lista', child: Text('Crear lista')),
+                          PopupMenuItem(value: 'transferir', child: Text('Transferir música')),
+                        ],
                       ),
                     ],
                   ),
