@@ -698,6 +698,31 @@ describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover
     assert.deepEqual(tried, [WEB_ORIGIN, NETLIFY_ORIGIN], 'prueba Vercel y luego Netlify');
   });
 
+  test('vuelta automática a Vercel el 7-dic: un 200 SIN cabecera-marca (código anterior) se usa, sin pasar a Netlify', async () => {
+    const tried = [];
+    const fetchImpl = async (url) => {
+      tried.push(new URL(url).origin);
+      // Vercel desbloqueado sirviendo el código anterior a esta cabecera: 200 con resultados, sin X-Reminiscencia-Youtube.
+      return new Response('{"items":[{"id":"abcdefghijk"}]}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const response = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`), {}, { fetchImpl });
+    assert.equal(response.status, 200);
+    assert.deepEqual(tried, [WEB_ORIGIN], 'usa Vercel directamente en cuanto responde 200, sin failover a Netlify');
+    assert.deepEqual(await response.json(), { items: [{ id: 'abcdefghijk' }] });
+  });
+
+  test('un error legítimo de la función (502 CON cabecera-marca) se devuelve tal cual, sin failover', async () => {
+    const tried = [];
+    const fetchImpl = async (url) => {
+      tried.push(new URL(url).origin);
+      return marked('{"ok":false,"error":"YouTube devolvió demasiados datos."}', { status: 502 });
+    };
+    const response = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`), {}, { fetchImpl });
+    assert.equal(response.status, 502);
+    assert.deepEqual(tried, [WEB_ORIGIN], 'un error de la función no es una caída de plataforma');
+    assert.equal((await response.json()).ok, false);
+  });
+
   test('recuerda el upstream caído: la siguiente petición va directa a Netlify sin reprobar Vercel', async () => {
     const order = [];
     let vercelHits = 0;

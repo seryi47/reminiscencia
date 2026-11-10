@@ -190,12 +190,17 @@ async function forwardYoutube(request, env, fetchImpl) {
       youtubeDown.set(base, now + YOUTUBE_DOWN_TTL_MS);
       continue;
     }
-    if (response.headers.get(YOUTUBE_MARK_HEADER)) {
+    // ¿Está caída la plataforma? Vercel pausado responde 402; un error 4xx/5xx SIN nuestra cabecera-marca es una página
+    // de error de la plataforma (no de nuestra función). Un 2xx cuenta como EN PIE aunque NO lleve la marca: así, cuando
+    // Vercel se desbloquee el 2026-12-07 sirviendo el código anterior (desplegado antes de esta cabecera, porque ahora
+    // está pausado y no puede desplegar el nuevo), el Worker vuelve a usar Vercel SOLO, sin que nadie toque nada. Un
+    // error legítimo de nuestra función (p. ej. 502 «demasiados datos») SÍ lleva la marca, así que se devuelve tal cual.
+    const platformDown = response.status === 402 || (!response.ok && !response.headers.get(YOUTUBE_MARK_HEADER));
+    if (!platformDown) {
       youtubeDown.delete(base);
       return response;
     }
-    // La respuesta no viene de nuestra función: la plataforma está caída o pausada. Probar la siguiente.
-    console.error('youtube: upstream sin función', base, response.status);
+    console.error('youtube: upstream caído', base, response.status);
     youtubeDown.set(base, now + YOUTUBE_DOWN_TTL_MS);
   }
   return jsonResponse(502, { ok: false, error: 'El servicio de YouTube no responde ahora mismo. Inténtalo más tarde.' });
