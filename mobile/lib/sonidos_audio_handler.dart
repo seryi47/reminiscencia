@@ -37,6 +37,10 @@ const Duration kIdleStopAfter = Duration(minutes: 15);
 /// No se aplica a las canciones que suenan desde un fichero del teléfono.
 const Duration kStallTimeout = Duration(seconds: 15);
 
+/// Espera máxima de una búsqueda (siguiente, anterior, saltar a un punto): just_audio no la da por acabada si la
+/// canción de destino falla, y la orden no debe quedarse colgada.
+const Duration kSeekWait = Duration(seconds: 5);
+
 /// Estado que se publica al servicio de audio. Mientras haya una cola activa nunca se publica `idle`: para
 /// audio_service, `idle` significa «parar el servicio» (stopSelf), y un error que se está reintentando o saltando
 /// (just_audio queda en `idle` tras cualquier error) cerraría el servicio en primer plano mientras la música sigue.
@@ -89,6 +93,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     bool configureSession = true,
     this.idleStopAfter = kIdleStopAfter,
     this.stallTimeout = kStallTimeout,
+    this.seekWait = kSeekWait,
   }) : // Las interrupciones las atiende el handler (ver la clase), no just_audio.
        _player = player ?? AudioPlayer(handleInterruptions: false),
        // ignore: prefer_initializing_formals
@@ -122,6 +127,9 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   /// Vigilante de parones de la red ([kStallTimeout]); en pruebas, más corto.
   final Duration stallTimeout;
+
+  /// Espera máxima de una búsqueda ([kSeekWait]); en pruebas, más corta.
+  final Duration seekWait;
 
   /// Portadas guardadas: la notificación usa el fichero local (file://), nunca descarga por su cuenta.
   final CoverCache? _covers;
@@ -599,15 +607,12 @@ class SonidosAudioHandler extends BaseAudioHandler
     }
     bool ready;
     try {
-      if (!_sameQueue(songs)) {
-        ready = await _loadQueue(songs, index);
-      } else if (_player.processingState == ProcessingState.idle) {
-        // Tras un error just_audio queda parado: buscar no lo vuelve a preparar, cargar sí.
-        ready = await _setSources(index, Duration.zero);
-      } else {
-        await _player.seek(Duration.zero, index: index);
-        ready = true;
-      }
+      // Siempre se carga (nunca se busca): una carga acaba siempre, lista o con error, y vuelve a mirar lo guardado.
+      // Buscar no sirve: tras un error just_audio queda parado y no se prepara, y si la fuente de destino falla, la
+      // búsqueda no acaba nunca y bloquearía la cola de órdenes (y con ella la recuperación del error).
+      ready = _sameQueue(songs)
+          ? await _setSources(index, Duration.zero)
+          : await _loadQueue(songs, index);
     } on AppException {
       rethrow;
     } catch (error) {
@@ -693,15 +698,15 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> playNext() => _guard(_player.seekToNext);
+  Future<void> playNext() => _guard(() => _bounded(_player.seekToNext()));
 
   /// Como en cualquier reproductor: pasados unos segundos, «Anterior» vuelve al principio de la canción.
   @override
   Future<void> playPrevious() => _guard(() {
     if (_player.position > kRestartThreshold || !_player.hasPrevious) {
-      return _player.seek(Duration.zero);
+      return _bounded(_player.seek(Duration.zero));
     }
-    return _player.seekToPrevious();
+    return _bounded(_player.seekToPrevious());
   });
 
   @override
@@ -761,12 +766,20 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToQueueItem(int index) async {
-    await _guard(() => _player.seek(Duration.zero, index: index));
+    await _guard(() => _bounded(_player.seek(Duration.zero, index: index)));
     _startPlayback();
   }
 
   @override
-  Future<void> seek(Duration position) => _guard(() => _player.seek(position));
+  Future<void> seek(Duration position) =>
+      _guard(() => _bounded(_player.seek(position)));
+
+  /// Espera una búsqueda de just_audio como mucho [seekWait]: solo acaba cuando la canción queda lista, y si su
+  /// fuente falla no acaba nunca (el error llega por errorStream y lo atiende el camino de error).
+  Future<void> _bounded(Future<void> seek) => seek.timeout(
+    seekWait,
+    onTimeout: () => debugPrint('reproductor: la búsqueda no terminó'),
+  );
 
   @override
   Future<void> setShuffle(bool enabled) => _guard(() async {

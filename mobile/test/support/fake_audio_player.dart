@@ -34,6 +34,7 @@ class FakeAudioPlayer implements AudioPlayer {
   final List<String> log = [];
 
   /// Índices cuya carga falla (la canción no se puede preparar): setAudioSources lanza y se avisa por errorStream.
+  /// Buscar uno de ellos, como en just_audio, no acaba nunca: falla y el Future de seek se queda esperando.
   final Set<int> failingIndexes = {};
 
   ProcessingState _state = ProcessingState.idle;
@@ -136,15 +137,24 @@ class FakeAudioPlayer implements AudioPlayer {
   }
 
   @override
-  Future<void> seek(Duration? position, {int? index}) async {
+  Future<void> seek(Duration? position, {int? index}) {
     log.add('seek:${index ?? _currentIndex}');
     if (index != null && index != _currentIndex) {
       _currentIndex = index;
       _index.add(index);
     }
     _position = position ?? Duration.zero;
+    if (failingIndexes.contains(_currentIndex)) {
+      fail(_currentIndex!);
+      return Completer<void>().future;
+    }
     _emit();
+    return Future<void>.value();
   }
+
+  @override
+  Future<void> seekToNext() =>
+      seek(Duration.zero, index: (_currentIndex ?? 0) + 1);
 
   @override
   Future<void> play() async {

@@ -30,12 +30,14 @@ void main() {
   SonidosAudioHandler build({
     Duration idleStopAfter = kIdleStopAfter,
     Duration stallTimeout = kStallTimeout,
+    Duration seekWait = kSeekWait,
   }) => SonidosAudioHandler(
     store,
     player: player,
     configureSession: false,
     idleStopAfter: idleStopAfter,
     stallTimeout: stallTimeout,
+    seekWait: seekWait,
   );
 
   setUp(() async {
@@ -306,6 +308,36 @@ void main() {
         await drain();
         expect(player.loads.last.initialIndex, 2);
         expect(handler.nowPlaying.value.songId, 's2');
+      },
+    );
+
+    test(
+      'tocar otra canción de la misma cola la carga (no busca): una que falla no bloquea las órdenes',
+      () async {
+        await download(songs[2]);
+        await handler.playAt(songs, 2);
+        player.failingIndexes.add(0);
+        // s0 no está guardada y no hay red: falla al prepararse. Antes se buscaba y la búsqueda no acababa nunca.
+        await handler.playAt(songs, 0).timeout(const Duration(seconds: 2));
+        expect(player.log, isNot(contains('seek:0')));
+        expect(player.loads[1].initialIndex, 0);
+        await drain();
+        // El camino de error siguió: s1 tampoco está guardada, así que vuelve a la siguiente guardada (s2).
+        expect(player.loads.last.initialIndex, 2);
+        expect(handler.nowPlaying.value.songId, 's2');
+      },
+    );
+
+    test(
+      '«Siguiente» hacia una canción que falla no deja la orden colgada',
+      () async {
+        handler = build(seekWait: const Duration(milliseconds: 30));
+        await download(songs[0]);
+        await handler.playAt(songs, 0);
+        player.failingIndexes.add(1);
+        await handler.playNext().timeout(const Duration(seconds: 2));
+        await drain();
+        expect(handler.nowPlaying.value.songId, isNotNull);
       },
     );
 
