@@ -16,18 +16,16 @@ import 'youtube_audio_source.dart';
 
 /// Configuración del servicio de audio (notificación y servicio en primer plano).
 ///
-/// El servicio sigue en primer plano también en pausa (`androidStopForegroundOnPause: false`). Si lo dejara al
-/// pausar, volver a sonar sin que el usuario toque nada (al acabar una llamada, just_audio reanuda solo) obligaría a
-/// Android a arrancar un servicio en primer plano desde segundo plano, algo que Android 12+ prohíbe
-/// (ForegroundServiceStartNotAllowedException, que audio_service se traga): la música seguiría sin servicio ni
-/// bloqueo de CPU y el sistema podría matar la app. Para no retener recursos sin fin, el reproductor se cierra solo
-/// tras [kIdleStopAfter] sin sonar. `androidNotificationOngoing` debe ser false con esta opción (lo exige
-/// audio_service); mientras el servicio está en primer plano, Android ya mantiene la notificación.
+/// En una pausa de verdad el servicio sale de primer plano y suelta el bloqueo de CPU
+/// (`androidStopForegroundOnPause: true`). Lo que no se publica como pausa es una interrupción pasajera (una
+/// llamada): ver [SonidosAudioHandler]. Mantener el primer plano en toda pausa no sirve: audio_service solo lo suelta
+/// al pausar o al destruirse el servicio, y mientras la app está abierta el servicio sigue enlazado, así que tras
+/// parar quedaría en primer plano y con el bloqueo de CPU sin fin (comprobado en el emulador).
 const AudioServiceConfig kAudioServiceConfig = AudioServiceConfig(
   androidNotificationChannelId: 'es.orbitalabs.reminiscencia.audio',
   androidNotificationChannelName: 'Reproducción',
-  androidNotificationOngoing: false,
-  androidStopForegroundOnPause: false,
+  androidNotificationOngoing: true,
+  androidStopForegroundOnPause: true,
 );
 
 /// Tiempo sin sonar (en pausa, al acabar la cola o tras un error sin salida) tras el que se cierra el reproductor,
@@ -42,12 +40,15 @@ const Duration kStallTimeout = Duration(seconds: 15);
 /// Estado que se publica al servicio de audio. Mientras haya una cola activa nunca se publica `idle`: para
 /// audio_service, `idle` significa «parar el servicio» (stopSelf), y un error que se está reintentando o saltando
 /// (just_audio queda en `idle` tras cualquier error) cerraría el servicio en primer plano mientras la música sigue.
-/// Con la reproducción pedida se publica `buffering`; en pausa, `ready`.
+/// Con la reproducción pedida se publica `buffering`; en pausa, `ready`. Durante una interrupción pasajera
+/// ([suspended]), `buffering`: la música espera para seguir.
 AudioProcessingState serviceProcessingState(
   ProcessingState state, {
   required bool active,
   required bool playing,
+  bool suspended = false,
 }) {
+  if (suspended && active) return AudioProcessingState.buffering;
   if (state == ProcessingState.idle && active) {
     return playing
         ? AudioProcessingState.buffering
@@ -68,6 +69,13 @@ bool isAudiblyPlaying({
         state == ProcessingState.loading);
 
 /// Reproductor en segundo plano con controles del sistema y el contrato [PlaybackPort] para la interfaz.
+///
+/// Interrupciones (llamadas, avisos de navegación): las atiende este handler, no just_audio. Una interrupción
+/// pasajera (pérdida transitoria del foco de audio) para el sonido pero no se publica como pausa: para el servicio
+/// sigue «sonando» (esperando), así no sale de primer plano y, al acabar la llamada, sigue sin tener que volver a
+/// entrar en primer plano desde segundo plano, algo que Android 12+ prohíbe (ForegroundServiceStartNotAllowedException,
+/// que audio_service se traga: la música seguía sin servicio ni bloqueo de CPU y el sistema mataba la app). Una
+/// pérdida definitiva del foco, desenchufar los auriculares o pausar a mano son pausas de verdad.
 /// Si la canción está guardada se reproduce desde el fichero local; si no, se transmite
 /// y se guarda mientras suena (LockCachingAudioSource), así la siguiente vez funciona sin conexión.
 /// Al abrir la app no hay nada cargado: la cola se prepara cuando el usuario toca una canción.
@@ -81,7 +89,8 @@ class SonidosAudioHandler extends BaseAudioHandler
     bool configureSession = true,
     this.idleStopAfter = kIdleStopAfter,
     this.stallTimeout = kStallTimeout,
-  }) : _player = player ?? AudioPlayer(),
+  }) : // Las interrupciones las atiende el handler (ver la clase), no just_audio.
+       _player = player ?? AudioPlayer(handleInterruptions: false),
        // ignore: prefer_initializing_formals
        _covers = covers {
     _player.playbackEventStream.listen((_) => _broadcastState());
@@ -140,6 +149,10 @@ class SonidosAudioHandler extends BaseAudioHandler
   /// Hay una cola cargada y no se ha parado. Solo entonces se protege el servicio de un `idle` pasajero.
   bool _active = false;
 
+  /// Parada por una interrupción pasajera (una llamada); sigue sola al acabar. Para el servicio y la interfaz sigue
+  /// sonando.
+  bool _suspended = false;
+
   /// Número de la última carga de fuentes: un error de una carga anterior ya no se atiende.
   int _loadSeq = 0;
 
@@ -167,9 +180,53 @@ class SonidosAudioHandler extends BaseAudioHandler
     try {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
+      session.interruptionEventStream.listen(handleInterruption);
+      session.becomingNoisyEventStream.listen((_) => handleBecomingNoisy());
     } catch (error) {
       _reportError(error);
     }
+  }
+
+  /// Si suena para el usuario: sonando de verdad o parada por una interrupción pasajera.
+  bool get _playingForUser => _player.playing || _suspended;
+
+  /// Interrupción del foco de audio (ver la clase). Pasajera (`pause`): se para sin publicarlo como pausa y sigue
+  /// al acabar. Definitiva (`unknown`): pausa de verdad. Atenuar (`duck`): Android baja el volumen solo.
+  @visibleForTesting
+  void handleInterruption(AudioInterruptionEvent event) {
+    if (event.begin) {
+      switch (event.type) {
+        case AudioInterruptionType.pause:
+          if (_player.playing) {
+            // Antes de pausar: la pausa se publica ya como «suspendida», nunca como pausa.
+            _suspended = true;
+            unawaited(_guardQuiet(_player.pause));
+          }
+        case AudioInterruptionType.unknown:
+          if (_playingForUser) {
+            _suspended = false;
+            unawaited(_guardQuiet(_player.pause));
+            _broadcastState();
+          }
+        case AudioInterruptionType.duck:
+          break;
+      }
+      return;
+    }
+    if (event.type == AudioInterruptionType.pause && _suspended) {
+      // play() marca playing antes de volver: el servicio nunca ve una pausa entre medias.
+      _startPlayback();
+      _broadcastState();
+    }
+  }
+
+  /// Auriculares desenchufados: pausa de verdad.
+  @visibleForTesting
+  void handleBecomingNoisy() {
+    if (!_playingForUser) return;
+    _suspended = false;
+    unawaited(_guardQuiet(_player.pause));
+    _broadcastState();
   }
 
   /// Las operaciones de cola se ejecutan una detrás de otra, para que dos toques seguidos no se pisen.
@@ -354,6 +411,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     debugPrint('reproductor: «${song.title}» falló: $error');
     if (_youtubeUri != null) {
       _reportError(error);
+      _suspended = false;
       await _guardQuiet(_player.pause);
       return;
     }
@@ -404,6 +462,7 @@ class SonidosAudioHandler extends BaseAudioHandler
         _startPlayback();
       }
     } else {
+      _suspended = false;
       await _guardQuiet(_player.pause);
     }
     // Se muestra después de arrancar, porque _startPlayback limpia el error anterior.
@@ -508,6 +567,16 @@ class SonidosAudioHandler extends BaseAudioHandler
     }
     _idleStop ??= Timer(idleStopAfter, () {
       _idleStop = null;
+      if (_suspended) {
+        // Una interrupción que no acaba (o una llamada muy larga) pasa a ser una pausa: el servicio sale de primer
+        // plano y suelta el bloqueo de CPU. Si sigue sin sonar, el siguiente plazo lo cierra.
+        debugPrint(
+          'reproductor: interrumpido desde hace $idleStopAfter; queda en pausa',
+        );
+        _suspended = false;
+        _broadcastState();
+        return;
+      }
       debugPrint('reproductor: sin sonar desde hace $idleStopAfter; se cierra');
       unawaited(stop());
     });
@@ -606,13 +675,15 @@ class SonidosAudioHandler extends BaseAudioHandler
   /// Arranca la reproducción sin esperar a que termine la canción (el Future de just_audio dura hasta el final).
   void _startPlayback() {
     _error.value = null;
+    // Al pedir que suene, deja de estar suspendida; play() marca playing antes de volver.
     unawaited(_player.play().catchError((Object error) => _reportError(error)));
+    _suspended = false;
   }
 
   @override
   Future<void> togglePlayPause() async {
-    if (_player.playing) {
-      await _guard(_player.pause);
+    if (_playingForUser) {
+      await pause();
       return;
     }
     if (_queueIds.isEmpty) {
@@ -640,13 +711,20 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> pause() => _guard(_player.pause);
+  Future<void> pause() async {
+    final wasSuspended = _suspended;
+    _suspended = false;
+    await _guard(_player.pause);
+    // Si ya estaba parada por una interrupción, pausar no cambia el reproductor: hay que publicarlo.
+    if (wasSuspended) _broadcastState();
+  }
 
   /// Para la música, cierra el servicio y su notificación y deja el reproductor vacío: sin canción ni cola, así
   /// la interfaz no muestra una canción que ya no está cargada.
   @override
   Future<void> stop() async {
     _active = false;
+    _suspended = false;
     _loadSeq += 1;
     _cancelTimers();
     await _guardQuiet(_player.stop);
@@ -664,6 +742,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     _sourcesTried.clear();
     _youtubeUri = null;
     _youtubeHeaders = null;
+    _suspended = false;
     queue.add(const []);
     mediaItem.add(null);
     _publish();
@@ -748,7 +827,7 @@ class SonidosAudioHandler extends BaseAudioHandler
   void _publish() {
     final item = _active ? mediaItem.value : null;
     final state = _player.processingState;
-    final playing = _active && _player.playing;
+    final playing = _active && _playingForUser;
     final now = NowPlaying(
       songId: item?.id,
       title: item?.title ?? '',
@@ -757,7 +836,7 @@ class SonidosAudioHandler extends BaseAudioHandler
       buffering:
           state == ProcessingState.loading ||
           state == ProcessingState.buffering ||
-          (state == ProcessingState.idle && playing),
+          (state == ProcessingState.idle && _player.playing),
       shuffle: _player.shuffleModeEnabled,
       repeat: _repeatOf(_player.loopMode),
     );
@@ -788,7 +867,7 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   void _broadcastState() {
-    final playing = _player.playing;
+    final playing = _playingForUser;
     playbackState.add(
       playbackState.value.copyWith(
         controls: [
@@ -808,7 +887,8 @@ class SonidosAudioHandler extends BaseAudioHandler
         processingState: serviceProcessingState(
           _player.processingState,
           active: _active,
-          playing: playing,
+          playing: _player.playing,
+          suspended: _suspended,
         ),
         playing: playing,
         updatePosition: _player.position,

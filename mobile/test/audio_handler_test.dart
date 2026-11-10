@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:reminiscencia/library_store.dart';
@@ -50,19 +51,93 @@ void main() {
   });
 
   group('servicio en primer plano (causa del cierre en segundo plano)', () {
+    test('configuración: pausa de verdad fuera de primer plano; plazos', () {
+      // Mantener el primer plano en toda pausa dejaba el servicio en primer plano y con el bloqueo de CPU tras
+      // parar (sigue enlazado mientras la app está abierta). Las llamadas se atienden sin publicar pausa.
+      expect(kAudioServiceConfig.androidStopForegroundOnPause, isTrue);
+      expect(kAudioServiceConfig.androidNotificationOngoing, isTrue);
+      expect(
+        kAudioServiceConfig.androidNotificationChannelId,
+        'es.orbitalabs.reminiscencia.audio',
+      );
+      expect(kIdleStopAfter, const Duration(minutes: 15));
+      expect(kStallTimeout, const Duration(seconds: 15));
+    });
+
     test(
-      'el servicio sigue en primer plano en pausa y la notificación no es «ongoing»',
-      () {
-        // Con androidStopForegroundOnPause: true, reanudar tras una llamada exigía arrancar el servicio en primer
-        // plano desde segundo plano, prohibido en Android 12+.
-        expect(kAudioServiceConfig.androidStopForegroundOnPause, isFalse);
-        expect(kAudioServiceConfig.androidNotificationOngoing, isFalse);
-        expect(
-          kAudioServiceConfig.androidNotificationChannelId,
-          'es.orbitalabs.reminiscencia.audio',
+      'una llamada para el sonido sin publicar pausa y al acabar sigue sola',
+      () async {
+        final published = <bool>[];
+        await download(songs[0]);
+        await handler.playAt(songs, 0);
+        handler.playbackState.listen((state) => published.add(state.playing));
+        published.clear();
+
+        handler.handleInterruption(
+          AudioInterruptionEvent(true, AudioInterruptionType.pause),
         );
-        expect(kIdleStopAfter, const Duration(minutes: 15));
-        expect(kStallTimeout, const Duration(seconds: 15));
+        expect(player.playing, isFalse, reason: 'el sonido se para');
+        expect(handler.playbackState.value.playing, isTrue);
+        expect(
+          handler.playbackState.value.processingState,
+          AudioProcessingState.buffering,
+        );
+        expect(handler.nowPlaying.value.playing, isTrue);
+
+        handler.handleInterruption(
+          AudioInterruptionEvent(false, AudioInterruptionType.pause),
+        );
+        expect(player.playing, isTrue, reason: 'sigue sola');
+        expect(
+          published,
+          everyElement(isTrue),
+          reason:
+              'el servicio nunca ve una pausa: no tiene que volver a primer plano',
+        );
+        expect(
+          handler.playbackState.value.processingState,
+          AudioProcessingState.ready,
+        );
+      },
+    );
+
+    test(
+      'pausar durante la llamada es una pausa de verdad: al acabar no sigue',
+      () async {
+        await download(songs[0]);
+        await handler.playAt(songs, 0);
+        handler.handleInterruption(
+          AudioInterruptionEvent(true, AudioInterruptionType.pause),
+        );
+        await handler.togglePlayPause();
+        expect(handler.playbackState.value.playing, isFalse);
+        handler.handleInterruption(
+          AudioInterruptionEvent(false, AudioInterruptionType.pause),
+        );
+        expect(player.playing, isFalse);
+        expect(handler.nowPlaying.value.playing, isFalse);
+      },
+    );
+
+    test(
+      'perder el foco del todo o desenchufar los auriculares es una pausa de verdad',
+      () async {
+        await download(songs[0]);
+        await handler.playAt(songs, 0);
+        handler.handleInterruption(
+          AudioInterruptionEvent(true, AudioInterruptionType.unknown),
+        );
+        expect(handler.playbackState.value.playing, isFalse);
+        handler.handleInterruption(
+          AudioInterruptionEvent(false, AudioInterruptionType.unknown),
+        );
+        expect(player.playing, isFalse);
+
+        await handler.togglePlayPause();
+        expect(player.playing, isTrue);
+        handler.handleBecomingNoisy();
+        expect(player.playing, isFalse);
+        expect(handler.playbackState.value.playing, isFalse);
       },
     );
 
@@ -98,6 +173,15 @@ void main() {
           playing: true,
         ),
         AudioProcessingState.ready,
+      );
+      expect(
+        serviceProcessingState(
+          ProcessingState.ready,
+          active: true,
+          playing: false,
+          suspended: true,
+        ),
+        AudioProcessingState.buffering,
       );
     });
 
@@ -360,6 +444,23 @@ void main() {
           AudioProcessingState.idle,
         );
         expect(player.log, contains('stop'));
+      },
+    );
+
+    test(
+      'una interrupción que no acaba pasa a pausa de verdad y después se cierra',
+      () async {
+        await download(songs[0]);
+        await handler.playAt(songs, 0);
+        handler.handleInterruption(
+          AudioInterruptionEvent(true, AudioInterruptionType.pause),
+        );
+        expect(handler.playbackState.value.playing, isTrue);
+        await drain(const Duration(milliseconds: 60));
+        expect(handler.playbackState.value.playing, isFalse);
+        expect(handler.nowPlaying.value.songId, 's0');
+        await drain(const Duration(milliseconds: 60));
+        expect(handler.nowPlaying.value.songId, isNull);
       },
     );
 
