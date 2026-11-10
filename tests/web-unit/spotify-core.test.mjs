@@ -98,25 +98,35 @@ describe('normalizeAlbum', () => {
 });
 
 describe('normalizePlaylist', () => {
-  test('conserva el orden y salta las pistas nulas/locales', () => {
+  // Esquema de 2026: paginado en `items` y cada entrada con la pista en `item` (antes `tracks`/`track`).
+  test('esquema nuevo: conserva el orden y salta nulas, locales y episodios', () => {
     const playlist = {
       id: 'pl1',
       name: 'Mi lista',
       images: [{ url: 'pl.jpg' }],
       owner: { display_name: 'Sergio' },
-      tracks: {
+      items: {
         items: [
-          { track: { id: 'a', name: 'Uno', duration_ms: 1000, artists: [{ name: 'A' }], album: { name: 'AA', release_date: '2001' } } },
-          { track: null }, // retirada
-          { track: { id: 'b', name: 'Dos', duration_ms: 2000, artists: [{ name: 'B' }], album: { name: 'BB', release_date: '2002' }, is_local: true } }, // local
-          { track: { id: 'c', name: 'Tres', duration_ms: 3000, artists: [{ name: 'C' }], album: { name: 'CC', release_date: '2003' } } },
+          { item: { id: 'a', name: 'Uno', type: 'track', duration_ms: 1000, artists: [{ name: 'A' }], album: { name: 'AA', release_date: '2001' } } },
+          { item: null }, // retirada
+          { is_local: true, item: { id: 'b', name: 'Dos', type: 'track', duration_ms: 2000, artists: [{ name: 'B' }], album: { name: 'BB', release_date: '2002' } } }, // local (marcado en la entrada)
+          { item: { id: 'ep', name: 'Un episodio', type: 'episode', duration_ms: 9999 } }, // episodio: fuera
+          { item: { id: 'c', name: 'Tres', type: 'track', duration_ms: 3000, artists: [{ name: 'C' }], album: { name: 'CC', release_date: '2003' } } },
         ],
       },
     };
     const result = normalizePlaylist(playlist);
     assert.equal(result.type, 'playlist');
     assert.equal(result.owner, 'Sergio');
-    assert.deepEqual(result.tracks.map((t) => t.title), ['Uno', 'Tres']); // «Dos» (local) y la nula se saltan
+    assert.deepEqual(result.tracks.map((t) => t.title), ['Uno', 'Tres']); // local, nula y episodio se saltan
+  });
+
+  test('esquema antiguo (tracks/track) sigue funcionando', () => {
+    const playlist = {
+      id: 'pl1', name: 'Vieja',
+      tracks: { items: [{ track: { id: 'a', name: 'Uno', duration_ms: 1000, artists: [{ name: 'A' }], album: { name: 'AA', release_date: '2001' } } }] },
+    };
+    assert.deepEqual(normalizePlaylist(playlist).tracks.map((t) => t.title), ['Uno']);
   });
 });
 

@@ -52,16 +52,16 @@ describe('fetchCollection', () => {
     assert.ok(calls.some((u) => u.includes('/next-album')), 'siguió la paginación');
   });
 
-  test('playlist con paginación, saltando pistas nulas, en orden', async () => {
+  test('playlist con paginación (esquema 2026 items/item), saltando nulas, en orden', async () => {
     const { fetchImpl } = router([
       [`/v1/playlists/${ID}`, okJson({
         id: ID, name: 'Lista', images: [{ url: 'p.jpg' }], owner: { display_name: 'S' },
-        tracks: {
-          items: [{ track: { ...trackObj('A', 1), album: { name: 'AA', release_date: '2001' } } }, { track: null }],
+        items: {
+          items: [{ item: { ...trackObj('A', 1), type: 'track', album: { name: 'AA', release_date: '2001' } } }, { item: null }],
           next: 'https://api.spotify.com/next-pl',
         },
       })],
-      ['/next-pl', okJson({ items: [{ track: { ...trackObj('B', 2), album: { name: 'BB', release_date: '2002' } } }], next: null })],
+      ['/next-pl', okJson({ items: [{ item: { ...trackObj('B', 2), type: 'track', album: { name: 'BB', release_date: '2002' } } }], next: null })],
     ]);
     const col = await fetchCollection({ ref: { type: 'playlist', id: ID }, accessToken: 'AT' }, fetchImpl);
     assert.equal(col.type, 'playlist');
@@ -69,8 +69,8 @@ describe('fetchCollection', () => {
   });
 
   test('maxTracks limita playlists enormes', async () => {
-    const items = Array.from({ length: 5 }, (_, i) => ({ track: { ...trackObj(`S${i}`, i + 1), album: { name: 'X', release_date: '2000' } } }));
-    const { fetchImpl } = router([[`/v1/playlists/${ID}`, okJson({ id: ID, name: 'L', tracks: { items, next: null } })]]);
+    const items = Array.from({ length: 5 }, (_, i) => ({ item: { ...trackObj(`S${i}`, i + 1), type: 'track', album: { name: 'X', release_date: '2000' } } }));
+    const { fetchImpl } = router([[`/v1/playlists/${ID}`, okJson({ id: ID, name: 'L', items: { items, next: null } })]]);
     const col = await fetchCollection({ ref: { type: 'playlist', id: ID }, accessToken: 'AT' }, fetchImpl, { maxTracks: 2 });
     assert.equal(col.tracks.length, 2);
   });

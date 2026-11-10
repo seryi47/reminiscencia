@@ -75,9 +75,17 @@ export function normalizeAlbum(album) {
 /** Normaliza un objeto «playlist» de Spotify a { type:'playlist', id, name, cover, tracks:[...] } respetando el orden. */
 export function normalizePlaylist(playlist) {
   if (!playlist || typeof playlist !== 'object') return null;
-  const items = playlist.tracks?.items ?? [];
-  // Cada entrada es { track: <track o null> }; se saltan las pistas locales o retiradas.
-  const tracks = items.map((item) => normalizeTrack(item?.track)).filter(Boolean);
+  // Desde la migración de 2026 (apps en «development mode»), el objeto paginado de pistas es `items` y cada entrada lleva
+  // la pista en `item` (antes eran `tracks` y `track`); se admiten ambos. Se saltan las entradas locales, las retiradas
+  // (nulas) y los episodios (`type` distinto de `track`).
+  const paging = playlist.items ?? playlist.tracks ?? {};
+  const entries = paging.items ?? [];
+  const tracks = entries.map((entry) => {
+    if (!entry || entry.is_local) return null;
+    const track = entry.item ?? entry.track;
+    if (!track || (track.type && track.type !== 'track')) return null;
+    return normalizeTrack(track);
+  }).filter(Boolean);
   return {
     type: 'playlist',
     id: typeof playlist.id === 'string' ? playlist.id : null,

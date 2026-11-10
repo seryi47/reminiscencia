@@ -49,7 +49,7 @@ export function createTransferApi(fetchImpl = globalThis.fetch, base = '') {
 
 // --- Login -----------------------------------------------------------------------------------------------------------
 /** Arranca el login: pide la URL de Spotify, guarda verifier+state para el callback y devuelve la URL a abrir. */
-export async function beginConnect({ api, returnTo = '#transferir', pkceStore = globalThis.sessionStorage } = {}) {
+export async function beginConnect({ api, returnTo = '/#transferir', pkceStore = globalThis.sessionStorage } = {}) {
   const { url, verifier, state } = await api.login();
   try { pkceStore?.setItem(PKCE_KEY, JSON.stringify({ verifier, state, returnTo })); } catch { /* incógnito */ }
   return url;

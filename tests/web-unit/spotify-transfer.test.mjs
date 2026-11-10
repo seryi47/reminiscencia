@@ -46,9 +46,9 @@ describe('beginConnect', () => {
   test('guarda verifier+state y devuelve la URL', async () => {
     const pkce = fakeStorage();
     const api = { login: async () => ({ url: 'https://accounts.spotify.com/authorize?x', verifier: 'V', state: 'S' }) };
-    const url = await beginConnect({ api, returnTo: '#transferir', pkceStore: pkce });
+    const url = await beginConnect({ api, returnTo: '/#transferir', pkceStore: pkce });
     assert.match(url, /authorize/);
-    assert.deepEqual(JSON.parse(pkce.getItem(PKCE_KEY)), { verifier: 'V', state: 'S', returnTo: '#transferir' });
+    assert.deepEqual(JSON.parse(pkce.getItem(PKCE_KEY)), { verifier: 'V', state: 'S', returnTo: '/#transferir' });
   });
 });
 

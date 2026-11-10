@@ -272,6 +272,14 @@ class _TransferirSheetState extends State<_TransferirSheet> {
 
   Widget _reviewBody(ThemeData theme) {
     final resolution = _resolution!;
+    if (resolution.results.isEmpty) {
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('No hay canciones accesibles aquí. En modo desarrollo, Spotify solo da el contenido de tus propias listas; '
+            'prueba con un álbum, una canción suelta o una lista tuya.', style: theme.textTheme.bodyMedium),
+        const SizedBox(height: 16),
+        FilledButton(onPressed: () { _link.clear(); setState(() { _resolution = null; _stage = _Stage.input; }); }, child: const Text('Otro enlace')),
+      ]);
+    }
     final already = resolution.results.where((r) => r.inLibrary).length;
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text('${resolution.album != null ? '«${resolution.album!.name}» · ' : ''}${resolution.results.length} canciones'

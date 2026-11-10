@@ -5,7 +5,6 @@
 import { normalizeAlbum, normalizePlaylist, normalizeSingleTrack } from './spotify-core.js';
 
 const API = 'https://api.spotify.com';
-const PAGE = 100; // máximo de Spotify por página de items de playlist
 
 /** Error con el estado HTTP, para que la capa de arriba distinga 401 (refrescar) de 429 (esperar) o lo demás. */
 export class SpotifyApiError extends Error {
@@ -63,9 +62,13 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
   }
 
   if (ref.type === 'playlist') {
-    const playlist = await getJson(`${API}/v1/playlists/${ref.id}?limit=${PAGE}`, accessToken, fetchImpl);
-    const items = await allItems(playlist.tracks ?? { items: [] }, accessToken, fetchImpl, maxTracks);
-    const collection = normalizePlaylist({ ...playlist, tracks: { items } });
+    // GET /playlists/{id} no acepta `limit` (la migración de 2026); el objeto paginado es `items` (antes `tracks`) y se
+    // sigue su `next` tal cual lo devuelve Spotify. En «development mode» solo trae el contenido de listas propias o
+    // colaborativas; para el resto llega vacío (metadatos), y la UI avisa.
+    const playlist = await getJson(`${API}/v1/playlists/${ref.id}`, accessToken, fetchImpl);
+    const paging = playlist.items ?? playlist.tracks ?? { items: [] };
+    const items = await allItems(paging, accessToken, fetchImpl, maxTracks);
+    const collection = normalizePlaylist({ ...playlist, items: { items }, tracks: undefined });
     if (!collection) throw new SpotifyApiError(404, 'playlist no disponible');
     return collection;
   }

@@ -133,16 +133,27 @@ const CALLBACK_HTML = `<!doctype html>
   try { saved = JSON.parse(sessionStorage.getItem('reminiscencia.spotify.pkce') || 'null'); } catch { saved = null; }
   if (!code || !saved || !saved.verifier) { fail('Falta información del inicio de sesión. Inténtalo otra vez.'); return; }
   if (state !== saved.state) { fail('La respuesta de Spotify no coincide (seguridad). Inténtalo otra vez.'); return; }
+  msg.textContent = 'Casi listo…';
   try {
-    const res = await fetch('/api/spotify/token', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, verifier: saved.verifier }),
-    });
-    const session = await res.json();
-    if (!res.ok) { fail(session.error || 'No se pudo completar el inicio de sesión.'); return; }
-    localStorage.setItem('reminiscencia.spotify', JSON.stringify(session));
-    sessionStorage.removeItem('reminiscencia.spotify.pkce');
-    location.replace(saved.returnTo || '/#transferir');
-  } catch { fail('No se pudo completar el inicio de sesión.'); }
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, 20000);
+    var res;
+    try {
+      res = await fetch('/api/spotify/token', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal: controller.signal,
+        body: JSON.stringify({ code: code, verifier: saved.verifier }),
+      });
+    } finally { clearTimeout(timer); }
+    const session = await res.json().catch(function () { return {}; });
+    if (!res.ok) { fail('No se pudo iniciar sesión: ' + (session.error || ('error ' + res.status)) + '.'); return; }
+    try { localStorage.setItem('reminiscencia.spotify', JSON.stringify(session)); } catch (e) {}
+    try { sessionStorage.removeItem('reminiscencia.spotify.pkce'); } catch (e) {}
+    // La vuelta debe ser una ruta absoluta (empezar por «/»); si no, redirigiría dentro del propio callback (bug que vimos
+    // con «#transferir» sin barra). Tolera una app en caché que aún guarde el valor antiguo.
+    var back = (saved.returnTo && saved.returnTo.charAt(0) === '/') ? saved.returnTo : '/#transferir';
+    location.replace(back);
+  } catch (e) {
+    fail('No se pudo completar el inicio de sesión (' + (e && e.name === 'AbortError' ? 'tardó demasiado' : (e && e.message || e)) + ').');
+  }
 })();
 </script></body></html>`;

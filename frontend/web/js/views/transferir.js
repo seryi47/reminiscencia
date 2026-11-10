@@ -51,7 +51,7 @@ function transferPanel(ctx) {
       on: {
         click: async () => {
           try {
-            const url = await beginConnect({ api, returnTo: '#transferir' });
+            const url = await beginConnect({ api, returnTo: '/#transferir' });
             window.location.href = url; // vuelve a #transferir tras autorizar; la sesión queda guardada
           } catch {
             toast('No se pudo iniciar sesión en Spotify. Inténtalo de nuevo.');
@@ -119,6 +119,15 @@ function transferPanel(ctx) {
   }
 
   function renderResults() {
+    if (state.results.length === 0) {
+      setSection(
+        el('p', { class: 'transferir-intro', 'data-testid': 'transferir-vacio' },
+          'No hay canciones accesibles aquí. En modo desarrollo, Spotify solo da el contenido de tus propias listas; '
+          + 'prueba con un álbum, una canción suelta o una lista tuya.'),
+        el('button', { type: 'button', class: 'homeostasia-submit', on: { click: () => renderInput() } }, 'Otro enlace'),
+      );
+      return;
+    }
     const list = el('div', { class: 'transferir-list', 'data-testid': 'transferir-list' });
     for (const result of state.results) list.append(renderRow(result));
 

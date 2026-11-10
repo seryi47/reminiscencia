@@ -58,6 +58,19 @@ Un apartado propio, coherente con el diseño actual: conectar Spotify → listar
 5. ✅ **Enganche al pipeline** — web `importYoutubeTracks` (homeostasia.js) → `addUploads`; APK `importTracks` (youtube_importer.dart) → `uploadShared`. Dedup (regla común) y orden (álbum de Spotify).
 6. ⏳ **Segundo plano / escala**: hereda la cola de subidas persistente y la descarga reanudable que ya existen; el `resolve` pagina (offset/limit) para playlists grandes. La verificación de extremo a extremo en vivo (login real + descarga + publicación, web y APK) la hace el usuario.
 
+## Verificación contra la documentación oficial (2026-11-10)
+
+Tras una prueba real que se quedó colgada, se auditó todo el flujo contra la doc oficial de Spotify:
+
+- **OAuth PKCE correcto, sin secreto.** El intercambio de código y el refresco NO necesitan client secret ni cabecera Basic (solo `client_id` en el cuerpo); los nombres y valores (incluido `code_challenge_method=S256`) coinciden con la doc. En `invalid_grant` se descarta el token y se reinicia el login (ya lo hacíamos). El client secret del dashboard **no se usa** (se puede regenerar sin romper nada).
+- **Bug real arreglado (login):** el callback redirigía con `'#transferir'` (sin barra), que solo cambia el hash de la propia página del callback → se quedaba en «Conectando con Spotify…». Corregido a `'/#transferir'` y, además, el callback **normaliza** la vuelta (exige barra inicial) para tolerar una app en caché.
+- **Bugs reales arreglados (lectura de playlist), por la migración de Spotify de feb/mar 2026 que afecta a las apps en «development mode»:** el objeto paginado de una playlist pasó de `tracks` a **`items`**, y cada entrada lleva la pista en **`item`** (antes `track`); `GET /playlists/{id}` ya **no acepta `limit`** (se sigue `next` tal cual); hay que **saltar episodios** (`type != 'track'`) y respetar `is_local` de la entrada. La normalización (`spotify-core.js`) admite ambos esquemas. Los álbumes y las canciones sueltas no cambiaron.
+- **ISRC:** las pistas simplificadas de un álbum no traen `external_ids`; se propaga el contexto del álbum y, si hiciera falta el ISRC exacto, se leería `GET /tracks/{id}` por pista (no implementado aún; el matcher ya funciona sin él).
+
+## Límite conocido: «development mode»
+
+En development mode, Spotify solo devuelve el **contenido de las playlists propias o colaborativas**; las de otras personas o las editoriales llegan sin pistas (solo metadatos). Los **álbumes** y las **canciones sueltas** (catálogo) funcionan siempre. El dueño de la app necesita **Premium** y se permiten hasta 5 cuentas. La UI avisa si una playlist llega vacía.
+
 ## Límite conocido del login web
 
 El Redirect URI registrado es el del Worker (`reminiscencia.cometia.es`), así que el callback siempre cae ahí y lee el `verifier` de `sessionStorage` del mismo origen: **el login web funciona servido desde cometia** (el dominio principal). Desde los dominios de Vercel/Netlify el `sessionStorage` sería de otro origen; para esos casos se usaría un redirect propio o se conecta desde cometia. La APK no se ve afectada (su login va por un WebView que intercepta la vuelta).

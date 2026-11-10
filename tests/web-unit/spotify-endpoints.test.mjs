@@ -14,7 +14,7 @@ const post = (body) => new Request('https://reminiscencia.cometia.es/api/spotify
 });
 const okJson = (data) => ({ ok: true, status: 200, json: async () => data });
 
-const trackItem = (name, n) => ({ track: { id: `t${n}`, name, duration_ms: 200000, artists: [{ name: 'Coldplay' }], album: { name: 'Álbum', release_date: '2002' } } });
+const trackItem = (name, n) => ({ item: { id: `t${n}`, name, type: 'track', duration_ms: 200000, artists: [{ name: 'Coldplay' }], album: { name: 'Álbum', release_date: '2002' } } });
 // La búsqueda simulada devuelve un candidato oficial que coincide con la consulta («artista título»).
 const goodSearch = async (query) => [{ id: 'ok', url: 'https://youtu.be/ok', title: `${query} (Official Video)`, artist: 'Coldplay', durationS: 200, source: 'official' }];
 
@@ -53,7 +53,7 @@ describe('token / refresh', () => {
 describe('resolve', () => {
   const playlist = {
     id: PL, name: 'Mi lista', images: [{ url: 'p.jpg' }],
-    tracks: { items: [trackItem('Uno', 1), trackItem('Dos', 2), trackItem('Tres', 3)], next: null },
+    items: { items: [trackItem('Uno', 1), trackItem('Dos', 2), trackItem('Tres', 3)], next: null },
   };
   const fetchImpl = async (url) => (url.includes(`/v1/playlists/${PL}`) ? okJson(playlist) : okJson({}));
 
