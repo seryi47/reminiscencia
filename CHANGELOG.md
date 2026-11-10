@@ -10,7 +10,7 @@
 - `worker/wrangler.toml`: `ALLOWED_ORIGINS` admite el origen de Netlify.
 - **Panel de Netlify** (por la API): el sitio pasa a llamarse `reminiscencia`, la producción es pública (antes pedía iniciar sesión en Netlify) y se permiten los despliegues de esta rama.
 - Vercel no cambia.
-- **Pruebas:** `tests/web-unit/netlify.test.mjs`.
+- **Pruebas:** `tests/web-unit/netlify.test.mjs`. En producción (2026-11-10), el comprobador da 620 OK contra Netlify y Chrome reproduce, descarga y suena sin conexión.
 
 ## Sin publicar: apertura propia y reproductor estable (2026-11-10, rama `feature/estabilidad-apk`)
 
