@@ -723,6 +723,22 @@ async function deleteLocalSong(song) {
   return true;
 }
 
+/** Elimina una canción de la biblioteca común: la despublica (ADR-0041), tras confirmarlo. Reversible (el audio sigue en
+ *  el bucket privado). Desaparece al instante como edición pendiente; el Worker lo manda a GitHub con su token. */
+async function deleteSong(song) {
+  const ok = await confirmDialog({
+    title: 'Eliminar canción',
+    message: `¿Eliminar «${song.title}» de la biblioteca? Dejará de verse para todos. Se puede volver a publicar.`,
+    confirmLabel: 'Eliminar',
+    danger: true,
+  });
+  if (!ok) return false;
+  edits.submit({ op: 'unpublish_song', song_id: song.id });
+  if (player.getState().track?.id === song.id) player.load([]);
+  toast(`Se eliminará «${song.title}» de la biblioteca.`);
+  return true;
+}
+
 /** Descargar, cancelar la descarga en marcha o quitar la descarga de una colección (ADR-0033). */
 async function toggleDownload(contextId, songs, done) {
   if (downloads.isRunning(contextId)) {
@@ -1085,6 +1101,7 @@ const ctx = {
   addToQueue,
   addManyToQueue,
   deleteLocalSong,
+  deleteSong,
   toggleDownload,
   downloadProgress: (contextId) => downloads?.progress(contextId) ?? null,
   downloadStatusText,

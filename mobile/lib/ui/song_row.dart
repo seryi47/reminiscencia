@@ -354,6 +354,16 @@ class _SongMenu extends StatelessWidget {
                     );
                   },
                 ),
+              if (isEditableSong(song))
+                ListTile(
+                  key: const ValueKey('delete-song'),
+                  leading: const Icon(Icons.delete_outline_rounded),
+                  title: const Text('Eliminar de la biblioteca'),
+                  onTap: () {
+                    close();
+                    deleteSongFlow(hostContext, services, song);
+                  },
+                ),
             ],
             if (song.license.isNotEmpty)
               Padding(

@@ -66,6 +66,7 @@ OPERATIONS = {
         frozenset({"song_id"}),
         frozenset({"title", "artist", "year", "tags", "folder_id", "public"}),
     ),
+    "unpublish_song": (frozenset({"song_id"}), frozenset()),
     "move_songs": (frozenset({"song_ids", "folder_id"}), frozenset()),
     "order_album": (frozenset({"folder_id", "song_ids"}), frozenset()),
     "organize_youtube_playlist": (
@@ -229,6 +230,10 @@ def validate_payload(data: object) -> dict:
             "name": _text(data["name"], "name", 1, MAX_TITLE_CHARS),
             "songs": songs,
         }
+    if operation == "unpublish_song":
+        # Eliminar una canción de la biblioteca = despublicarla (ADR-0041). Reversible: el audio sigue en el bucket
+        # privado y se puede volver a publicar.
+        return {"op": operation, "song_id": _song_id(data["song_id"])}
     return _edit_song(data)
 
 

@@ -26,7 +26,7 @@
     "canciones_playlist_youtube": 200,
     "titulo_incidencia": 120
   },
-  "operaciones_api_editar": ["clean_titles", "create_folder", "edit_folder", "edit_song", "move_songs", "order_album", "rename_folder"],
+  "operaciones_api_editar": ["clean_titles", "create_folder", "edit_folder", "edit_song", "move_songs", "order_album", "rename_folder", "unpublish_song"],
   "espacios": ["U+0009", "U+000A", "U+000B", "U+000C", "U+000D", "U+001C", "U+001D", "U+001E", "U+001F", "U+0020", "U+0085", "U+00A0", "U+1680", "U+2000", "U+2001", "U+2002", "U+2003", "U+2004", "U+2005", "U+2006", "U+2007", "U+2008", "U+2009", "U+200A", "U+2028", "U+2029", "U+202F", "U+205F", "U+3000"],
   "ids": {
     "cancion": [["S0123456789abcdef", true], ["S0123456789ABCDEF", false], ["s0123456789abcdef", false], ["S0123456789abcde", false], ["S0123456789abcdef0", false], ["S0123456789abcdeg", false], ["F0123456789abcdef", false], ["L0123456789abcdef", false], [" S0123456789abcdef", false], ["S0123456789abcdef\n", false], ["", false]],
@@ -153,7 +153,9 @@
     {"caso": "falta op", "payload": {"name": "Valses"}, "valido": false, "motivo": "missing_op", "web": "aplica", "apk": "no_aplica"},
     {"caso": "op desconocida", "payload": {"op": "borrar_todo"}, "valido": false, "motivo": "unknown_op", "web": "aplica", "apk": "no_aplica"},
     {"caso": "op que no es texto", "payload": {"op": 5}, "valido": false, "motivo": "unknown_op", "web": "aplica", "apk": "no_aplica"},
-    {"caso": "dos campos desconocidos: se nombra el primero en orden alfabético", "payload": {"op": "delete_folder", "folder_id": "F00000000000000a1", "zeta": 1, "alfa": 2}, "valido": false, "motivo": "unknown_field", "campo": "alfa", "web": "aplica", "apk": "no_aplica"}
+    {"caso": "dos campos desconocidos: se nombra el primero en orden alfabético", "payload": {"op": "delete_folder", "folder_id": "F00000000000000a1", "zeta": 1, "alfa": 2}, "valido": false, "motivo": "unknown_field", "campo": "alfa", "web": "aplica", "apk": "no_aplica"},
+    {"caso": "unpublish_song: eliminar (despublicar)", "payload": {"op": "unpublish_song", "song_id": "S0000000000000001"}, "valido": true, "web": "aplica", "apk": "unpublishSong", "normalizado": {"op": "unpublish_song", "song_id": "S0000000000000001"}, "api_editar": true, "cuerpo": "action: organize\npayload: {\"op\":\"unpublish_song\",\"song_id\":\"S0000000000000001\"}"},
+    {"caso": "unpublish_song: id de una canción local", "payload": {"op": "unpublish_song", "song_id": "L0000000000000001"}, "valido": false, "motivo": "invalid_song_id", "campo": "song_id", "web": "aplica", "apk": "unpublishSong"}
   ],
   "peticiones": [
     {"caso": "clean_titles por incidencia, sin campos", "cuerpo": "action: organize\npayload: {\"op\":\"clean_titles\"}", "valido": true, "payload": {"op": "clean_titles"}},

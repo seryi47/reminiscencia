@@ -174,6 +174,26 @@ void main() {
       });
     }
 
+    test('unpublish_song: quita la canción al instante y se confirma cuando ya no está (ADR-0041)', () {
+      final catalog = catalogFrom(contract);
+      const s1 = 'S0000000000000001';
+      final edit = editFromContract({
+        'kind': 'organize',
+        'payload': {'op': 'unpublish_song', 'song_id': s1},
+      });
+      final view = applyPendingEdits(catalog.songs, catalog.folders, [edit]);
+      expect(view.songs.any((s) => s.id == s1), isFalse,
+          reason: 'la eliminada desaparece al instante');
+      expect(view.songs.length, catalog.songs.length - 1);
+      expect(view.songIds.contains(s1), isFalse,
+          reason: 'una eliminada no se marca como pendiente, desaparece');
+      expect(isEditReflected(edit, catalog.songs, catalog.folders), isFalse,
+          reason: 'sigue en el catálogo → no reflejada');
+      final sinS1 = catalog.songs.where((s) => s.id != s1).toList();
+      expect(isEditReflected(edit, sinS1, catalog.folders), isTrue,
+          reason: 'ya no está → reflejada');
+    });
+
     for (final raw in contract['duplicado'] as List) {
       final kase = raw as Map<String, dynamic>;
       test('duplicado: ${kase['nombre']}', () {

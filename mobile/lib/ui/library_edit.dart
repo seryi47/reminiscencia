@@ -209,6 +209,28 @@ Future<void> addSongToAlbumFlow(
 
 /// «Quitar de este álbum» (desde la página del álbum): pide confirmación y deja la canción sin álbum.
 /// Nunca la borra: sigue en la biblioteca común.
+/// «Eliminar de la biblioteca» una canción: la despublica (ADR-0041). Reversible (el audio sigue en el bucket privado).
+/// Desaparece al instante como edición pendiente; el Worker lo manda a GitHub con su token.
+Future<void> deleteSongFlow(
+  BuildContext context,
+  AppServices services,
+  Song song,
+) async {
+  final confirmed = await showConfirmDialog(
+    context,
+    title: 'Eliminar canción',
+    message:
+        '¿Eliminar «${song.title}» de la biblioteca? Dejará de verse para todos. Se puede volver a publicar.',
+    confirmLabel: 'Eliminar',
+  );
+  if (!confirmed || !context.mounted) return;
+  await openLibraryRequest(
+    context,
+    services,
+    LibraryRequest.unpublishSong(songId: song.id),
+  );
+}
+
 Future<void> removeSongFromAlbumFlow(
   BuildContext context,
   AppServices services,

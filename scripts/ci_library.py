@@ -57,6 +57,10 @@ def organize(data: dict, payload: dict) -> dict:
     if operation == "edit_song":
         fields = {key: value for key, value in payload.items() if key not in ("op", "song_id")}
         return {"song": catalog.update_song(data, payload["song_id"], fields)}
+    if operation == "unpublish_song":
+        # Eliminar = despublicar (ADR-0041). sync_public la quita de data/songs.json y sync_r2 borra su audio del
+        # bucket público; el privado (fuente de verdad) la conserva, así que es reversible.
+        return {"song": catalog.update_song(data, payload["song_id"], {"public": False})}
     if operation == "move_songs":
         # Atómica: primero se comprueba que existen todas las canciones y el álbum; si falta algo, no cambia nada.
         songs = [catalog.find_song(data, song_id) for song_id in payload["song_ids"]]

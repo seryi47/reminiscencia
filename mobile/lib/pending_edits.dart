@@ -361,6 +361,9 @@ PendingView applyPendingEdits(
   };
   final markedSongs = <String>{};
   final markedFolders = <String>{};
+  // Canciones eliminadas (despublicadas, ADR-0041): se quitan al final, para no mover los índices mientras se aplican
+  // las demás ediciones.
+  final removedSongs = <String>{};
 
   void moveInto(int index, String? target) {
     final song = songList[index];
@@ -426,6 +429,10 @@ PendingView applyPendingEdits(
           moveInto(index, payload['folder_id'] as String?);
         }
         markedSongs.add(song.id);
+      case 'unpublish_song':
+        // Eliminar = despublicar (ADR-0041): la canción desaparece de la biblioteca al instante.
+        final id = payload['song_id'];
+        if (id is String) removedSongs.add(id);
       case 'move_songs':
         final target = payload['folder_id'] as String?;
         for (final id in (payload['song_ids'] as List? ?? const [])) {
@@ -461,6 +468,9 @@ PendingView applyPendingEdits(
         );
         markedFolders.add(folder.id);
     }
+  }
+  if (removedSongs.isNotEmpty) {
+    songList.removeWhere((song) => removedSongs.contains(song.id));
   }
   for (var i = 0; i < songList.length; i++) {
     if (markedSongs.contains(songList[i].id)) {
@@ -534,6 +544,9 @@ bool isEditReflected(PendingEdit edit, List<Song> songs, List<Folder> folders) {
         return false;
       }
       return true;
+    case 'unpublish_song':
+      // Reflejada cuando la canción ya no está en el catálogo público (se despublicó).
+      return song(payload['song_id']) == null;
     case 'move_songs':
       for (final id in (payload['song_ids'] as List? ?? const [])) {
         final current = song(id);

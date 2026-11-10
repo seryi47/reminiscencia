@@ -77,6 +77,20 @@ describe('contrato común (tests/contrato/ediciones-pendientes.json)', () => {
     });
   }
 
+  test('unpublish_song: quita la canción al instante y se confirma cuando ya no está (ADR-0041)', () => {
+    const songs = [
+      { id: 'S0000000000000001', title: 'Uno', folder_id: null },
+      { id: 'S0000000000000002', title: 'Dos', folder_id: null },
+    ];
+    const edit = { kind: 'organize', payload: { op: 'unpublish_song', song_id: 'S0000000000000001' }, state: 'pendiente' };
+    const view = applyPendingEdits(songs, [], [edit]);
+    assert.ok(!view.songs.some((s) => s.id === 'S0000000000000001'), 'la eliminada desaparece al instante');
+    assert.ok(view.songs.some((s) => s.id === 'S0000000000000002'), 'las demás siguen');
+    assert.deepEqual([...view.songIds], [], 'una eliminada no se marca como «Pendiente», desaparece');
+    assert.equal(isEditReflected(edit, songs, []), false, 'sigue en el catálogo → no reflejada');
+    assert.equal(isEditReflected(edit, songs.filter((s) => s.id !== 'S0000000000000001'), []), true, 'ya no está → reflejada');
+  });
+
   for (const caso of contrato.duplicado) {
     test(`duplicado: ${caso.nombre}`, () => {
       assert.equal(isDuplicateEdit(caso.a, caso.b), caso.igual);

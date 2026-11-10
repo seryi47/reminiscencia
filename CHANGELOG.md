@@ -1,3 +1,11 @@
+## Sin publicar: eliminar canciones desde la app = despublicar (2026-11-10)
+
+- **Eliminar una canción desde la web y la APK** ([ADR-0041](docs/decisions/ADR-0041-eliminar-canciones-despublicar.md)): menú de canción → «Eliminar de la biblioteca», con confirmación. Desaparece al instante y deja de verse para todos, **sin que el usuario toque GitHub** (el Worker lo hace con su token, por el flujo de edición de ADR-0022).
+  - Es **despublicar** (reversible): el audio sigue en el bucket privado (fuente de verdad) y se puede volver a publicar; `sync_public`/`sync_r2` la quitan de `data/songs.json` y del bucket público.
+  - Nueva op común `unpublish_song` (backend `issue_request.py`/`ci_library.py`; web `edit-core.js`/`incidencias.js`; APK `LibraryRequest.unpublishSong`). Las ediciones pendientes la ocultan al momento (`edit-pending.js`, `pending_edits.dart`) y la confirman cuando deja de estar en el catálogo. Sin registros obsoletos.
+  - «Añadidas recientemente» lo refleja solo (la canción sale del catálogo; la vista es reactiva en ambas plataformas).
+- **Pruebas:** backend 1430, web 907, APK 599 (contrato común web+APK+backend, apply/reflected, factoría y cuerpo de la petición). Pendiente verificar en un dispositivo el ciclo completo en la APK.
+
 ## Sin publicar: publicación sin recodificar el Opus ya subido (2026-11-10)
 
 - **El buzón ya no recodifica el audio que sube la app** ([ADR-0040](docs/decisions/ADR-0040-publicacion-mas-rapida-y-sin-recodificar.md)).

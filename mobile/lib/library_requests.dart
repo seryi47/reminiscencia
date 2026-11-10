@@ -211,6 +211,16 @@ class LibraryRequest {
     });
   }
 
+  /// «Eliminar de la biblioteca» una canción: la despublica (ADR-0041). Reversible: el audio sigue en el bucket privado
+  /// y se puede volver a publicar.
+  factory LibraryRequest.unpublishSong({required String songId}) {
+    _checkSong(songId);
+    return LibraryRequest._('Eliminar la canción $songId', {
+      'op': 'unpublish_song',
+      'song_id': songId,
+    });
+  }
+
   /// «Añadir a un álbum»: mueve la canción al álbum [folderId] (null la deja sin álbum).
   factory LibraryRequest.moveSong({
     required String songId,

@@ -166,6 +166,11 @@ export function applyPendingEdits(songs, folders, edits) {
         songIds.add(song.id);
         break;
       }
+      case 'unpublish_song': {
+        // Eliminar = despublicar (ADR-0041): la canción desaparece de la biblioteca al instante.
+        songList = songList.filter((item) => item?.id !== payload.song_id);
+        break;
+      }
       case 'move_songs': {
         for (const id of Array.isArray(payload.song_ids) ? payload.song_ids : []) {
           const index = songIndex(id);
@@ -236,6 +241,9 @@ export function isEditReflected(edit, songs, folders) {
       if ('folder_id' in payload && (song.folder_id ?? null) !== (payload.folder_id ?? null)) return false;
       return true;
     }
+    case 'unpublish_song':
+      // Reflejada cuando la canción ya no está en el catálogo público (se despublicó).
+      return !songById(payload.song_id);
     case 'move_songs':
       return (payload.song_ids ?? []).every((id) => {
         const song = songById(id);

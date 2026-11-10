@@ -201,6 +201,7 @@ export function songMenuItems(ctx, song, { playlistId = null, albumId = null } =
       ? { label: 'Quitar de este álbum', icon: 'close', testid: 'menu-remove-from-album', action: viaDialog(() => ctx.removeSongFromAlbum(song, albumId)) }
       : null,
     editable ? { label: 'Cambiar portada', icon: 'image', testid: 'menu-song-cover', action: viaDialog(() => ctx.changeCover({ kind: 'song', id: song.id, name: song.title })) } : null,
+    editable ? { label: 'Eliminar de la biblioteca', icon: 'trash', testid: 'menu-delete-song', action: viaDialog(() => ctx.deleteSong(song)) } : null,
     song.local && !song.pending ? { label: 'Borrar de este navegador', icon: 'trash', testid: 'menu-delete-local', action: viaDialog(() => ctx.deleteLocalSong(song)) } : null,
   ].filter(Boolean);
 }

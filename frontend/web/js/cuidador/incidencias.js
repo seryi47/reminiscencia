@@ -125,6 +125,8 @@ const OPERATIONS = Object.freeze({
     optional: Object.freeze(['title', 'artist', 'year', 'tags', 'folder_id', 'public']),
   }),
   // Varias canciones a un álbum (o fuera de su álbum, con folder_id null) en una sola incidencia.
+  // Eliminar una canción de la biblioteca = despublicarla (ADR-0041). Reversible.
+  unpublish_song: Object.freeze({ required: Object.freeze(['song_id']), optional: Object.freeze([]) }),
   move_songs: Object.freeze({ required: Object.freeze(['song_ids', 'folder_id']), optional: Object.freeze([]) }),
   // El orden nuevo de un álbum: la lista completa y exacta de sus canciones (el backend lo comprueba al aplicarla).
   order_album: Object.freeze({ required: Object.freeze(['folder_id', 'song_ids']), optional: Object.freeze([]) }),
@@ -443,6 +445,8 @@ export function operationIssue(payload) {
           tooManyMessage: `Se pueden ordenar ${REQUEST_LIMITS.orderSongs} canciones como mucho.`,
           repeatedMessage: 'Hay canciones repetidas en el orden.',
         });
+    case 'unpublish_song':
+      return songRefIssue(payload.song_id);
     case 'clean_titles':
       return 'song_ids' in payload
         ? songIdsIssue(payload.song_ids, REQUEST_LIMITS.cleanTitles, {

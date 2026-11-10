@@ -90,7 +90,7 @@ describe('organizar', () => {
   });
 
   test('admite move_songs (varias canciones a un álbum en una sola incidencia)', async () => {
-    assert.deepEqual([...ALLOWED_OPS], ['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'move_songs', 'order_album', 'clean_titles']);
+    assert.deepEqual([...ALLOWED_OPS], ['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'unpublish_song', 'move_songs', 'order_album', 'clean_titles']);
     const gh = fakeGitHub();
     const payload = { op: 'move_songs', song_ids: [SONG, 'S0000000000000005'], folder_id: FOLDER };
     const response = await handleEdit(jsonRequest({ action: 'organize', payload }), { env: ENV, fetchImpl: gh.fetchImpl });
