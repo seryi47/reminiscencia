@@ -282,6 +282,22 @@ let toastTimer = null;
 export function toast(message, { ms = 4000 } = {}) {
   const region = document.querySelector('[data-testid="toast"]');
   if (!region) return;
+  // Se puede descartar con un toque o deslizando a un lado (como el aviso de la APK). Se cablea una sola vez.
+  if (!region.dataset.dismissWired) {
+    region.dataset.dismissWired = '1';
+    const hide = () => {
+      region.classList.remove('is-visible');
+      region.textContent = '';
+      clearTimeout(toastTimer);
+    };
+    let startX = null;
+    region.addEventListener('click', hide);
+    region.addEventListener('pointerdown', (event) => { startX = event.clientX; });
+    region.addEventListener('pointerup', (event) => {
+      if (startX !== null && Math.abs(event.clientX - startX) > 40) hide();
+      startX = null;
+    });
+  }
   region.textContent = '';
   // Un cambio de texto en el siguiente fotograma asegura que el lector de pantalla lo anuncie.
   requestAnimationFrame(() => {

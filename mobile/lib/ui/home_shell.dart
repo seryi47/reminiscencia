@@ -85,9 +85,13 @@ class _HomeShellState extends State<HomeShell> {
   void _showNotice(UploadNotice notice) {
     if (!mounted) return;
     final library = widget.services.library;
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    // Un aviso cada vez: el nuevo sustituye al anterior (sin apilar ni duplicar). Se puede descartar deslizando a un lado.
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
       SnackBar(
         content: Text(notice.message),
+        dismissDirection: DismissDirection.horizontal,
         action: SnackBarAction(
           label: 'Reproducir',
           onPressed: () => runWithNotice(

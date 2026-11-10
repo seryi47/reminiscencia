@@ -1,3 +1,10 @@
+## Sin publicar: avisos de subida que se descartan deslizando (2026-11-10)
+
+- **Los avisos de subida/publicación se pueden descartar con un gesto** (punto 4 del encargo):
+  - APK: el aviso (SnackBar) se descarta **deslizando a un lado** (`DismissDirection.horizontal`) y el nuevo **sustituye** al anterior (`clearSnackBars`), así no se apilan ni se duplican.
+  - Web: el aviso (toast) se descarta con un **toque o deslizándolo**; ya reemplazaba el anterior (no se apila) y se oculta solo a los 4 s (no se queda pegado).
+- El aviso de «Publicándose…» ya desaparecía solo al publicarse: el tracker sondea el catálogo y, cuando la canción aparece en `data/songs.json`, la marca como publicada (reconcile) y deja de verse «Publicándose». No queda nada pendiente de una canción ya publicada.
+
 ## Sin publicar: eliminar canciones desde la app = despublicar (2026-11-10)
 
 - **Eliminar una canción desde la web y la APK** ([ADR-0041](docs/decisions/ADR-0041-eliminar-canciones-despublicar.md)): menú de canción → «Eliminar de la biblioteca», con confirmación. Desaparece al instante y deja de verse para todos, **sin que el usuario toque GitHub** (el Worker lo hace con su token, por el flujo de edición de ADR-0022).
