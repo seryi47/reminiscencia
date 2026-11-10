@@ -13,7 +13,7 @@ from pathlib import Path
 
 from sonidos import catalog
 from sonidos import intake
-from sonidos.compression import transcode
+from sonidos.compression import produce_opus
 from sonidos.hashing import sha256_file
 from sonidos.probe import probe
 from sonidos.sources import IA_TITLE_MAX_CHARS
@@ -56,7 +56,7 @@ def import_url(
             year=resolved.year,
         )
         if created:
-            produced = transcode(target, staging_dir / song["id"], PLAYBACK_PROFILE)
+            produced = produce_opus(target, staging_dir / song["id"], info.codec, PLAYBACK_PROFILE)
             audio_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(produced), audio_dir / f"{song['id']}.opus")
             catalog.save(catalog_path, data)

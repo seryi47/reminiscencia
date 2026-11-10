@@ -1,3 +1,11 @@
+## Sin publicar: publicación sin recodificar el Opus ya subido (2026-11-10)
+
+- **El buzón ya no recodifica el audio que sube la app** ([ADR-0040](docs/decisions/ADR-0040-publicacion-mas-rapida-y-sin-recodificar.md)).
+  - La web y la APK convierten a Ogg Opus en el propio dispositivo, pero el buzón volvía a codificarlo a `opus-64k` (`transcode`): una **segunda pasada con pérdida** que empeoraba la calidad y agrandaba el archivo. Ahora, si el original ya es Opus, se **copia el flujo tal cual** (`-c:a copy`, sin recodificar); los demás formatos (WAV/MP3/FLAC subidos por GitHub o importados) se siguen transcodificando. Lógica común `sonidos.compression.produce_opus` en `buzon.py` y `pipeline.py`.
+  - El id (`S…`) y la deduplicación salen del archivo subido: no cambian. El `.opus` publicado queda idéntico al que reproduce la app en local.
+- **Análisis del tiempo de publicación (+3 min):** lo domina el overhead de GitHub Actions (4 jobs en runners nuevos, checkouts, `setup-python`, ffmpeg y 2 traspasos de artefactos), más la cola si hay otra publicación. **El suelo (~1,5–2,5 min) es estructural:** los 4 jobs están separados a propósito por seguridad (el token de GitHub y las credenciales de R2 nunca coinciden con el código que procesa subidas ajenas, ADR-0024); juntarlos aceleraría algo pero concentraría los secretos. No se toca.
+- **Pruebas:** `backend/tests/test_buzon.py` (md5 del flujo: el audio publicado es idéntico al subido = copiado, no recodificado). Backend entero verde (1427).
+
 ## Sin publicar: el aleatorio de un álbum se queda dentro del álbum (2026-11-10)
 
 - **Bug corregido: pulsar «Aleatorio» en un álbum podía reproducir canciones de otros álbumes.**

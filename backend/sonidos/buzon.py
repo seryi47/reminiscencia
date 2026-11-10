@@ -74,7 +74,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from sonidos import catalog, duplicados, titulos
-from sonidos.compression import TranscodeError, transcode
+from sonidos.compression import TranscodeError, produce_opus
 from sonidos.hashing import sha256_file
 from sonidos.limits import GIT_BLOCK_FILE_BYTES
 from sonidos.pipeline import PLAYBACK_PROFILE
@@ -799,7 +799,7 @@ def _add(data: dict, *, target: Path, archivo: str, title: str, info, license_te
         codec=info.codec, duration_s=info.duration_s, size_bytes=info.size_bytes, artist=artist,
     )
     try:
-        produced = transcode(target, staging / song["id"], PLAYBACK_PROFILE)
+        produced = produce_opus(target, staging / song["id"], info.codec, PLAYBACK_PROFILE)
     except TranscodeError:
         data["songs"].remove(song)
         return {}, "ffmpeg no lo puede convertir a Opus", False

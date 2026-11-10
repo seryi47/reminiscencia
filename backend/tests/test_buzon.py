@@ -181,6 +181,35 @@ def test_con_licencia_entra_publica_con_su_fuente_y_sale_del_buzon(repo):
     assert not (repo / "frontend/web/audio" / f"{song['id']}.opus").exists()  # el audio público lo sirve R2
 
 
+def _audio_stream_md5(path: Path) -> str:
+    """md5 del FLUJO de audio (sin el contenedor): idéntico = el audio no se recodificó, solo se copió."""
+    salida = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:a:0", "-c:a", "copy", "-f", "md5", "-"],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    return salida.strip()
+
+
+def test_una_subida_ya_en_opus_se_copia_sin_recodificar(repo):
+    # La web y la APK suben el audio ya en Opus (lo convierten en el propio dispositivo). El buzón debe copiar ese flujo
+    # tal cual, sin una segunda pasada con pérdida que empeoraría la calidad y agrandaría el archivo (ADR-0040).
+    # Opus a 48 kHz (lo que produce la app; libopus solo admite 48/24/16/12/8 kHz).
+    nombre = "Ya en opus.opus"
+    make_tone(repo / BUZON / nombre, seconds=1.0, sample_rate=48000)
+    ruta = f"{BUZON}/{nombre}"
+    md5_origen = _audio_stream_md5(repo / ruta)
+    _commit(repo, CON_LICENCIA)
+
+    result = procesar_buzon(repo=repo, event=_evento((CON_LICENCIA, [ruta])), actor="ana")
+
+    [entrada] = result["publicas"]
+    song = _cancion(repo, entrada["song_id"])
+    assert song["codec"] == "opus"
+    publicado = repo / "audio-library" / "audio" / f"{song['id']}.opus"
+    # El flujo de audio publicado es idéntico al subido: se copió, no se recodificó.
+    assert _audio_stream_md5(publicado) == md5_origen
+
+
 @pytest.mark.parametrize("extension", [".mp3", ".flac", ".ogg", ".m4a", ".WAV"])
 def test_cada_formato_admitido_se_convierte_a_opus(repo, extension):
     ruta = _subir(repo, f"Formato{extension}")
