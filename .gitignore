@@ -51,3 +51,7 @@ audio-library/staging/
 
 # Worktrees y estado de sesión de Claude Code (nunca se versionan)
 .claude/
+
+# Salida de la compilación de Netlify y su estado local (ADR-0037)
+netlify-dist/
+.netlify/

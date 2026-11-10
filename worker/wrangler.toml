@@ -44,7 +44,8 @@ run_worker_first = ["/api/*", "/audio/*"]
 # ALLOW_LOCALHOST no va aquí NUNCA: en producción el Worker no admite localhost (incidente del 2026-11-06). Para
 # desarrollar en local: «npx --yes wrangler@4.151.3 dev --var ALLOW_LOCALHOST:1».
 # Orígenes extra con CORS, separados por comas (la web de producción y localhost ya están admitidos en el código).
-ALLOWED_ORIGINS = ""
+# La copia de la web en Netlify (ADR-0037) llama al API y al audio desde su dominio, como la de Vercel.
+ALLOWED_ORIGINS = "https://reminiscencia.netlify.app"
 
 # Secreto (no va aquí): GITHUB_TOKEN, con «wrangler secret put GITHUB_TOKEN». El mismo tipo de token que Vercel:
 # grano fino, solo seryi47/reminiscencia, Contents e Issues en escritura.
