@@ -5273,6 +5273,22 @@
       "size_bytes": 1496237,
       "added_at": "2026-11-10T15:23:24+00:00",
       "public": true
+    },
+    {
+      "id": "Sa235a20ec3418d03",
+      "title": "Jeans",
+      "artist": "Justin Quiles",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "a235a20ec3418d03abefa3b30ef78dd4e26f25d3c99bf2424167f1b1f8010c22",
+      "duration_s": 184.007,
+      "codec": "opus",
+      "size_bytes": 1211664,
+      "added_at": "2026-11-10T17:18:26+00:00",
+      "public": true
     }
   ]
 }
