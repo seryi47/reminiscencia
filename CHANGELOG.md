@@ -1,3 +1,12 @@
+## Sin publicar: la descarga de YouTube en la APK es persistente y se reanuda sola (2026-11-10)
+
+- **APK, la descarga de YouTube ya no se pierde al cerrar la app** ([ADR-0039](docs/decisions/ADR-0039-descarga-youtube-persistente.md)):
+  - Antes, si Android mataba el proceso a media descarga (al mandar la app a segundo plano, o bajo presión de memoria), la importación desaparecía «como si nunca hubiera pasado» y nada la reanudaba. La mitad de «subir» ya era persistente; el hueco estaba en la de «importar» (convertir + descargar el WAV).
+  - Ahora las importaciones en curso se guardan en `biblioteca-local/importaciones-youtube` (`lib/youtube_imports_store.dart`) y, al abrir la app, `home_shell` las reanuda (`youtubeDownloads.restore`) hasta entregarlas a la cola de subidas, que las publica.
+  - El cambio de pestaña NO era la causa (las pestañas mantienen su estado); la causa era el cierre del proceso sin persistencia.
+  - Sin servicio en primer plano nuevo: con la app abierta termina al momento; si el sistema la cierra en segundo plano, se completa al reabrir. APK 1.2.7+11.
+- **Pruebas:** `test/youtube_imports_store_test.dart` y `test/youtube_background_download_test.dart`. Suite de móvil entera verde (595). Pendiente de verificar en un dispositivo real que, tras un cierre, la canción acaba apareciendo en Tu biblioteca.
+
 ## Sin publicar: el visor de YouTube en Netlify ahora y en Vercel al volver (2026-11-10)
 
 - **El visor de YouTube** («En YouTube» del buscador y «Homeostasia») vuelve a funcionar con Vercel bloqueado ([ADR-0038](docs/decisions/ADR-0038-youtube-en-netlify-con-failover.md)), repartido por capacidad:

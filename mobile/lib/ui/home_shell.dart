@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../playback.dart';
 import '../upload_tracker.dart';
 import '../youtube_embed.dart';
+import 'youtube_results.dart';
 import 'common.dart';
 import 'home_page.dart';
 import 'library_page.dart';
@@ -53,7 +54,10 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     final library = widget.services.library;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) library.ensureLoaded();
+      if (!mounted) return;
+      library.ensureLoaded();
+      // Reanuda las descargas de YouTube que quedaron a medias si el sistema cerró la app (ADR-0039).
+      youtubeDownloads.restore(widget.services);
     });
     // La biblioteca se sincroniza al volver a primer plano (si pasó un tiempo). Al salir de la app se para la
     // conversión y la comprobación de lo que se está publicando; al volver, se comprueba enseguida.

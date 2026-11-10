@@ -9,6 +9,7 @@ import '../shared_upload.dart';
 import '../theme.dart';
 import '../youtube_embed.dart';
 import '../youtube_importer.dart';
+import '../youtube_imports_store.dart';
 import 'common.dart';
 
 enum YoutubeDownloadState { idle, running, queued, error }
@@ -35,9 +36,18 @@ YoutubeDownload downloadAfterUpload(SharedUploadResult sent) {
   );
 }
 
-/// Descargas iniciadas desde el buscador. Viven fuera de la pantalla para seguir si se repinta o se cambia de pestaña.
+/// Descargas iniciadas desde el buscador. Viven fuera de la pantalla para seguir si se repinta o se cambia de pestaña,
+/// y se guardan en disco ([YoutubeImportsStore]) para **reanudarse al abrir la app** si el sistema la cerró a media
+/// descarga: la mitad de «importar» ya no se pierde «como si nunca hubiera pasado» (la de «subir» ya era persistente).
 class YoutubeDownloads extends ChangeNotifier {
+  YoutubeDownloads({YoutubeImportsStore? store})
+    : _store = store ?? YoutubeImportsStore();
+
+  final YoutubeImportsStore _store;
   final Map<String, YoutubeDownload> _byId = {};
+  // Importaciones en curso (aún no entregadas a la cola de subidas): lo que se persiste para poder reanudarlo.
+  final Map<String, PendingYoutubeImport> _pending = {};
+  bool _restored = false;
 
   YoutubeDownload of(String id) =>
       _byId[id] ?? const YoutubeDownload(YoutubeDownloadState.idle);
@@ -45,6 +55,36 @@ class YoutubeDownloads extends ChangeNotifier {
   void _set(String id, YoutubeDownload value) {
     _byId[id] = value;
     notifyListeners();
+  }
+
+  /// Guarda en disco las importaciones en curso. Es «best-effort»: si falla (p. ej. sin `path_provider` en pruebas),
+  /// la descarga sigue igual; solo no se podría reanudar tras un cierre.
+  Future<void> _savePending() async {
+    try {
+      await _store.write(_pending.values.toList(growable: false));
+    } catch (_) {
+      // Sin persistencia la descarga continúa; solo se pierde la reanudación automática.
+    }
+  }
+
+  /// Reanuda las importaciones que quedaron a medias cuando el sistema cerró la app. Se llama una vez al abrir
+  /// (y es idempotente): [start] no duplica si la importación ya está en curso.
+  Future<void> restore(AppServices services) async {
+    if (_restored) return;
+    _restored = true;
+    List<PendingYoutubeImport> pending;
+    try {
+      pending = await _store.read();
+    } catch (_) {
+      return;
+    }
+    // Se cargan todas en memoria antes de reanudar: así, si una termina y reescribe el índice, no borra las demás.
+    for (final entry in pending) {
+      _pending[entry.id] = entry;
+    }
+    for (final entry in pending) {
+      unawaited(start(services, entry.toResult()));
+    }
   }
 
   /// Misma descarga que pegar la URL en Homeostasia: el proxy lee título y artista, se convierte a WAV y se envía por
@@ -64,6 +104,7 @@ class YoutubeDownloads extends ChangeNotifier {
           'La descarga de YouTube no está disponible en esta versión.',
         ),
       );
+      if (_pending.remove(result.id) != null) unawaited(_savePending());
       return;
     }
     _set(
@@ -73,6 +114,10 @@ class YoutubeDownloads extends ChangeNotifier {
         'Preparando la descarga…',
       ),
     );
+    // Se guarda la intención ANTES del trabajo largo: si el sistema cierra la app a media descarga, al volver se reanuda.
+    // Sin bloquear el inicio de la importación (la escritura es de milisegundos y la cola serial del store ordena los cambios).
+    _pending[result.id] = PendingYoutubeImport.fromResult(result);
+    unawaited(_savePending());
     List<YoutubeImportedAudio>? imported;
     try {
       if (!await services.library.canUpload()) {
@@ -101,8 +146,13 @@ class YoutubeDownloads extends ChangeNotifier {
             youtubePlaylistName: audio.track.playlistTitle,
           ),
       ]);
+      // Entregada a la cola de subidas, que SÍ es persistente y se reanuda sola: ya no hace falta recordarla aquí.
+      _pending.remove(result.id);
+      unawaited(_savePending());
       _set(result.id, downloadAfterUpload(sent));
     } catch (error) {
+      _pending.remove(result.id);
+      unawaited(_savePending());
       _set(
         result.id,
         YoutubeDownload(
