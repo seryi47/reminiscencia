@@ -5,8 +5,6 @@ Sin dependencias de YAML: se leen los bloques por indentación. Ningún nombre d
 llegar a un intérprete de shell por interpolación de ${{ }}; el procesado los lee del evento.
 """
 
-import hashlib
-import os
 import json
 import re
 import shutil
@@ -159,7 +157,7 @@ def test_branch_guard_runs_before_anything_of_the_tree_runs_and_nothing_is_pip_i
     _, _, procesar, _ = _jobs(_text())
 
     guard = procesar.index('"$GITHUB_REF_NAME" != "main"')
-    assert guard < procesar.index("Instalar ffmpeg") < procesar.index("scripts/buzon.py")
+    assert guard < procesar.index("Preparar ffmpeg") < procesar.index("scripts/buzon.py")
     # ADR-0030: el backend no tiene dependencias y los scripts lo importan desde backend/; no hace falta instalarlo.
     assert "pip install" not in procesar
 
@@ -244,10 +242,9 @@ def test_every_checkout_drops_its_credentials_and_reads_main():
     assert text.count("ref: main") == 3
 
 
-# La caché de los .deb de ffmpeg (ADR-0030) solo la usa el buzón.
+# La caché del ffmpeg estático (ADR-0042). biblioteca.yml también la usa (importaciones), así que ya no es exclusiva.
 CACHE_PINS = {
-    "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
-    "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+    "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
 }
 
 
@@ -261,7 +258,7 @@ def test_actions_are_pinned_to_the_same_commits_as_the_library_workflow():
 
     assert CACHE_PINS <= pins
     assert pins and all(pin in biblioteca for pin in pins - CACHE_PINS)
-    assert all("# v6.1.0" in line for line in _text().splitlines() if "actions/cache/" in line)
+    assert all("# v6.1.0" in line for line in _text().splitlines() if "uses:" in line and "actions/cache" in line)
 
 
 def test_permissions_are_declared_on_the_jobs_not_on_the_workflow():
@@ -377,91 +374,30 @@ def test_the_scripts_of_each_job_import_with_only_its_sparse_checkout(tmp_path):
         assert subprocess.run([sys.executable, "-I", "-c", probe], cwd=copy).returncode == 0
 
 
-def test_the_ffmpeg_cache_is_restored_checked_and_saved_before_anything_uploaded_is_touched():
+def test_ffmpeg_is_a_pinned_static_binary_cached_and_skipped_for_web_uploads():
+    # ADR-0042: las subidas de la web/APK (repository_dispatch) ya llegan en Opus y se publican sin ffmpeg (metadatos en
+    # Python puro y copia del fichero), así que para ellas se salta todo esto. Para el resto se usa un ffmpeg ESTÁTICO
+    # de GitHub, fijado por SHA256 y cacheado, en vez del apt lento de antes.
     _, _, procesar, _ = _jobs(_text())
-    order = [procesar.index(marker) for marker in (
-        "name: Calcular la clave de la caché de ffmpeg",
-        "actions/cache/restore@",
-        "name: Comprobar los paquetes de ffmpeg de la caché",
-        "name: Instalar ffmpeg",
-        "actions/cache/save@",
-        "name: Descargar las subidas de la web",
-        "scripts/buzon.py",
-    )]
-    assert order == sorted(order)
-    save = _step(procesar, "Guardar los paquetes de ffmpeg en la caché")
-    assert "steps.ffmpeg_cache.outputs.cache-hit != 'true'" in save
-    assert "steps.ffmpeg_clave.outputs.lista == 'true'" in save
-    clave = _step(procesar, "Calcular la clave de la caché de ffmpeg")
-    assert "apt-get install --print-uris -qq --no-install-recommends ffmpeg" in clave
-    assert "sudo" not in clave  # --print-uris no instala nada
 
+    assert "apt-get" not in procesar  # se acabó apt para ffmpeg
 
-def test_ffmpeg_installs_without_hiding_errors_and_waits_for_the_dpkg_lock():
-    _, _, procesar, _ = _jobs(_text())
-    install = _step(procesar, "Instalar ffmpeg")
+    prep = _step(procesar, "Preparar ffmpeg (estático, cacheado)")
+    assert "if: github.event_name != 'repository_dispatch'" in prep
+    assert "actions/cache@" in prep and "~/ffmpeg-bin" in prep
 
-    assert "/dev/null" not in install and "|| true" not in install
-    assert "-o DPkg::Lock::Timeout=60" in install
-    assert '-o Dir::Cache::Archives="$DEBS"' in install
-    assert "--no-install-recommends" in install and "timeout 180 sudo apt-get install" in install
-    assert 'echo "No se ha podido instalar ffmpeg tras tres intentos." >&2' in install
-    assert "ffmpeg -version" in install and "ffprobe -version" in install
+    descargar = _step(procesar, "Descargar ffmpeg estático si no está en caché")
+    assert "steps.ffmpeg_cache.outputs.cache-hit != 'true'" in descargar
+    assert "https://github.com/BtbN/FFmpeg-Builds/releases/download/" in descargar
+    assert "FFMPEG_SHA256: 23c6279d9f10afbcc273082256ae2073495595ab53fbcd729a5a93913b3fdd75" in descargar
+    assert "sha256sum -c -" in descargar  # se verifica el hash antes de usarlo
 
+    path_step = _step(procesar, "Poner ffmpeg en el PATH")
+    assert '"$HOME/ffmpeg-bin" >> "$GITHUB_PATH"' in path_step
+    assert "ffmpeg -version" in path_step and "ffprobe -version" in path_step
 
-@pytest.fixture
-def ffmpeg_debs(tmp_path: Path) -> dict:
-    """Una lista de apt (--print-uris) y una caché con un paquete bueno, uno alterado y uno que no está en la lista."""
-    home = tmp_path / "home"
-    debs = home / "ffmpeg-debs"
-    debs.mkdir(parents=True)
-    runner = tmp_path / "runner"
-    runner.mkdir()
-    good, tampered = b"paquete bueno", b"paquete original"
-    (debs / "libbueno_1.0_amd64.deb").write_bytes(good)
-    (debs / "libalterado_7%3a2.0_amd64.deb").write_bytes(b"paquete cambiado")
-    (debs / "intruso_1.0_amd64.deb").write_bytes(b"no esta en la lista")
-    (debs / "largo_1.0_amd64.deb").write_bytes(good)
-    lines = [
-        f"'http://archive.ubuntu.com/a/libbueno_1.0_amd64.deb' libbueno_1.0_amd64.deb {len(good)} "
-        f"SHA256:{hashlib.sha256(good).hexdigest()}",
-        f"'http://archive.ubuntu.com/a/libalterado_2.0_amd64.deb' libalterado_7%3a2.0_amd64.deb {len(tampered)} "
-        f"SHA256:{hashlib.sha256(tampered).hexdigest()}",
-        f"'http://archive.ubuntu.com/a/largo_1.0_amd64.deb' largo_1.0_amd64.deb {len(good)} "
-        f"SHA512:{hashlib.sha512(good).hexdigest()}",
-    ]
-    (runner / "ffmpeg-paquetes.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {"home": home, "debs": debs, "runner": runner}
-
-
-def _check_cache(ffmpeg_debs: dict) -> subprocess.CompletedProcess:
-    _, _, procesar, _ = _jobs(_text())
-    script = _script(_step(procesar, "Comprobar los paquetes de ffmpeg de la caché"))
-    env = {"HOME": str(ffmpeg_debs["home"]), "RUNNER_TEMP": str(ffmpeg_debs["runner"]), "PATH": os.environ["PATH"]}
-    return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script], env=env,
-                          capture_output=True, text=True)
-
-
-@pytest.mark.skipif(shutil.which("sha256sum") is None or shutil.which("sha512sum") is None,
-                    reason="sin sha256sum/sha512sum (coreutils de GNU), como en el runner")
-def test_only_cached_packages_with_the_hash_of_apt_index_are_kept(ffmpeg_debs):
-    result = _check_cache(ffmpeg_debs)
-
-    assert result.returncode == 0, result.stderr
-    assert sorted(path.name for path in ffmpeg_debs["debs"].iterdir()) == ["largo_1.0_amd64.deb",
-                                                                           "libbueno_1.0_amd64.deb"]
-    assert "2 comprobados, 2 descartados" in result.stdout
-
-
-@pytest.mark.skipif(shutil.which("sha256sum") is None, reason="sin sha256sum (coreutils de GNU), como en el runner")
-def test_without_a_list_every_cached_package_is_discarded(ffmpeg_debs):
-    (ffmpeg_debs["runner"] / "ffmpeg-paquetes.txt").write_text("", encoding="utf-8")
-    (ffmpeg_debs["debs"] / "enlace.deb").symlink_to(ffmpeg_debs["debs"] / "libbueno_1.0_amd64.deb")
-
-    result = _check_cache(ffmpeg_debs)
-
-    assert result.returncode == 0, result.stderr
-    assert list(ffmpeg_debs["debs"].iterdir()) == []
+    # La preparación va después de la guarda de rama y antes de procesar el buzón.
+    assert procesar.index("Preparar ffmpeg") < procesar.index("scripts/buzon.py")
 
 
 def _pending_filter(autorizar: str) -> str:

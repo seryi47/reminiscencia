@@ -48,10 +48,15 @@ void main() {
     final downloads = YoutubeDownloads(store: store);
 
     unawaited(downloads.start(services, _result));
-    await _tick();
+
+    // La escritura es best-effort (unawaited): se espera a que termine sondeando, sin depender de un tiempo fijo.
+    List<PendingYoutubeImport> saved = const [];
+    for (var i = 0; i < 100 && saved.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      saved = await store.read();
+    }
 
     expect(downloads.of(_result.id).state, YoutubeDownloadState.running);
-    final saved = await store.read();
     expect(saved.map((e) => e.id), [_result.id], reason: 'la importación en curso debe estar en disco');
 
     // Se libera para que el test no deje trabajo colgado.
