@@ -30,6 +30,10 @@
 
 import { EditError, handleEditRequest, jsonResponse, readCover } from '../../frontend/web/server/edit-core.js';
 import { handleUploadRequest, UploadError, WORKER_MAX_CHUNK_BYTES } from '../../frontend/web/server/upload-core.js';
+import { handleConvert } from '../../frontend/web/server/youtube-convert.js';
+import { handleStatus } from '../../frontend/web/server/youtube-status.js';
+import { handleDownload } from '../../frontend/web/server/youtube-download.js';
+import { YOUTUBE_MARK_HEADER, markYoutube } from '../../frontend/web/server/youtube-mark.js';
 import { AUDIO_EXPOSE_HEADERS, handleAudioRequest } from './audio.js';
 import { readCoverIndex, saveCoverToBucket } from './portadas.js';
 import { bindingStorage } from './r2-storage.js';
@@ -41,14 +45,40 @@ export const API_HEADER = 'X-Reminiscencia-Api';
 export const SITE_ORIGIN = 'https://reminiscencia.cometia.es';
 /** La web en Vercel (se conserva: vuelve a funcionar cuando Vercel la desbloquee). */
 export const WEB_ORIGIN = 'https://reminiscencia.vercel.app';
-/** Las funciones de YouTube siguen en Vercel (ADR-0034): el Worker les reenvía /api/youtube/*. */
-export const YOUTUBE_UPSTREAM = WEB_ORIGIN;
+/** La copia de la web en Netlify (ADR-0037), respaldo de las funciones de YouTube mientras Vercel está bloqueado. */
+export const NETLIFY_ORIGIN = 'https://reminiscencia.netlify.app';
+/** Reenvío de /api/youtube/search y /playlist (las que usan yt-dlp): se prueban en este orden y se usa la primera que
+ *  responda con la cabecera-marca (ADR-0038). Vercel va primero para que, cuando se desbloquee (2026-12-07), vuelva a
+ *  usarse sola; Netlify es el respaldo mientras tanto. Se cambia con la variable YOUTUBE_UPSTREAMS de wrangler.toml. */
+export const DEFAULT_YOUTUBE_UPSTREAMS = Object.freeze([WEB_ORIGIN, NETLIFY_ORIGIN]);
+/** Compatibilidad: el primer upstream por defecto (antes era la única constante de reenvío). */
+export const YOUTUBE_UPSTREAM = DEFAULT_YOUTUBE_UPSTREAMS[0];
 const YOUTUBE_PREFIX = '/api/youtube/';
-/** Cabeceras de la petición que se reenvían a Vercel (las que usan las funciones de YouTube). */
+/** convert/status/download son proxies fetch puros (sin child_process): el Worker los ejecuta él mismo (ADR-0038), así
+ *  no dependen de Vercel/Netlify, no gastan Fast Origin Transfer y la descarga del WAV no choca con el límite de 10 s
+ *  de las funciones de Netlify. search y playlist (yt-dlp) se reenvían. */
+const YOUTUBE_NATIVE = Object.freeze({ convert: handleConvert, status: handleStatus, download: handleDownload });
+/** Cuánto se recuerda que un upstream está caído, para no volver a probarlo en cada petición (p. ej. Vercel pausado). */
+const YOUTUBE_DOWN_TTL_MS = 5 * 60 * 1000;
+/** upstream -> instante hasta el que se le considera caído (memoria por isolate; caduca sola). */
+const youtubeDown = new Map();
+/** Cabeceras de la petición que se reenvían (las que usan las funciones de YouTube). */
 const YOUTUBE_FORWARD_HEADERS = Object.freeze([
   'accept', 'accept-language', 'content-type', 'range', 'if-none-match', 'user-agent',
   'x-homeostasia-trace', 'x-homeostasia-poll',
 ]);
+
+/** Lista de upstreams de YouTube: la de env.YOUTUBE_UPSTREAMS (separada por comas) o, si falta, la de por defecto. */
+export function youtubeUpstreams(env = {}) {
+  const raw = typeof env.YOUTUBE_UPSTREAMS === 'string' ? env.YOUTUBE_UPSTREAMS : '';
+  const list = raw.split(',').map((item) => item.trim()).filter(Boolean);
+  return list.length ? list : [...DEFAULT_YOUTUBE_UPSTREAMS];
+}
+
+/** Solo para pruebas: olvida el estado de salud memorizado de los upstreams, para que cada caso empiece limpio. */
+export function resetYoutubeUpstreamHealth() {
+  youtubeDown.clear();
+}
 export const ALLOWED_HEADERS = Object.freeze([
   'Content-Type', 'X-Nombre-Archivo', 'X-Subida-Id', 'X-Parte', 'X-Partes', 'X-Album-Id', 'X-Album-Name',
   'X-Artista-Cancion', 'X-Portada-Id', 'Range', 'If-None-Match', 'If-Range',
@@ -125,24 +155,50 @@ async function handleCoverIndex(request, env) {
   }
 }
 
-/** Reenvía /api/youtube/* a Vercel sin tocar nada (ADR-0034): método, ruta, consulta, cuerpo y las cabeceras de
- *  YOUTUBE_FORWARD_HEADERS. La respuesta (también la descarga del WAV) vuelve en flujo, con su estado y sus cabeceras;
- *  las redirecciones no se siguen. Si Vercel no responde, 502. */
-async function forwardYoutube(request, fetchImpl) {
+/** Ejecuta en el propio Worker una función de YouTube que no necesita yt-dlp (convert/status/download) y marca la
+ *  respuesta (ADR-0038). El cuerpo (también el flujo del WAV) se transmite tal cual. */
+async function youtubeNative(handler, request, fetchImpl) {
+  return markYoutube(await handler(request, { fetchImpl }));
+}
+
+/** Reenvía /api/youtube/search y /playlist al primer upstream que responda con la cabecera-marca (ADR-0038): mismo
+ *  método, ruta, consulta, cuerpo y las cabeceras de YOUTUBE_FORWARD_HEADERS; la respuesta vuelve en flujo y las
+ *  redirecciones no se siguen. Un upstream que no responde, o que responde SIN la marca (Vercel pausado devuelve 402,
+ *  Netlify caído una página de error), se recuerda como caído y se prueba el siguiente. Si ninguno responde, 502. */
+async function forwardYoutube(request, env, fetchImpl) {
   const source = new URL(request.url);
   const headers = new Headers();
   for (const name of YOUTUBE_FORWARD_HEADERS) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  const init = { method: request.method, headers, redirect: 'manual' };
-  if (request.method !== 'GET' && request.method !== 'HEAD') init.body = await request.arrayBuffer();
-  try {
-    return await fetchImpl(`${YOUTUBE_UPSTREAM}${source.pathname}${source.search}`, init);
-  } catch (error) {
-    console.error('youtube: Vercel no responde', error?.name ?? 'Error');
-    return jsonResponse(502, { ok: false, error: 'El servicio de YouTube no responde ahora mismo. Inténtalo más tarde.' });
+  const method = request.method;
+  const body = method !== 'GET' && method !== 'HEAD' ? await request.arrayBuffer() : undefined;
+  const now = Date.now();
+  // Orden de prioridad, pero con los que se saben caídos al final (sort estable: se mantiene el orden relativo).
+  const upstreams = youtubeUpstreams(env)
+    .map((base, index) => ({ base, index, down: (youtubeDown.get(base) ?? 0) > now }))
+    .sort((a, b) => (a.down === b.down ? a.index - b.index : a.down ? 1 : -1));
+  for (const { base } of upstreams) {
+    const init = { method, headers, redirect: 'manual' };
+    if (body !== undefined) init.body = body;
+    let response;
+    try {
+      response = await fetchImpl(`${base}${source.pathname}${source.search}`, init);
+    } catch (error) {
+      console.error('youtube: upstream no responde', base, error?.name ?? 'Error');
+      youtubeDown.set(base, now + YOUTUBE_DOWN_TTL_MS);
+      continue;
+    }
+    if (response.headers.get(YOUTUBE_MARK_HEADER)) {
+      youtubeDown.delete(base);
+      return response;
+    }
+    // La respuesta no viene de nuestra función: la plataforma está caída o pausada. Probar la siguiente.
+    console.error('youtube: upstream sin función', base, response.status);
+    youtubeDown.set(base, now + YOUTUBE_DOWN_TTL_MS);
   }
+  return jsonResponse(502, { ok: false, error: 'El servicio de YouTube no responde ahora mismo. Inténtalo más tarde.' });
 }
 
 /** Atiende una petición (también en las pruebas: tests/web-unit/worker.test.mjs, con bindings simulados). */
@@ -164,7 +220,12 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
       },
     }), origin);
   }
-  if (path.startsWith(YOUTUBE_PREFIX)) return finish(await forwardYoutube(request, fetchImpl), origin);
+  if (path.startsWith(YOUTUBE_PREFIX)) {
+    const name = path.slice(YOUTUBE_PREFIX.length);
+    const native = Object.prototype.hasOwnProperty.call(YOUTUBE_NATIVE, name) ? YOUTUBE_NATIVE[name] : null;
+    if (native) return finish(await youtubeNative(native, request, fetchImpl), origin);
+    return finish(await forwardYoutube(request, env, fetchImpl), origin);
+  }
   const audio = await handleAudioRequest(request, env.PUBLIC_BUCKET);
   if (audio) return finish(audio, origin, AUDIO_EXPOSE_HEADERS);
   let response;

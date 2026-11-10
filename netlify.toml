@@ -1,22 +1,26 @@
-# Netlify: segunda dirección de la web, https://reminiscencia.netlify.app, mientras Vercel está bloqueado (ADR-0037).
+# Netlify: segunda dirección de la web, https://reminiscencia.netlify.app, mientras Vercel está bloqueado (ADR-0037,
+# ADR-0038).
 #
-# Netlify sirve solo los ficheros de la web (el shell). Todo lo demás sigue en el Worker de Cloudflare, en
+# Netlify sirve los ficheros de la web (el shell) y, desde ADR-0038, ejecuta las funciones de YouTube que usan yt-dlp
+# (search y playlist; netlify/functions/). Todo lo demás sigue en el Worker de Cloudflare, en
 # https://reminiscencia.cometia.es, como en la web de Vercel: el API va directo con CORS (WORKER_API_BASE de
-# js/api-config.js) y aquí solo se reenvían los datos, las portadas, el audio y las rutas de YouTube. No hay funciones
-# de Netlify ni variables de entorno.
+# js/api-config.js) y aquí solo se reenvían los datos, las portadas, el audio y convert/status/download de YouTube.
 #
 # El plan gratuito da 300 créditos al mes (15 por despliegue de producción) y, si se acaban, Netlify pausa los sitios de
-# la cuenta. Por eso solo se despliega cuando cambia el código de la web (ver «ignore»): los commits del buzón solo
-# tocan data/ y covers/, que no se publican aquí sino que se leen del Worker, siempre al día.
+# la cuenta. Por eso solo se despliega cuando cambia el código de la web, las funciones o su núcleo (ver «ignore»): los
+# commits del buzón solo tocan data/ y covers/, que no se publican aquí sino que se leen del Worker, siempre al día.
 
 [build]
   # Los ficheros de la web, sin lo que no es web: la misma lista que usa Cloudflare (frontend/web/.assetsignore: las
-  # funciones de Vercel, server/, package.json, vercel.json…), y sin data/ ni covers/ (se reenvían al Worker).
+  # funciones de Vercel, server/, package.json, vercel.json…), y sin data/ ni covers/ (se reenvían al Worker). Las
+  # funciones de Netlify las empaqueta aparte (bloque [functions]), no este rsync.
   command = "rm -rf netlify-dist && rsync -a --exclude-from=frontend/web/.assetsignore --exclude=/.assetsignore --exclude=/data --exclude=/covers frontend/web/ netlify-dist/"
   publish = "netlify-dist"
-  # Sale con 0 (y Netlify no despliega) si este commit no cambia el código de la web ni este fichero. En el primer
-  # despliegue de una rama (sin despliegue anterior), o si git no puede comparar, despliega.
-  ignore = "[ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- netlify.toml frontend/web ':(exclude)frontend/web/data' ':(exclude)frontend/web/covers' ':(exclude)frontend/web/api' ':(exclude)frontend/web/server' ':(exclude)frontend/web/vercel.json'"
+  # Sale con 0 (y Netlify no despliega) si este commit no cambia el shell, las funciones (netlify/functions) ni su
+  # núcleo (frontend/web/server, que importan las funciones), ni este fichero. frontend/web/api es solo de Vercel (no
+  # entra en la build de Netlify), así que se excluye. En el primer despliegue de una rama, o si git no puede comparar,
+  # despliega.
+  ignore = "[ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- netlify.toml netlify/functions frontend/web ':(exclude)frontend/web/data' ':(exclude)frontend/web/covers' ':(exclude)frontend/web/api' ':(exclude)frontend/web/vercel.json'"
 
 # Las cabeceras (la CSP) son las de frontend/web/_headers, que Netlify lee igual que Cloudflare.
 
@@ -41,10 +45,34 @@
   status = 307
   force = true
 
-# YouTube: la web llama a /api/youtube/* en su propio origen. Se reenvía al Worker, que a su vez lo reenvía a Vercel
-# (ADR-0034): funcionará aquí cuando vuelva Vercel.
+# YouTube (ADR-0038): la web llama a /api/youtube/* en su propio origen.
+#   - search y playlist (usan yt-dlp): las EJECUTA Netlify como funciones propias (netlify/functions/youtube-*.mjs,
+#     ruta por config.path), con el mismo núcleo que Vercel y el Worker. Así el visor funciona aquí sin Vercel. No
+#     pueden redirigirse al Worker: el Worker las reenvía a esta copia, y se formaría un bucle.
+#   - convert, status y download (proxies fetch puros al conversor): se redirigen al Worker, que los ejecuta él mismo
+#     (no dependen de Vercel/Netlify y la descarga del WAV no choca con el límite de 10 s de las funciones de Netlify).
 [[redirects]]
-  from = "/api/youtube/*"
-  to = "https://reminiscencia.cometia.es/api/youtube/:splat"
+  from = "/api/youtube/convert"
+  to = "https://reminiscencia.cometia.es/api/youtube/convert"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/api/youtube/status"
+  to = "https://reminiscencia.cometia.es/api/youtube/status"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/youtube/download"
+  to = "https://reminiscencia.cometia.es/api/youtube/download"
+  status = 200
+  force = true
+
+# Funciones de Netlify (ADR-0038): solo search y playlist. youtube-dl-exec va como módulo externo (su require se captura
+# si falta); no se incluye el binario de yt-dlp, así que en Netlify el respaldo yt-dlp puede no estar y se usa la ruta
+# HTML. Con Vercel de vuelta, respaldo completo.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  external_node_modules = ["youtube-dl-exec"]

@@ -5,9 +5,10 @@
 // Ejecución: node --test tests/web-unit/worker.test.mjs
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { describe, test } from 'node:test';
+import { beforeEach, describe, test } from 'node:test';
 
-import { handleRequest, isAllowedOrigin, ALLOWED_HEADERS, API_HEADER, COVER_DONE_MESSAGE, SITE_ORIGIN, WEB_ORIGIN, YOUTUBE_UPSTREAM } from '../../worker/src/index.js';
+import { handleRequest, isAllowedOrigin, ALLOWED_HEADERS, API_HEADER, COVER_DONE_MESSAGE, SITE_ORIGIN, WEB_ORIGIN, NETLIFY_ORIGIN, YOUTUBE_UPSTREAM, DEFAULT_YOUTUBE_UPSTREAMS, youtubeUpstreams, resetYoutubeUpstreamHealth } from '../../worker/src/index.js';
+import { YOUTUBE_MARK_HEADER } from '../../frontend/web/server/youtube-mark.js';
 import { IMAGE_CACHE_CONTROL, INDEX_CACHE_CONTROL, updateCoverIndex } from '../../worker/src/portadas.js';
 import { COVER_INDEX_KEY, COVER_KEY, parseCoverIndex } from '../../frontend/web/js/cover-index.js';
 import { WORKER_MAX_CHUNK_BYTES } from '../../frontend/web/server/upload-core.js';
@@ -539,8 +540,10 @@ describe('audio público por el Worker (ADR-0031)', () => {
   });
 });
 
-describe('web en Cloudflare (ADR-0034): web estática, CORS del dominio propio y YouTube por Vercel', () => {
+describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover (ADR-0038)', () => {
   const SITE = 'https://reminiscencia.cometia.es';
+  // La memoria de salud de los upstreams es de módulo (por isolate): cada caso empieza limpio.
+  beforeEach(() => resetYoutubeUpstreamHealth());
   /** Binding ASSETS simulado: anota lo que se le pide. */
   const fakeAssets = () => {
     const seen = [];
@@ -552,16 +555,17 @@ describe('web en Cloudflare (ADR-0034): web estática, CORS del dominio propio y
       },
     };
   };
-  /** Vercel simulado (nunca el real): anota la petición y responde con un cuerpo en flujo. */
-  const fakeVercel = (reply = () => new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json', 'X-Vercel-Id': 'v1' } })) => {
-    const calls = [];
-    const fetchImpl = async (url, init = {}) => {
-      const target = new URL(url);
-      assert.equal(target.origin, YOUTUBE_UPSTREAM, 'solo se reenvía a las funciones de Vercel');
-      calls.push({ url: target.href, method: init.method, headers: new Headers(init.headers), body: init.body, redirect: init.redirect });
-      return reply(target, init);
-    };
-    return { calls, fetchImpl };
+  /** Respuesta con la cabecera-marca (ADR-0038): simula que NUESTRA función de YouTube se ejecutó en el upstream. */
+  const marked = (body = '{"items":[]}', init = {}) => new Response(body, {
+    status: init.status ?? 200,
+    headers: { 'Content-Type': 'application/json', [YOUTUBE_MARK_HEADER]: '1', ...(init.headers ?? {}) },
+  });
+  /** 48 bytes con cabecera RIFF/WAVE, lo mínimo que acepta la descarga nativa. */
+  const fakeWav = () => {
+    const wav = new Uint8Array(48);
+    wav.set(new TextEncoder().encode('RIFF'), 0);
+    wav.set(new TextEncoder().encode('WAVE'), 8);
+    return wav;
   };
 
   test('el dominio propio es un origen admitido; la web de Vercel también sigue', async () => {
@@ -595,68 +599,129 @@ describe('web en Cloudflare (ADR-0034): web estática, CORS del dominio propio y
     assert.equal(assets.seen.length, paths.length);
   });
 
-  test('/api/youtube/* se reenvía a Vercel tal cual: método, ruta, consulta, cuerpo y cabeceras útiles', async () => {
-    const { calls, fetchImpl } = fakeVercel();
-    const body = JSON.stringify({ url: 'https://www.youtube.com/watch?v=abcdefghijk' });
-    const response = await handleRequest(new Request(`${SITE}/api/youtube/convert?x=1&y=2`, {
+  test('youtubeUpstreams: por defecto Vercel y luego Netlify; env.YOUTUBE_UPSTREAMS lo cambia', () => {
+    assert.equal(YOUTUBE_UPSTREAM, WEB_ORIGIN);
+    assert.deepEqual([...DEFAULT_YOUTUBE_UPSTREAMS], [WEB_ORIGIN, NETLIFY_ORIGIN]);
+    assert.deepEqual(youtubeUpstreams(), [WEB_ORIGIN, NETLIFY_ORIGIN]);
+    assert.deepEqual(youtubeUpstreams({}), [WEB_ORIGIN, NETLIFY_ORIGIN]);
+    assert.deepEqual(youtubeUpstreams({ YOUTUBE_UPSTREAMS: '' }), [WEB_ORIGIN, NETLIFY_ORIGIN]);
+    assert.deepEqual(youtubeUpstreams({ YOUTUBE_UPSTREAMS: 'https://a.test, https://b.test ' }), ['https://a.test', 'https://b.test']);
+  });
+
+  test('convert/status/download los ejecuta el propio Worker (nativo), sin reenviar a ninguna plataforma', async () => {
+    // convert: valida la URL y llama al conversor (api.yttowav.org), no a Vercel/Netlify.
+    const convertCalls = [];
+    const convert = await handleRequest(new Request(`${SITE}/api/youtube/convert`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: SITE, 'X-Homeostasia-Trace': 't1', Cookie: 'no', Authorization: 'no' },
-      body,
+      headers: { 'Content-Type': 'application/json', Origin: SITE },
+      body: JSON.stringify({ url: 'https://www.youtube.com/watch?v=abcdefghijk', title: 'Tema' }),
+    }), {}, {
+      fetchImpl: async (url, init) => {
+        convertCalls.push({ url: String(url), body: init?.body });
+        return new Response(JSON.stringify({ jobId: 'job_1' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+    });
+    assert.equal(convert.status, 200);
+    assert.deepEqual(await convert.json(), { jobId: 'job_1' });
+    assert.equal(convert.headers.get(API_HEADER), '1');
+    assert.equal(convert.headers.get(YOUTUBE_MARK_HEADER), '1', 'la respuesta nativa también lleva la cabecera-marca');
+    assert.equal(convert.headers.get('access-control-allow-origin'), SITE);
+    assert.equal(convertCalls.length, 1);
+    assert.ok(convertCalls[0].url.startsWith('https://api.yttowav.org/api/convert'), 'va al conversor, no a una plataforma');
+
+    // status: filtra y normaliza (no acepta una URL de descarga externa).
+    const status = await handleRequest(new Request(`${SITE}/api/youtube/status?jobId=job_1`), {}, {
+      fetchImpl: async () => new Response(JSON.stringify({ status: 'completed', downloadUrl: 'https://attacker.test/x' }), { status: 200 }),
+    });
+    assert.deepEqual(await status.json(), { status: 'completed' });
+    assert.equal(status.headers.get(YOUTUBE_MARK_HEADER), '1');
+
+    // download: transmite el WAV del conversor en flujo.
+    const downloadUrls = [];
+    const download = await handleRequest(new Request(`${SITE}/api/youtube/download?jobId=job_1`), {}, {
+      fetchImpl: async (url) => {
+        downloadUrls.push(String(url));
+        if (String(url).includes('/api/status')) return new Response(JSON.stringify({ status: 'completed' }), { status: 200 });
+        return new Response(fakeWav(), { status: 200, headers: { 'content-type': 'audio/wav', 'content-length': '48' } });
+      },
+    });
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get('content-type'), 'audio/wav');
+    assert.equal(download.headers.get(YOUTUBE_MARK_HEADER), '1');
+    assert.equal((await download.arrayBuffer()).byteLength, 48);
+    assert.ok(downloadUrls.some((url) => url.startsWith('https://api.yttowav.org/api/download/')));
+  });
+
+  test('search/playlist se reenvían al primer upstream con la cabecera-marca (Vercel primero): método, ruta, cuerpo y cabeceras útiles', async () => {
+    const calls = [];
+    const fetchImpl = async (url, init = {}) => {
+      const target = new URL(url);
+      calls.push({ origin: target.origin, url: target.href, method: init.method, headers: new Headers(init.headers), body: init.body, redirect: init.redirect });
+      return marked('{"items":[]}', { headers: { 'X-Vercel-Id': 'v1' } });
+    };
+    const search = await handleRequest(new Request(`${SITE}/api/youtube/search?q=bolero`, {
+      headers: { Origin: SITE, 'X-Homeostasia-Trace': 't1', Cookie: 'no', Authorization: 'no' },
     }), {}, { fetchImpl });
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { ok: true });
-    assert.equal(response.headers.get('access-control-allow-origin'), SITE);
-    assert.equal(response.headers.get('x-vercel-id'), 'v1');
+    assert.equal(search.status, 200);
+    assert.equal(search.headers.get('access-control-allow-origin'), SITE);
+    assert.equal(search.headers.get('x-vercel-id'), 'v1');
+    assert.equal(search.headers.get(API_HEADER), '1');
     assert.equal(calls.length, 1);
     const [sent] = calls;
-    assert.equal(sent.url, `${YOUTUBE_UPSTREAM}/api/youtube/convert?x=1&y=2`);
-    assert.equal(sent.method, 'POST');
-    assert.equal(new TextDecoder().decode(sent.body), body);
-    assert.equal(sent.headers.get('content-type'), 'application/json');
+    assert.equal(sent.origin, YOUTUBE_UPSTREAM, 'Vercel primero');
+    assert.equal(sent.url, `${YOUTUBE_UPSTREAM}/api/youtube/search?q=bolero`);
+    assert.equal(sent.method, 'GET');
+    assert.equal(sent.body, undefined);
     assert.equal(sent.headers.get('x-homeostasia-trace'), 't1');
     assert.equal(sent.headers.get('cookie'), null);
     assert.equal(sent.headers.get('authorization'), null);
     assert.equal(sent.headers.get('origin'), null);
     assert.equal(sent.redirect, 'manual');
 
-    const search = await handleRequest(new Request(`${SITE}/api/youtube/search?q=bolero`), {}, { fetchImpl });
-    assert.equal(search.status, 200);
-    assert.equal(calls[1].url, `${YOUTUBE_UPSTREAM}/api/youtube/search?q=bolero`);
-    assert.equal(calls[1].method, 'GET');
-    assert.equal(calls[1].body, undefined);
+    const playlist = await handleRequest(new Request(`${SITE}/api/youtube/playlist?url=https%3A%2F%2Fwww.youtube.com%2Fplaylist%3Flist%3DPL1`), {}, { fetchImpl });
+    assert.equal(playlist.status, 200);
+    assert.equal(calls[1].url, `${YOUTUBE_UPSTREAM}/api/youtube/playlist?url=https%3A%2F%2Fwww.youtube.com%2Fplaylist%3Flist%3DPL1`);
   });
 
-  test('la respuesta de Vercel vuelve en flujo con su estado y sus cabeceras (también los errores)', async () => {
-    const chunks = [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5])];
-    const { fetchImpl } = fakeVercel((target) => {
-      if (target.pathname.endsWith('/status')) return new Response('{"ok":false}', { status: 429, headers: { 'Retry-After': '7' } });
-      const stream = new ReadableStream({
-        pull(controller) {
-          const next = chunks.shift();
-          if (next) controller.enqueue(next);
-          else controller.close();
-        },
-      });
-      return new Response(stream, { status: 200, headers: { 'Content-Type': 'audio/wav', 'Content-Disposition': 'attachment; filename="a.wav"' } });
-    });
-    const download = await handleRequest(new Request(`${SITE}/api/youtube/download?id=1`), {}, { fetchImpl });
-    assert.equal(download.status, 200);
-    assert.equal(download.headers.get('content-type'), 'audio/wav');
-    assert.equal(download.headers.get('content-disposition'), 'attachment; filename="a.wav"');
-    assert.ok(download.body instanceof ReadableStream);
-    assert.deepEqual([...new Uint8Array(await download.arrayBuffer())], [1, 2, 3, 4, 5]);
-    const limited = await handleRequest(new Request(`${SITE}/api/youtube/status?id=1`, { method: 'POST', body: '{}' }), {}, { fetchImpl });
-    assert.equal(limited.status, 429);
-    assert.equal(limited.headers.get('retry-after'), '7');
+  test('failover: si Vercel responde sin la cabecera-marca (402 pausado), se usa Netlify', async () => {
+    const tried = [];
+    const fetchImpl = async (url) => {
+      const origin = new URL(url).origin;
+      tried.push(origin);
+      if (origin === WEB_ORIGIN) return new Response('Payment Required', { status: 402, headers: { 'x-vercel-error': 'DEPLOYMENT_DISABLED' } });
+      return marked('{"items":[{"id":"abcdefghijk"}]}');
+    };
+    const response = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`), {}, { fetchImpl });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get(API_HEADER), '1');
+    assert.deepEqual(await response.json(), { items: [{ id: 'abcdefghijk' }] });
+    assert.deepEqual(tried, [WEB_ORIGIN, NETLIFY_ORIGIN], 'prueba Vercel y luego Netlify');
   });
 
-  test('si Vercel no responde, 502 con la cabecera del Worker; otro origen, 403 sin reenviar', async () => {
+  test('recuerda el upstream caído: la siguiente petición va directa a Netlify sin reprobar Vercel', async () => {
+    const order = [];
+    let vercelHits = 0;
+    const fetchImpl = async (url) => {
+      const origin = new URL(url).origin;
+      order.push(origin);
+      if (origin === WEB_ORIGIN) { vercelHits += 1; return new Response('', { status: 402 }); }
+      return marked();
+    };
+    await handleRequest(new Request(`${SITE}/api/youtube/search?q=a`), {}, { fetchImpl });
+    await handleRequest(new Request(`${SITE}/api/youtube/search?q=b`), {}, { fetchImpl });
+    assert.equal(vercelHits, 1, 'Vercel solo se prueba una vez mientras se le recuerda caído');
+    assert.deepEqual(order, [WEB_ORIGIN, NETLIFY_ORIGIN, NETLIFY_ORIGIN]);
+  });
+
+  test('si ningún upstream responde, 502 con la cabecera del Worker; otro origen, 403 sin reenviar', async () => {
     const failing = async () => { throw new TypeError('fetch failed'); };
     const down = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`), {}, { fetchImpl: failing });
     assert.equal(down.status, 502);
     assert.equal(down.headers.get(API_HEADER), '1');
     assert.equal((await down.json()).ok, false);
-    const { calls, fetchImpl } = fakeVercel();
+
+    const calls = [];
+    const fetchImpl = async (url) => { calls.push(String(url)); return marked(); };
     const foreign = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`, { headers: { Origin: 'https://malo.example' } }), {}, { fetchImpl });
     assert.equal(foreign.status, 403);
     assert.equal(calls.length, 0);

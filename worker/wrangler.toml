@@ -47,5 +47,11 @@ run_worker_first = ["/api/*", "/audio/*"]
 # La copia de la web en Netlify (ADR-0037) llama al API y al audio desde su dominio, como la de Vercel.
 ALLOWED_ORIGINS = "https://reminiscencia.netlify.app"
 
+# Reenvío de /api/youtube/search y /playlist (ADR-0038), por orden: se usa el primero que responda con la cabecera-marca.
+# Vercel primero para que, al desbloquearse el 2026-12-07, vuelva a usarse solo; Netlify de respaldo mientras tanto.
+# convert/status/download NO se reenvían: los ejecuta el propio Worker. Vaciar o quitar esta variable usa el valor por
+# defecto del código (el mismo orden).
+YOUTUBE_UPSTREAMS = "https://reminiscencia.vercel.app,https://reminiscencia.netlify.app"
+
 # Secreto (no va aquí): GITHUB_TOKEN, con «wrangler secret put GITHUB_TOKEN». El mismo tipo de token que Vercel:
 # grano fino, solo seryi47/reminiscencia, Contents e Issues en escritura.

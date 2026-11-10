@@ -43,7 +43,7 @@ Netlify es una **segunda dirección de la web**, https://reminiscencia.netlify.a
 ## Consecuencias
 
 - **No es independiente de Cloudflare:** datos, portadas, audio y API vienen del Worker. Sirve de segunda puerta de entrada si falla la de Cloudflare, no de copia completa.
-- **YouTube** («En YouTube» y Homeostasia) sigue sin funcionar en ninguna dirección hasta que vuelva Vercel. No se ha portado a Netlify: sus funciones dependen de `yt-dlp` y de convertir audio, y no se reconstruyen en otra plataforma.
+- **YouTube** («En YouTube» y Homeostasia) sigue sin funcionar en ninguna dirección hasta que vuelva Vercel. No se ha portado a Netlify: sus funciones dependen de `yt-dlp` y de convertir audio, y no se reconstruyen en otra plataforma. — **Superado por [ADR-0038](ADR-0038-youtube-en-netlify-con-failover.md) (2026-11-10):** `search`/`playlist` sí se ejecutan ahora como funciones de Netlify y `convert`/`status`/`download` en el propio Worker; el Worker reenvía con failover (Vercel primero, Netlify de respaldo).
 - **Créditos:** cada cambio de la web que llega a `main` gasta 15 créditos, lo que da para unos 20 al mes. Lo servido por Netlify (shell, datos y portadas, unos cientos de KB por visita) gasta 20 créditos por GB. El panel de Netlify (Usage) muestra el consumo.
 - **Pruebas:** `tests/web-unit/netlify.test.mjs` comprueba:
   - qué se publica;
