@@ -136,18 +136,19 @@ describe('markDuplicates / selectedTracks', () => {
     assert.equal(results[0].inLibrary, false);
   });
 
-  test('alta se acepta sola; media/baja solo con override; se saltan excluidas y las de biblioteca', () => {
+  test('las excluidas, las duplicadas y las de baja-sin-elección quedan fuera; el override manda', () => {
     const results = markDuplicates(makeResults(), [{ title: 'YaEstá', artist: 'A', durationS: 203 }]);
     const chosen = selectedTracks(results, {
-      excluded: new Set([0]), // el usuario quitó la 0
-      overrides: new Map([[1, { candidate: { url: 'alt1' } }]]), // eligió una alternativa para la 1
+      excluded: new Set([0]), // el usuario quitó la 0 (alta)
+      overrides: new Map([[1, { candidate: { url: 'alt1' } }]]), // eligió una alternativa para la 1 (media)
     });
-    // 0 excluida, 1 por override, 2 baja sin override (fuera), 3 inLibrary (fuera)
+    // 0 excluida, 1 por override, 2 baja sin candidato (fuera), 3 inLibrary (fuera)
     assert.deepEqual(chosen.map((t) => [t.index, t.url]), [[1, 'alt1']]);
   });
 
-  test('sin exclusiones, las de confianza alta entran solas', () => {
-    const chosen = selectedTracks(makeResults()); // ninguna marcada inLibrary
-    assert.deepEqual(chosen.map((t) => t.index), [0, 3]);
+  test('alta y media entran solas con la mejor pre-elegida; la baja no (sin elección)', () => {
+    const chosen = selectedTracks(makeResults()); // ninguna marcada inLibrary ni excluida
+    // 0 alta (u0), 1 media (u1, su mejor), 3 alta (u3); la 2 es baja (best null) y queda fuera
+    assert.deepEqual(chosen.map((t) => [t.index, t.url]), [[0, 'u0'], [1, 'u1'], [3, 'u3']]);
   });
 });

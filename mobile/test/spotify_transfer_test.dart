@@ -122,8 +122,8 @@ void main() {
     markTransferDuplicates(results, [const DuplicateCandidate(title: 'YaEstá', artist: 'A', durationS: 203)]);
     expect(results[3].inLibrary, isTrue);
 
-    // Alta entra sola; media sin override fuera; baja fuera; YaEstá (biblioteca) fuera.
-    expect(selectedTransferTracks(results, album: album).map((t) => t.url), ['u0']);
+    // Alta (u0) y media (u1, su mejor) entran solas; baja (best null) fuera; YaEstá (biblioteca) fuera.
+    expect(selectedTransferTracks(results, album: album).map((t) => t.url), ['u0', 'u1']);
 
     // Con override en la media y exclusión de la 0.
     results[0].excluded = true;

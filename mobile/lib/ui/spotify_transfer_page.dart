@@ -169,7 +169,8 @@ class _TransferirSheetState extends State<_TransferirSheet> {
                 : await _spotify.resolve(target['url'] as String, onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); });
         markTransferDuplicates(res.results, _library0);
         for (final r in res.results) {
-          r.excluded = r.inLibrary || (r.tier != 'alta');
+          // Incluida por defecto si hay coincidencia (alta o media, ya pre-elegida); baja sin candidato y duplicadas, fuera.
+          r.excluded = r.inLibrary || r.best == null;
         }
         collections.add(_Collection(name: src.key, album: res.album, results: res.results));
       }
@@ -383,7 +384,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
   }
 
   Widget _tierChip(TransferMatch result, bool dupe, ThemeData theme) {
-    final label = dupe ? 'Ya en tu biblioteca' : switch (result.tier) { 'alta' => 'Segura', 'media' => 'Elige', _ => 'Revisa' };
+    final label = dupe ? 'Ya en tu biblioteca' : switch (result.tier) { 'alta' => 'Segura', 'media' => 'Revisar', _ => 'Elige' };
     final palette = paletteOf(context);
     final color = dupe ? theme.disabledColor : (result.tier == 'alta' ? palette.accent : theme.colorScheme.secondary);
     return Container(

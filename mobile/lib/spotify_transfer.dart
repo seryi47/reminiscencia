@@ -141,8 +141,9 @@ class TransferMatch {
   TransferCandidate? override; // elección del usuario (alternativa o búsqueda manual)
   bool excluded = false;
 
-  /// El candidato elegido: el override, o el mejor si la confianza es alta.
-  TransferCandidate? get chosen => override ?? (tier == 'alta' ? best : null);
+  /// El candidato elegido: el override, o la mejor coincidencia si la hay (alta O media, ya pre-elegida). Las de confianza
+  /// baja no traen `best`, así que quedan sin elegir hasta que el usuario pique una versión.
+  TransferCandidate? get chosen => override ?? best;
 
   factory TransferMatch.fromJson(Map<String, dynamic> json) => TransferMatch(
         index: (json['index'] as num?)?.toInt() ?? 0,

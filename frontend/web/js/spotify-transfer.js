@@ -134,14 +134,15 @@ export function markDuplicates(results, songs = []) {
 /**
  * Pistas que se van a transferir, como [{ index, url, title, artist }] para importYoutubeTracks:
  * - se saltan las excluidas (el usuario las quitó) y las que ya están en la biblioteca;
- * - una confianza ALTA se acepta sola; MEDIA/BAJA solo si el usuario eligió un candidato (override);
+ * - se incluye la MEJOR coincidencia siempre que la haya (alta Y media), ya pre-elegida, para no tener que ir canción
+ *   por canción; solo las de confianza BAJA (sin mejor candidato) quedan sin elegir hasta que el usuario pique una;
  * - un override (alternativa elegida o búsqueda manual) manda sobre todo.
  */
 export function selectedTracks(results, { excluded = new Set(), overrides = new Map() } = {}) {
   const chosen = [];
   for (const result of results) {
     if (excluded.has(result.index) || result.inLibrary) continue;
-    const pick = overrides.get(result.index) ?? (result.tier === 'alta' ? result.best : null);
+    const pick = overrides.get(result.index) ?? result.best;
     const url = pick?.candidate?.url;
     if (!url) continue;
     chosen.push({ index: result.index, url, title: result.track.title, artist: trackArtist(result.track) });

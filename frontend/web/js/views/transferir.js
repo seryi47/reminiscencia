@@ -10,7 +10,7 @@ import {
 } from '../spotify-transfer.js';
 import { importYoutubeTracks } from './homeostasia.js';
 
-const TIER_LABEL = { alta: 'Coincidencia segura', media: 'Elige la versión', baja: 'Revisa a mano' };
+const TIER_LABEL = { alta: 'Coincidencia segura', media: 'Revisar', baja: 'Elige una versión' };
 const SOURCE_LABEL = { topic: 'Oficial (YouTube Music)', official: 'Canal oficial', search: 'YouTube' };
 
 const fmtDuration = (seconds) => {
@@ -176,7 +176,7 @@ function transferPanel(ctx) {
   }
 
   // --- Revisar ---------------------------------------------------------------------------------------------------------
-  const chosenEntry = (collection, result) => collection.overrides.get(result.index) ?? (result.tier === 'alta' ? result.best : null);
+  const chosenEntry = (collection, result) => collection.overrides.get(result.index) ?? result.best;
   const totalSelected = () => state.collections.reduce((n, c) => n + selectedTracks(c.results, { excluded: c.excluded, overrides: c.overrides }).length, 0);
 
   function renderReview() {
@@ -215,13 +215,16 @@ function transferPanel(ctx) {
 
   function renderRow(collection, result) {
     const dupe = result.inLibrary;
-    if (dupe) collection.excluded.add(result.index);
+    // Por defecto se incluye si hay una coincidencia (alta O media, ya pre-elegida la mejor); las duplicadas y las de
+    // confianza baja sin candidato quedan fuera hasta que el usuario elija una versión.
+    const hasPick = Boolean(chosenEntry(collection, result));
+    if (dupe || !hasPick) collection.excluded.add(result.index);
+    const included = !collection.excluded.has(result.index) && !dupe;
     const check = el('input', {
       type: 'checkbox', 'data-testid': 'transferir-include', 'data-index': String(result.index),
-      ...(!dupe ? { checked: '' } : {}), ...(dupe ? { disabled: '' } : {}),
+      ...(included ? { checked: '' } : {}), ...(dupe ? { disabled: '' } : {}),
       on: { change: (e) => { if (e.target.checked) collection.excluded.delete(result.index); else collection.excluded.add(result.index); node._refreshCount?.(); } },
     });
-    if (!dupe && result.tier !== 'alta' && !collection.overrides.has(result.index)) collection.excluded.add(result.index);
 
     const tierBadge = el('span', { class: `transferir-tier transferir-tier-${result.tier}` }, dupe ? 'Ya en tu biblioteca' : TIER_LABEL[result.tier]);
     const match = el('div', { class: 'transferir-match', 'data-testid': 'transferir-match' });
