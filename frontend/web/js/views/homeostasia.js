@@ -555,11 +555,12 @@ async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
 // PROCESAR PLAYLIST EN LOTES DE CUATRO
 // ==================================================
 
-async function convertirPlaylist(items, onProgress, signal) {
+async function convertirPlaylist(items, onProgress, signal, onBatch) {
   const files = [];
   const trackArtists = [];
   const completedIds = [];
   const errors = [];
+  let delivered = 0; // cuántos de `files` ya se han entregado por onBatch (subida incremental)
 
   let processed = 0;
   let started = 0;
@@ -636,6 +637,16 @@ async function convertirPlaylist(items, onProgress, signal) {
         });
       })
     );
+
+    // Entrega incremental: en cuanto una tanda termina de convertir, se suben sus WAV (no se espera a toda la lista). Así,
+    // si el conversor se satura a mitad, lo ya convertido queda subido y publicándose, no en el limbo (ADR-0044).
+    if (onBatch && files.length > delivered) {
+      const newFiles = files.slice(delivered);
+      const newArtists = trackArtists.slice(delivered);
+      const newIds = completedIds.slice(delivered);
+      delivered = files.length;
+      await onBatch(newFiles, newArtists, newIds);
+    }
   }
 
   return {
@@ -700,11 +711,12 @@ export async function importYoutubeVideo(ctx, url, { signal, onStatus, fallbackA
 export async function importYoutubeTracks(ctx, tracks, { album = null, onProgress = () => {}, signal } = {}) {
   const items = (tracks ?? []).filter((track) => track && track.url);
   if (items.length === 0) return { files: [], trackArtists: [], completedIds: [], errors: [], total: 0, processed: 0 };
-  const result = await convertirPlaylist(items, onProgress, signal);
-  if (result.files.length > 0) {
-    await ctx.addUploads(result.files, { album, trackArtists: result.trackArtists });
-    result.completedIds.forEach((id) => { completedVideos.add(id); saveImportRecord(id, { state: 'queued' }); });
-  }
+  // Subida incremental por tandas: cada grupo convertido se entrega a la cola de subidas al momento. Si el conversor se
+  // satura a mitad de una lista larga, lo ya convertido queda subido y publicándose (no se pierde al no llegar al final).
+  const result = await convertirPlaylist(items, onProgress, signal, async (files, trackArtists, completedIds) => {
+    await ctx.addUploads(files, { album, trackArtists });
+    completedIds.forEach((id) => { completedVideos.add(id); saveImportRecord(id, { state: 'queued' }); });
+  });
   return result;
 }
 
