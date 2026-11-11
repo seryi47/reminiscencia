@@ -3974,6 +3974,18 @@ button:disabled {
   background: var(--row-hover);
 }
 
+/* Lista que solo sigues: Spotify no deja importarla en modo desarrollo. */
+.transferir-source-off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.transferir-note {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--accent);
+}
+
 .transferir-track {
   display: flex;
   flex-direction: column;

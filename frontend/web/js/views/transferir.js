@@ -93,8 +93,13 @@ function transferPanel(ctx) {
     const paintPlaylists = (q = '') => {
       const query = q.trim().toLowerCase();
       const shown = playlists.filter((p) => !query || p.name.toLowerCase().includes(query));
-      playlistsBox.replaceChildren(...shown.map((p) =>
-        sourceRow(`pl:${p.id}`, p.name, `${p.total} canciones`, { ref: { type: 'playlist', id: p.id } })));
+      playlistsBox.replaceChildren(...shown.map((p) => {
+        // En modo desarrollo Spotify solo deja leer listas propias o colaborativas; las que solo sigues (mine === false)
+        // llegan vacías, así que se deshabilitan con un aviso en vez de dejar que fallen al analizar.
+        const notMine = p.mine === false;
+        return sourceRow(`pl:${p.id}`, p.name, `${p.total} canciones`, { ref: { type: 'playlist', id: p.id } },
+          { disabled: notMine, note: notMine ? `No es tuya (de ${p.ownerName || 'otra cuenta'}): Spotify no deja importarla` : null });
+      }));
     };
     const search = el('input', {
       type: 'search', class: 'input', placeholder: `Buscar entre tus ${playlists.length} playlists…`, 'aria-label': 'Buscar playlists',
@@ -130,16 +135,18 @@ function transferPanel(ctx) {
 
   const analyzeLabel = () => (state.sources.size > 0 ? `Analizar ${state.sources.size} selección${state.sources.size > 1 ? 'es' : ''}` : 'Elige algo para analizar');
 
-  function sourceRow(key, title, subtitle, source) {
+  function sourceRow(key, title, subtitle, source, { disabled = false, note = null } = {}) {
     const check = el('input', {
       type: 'checkbox', 'data-testid': 'transferir-source', 'data-key': key,
+      ...(disabled ? { disabled: '' } : {}),
       ...(state.sources.has(key) ? { checked: '' } : {}),
       on: { change: (e) => toggleSource(key, { label: title, ...source }, e.target.checked) },
     });
-    return el('label', { class: 'transferir-source-row' }, check,
+    return el('label', { class: `transferir-source-row${disabled ? ' transferir-source-off' : ''}` }, check,
       el('span', { class: 'transferir-track' },
         el('span', { class: 'transferir-title' }, title),
-        el('span', { class: 'transferir-artist' }, subtitle)));
+        el('span', { class: 'transferir-artist' }, subtitle),
+        ...(note ? [el('span', { class: 'transferir-note' }, note)] : [])));
   }
 
   function toggleSource(key, source, on) {

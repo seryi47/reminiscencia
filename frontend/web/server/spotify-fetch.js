@@ -91,20 +91,31 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
  */
 export async function listMine({ accessToken }, fetchImpl = fetch) {
   if (!accessToken) throw new Error('falta el token de acceso');
+  // Id del usuario, para saber qué listas son SUYAS. En «development mode» Spotify solo deja leer el contenido de listas
+  // propias o colaborativas; las que solo sigues llegan vacías (ADR-0044). Marcar el dueño evita el «no hay canciones».
+  let me = null;
+  try { me = (await getJson(`${API}/v1/me`, accessToken, fetchImpl))?.id ?? null; } catch { /* sin /me, no se marca dueño */ }
   const first = await getJson(`${API}/v1/me/playlists?limit=50`, accessToken, fetchImpl);
   const items = await allItems(first, accessToken, fetchImpl);
-  const playlists = items.filter(Boolean).map((pl) => ({
-    id: pl.id,
-    name: typeof pl.name === 'string' ? pl.name : '',
-    total: pl.tracks?.total ?? pl.items?.total ?? 0, // «items» desde la migración de 2026; «tracks» en el esquema antiguo
-    image: (Array.isArray(pl.images) && pl.images[0]?.url) || null,
-    ownerId: pl.owner?.id ?? null,
-    ownerName: pl.owner?.display_name ?? null,
-  }));
+  const playlists = items.filter(Boolean).map((pl) => {
+    const ownerId = pl.owner?.id ?? null;
+    const collaborative = pl.collaborative === true;
+    return {
+      id: pl.id,
+      name: typeof pl.name === 'string' ? pl.name : '',
+      total: pl.tracks?.total ?? pl.items?.total ?? 0, // «items» desde la migración de 2026; «tracks» en el esquema antiguo
+      image: (Array.isArray(pl.images) && pl.images[0]?.url) || null,
+      ownerId,
+      ownerName: pl.owner?.display_name ?? null,
+      collaborative,
+      // Importable en modo desarrollo: propia o colaborativa. null si no se pudo saber el usuario (no se marca nada).
+      mine: me == null ? null : (ownerId === me || collaborative),
+    };
+  });
   let liked = 0;
   try {
     const saved = await getJson(`${API}/v1/me/tracks?limit=1`, accessToken, fetchImpl);
     liked = saved.total ?? 0;
   } catch { /* si no hay permiso de biblioteca, se omite «Me gusta» */ }
-  return { playlists, liked };
+  return { playlists, liked, me };
 }

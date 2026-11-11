@@ -1,5 +1,11 @@
 ## Sin publicar: Transferir música — matcher más preciso y autónomo (2026-11-11)
 
+- **Listas que solo sigues (no tuyas) marcadas:** en «development mode» Spotify solo deja leer el contenido de listas
+  propias o colaborativas; las que solo sigues (p. ej. «Car Music» de Future House Cloud, o una «Fiesta» ajena) devuelven
+  metadatos pero 0 pistas → daban «no hay canciones accesibles». Ahora `listMine` trae tu id (`/v1/me`) y si cada lista es
+  colaborativa, marca cada una como tuya/importable (`mine`), y la interfaz **deshabilita las que no son tuyas con un aviso**
+  («No es tuya (de X): Spotify no deja importarla»), en vez de dejar que fallen al analizar.
+
 - **Arreglo crítico: las canciones importadas no entraban en su álbum.** `albumOf` generaba el id del álbum con dos puntos
   (`spotify:playlist:<id>`), que la validación `[A-Za-z0-9_-]` rechazaba (en `cleanAlbum`, `upload-core` y el backend), así
   que el álbum se descartaba y la canción se publicaba **sin carpeta** (`folder_id: null`). Ahora el id va con guiones bajos
