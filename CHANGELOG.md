@@ -21,7 +21,7 @@
   sin elegir y obligaba a ir canción por canción); solo «baja» pide elección.
 - **Antiduplicados reforzado:** detecta lo ya presente en un álbum también por **título+artista** (aunque difiera la
   duración), y `buildTransferPlan`/`_buildPlan` no repiten una canción entre varias listas ni dentro de la tanda.
-- **Interfaz de revisión rediseñada** y shell del service worker a v37 (web) para que el nuevo diseño reemplace al
+- **Interfaz de revisión rediseñada** y shell del service worker a v38 (web) para que el nuevo diseño reemplace al
   cacheado; en la APK, el buscador manual de YouTube se oculta tras un toggle por fila, como la web (paridad de UX).
 - **Subida incremental por tandas (robustez en listas largas):** el conversor externo (yttowav) hace throttling (503)
   cuando se le lanzan cientos de conversiones seguidas, y antes se convertía TODA la lista antes de subir nada → si se
@@ -32,6 +32,13 @@
   una lista larga (p. ej. 252 canciones) termina subiéndose **entera sin intervención**.
   En la APK, un fallo puntual de una pista de un lote ya **no tira el lote entero ni borra lo descargado** (antes
   `importTracks` lanzaba y borraba toda la carpeta temporal); se omite esa pista y se siguen las demás.
+- **Cortacircuitos del conversor:** yttowav (gratuito) tiene un tope de conversiones por ventana; al superarlo rechaza en
+  cadena. Antes la tanda seguía machacándolo durante horas con cada reintento. Ahora, si fallan `CONFIG.circuitBreak` (15)
+  conversiones SEGUIDAS, se corta la tanda: lo ya convertido queda subido y el resto queda pendiente para un reintento
+  posterior (que por caché salta lo hecho). Las pasadas también se cortan si una no logra ninguna conversión nueva.
+- **Comparación con tu biblioteca (álbum a álbum):** al revisar, se resume cuántas canciones son **nuevas** y cuántas **ya
+  tienes** por cada lista/álbum (con "✓ Ya la tienes entera"), un resumen global, y un aviso **"no hay nada nuevo que
+  importar"** cuando ya lo tienes todo. Reintentar una lista grande solo trae lo que falta. (web + APK)
 - **Pruebas:** web 995, APK 607. Set «dorado» del matcher (con el patrón «Mala Mujer» y la tolerancia de duración),
   parser de YouTube Music con filtro de canciones y caché de credenciales (fetch simulado), tolerancia de lote en la
   APK, dedup y plan.

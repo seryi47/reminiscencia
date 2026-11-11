@@ -4089,6 +4089,12 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* Lista/álbum que ya tienes entera: el contador se resalta en verde de acento. */
+.transferir-colhead-done .transferir-counts {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* Enlace discreto para revelar el buscador de YouTube de una fila (oculto por defecto). */
 .transferir-manual-toggle {
   align-self: flex-start;

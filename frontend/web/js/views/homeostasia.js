@@ -27,8 +27,9 @@ const CONFIG = {
   pollInterval: 3000,
   statusErrorRetries: 5,
   jobTimeout: 600000,
-  transferPasses: 5, // reintentos de la LISTA completa: tras cada pasada se reintentan solo las pistas que fallaron
+  transferPasses: 4, // reintentos de la LISTA completa: tras cada pasada se reintentan solo las pistas que fallaron
   transferPassGap: 30000, // espera entre pasadas para que el conversor (yttowav) se recupere del throttling
+  circuitBreak: 15, // si fallan N conversiones SEGUIDAS, el conversor está capado: se corta la tanda (lo hecho queda subido)
 };
 
 const IMPORT_STORAGE_KEY = 'reminiscencia.youtube-imports';
@@ -566,6 +567,11 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
 
   let processed = 0;
   let started = 0;
+  // Cortacircuitos: si el conversor externo rechaza muchas conversiones SEGUIDAS, está capado por cuota; no tiene sentido
+  // seguir machacándolo (haría que la tanda durase horas). Se corta: lo ya convertido queda subido y el resto queda como
+  // error (pendiente) para un reintento posterior, que al ir por caché salta lo ya hecho.
+  let consecutiveFails = 0;
+  let circuitOpen = false;
 
   const total = items.length;
 
@@ -584,6 +590,12 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
     await Promise.all(
       batch.map(async (item, position) => {
         started++;
+        // Si el cortacircuitos ya saltó, no se intenta: se marca como pendiente al instante (sin golpear al conversor).
+        if (circuitOpen) {
+          processed++;
+          errors.push({ success: false, skipped: false, title: item.title, item, error: new Error('El conversor alcanzó su límite; reintenta más tarde.') });
+          return;
+        }
         onProgress({
           processed,
           total,
@@ -625,8 +637,11 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
           files.push(result.file);
           trackArtists.push(item.artist || '');
           completedIds.push(result.videoId);
+          consecutiveFails = 0;
         } else if (!result.skipped) {
           errors.push(result);
+          consecutiveFails++;
+          if (consecutiveFails >= CONFIG.circuitBreak) circuitOpen = true;
         }
 
         onProgress({
@@ -733,7 +748,10 @@ export async function importYoutubeTracks(ctx, tracks, { album = null, onProgres
     aggregate.processed += result.processed;
     aggregate.errors = result.errors; // solo cuentan como error las que siguen fallando tras la última pasada
     const failedItems = result.errors.map((entry) => entry.item).filter(Boolean);
-    if (failedItems.length === 0) break;
+    if (failedItems.length === 0) break; // todo convertido
+    // Si esta pasada no logró NINGUNA conversión nueva, el conversor está capado ahora mismo: no se sigue machacando.
+    // Lo ya subido queda guardado; el resto se completa en un reintento posterior (la caché salta lo hecho).
+    if (result.files.length === 0) break;
     pending = failedItems;
     if (pass < CONFIG.transferPasses - 1) {
       try { await sleep(CONFIG.transferPassGap, signal); } catch { break; } // cancelado durante la espera

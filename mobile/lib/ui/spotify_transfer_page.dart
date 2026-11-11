@@ -335,27 +335,49 @@ class _TransferirSheetState extends State<_TransferirSheet> {
         FilledButton(onPressed: () => setState(() => _stage = _Stage.browse), child: const Text('Volver')),
       ]);
     }
-    // Solo se listan las de revisar (media/baja). Las seguras y las que ya tienes se cuentan pero no se muestran.
+    // Compara cada lista/álbum con TU biblioteca (inLibrary ya marcado) y resume qué es nuevo y qué ya tienes.
+    final palette = paletteOf(context);
     final children = <Widget>[];
     var anyReview = false;
+    var totalNew = 0;
+    var totalHave = 0;
     for (final c in nonEmpty) {
       final dupes = c.results.where((r) => r.inLibrary).length;
       final review = c.results.where((r) => !r.inLibrary && r.tier != 'alta').toList();
       final sure = c.results.length - dupes - review.length;
-      final counts = [if (sure > 0) '$sure se añaden solas', if (review.isNotEmpty) '${review.length} a revisar', if (dupes > 0) '$dupes ya las tienes'].join(' · ');
+      final nuevas = sure + review.length;
+      totalNew += nuevas;
+      totalHave += dupes;
+      final done = nuevas == 0;
+      final counts = done
+          ? '✓ Ya la tienes entera ($dupes ${dupes == 1 ? 'canción' : 'canciones'})'
+          : [if (sure > 0) '$sure se añaden solas', if (review.isNotEmpty) '${review.length} a revisar', if (dupes > 0) '$dupes ya las tienes'].join(' · ');
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(c.name, style: theme.textTheme.labelLarge),
-          Text(counts, style: theme.textTheme.bodySmall),
+          Text(counts, style: theme.textTheme.bodySmall?.copyWith(color: done ? palette.accent : null, fontWeight: done ? FontWeight.w600 : null)),
         ]),
       ));
       for (final r in review) { anyReview = true; children.add(_row(r, theme)); }
     }
+
+    // Ya lo tienes todo: nada nuevo que importar.
+    if (totalNew == 0) {
+      return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Ya tienes en tu biblioteca todas las canciones de lo que elegiste ($totalHave). No hay nada nuevo que importar.',
+            key: const Key('transferir-nada-nuevo'), style: theme.textTheme.bodyMedium),
+        const SizedBox(height: 8),
+        Flexible(child: ListView(shrinkWrap: true, children: children)),
+        const SizedBox(height: 12),
+        FilledButton(onPressed: () => setState(() => _stage = _Stage.browse), child: const Text('Elegir otra cosa')),
+      ]);
+    }
+
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(anyReview
-          ? 'Las seguras se añaden solas. Abajo solo lo que conviene revisar (ya hay una versión elegida).'
-          : 'Todo identificado automáticamente. Dale a «Transferir».', style: theme.textTheme.bodySmall),
+      Text('Comparado con tu biblioteca: $totalNew ${totalNew == 1 ? 'canción nueva' : 'canciones nuevas'}${totalHave > 0 ? ', $totalHave ya las tienes' : ''}. '
+          '${anyReview ? 'Abajo solo lo que conviene revisar (ya hay una versión elegida).' : 'Todo identificado automáticamente. Dale a «Transferir».'}',
+          style: theme.textTheme.bodySmall),
       const SizedBox(height: 8),
       Flexible(child: ListView(shrinkWrap: true, children: children)),
       const SizedBox(height: 12),

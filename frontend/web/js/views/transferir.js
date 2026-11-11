@@ -189,18 +189,26 @@ function transferPanel(ctx) {
       );
       return;
     }
-    // Solo se LISTAN las que conviene revisar (media/baja). Las seguras y las que ya tienes se cuentan pero no se muestran:
-    // menos ruido y mucho más rápido en listas grandes.
+    // Compara cada lista/álbum de Spotify con TU biblioteca (markDuplicates ya marcó `inLibrary`) y resume qué es nuevo y
+    // qué ya tienes. Solo se LISTAN las que conviene revisar (media/baja); las seguras y las que ya tienes se cuentan.
+    const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
     const blocks = [];
     let anyReview = false;
+    let totalNew = 0;
+    let totalHave = 0;
     for (const collection of state.collections) {
       if (collection.results.length === 0) continue;
       const dupes = collection.results.filter((r) => r.inLibrary).length;
       const review = collection.results.filter((r) => !r.inLibrary && r.tier !== 'alta');
       const sure = collection.results.length - dupes - review.length;
-      const counts = [sure ? `${sure} se añaden solas` : null, review.length ? `${review.length} a revisar` : null,
-        dupes ? `${dupes} ya las tienes` : null].filter(Boolean).join(' · ');
-      blocks.push(el('div', { class: 'transferir-colhead' },
+      const nuevas = sure + review.length;
+      totalNew += nuevas;
+      totalHave += dupes;
+      const counts = nuevas === 0
+        ? `✓ Ya la tienes entera (${plural(dupes, 'canción', 'canciones')})`
+        : [sure ? `${sure} se añaden solas` : null, review.length ? `${review.length} a revisar` : null,
+          dupes ? `${dupes} ya las tienes` : null].filter(Boolean).join(' · ');
+      blocks.push(el('div', { class: `transferir-colhead${nuevas === 0 ? ' transferir-colhead-done' : ''}` },
         el('span', { class: 'transferir-sub' }, collection.name),
         el('span', { class: 'transferir-counts' }, counts)));
       if (review.length === 0) continue;
@@ -209,6 +217,18 @@ function transferPanel(ctx) {
       for (const result of review) list.append(renderRow(collection, result));
       blocks.push(list);
     }
+
+    // Ya lo tienes todo: nada nuevo que importar.
+    if (totalNew === 0) {
+      setSection(
+        el('p', { class: 'transferir-intro', 'data-testid': 'transferir-nada-nuevo' },
+          `Ya tienes en tu biblioteca todas las canciones de lo que elegiste (${plural(totalHave, 'canción', 'canciones')}). No hay nada nuevo que importar.`),
+        ...blocks,
+        el('button', { type: 'button', class: 'homeostasia-submit', on: { click: () => paintLibrary() } }, 'Elegir otra cosa'),
+      );
+      return;
+    }
+
     const go = el('button', {
       type: 'button', class: 'homeostasia-submit', 'data-testid': 'transferir-go',
       on: { click: () => transfer() },
@@ -216,9 +236,10 @@ function transferPanel(ctx) {
     node._refreshCount = () => { go.querySelector('[data-testid="transferir-go-text"]').textContent = `Transferir ${totalSelected()} canciones`; };
 
     setSection(
-      el('p', { class: 'transferir-intro' }, anyReview
-        ? 'Las seguras se añaden solas. Abajo solo lo que conviene revisar (ya hay una versión elegida; cámbiala solo si hace falta).'
-        : 'Todo identificado automáticamente. Dale a «Transferir».'),
+      el('p', { class: 'transferir-intro' },
+        `Comparado con tu biblioteca: ${plural(totalNew, 'canción nueva', 'canciones nuevas')}${totalHave ? `, ${totalHave} ya las tienes` : ''}. `
+        + (anyReview ? 'Abajo solo lo que conviene revisar (ya hay una versión elegida; cámbiala solo si hace falta).'
+          : 'Todo identificado automáticamente. Dale a «Transferir».')),
       ...blocks,
       el('div', { class: 'transferir-actions' },
         el('button', { type: 'button', class: 'button button-text', on: { click: () => paintLibrary() } }, 'Elegir otra cosa'),
@@ -336,6 +357,11 @@ function transferPanel(ctx) {
       setSection(
         el('p', { class: 'transferir-summary', 'data-testid': 'transferir-done' },
           `Añadidas ${added}${failed ? ` · ${failed} con error` : ''}. Verás el progreso de publicación en «Tu biblioteca».`),
+        failed
+          ? el('p', { class: 'transferir-intro' },
+            'Las que dieron error suelen ser por el límite del conversor, no por un fallo. Cuando terminen de publicarse estas, '
+            + 'vuelve a darle a «Transferir» con la misma lista: saltará las que ya tienes y seguirá solo con las que faltan.')
+          : el('div'),
         el('button', { type: 'button', class: 'homeostasia-submit', on: { click: () => { state.sources.clear(); state.collections = []; paintLibrary('¿Transferir algo más?'); } } }, 'Transferir más'),
       );
     } catch (error) {
