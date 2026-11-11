@@ -72,6 +72,7 @@ REAL_CHANNELS = {
     "CantoYo Video Lyrics", "CarlinhosX7", "Disney Channel Animation", "Doble Music", "EuskalGazte778",
     "IkonProducciones", "Imagine Dragons FAN", "KapitalMusicTv", "Luxury Life Music", "OmarMontesVEVO",
     "Warner Music Spain Archivos", "YouMoreTv - Espectáculo", "antifa93cat", "gigatr0n", "ra29597",
+    "Rich Music LTD",
 }
 
 
