@@ -91,6 +91,28 @@ def test_same_folder_name_under_another_parent_is_another_folder():
     assert len(data["folders"]) == 3
 
 
+def test_youtube_album_matches_by_name_before_creating(tmp_path=None):
+    data = catalog.empty()
+    # Álbum ya existente (p. ej. venía de una importación de YouTube) con su propio id de fuente.
+    first, _ = catalog.youtube_album(data, "yt_fiesta", "Fiesta")
+    assert len(data["folders"]) == 1
+    # Importar la MISMA lista por otra fuente y con el nombre igual (distinto id) se une al álbum existente, no duplica.
+    again, changed = catalog.youtube_album(data, "spotify_playlist_abc", "  fiesta ")
+    assert again["id"] == first["id"]
+    assert changed is False
+    assert len(data["folders"]) == 1  # no se ha creado un segundo "Fiesta"
+    assert first.get("youtube_playlist_id") == "yt_fiesta"  # no se pisa el id de la fuente original
+
+
+def test_youtube_album_creates_when_no_match():
+    data = catalog.empty()
+    folder, changed = catalog.youtube_album(data, "spotify_playlist_new", "Mix")
+    assert changed is True
+    assert folder["name"] == "Mix"
+    assert folder["youtube_playlist_id"] == "spotify_playlist_new"
+    assert len(data["folders"]) == 1
+
+
 @pytest.mark.parametrize("public", ["false", "true", 1, 0, None])
 def test_update_song_public_must_be_a_json_boolean(public):
     # bool("false") es True: el texto no puede llegar nunca al catálogo como publicación.

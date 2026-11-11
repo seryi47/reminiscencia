@@ -91,12 +91,26 @@ def find_folder(data: dict, folder_id: str) -> dict:
 
 
 def youtube_album(data: dict, playlist_id: str, name: str) -> tuple[dict, bool]:
-    """Crea o reutiliza el álbum estable de una playlist; el id de YouTube queda solo en el catálogo interno."""
+    """Crea o reutiliza el álbum estable de una playlist; el id de YouTube/Spotify queda solo en el catálogo interno.
+
+    Emparejado en dos pasos para que al importar un álbum/lista «vaya todo al mismo sitio» (ADR-0044):
+    1) por `youtube_playlist_id` exacto (misma fuente re-importada);
+    2) si no, por NOMBRE (sin distinguir mayúsculas ni espacios), para unirse a un álbum que ya tengas con ese nombre
+       aunque viniera de otra fuente (p. ej. ya existía de YouTube y ahora llega de Spotify) en vez de duplicarlo.
+    Si no hay ninguno, se crea.
+    """
     for folder in data["folders"]:
         if folder.get("youtube_playlist_id") == playlist_id:
             changed = folder.get("name") != name
             folder["name"] = name
             return folder, changed
+
+    target = name.strip().casefold()
+    for folder in data["folders"]:
+        if (folder.get("name") or "").strip().casefold() == target:
+            # Álbum existente con el mismo nombre: unir las canciones ahí. No se pisa su id de fuente si ya tenía uno.
+            folder.setdefault("youtube_playlist_id", playlist_id)
+            return folder, False
 
     folder_id = f"F{hashlib.sha256(f'youtube:{playlist_id}'.encode()).hexdigest()[:16]}"
     if any(folder.get("id") == folder_id for folder in data["folders"]):
