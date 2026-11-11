@@ -90,6 +90,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
   SpotifyLibrary? _library;
   final Set<String> _selected = {}; // 'liked' | 'pl:<id>' | 'url:<url>'
   List<_Collection> _collections = [];
+  final Set<int> _manualOpen = {}; // índices de filas con el buscador manual de YouTube abierto (como la web, oculto por defecto)
 
   @override
   void initState() {
@@ -395,6 +396,18 @@ class _TransferirSheetState extends State<_TransferirSheet> {
           ),
         ),
         if (!dupe && needsChoice) Padding(
+          padding: const EdgeInsets.only(left: 40),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: Key('transferir-manual-toggle-${result.index}'),
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), visualDensity: VisualDensity.compact),
+              onPressed: () => setState(() => _manualOpen.contains(result.index) ? _manualOpen.remove(result.index) : _manualOpen.add(result.index)),
+              child: Text(_manualOpen.contains(result.index) ? 'Ocultar búsqueda' : 'Buscar otra en YouTube', style: theme.textTheme.labelMedium),
+            ),
+          ),
+        ),
+        if (!dupe && needsChoice && _manualOpen.contains(result.index)) Padding(
           padding: const EdgeInsets.only(left: 48),
           child: _ManualSearch(spotify: _spotify, onPicked: (candidate) => setState(() { result.alternatives = [candidate, ...result.alternatives]; result.override = candidate; result.excluded = false; })),
         ),
