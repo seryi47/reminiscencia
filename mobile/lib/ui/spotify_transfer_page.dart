@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../duplicates.dart';
@@ -92,6 +93,13 @@ class _TransferirSheetState extends State<_TransferirSheet> {
   List<_Collection> _collections = [];
   final Set<int> _manualOpen = {}; // índices de filas con el buscador manual de YouTube abierto (como la web, oculto por defecto)
 
+  // Auto-reanudar: el tope del conversor (YouTube) es externo; en vez de reintentar a mano, la transferencia reintenta sola
+  // solo lo que falta hasta completar. `_cancel` permite pararlo; el set persistente de vídeos ya hechos evita duplicados.
+  YoutubeImportCancellation? _cancel;
+  static const Duration _autoResumeGap = Duration(minutes: 10);
+  static const int _autoResumeMaxCycles = 24;
+  static const String _doneVideosKey = 'transferir.done.videos';
+
   @override
   void initState() {
     super.initState();
@@ -107,10 +115,38 @@ class _TransferirSheetState extends State<_TransferirSheet> {
 
   @override
   void dispose() {
+    _cancel?.cancel();
     _client.close();
     _link.dispose();
     _search.dispose();
     super.dispose();
+  }
+
+  Future<Set<String>> _loadDoneVideos() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getStringList(_doneVideosKey) ?? const <String>[]).toSet();
+  }
+
+  Future<void> _saveDoneVideos(Set<String> done) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_doneVideosKey, done.toList());
+  }
+
+  /// Espera `total` mostrando cuenta atrás; devuelve false si se cancela antes de terminar.
+  Future<bool> _countdown(Duration total, int remaining) async {
+    final end = DateTime.now().add(total);
+    while (DateTime.now().isBefore(end)) {
+      if (_cancel?.isCancelled ?? true) return false;
+      final left = end.difference(DateTime.now());
+      final m = left.inMinutes;
+      final s = left.inSeconds % 60;
+      if (mounted) {
+        setState(() => _message =
+            'Tope del conversor alcanzado. Reintento automático en $m:${s.toString().padLeft(2, '0')} — quedan ~$remaining canciones.');
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    return !(_cancel?.isCancelled ?? true);
   }
 
   List<DuplicateCandidate> get _library0 => [
@@ -159,6 +195,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
 
     setState(() { _stage = _Stage.working; _error = ''; _message = 'Analizando…'; });
     final collections = <_Collection>[];
+    final done = await _loadDoneVideos(); // vídeos ya subidos (aunque aún no publicados): cuentan como «ya la tienes»
     try {
       for (final src in sources) {
         if (mounted) setState(() => _message = 'Analizando «${src.key}»…');
@@ -170,6 +207,11 @@ class _TransferirSheetState extends State<_TransferirSheet> {
                 : await _spotify.resolve(target['url'] as String, onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); });
         markTransferDuplicates(res.results, _library0);
         for (final r in res.results) {
+          // Además de lo publicado, lo recién subido (set `done`) también cuenta como «ya la tienes».
+          if (!r.inLibrary && r.best != null) {
+            final vid = YoutubeImporter.videoIdOf(r.best!.url);
+            if (vid != null && done.contains(vid)) r.inLibrary = true;
+          }
           // Incluida por defecto si hay coincidencia (alta o media, ya pre-elegida); baja sin candidato y duplicadas, fuera.
           r.excluded = r.inLibrary || r.best == null;
         }
@@ -207,35 +249,71 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     if (totalTracks == 0) { setState(() => _error = 'Elige al menos una canción.'); return; }
     final importer = widget.services.youtube;
     if (importer == null) { setState(() => _error = 'La conexión con YouTube no está disponible.'); return; }
+    final cancel = YoutubeImportCancellation();
+    _cancel = cancel;
     setState(() { _stage = _Stage.working; _error = ''; _message = 'Preparando $totalTracks canciones…'; });
-    var added = 0;
-    var failed = 0;
-    var base = 0;
+    final done = await _loadDoneVideos(); // vídeos ya importados (anti-duplicados entre ciclos/arranques)
+    var addedTotal = 0;
+    var lastFailed = 0;
     List<YoutubeImportedAudio>? lastImported;
     try {
-      for (final entry in plan) {
-        final tracks = entry.value;
-        final imported = await importer.importTracks(tracks, onProgress: (p) {
-          if (mounted) setState(() => _message = 'Descargando ${base + p.index + 1} de $totalTracks…');
-        });
-        lastImported = imported;
-        await widget.services.library.uploadShared([
-          for (final audio in imported)
-            PickedAudioFile(name: audio.name, path: audio.path, artist: audio.track.artist, youtubePlaylistId: audio.track.playlistId, youtubePlaylistName: audio.track.playlistTitle),
-        ]);
-        await importer.cleanup(imported);
-        lastImported = null;
-        added += imported.length;
-        failed += tracks.length - imported.length;
-        base += tracks.length;
+      var cycle = 0;
+      while (!cancel.isCancelled) {
+        cycle += 1;
+        var failedCycle = 0;
+        var base = 0;
+        for (final entry in plan) {
+          if (cancel.isCancelled) break;
+          final tracks = entry.value;
+          // Atacables este ciclo: las que no están ya hechas.
+          final pending = tracks.where((t) {
+            final v = YoutubeImporter.videoIdOf(t.url);
+            return v == null || !done.contains(v);
+          }).toList();
+          if (pending.isEmpty) { base += tracks.length; continue; }
+          final imported = await importer.importTracks(pending, cancellation: cancel, skipVideoIds: done, onProgress: (p) {
+            final prefix = cycle > 1 ? 'Reintento $cycle' : 'Descargando';
+            if (mounted) setState(() => _message = '$prefix: ${base + p.index + 1} de $totalTracks…');
+          });
+          lastImported = imported;
+          await widget.services.library.uploadShared([
+            for (final audio in imported)
+              PickedAudioFile(name: audio.name, path: audio.path, artist: audio.track.artist, youtubePlaylistId: audio.track.playlistId, youtubePlaylistName: audio.track.playlistTitle),
+          ]);
+          await importer.cleanup(imported);
+          lastImported = null;
+          for (final audio in imported) {
+            final v = YoutubeImporter.videoIdOf(audio.track.url);
+            if (v != null) done.add(v);
+          }
+          await _saveDoneVideos(done);
+          addedTotal += imported.length;
+          failedCycle += pending.length - imported.length;
+          base += tracks.length;
+        }
+        lastFailed = failedCycle;
+        if (cancel.isCancelled) break;
+        if (failedCycle == 0) break; // completado: ya no falla nada
+        if (cycle >= _autoResumeMaxCycles) break;
+        if (!await _countdown(_autoResumeGap, failedCycle)) break; // parado durante la espera
       }
-      if (mounted) setState(() { _stage = _Stage.done; _message = '$added canciones añadidas${failed > 0 ? ' · $failed con error' : ''}. Se publicarán en un momento.'; });
+      final complete = lastFailed == 0 && !cancel.isCancelled;
+      if (mounted) {
+        setState(() {
+          _stage = _Stage.done;
+          _message = complete
+              ? '¡Listo! $addedTotal canciones añadidas. Se publicarán en un momento.'
+              : '$addedTotal añadidas${lastFailed > 0 ? ' · quedan ~$lastFailed' : ''}. '
+                  '${cancel.isCancelled ? 'Reintento detenido.' : 'Se alcanzó el límite de reintentos; prueba más tarde.'}';
+        });
+      }
     } on SpotifyNeedsAuth {
       if (mounted) setState(() { _stage = _Stage.connect; _error = 'Tu sesión de Spotify ha caducado.'; });
     } catch (error) {
       if (mounted) setState(() { _stage = _Stage.review; _error = 'No se pudo completar: ${describeError(error)}'; });
     } finally {
       if (lastImported != null) await importer.cleanup(lastImported);
+      if (identical(_cancel, cancel)) _cancel = null;
     }
   }
 
@@ -259,11 +337,20 @@ class _TransferirSheetState extends State<_TransferirSheet> {
   Widget _body(ThemeData theme) {
     switch (_stage) {
       case _Stage.loading:
+        return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(_message.isEmpty ? 'Cargando…' : _message, key: const Key('transferir-progress'), textAlign: TextAlign.center),
+        ])));
       case _Stage.working:
         return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
           const CircularProgressIndicator(),
           const SizedBox(height: 16),
           Text(_message.isEmpty ? 'Cargando…' : _message, key: const Key('transferir-progress'), textAlign: TextAlign.center),
+          if (_cancel != null) ...[
+            const SizedBox(height: 12),
+            TextButton(key: const Key('transferir-stop'), onPressed: () => _cancel?.cancel(), child: const Text('Parar')),
+          ],
         ])));
       case _Stage.connect:
         return Column(mainAxisSize: MainAxisSize.min, children: [

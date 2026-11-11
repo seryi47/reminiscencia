@@ -222,10 +222,14 @@ class YoutubeImporter {
 
   /// Convierte una lista de pistas ya conocidas (p. ej. coincidencias de Spotify ya resueltas a YouTube; ADR-0044) sin
   /// volver a leer YouTube: cada [YoutubeTrack] ya trae su URL, título y artista. Mismo camino que una playlist.
+  /// Id de vídeo de una URL de YouTube (público, para la guardia anti-duplicados del auto-reanudar).
+  static String? videoIdOf(String value) => _videoId(value);
+
   Future<List<YoutubeImportedAudio>> importTracks(
     List<YoutubeTrack> tracks, {
     YoutubeImportProgressCallback? onProgress,
     YoutubeImportCancellation? cancellation,
+    Set<String>? skipVideoIds,
   }) async {
     cancellation?.throwIfCancelled();
     final root = await _tempDir();
@@ -246,6 +250,12 @@ class YoutubeImporter {
         next += 1;
         if (index >= tracks.length) return;
         final track = tracks[index];
+        // Guardia anti-duplicados: si este vídeo ya se importó (en un ciclo anterior del auto-reanudar), se salta: ni se
+        // reconvierte ni se vuelve a subir. No cuenta como fallo.
+        if (skipVideoIds != null) {
+          final vid = _videoId(track.url);
+          if (vid != null && skipVideoIds.contains(vid)) continue;
+        }
         try {
           output[index] = await _convertAndDownload(
             track,

@@ -760,6 +760,15 @@ export async function importYoutubeTracks(ctx, tracks, { album = null, onProgres
   return aggregate;
 }
 
+/** True si esta URL de YouTube ya se importó/subió en esta sesión o quedó en cola de publicación ('queued'), aunque todavía
+ *  NO esté en el catálogo publicado. Permite que «Transferir música» la cuente como «ya la tienes» justo después de subirla,
+ *  en vez de ofrecerla como nueva hasta que termine de publicarse (ADR-0044). */
+export function isUploadedRecently(youtubeUrl) {
+  const id = getVideoId(youtubeUrl);
+  if (!id) return false;
+  return completedVideos.has(id) || cachedRecord(id)?.state === 'queued';
+}
+
 // ==================================================
 // ABRIR HOJA HOMEOSTASIA
 // ==================================================

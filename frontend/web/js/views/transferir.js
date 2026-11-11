@@ -8,7 +8,7 @@ import { icon } from '../ui/icons.js';
 import {
   createTransferApi, beginConnect, isConnected, clearSession, listLibrary, resolveCollection, markDuplicates, buildTransferPlan,
 } from '../spotify-transfer.js';
-import { importYoutubeTracks } from './homeostasia.js';
+import { importYoutubeTracks, isUploadedRecently } from './homeostasia.js';
 
 const TIER_LABEL = { alta: 'Coincidencia segura', media: 'Revisar', baja: 'Elige una versión' };
 const SOURCE_LABEL = { topic: 'Oficial (YouTube Music)', official: 'Canal oficial', search: 'YouTube' };
@@ -162,6 +162,11 @@ function transferPanel(ctx) {
           onPage: ({ loaded, total }) => { progress.textContent = `«${source.label}»: ${loaded}${total ? ` de ${total}` : ''} canciones…`; },
         });
         markDuplicates(out.results, ctx.librarySongs());
+        // Además de lo publicado, cuenta como «ya la tienes» lo recién subido/en cola (aún sin publicar), para no ofrecer
+        // como nuevas las que acabas de transferir hace un momento.
+        for (const r of out.results) {
+          if (!r.inLibrary && r.best && isUploadedRecently(r.best.candidate.url)) r.inLibrary = true;
+        }
         collections.push({ name: source.label, album: out.album, results: out.results, excluded: new Set(), overrides: new Map() });
       }
       state.collections = collections;
