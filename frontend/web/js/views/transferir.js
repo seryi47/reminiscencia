@@ -147,6 +147,23 @@ function transferPanel(ctx) {
     node._refreshAnalyze?.();
   }
 
+  // Lee el catálogo PUBLICADO fresco del servidor (sin caché), para que la comparación «ya la tienes» no use la copia en
+  // memoria, que puede estar desactualizada en una pestaña abierta hace rato (por eso ofrecía canciones ya transferidas).
+  async function freshLibrary() {
+    const get = async (url, fallback) => {
+      try {
+        const res = await fetch(`${url}?cb=${Date.now()}`, { cache: 'no-store' });
+        const data = res.ok ? await res.json() : null;
+        return Array.isArray(data) ? data : fallback;
+      } catch { return fallback; }
+    };
+    const [songs, folders] = await Promise.all([
+      get('data/songs.json', ctx.librarySongs()),
+      get('data/folders.json', ctx.libraryFolders?.() ?? []),
+    ]);
+    return { songs, folders };
+  }
+
   // --- Analizar las selecciones ----------------------------------------------------------------------------------------
   async function analyzeSelected() {
     if (state.sources.size === 0) { toast('Elige al menos una playlist, «Me gusta» o pega un enlace.'); return; }
@@ -154,6 +171,7 @@ function transferPanel(ctx) {
     setSection(progress);
     const collections = [];
     try {
+      const library = await freshLibrary(); // catálogo publicado al día, para comparar bien
       for (const [, source] of state.sources) {
         progress.textContent = `Analizando «${source.label}»…`;
         const target = source.source ? { source: source.source } : (source.ref ? { ref: source.ref } : { url: source.url });
@@ -161,7 +179,7 @@ function transferPanel(ctx) {
           api, ...target,
           onPage: ({ loaded, total }) => { progress.textContent = `«${source.label}»: ${loaded}${total ? ` de ${total}` : ''} canciones…`; },
         });
-        markDuplicates(out.results, ctx.librarySongs());
+        markDuplicates(out.results, library.songs);
         // Además de lo publicado, cuenta como «ya la tienes» lo recién subido/en cola (aún sin publicar), para no ofrecer
         // como nuevas las que acabas de transferir hace un momento.
         for (const r of out.results) {
@@ -173,7 +191,7 @@ function transferPanel(ctx) {
       // Recoloca al momento lo que ya tienes pero suelto/en otro álbum (cubre también el caso «todo ya lo tienes», en el
       // que no hay nada que transferir pero sí que recolocar).
       progress.textContent = 'Ordenando álbumes…';
-      state.recolocated = await recolocateOwned();
+      state.recolocated = await recolocateOwned(library.folders);
       renderReview();
     } catch (error) {
       if (error?.needsAuth) { renderConnect('Tu sesión de Spotify ha caducado. Conéctala de nuevo.'); return; }
@@ -375,8 +393,7 @@ function transferPanel(ctx) {
   // Recoloca en su álbum las canciones que YA tienes en la biblioteca pero sueltas (o en otro álbum): si existe un álbum
   // con el nombre de la colección, mueve ahí las coincidencias que no estén ya dentro. Así «importar el álbum X» deja todo
   // en X aunque ya lo tuvieras (p. ej. las que quedaron sin carpeta por el bug del id con dos puntos). Devuelve cuántas movió.
-  async function recolocateOwned() {
-    const folders = ctx.libraryFolders?.() ?? [];
+  async function recolocateOwned(folders = ctx.libraryFolders?.() ?? []) {
     const byName = new Map(folders.map((f) => [String(f.name ?? '').trim().toLowerCase(), f]));
     let moved = 0;
     for (const collection of state.collections) {
