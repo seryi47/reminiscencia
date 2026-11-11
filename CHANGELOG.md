@@ -1,5 +1,10 @@
 ## Sin publicar: Transferir música — matcher más preciso y autónomo (2026-11-11)
 
+- **Importar listas públicas que solo sigues (vía embed):** como la API en dev mode no da el contenido de listas ajenas
+  (ni el token de app: 403), para una lista PÚBLICA se leen sus pistas de la página pública `open.spotify.com/embed/playlist/<id>`
+  (`server/spotify-embed.js`): título, artista y duración de hasta ~100 canciones. Así pegar el enlace de una lista que
+  sigues (p. ej. Car Music) la importa (parcial si tiene más de 100). `fetchCollection` usa este respaldo cuando la API
+  devuelve 0 pistas.
 - **Listas que solo sigues (no tuyas) marcadas:** en «development mode» Spotify solo deja leer el contenido de listas
   propias o colaborativas; las que solo sigues (p. ej. «Car Music» de Future House Cloud, o una «Fiesta» ajena) devuelven
   metadatos pero 0 pistas → daban «no hay canciones accesibles». Ahora `listMine` trae tu id (`/v1/me`) y si cada lista es

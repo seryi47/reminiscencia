@@ -3,6 +3,7 @@
 // que se prueba contra respuestas simuladas sin credenciales. Respeta el tipo y el ORDEN.
 
 import { normalizeAlbum, normalizePlaylist, normalizeSingleTrack, normalizeTrack } from './spotify-core.js';
+import { fetchPublicPlaylistTracks } from './spotify-embed.js';
 
 const API = 'https://api.spotify.com';
 
@@ -78,6 +79,16 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
     const items = await allItems(paging, accessToken, fetchImpl, maxTracks);
     const collection = normalizePlaylist({ ...playlist, items: { items }, tracks: undefined });
     if (!collection) throw new SpotifyApiError(404, 'playlist no disponible');
+    // Respaldo para listas PÚBLICAS que no son tuyas (en dev mode la API da metadatos pero 0 pistas): se leen del embed
+    // público (hasta ~100 pistas). Así una lista que solo sigues también se puede importar, aunque parcial (ADR-0044).
+    if (collection.tracks.length === 0) {
+      const embedTracks = await fetchPublicPlaylistTracks(ref.id, fetchImpl);
+      if (embedTracks.length > 0) {
+        collection.tracks = maxTracks === Infinity ? embedTracks : embedTracks.slice(0, maxTracks);
+        collection.source = 'embed';
+        collection.partial = embedTracks.length >= 100; // el embed topa en ~100
+      }
+    }
     return collection;
   }
 

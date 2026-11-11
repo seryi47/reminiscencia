@@ -94,11 +94,11 @@ function transferPanel(ctx) {
       const query = q.trim().toLowerCase();
       const shown = playlists.filter((p) => !query || p.name.toLowerCase().includes(query));
       playlistsBox.replaceChildren(...shown.map((p) => {
-        // En modo desarrollo Spotify solo deja leer listas propias o colaborativas; las que solo sigues (mine === false)
-        // llegan vacías, así que se deshabilitan con un aviso en vez de dejar que fallen al analizar.
+        // En modo desarrollo la API no da el contenido de listas ajenas, pero si la lista es PÚBLICA se lee por el embed
+        // (hasta ~100 pistas). Se deja seleccionable con un aviso; si fuera privada, al analizar saldrá vacía con su mensaje.
         const notMine = p.mine === false;
         return sourceRow(`pl:${p.id}`, p.name, `${p.total} canciones`, { ref: { type: 'playlist', id: p.id } },
-          { disabled: notMine, note: notMine ? `No es tuya (de ${p.ownerName || 'otra cuenta'}): Spotify no deja importarla` : null });
+          { note: notMine ? `No es tuya (de ${p.ownerName || 'otra cuenta'}): se importa por la vía pública, máx 100` : null });
       }));
     };
     const search = el('input', {
