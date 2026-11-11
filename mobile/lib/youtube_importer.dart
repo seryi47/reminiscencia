@@ -94,6 +94,21 @@ class YoutubeHttpException extends AppException {
   final String? retryAfter;
 }
 
+/// Tope DIARIO del conversor (yttowav gratuito: 40/día). No se arregla hoy: corta la tanda y se avisa.
+class YoutubeDailyLimitException extends AppException {
+  const YoutubeDailyLimitException([
+    super.message = 'Límite diario del conversor alcanzado (40/día). Vuelve mañana.',
+  ]);
+}
+
+bool _isDailyLimit(Object error) {
+  final message = error is AppException ? error.message : error.toString();
+  return RegExp(
+    r'daily conversion limit|per day|come back tomorrow|l[ií]mite diario',
+    caseSensitive: false,
+  ).hasMatch(message);
+}
+
 class YoutubeImportCancellation {
   final Completer<void> _cancelled = Completer<void>();
 
@@ -230,6 +245,7 @@ class YoutubeImporter {
     YoutubeImportProgressCallback? onProgress,
     YoutubeImportCancellation? cancellation,
     Set<String>? skipVideoIds,
+    void Function()? onDailyLimit,
   }) async {
     cancellation?.throwIfCancelled();
     final root = await _tempDir();
@@ -244,8 +260,10 @@ class YoutubeImporter {
     final tolerateFailures = tracks.length > 1;
     final output = List<YoutubeImportedAudio?>.filled(tracks.length, null);
     var next = 0;
+    var dailyLimit = false; // tope diario del conversor: para los workers y devuelve lo ya convertido
     Future<void> worker() async {
       while (true) {
+        if (dailyLimit) return; // otro worker topó con el límite diario: no se sigue
         final index = next;
         next += 1;
         if (index >= tracks.length) return;
@@ -265,6 +283,10 @@ class YoutubeImporter {
             onProgress: onProgress,
             cancellation: cancellation,
           );
+        } on YoutubeDailyLimitException {
+          // Tope diario: se para la tanda (sin tirar lo ya descargado) y se avisa una vez.
+          if (!dailyLimit) { dailyLimit = true; onDailyLimit?.call(); }
+          return;
         } catch (_) {
           // Una cancelación aborta siempre; el fallo puntual de una pista de un lote (p. ej. el conversor la rechazó con
           // 503) se omite y se sigue con las demás.
@@ -560,6 +582,10 @@ class YoutubeImporter {
           ),
         );
       } on Object catch (error) {
+        // Tope DIARIO del conversor: no se arregla reintentando hoy, así que se corta la tanda (lo capta importTracks).
+        if (_isDailyLimit(error)) {
+          throw YoutubeDailyLimitException(error is AppException ? error.message : 'Límite diario del conversor (40/día).');
+        }
         final retryable = error is YoutubeHttpException
             ? const {408, 425, 429, 503, 504}.contains(error.statusCode)
             : error is AppException;

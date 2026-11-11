@@ -257,6 +257,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     final done = await _loadDoneVideos(); // vídeos ya importados (anti-duplicados entre ciclos/arranques)
     var addedTotal = 0;
     var lastFailed = 0;
+    var hitDailyLimit = false;
     List<YoutubeImportedAudio>? lastImported;
     try {
       var cycle = 0;
@@ -265,7 +266,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
         var failedCycle = 0;
         var base = 0;
         for (final entry in plan) {
-          if (cancel.isCancelled) break;
+          if (cancel.isCancelled || hitDailyLimit) break;
           final tracks = entry.value;
           // Atacables este ciclo: las que no están ya hechas.
           final pending = tracks.where((t) {
@@ -273,7 +274,8 @@ class _TransferirSheetState extends State<_TransferirSheet> {
             return v == null || !done.contains(v);
           }).toList();
           if (pending.isEmpty) { base += tracks.length; continue; }
-          final imported = await importer.importTracks(pending, cancellation: cancel, skipVideoIds: done, onProgress: (p) {
+          final imported = await importer.importTracks(pending, cancellation: cancel, skipVideoIds: done,
+            onDailyLimit: () => hitDailyLimit = true, onProgress: (p) {
             final prefix = cycle > 1 ? 'Reintento $cycle' : 'Descargando';
             if (mounted) setState(() => _message = '$prefix: ${base + p.index + 1} de $totalTracks…');
           });
@@ -295,18 +297,22 @@ class _TransferirSheetState extends State<_TransferirSheet> {
         }
         lastFailed = failedCycle;
         if (cancel.isCancelled) break;
+        if (hitDailyLimit) break; // tope DIARIO del conversor: no sirve reintentar hoy
         if (failedCycle == 0) break; // completado: ya no falla nada
         if (cycle >= _autoResumeMaxCycles) break;
         if (!await _countdown(_autoResumeGap, failedCycle)) break; // parado durante la espera
       }
-      final complete = lastFailed == 0 && !cancel.isCancelled;
+      final complete = lastFailed == 0 && !cancel.isCancelled && !hitDailyLimit;
       if (mounted) {
         setState(() {
           _stage = _Stage.done;
           _message = complete
               ? '¡Listo! $addedTotal canciones añadidas. Se publicarán en un momento.'
-              : '$addedTotal añadidas${lastFailed > 0 ? ' · quedan ~$lastFailed' : ''}. '
-                  '${cancel.isCancelled ? 'Reintento detenido.' : 'Se alcanzó el límite de reintentos; prueba más tarde.'}';
+              : hitDailyLimit
+                  ? '$addedTotal añadidas. El conversor gratuito solo permite 40 al día: vuelve mañana y dale a Transferir '
+                      'con la misma lista; seguirá con lo que falte (salta lo que ya tienes).'
+                  : '$addedTotal añadidas${lastFailed > 0 ? ' · quedan ~$lastFailed' : ''}. '
+                      '${cancel.isCancelled ? 'Reintento detenido.' : 'Se alcanzó el límite de reintentos; prueba más tarde.'}';
         });
       }
     } on SpotifyNeedsAuth {

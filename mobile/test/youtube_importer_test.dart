@@ -502,4 +502,36 @@ void main() {
       await importer.cleanup(audios);
     },
   );
+
+  test(
+    'el tope diario del conversor (429) corta la tanda y avisa',
+    () async {
+      var dailyLimitAvisos = 0;
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/youtube/convert') {
+            return http.Response(
+              jsonEncode({'error': "You've reached the daily conversion limit (40 per day). Please come back tomorrow!"}),
+              429,
+            );
+          }
+          fail('No debería llamar a ${request.url} tras el tope diario');
+        }),
+        base: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('youtube-daily-test'),
+        wait: (_) async {},
+      );
+
+      final audios = await importer.importTracks(
+        const [
+          YoutubeTrack(url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', title: 'Una'),
+          YoutubeTrack(url: 'https://www.youtube.com/watch?v=bbbbbbbbbbb', title: 'Dos'),
+        ],
+        onDailyLimit: () => dailyLimitAvisos++,
+      );
+
+      expect(audios, isEmpty, reason: 'con el tope diario no se convierte nada');
+      expect(dailyLimitAvisos, greaterThanOrEqualTo(1), reason: 'se avisa del tope diario');
+    },
+  );
 }
