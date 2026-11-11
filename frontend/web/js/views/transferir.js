@@ -89,7 +89,7 @@ function transferPanel(ctx) {
     // «Me gusta».
     if (liked > 0) list.append(sourceRow('liked', 'Canciones favoritas', `${liked} canciones`, { source: 'liked' }));
     // Playlists (con buscador).
-    const playlistsBox = el('div');
+    const playlistsBox = el('div', { class: 'transferir-list' });
     const paintPlaylists = (q = '') => {
       const query = q.trim().toLowerCase();
       const shown = playlists.filter((p) => !query || p.name.toLowerCase().includes(query));

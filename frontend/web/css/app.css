@@ -3890,3 +3890,204 @@ button:disabled {
 .meta-nowrap {
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------------------------------------------------------
+ * «Transferir música» (ADR-0044): hoja para traer de Spotify. Lista de tu biblioteca y revisión de coincidencias.
+ * ------------------------------------------------------------------------------------------------------------------- */
+.dialog-transferir .dialog-body {
+  width: min(560px, 92vw);
+}
+
+.transferir {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.transferir-intro {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-s);
+  line-height: 1.45;
+}
+
+.transferir-sub {
+  margin: 4px 0 0;
+  font-size: var(--text-s);
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Listas (biblioteca de Spotify y revisión): con scroll si son largas. */
+.transferir-list,
+.transferir-biblioteca {
+  display: flex;
+  flex-direction: column;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
+/* Casillas con el verde de la marca. */
+.transferir input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.transferir .input,
+.transferir select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--elevated);
+  color: var(--text);
+  border: 1px solid transparent;
+  font-size: var(--text-s);
+}
+
+.transferir select {
+  padding: 8px 14px;
+}
+
+.transferir .input:focus,
+.transferir select:focus {
+  outline: none;
+  border-color: var(--outline);
+}
+
+/* Fila de origen (elegir qué traer): casilla + nombre + nº de canciones. */
+.transferir-source-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.transferir-source-row:hover {
+  background: var(--row-hover);
+}
+
+.transferir-track {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.transferir-title {
+  font-size: var(--text-s);
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transferir-artist {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+/* Formulario «pegar enlace» y acciones. */
+.transferir-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.transferir-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Fila de revisión: [casilla + pista ........ insignia] y, debajo, la coincidencia/selector a lo ancho. */
+.transferir-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.transferir-pick {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.transferir-tier {
+  grid-column: 2;
+  justify-self: end;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--highlight);
+  color: var(--text-2);
+}
+
+.transferir-tier-alta {
+  background: rgba(30, 215, 96, 0.16);
+  color: var(--accent);
+}
+
+.transferir-tier-media {
+  background: rgba(255, 196, 0, 0.16);
+  color: #ffc400;
+}
+
+.transferir-match {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 30px;
+}
+
+.transferir-chosen {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.transferir-manual-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.transferir-progress,
+.transferir-summary {
+  margin: 8px 0;
+  color: var(--text);
+  font-size: var(--text-s);
+  text-align: center;
+}
+
+.transferir-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-s);
+}
+
+@media (max-width: 600px) {
+  .transferir-form,
+  .transferir-manual-row {
+    grid-template-columns: 1fr;
+  }
+}

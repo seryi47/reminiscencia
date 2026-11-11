@@ -96,7 +96,7 @@ export async function listMine({ accessToken }, fetchImpl = fetch) {
   const playlists = items.filter(Boolean).map((pl) => ({
     id: pl.id,
     name: typeof pl.name === 'string' ? pl.name : '',
-    total: pl.tracks?.total ?? 0,
+    total: pl.tracks?.total ?? pl.items?.total ?? 0, // «items» desde la migración de 2026; «tracks» en el esquema antiguo
     image: (Array.isArray(pl.images) && pl.images[0]?.url) || null,
     ownerId: pl.owner?.id ?? null,
     ownerName: pl.owner?.display_name ?? null,
