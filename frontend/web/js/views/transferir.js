@@ -189,14 +189,24 @@ function transferPanel(ctx) {
       );
       return;
     }
+    // Solo se LISTAN las que conviene revisar (media/baja). Las seguras y las que ya tienes se cuentan pero no se muestran:
+    // menos ruido y mucho más rápido en listas grandes.
     const blocks = [];
+    let anyReview = false;
     for (const collection of state.collections) {
       if (collection.results.length === 0) continue;
-      const already = collection.results.filter((r) => r.inLibrary).length;
-      blocks.push(el('p', { class: 'transferir-sub' },
-        `${collection.name} · ${collection.results.length} canciones${already ? ` · ${already} ya en tu biblioteca` : ''}`));
+      const dupes = collection.results.filter((r) => r.inLibrary).length;
+      const review = collection.results.filter((r) => !r.inLibrary && r.tier !== 'alta');
+      const sure = collection.results.length - dupes - review.length;
+      const counts = [sure ? `${sure} se añaden solas` : null, review.length ? `${review.length} a revisar` : null,
+        dupes ? `${dupes} ya las tienes` : null].filter(Boolean).join(' · ');
+      blocks.push(el('div', { class: 'transferir-colhead' },
+        el('span', { class: 'transferir-sub' }, collection.name),
+        el('span', { class: 'transferir-counts' }, counts)));
+      if (review.length === 0) continue;
+      anyReview = true;
       const list = el('div', { class: 'transferir-list', 'data-testid': 'transferir-list' });
-      for (const result of collection.results) list.append(renderRow(collection, result));
+      for (const result of review) list.append(renderRow(collection, result));
       blocks.push(list);
     }
     const go = el('button', {
@@ -206,6 +216,9 @@ function transferPanel(ctx) {
     node._refreshCount = () => { go.querySelector('[data-testid="transferir-go-text"]').textContent = `Transferir ${totalSelected()} canciones`; };
 
     setSection(
+      el('p', { class: 'transferir-intro' }, anyReview
+        ? 'Las seguras se añaden solas. Abajo solo lo que conviene revisar (ya hay una versión elegida; cámbiala solo si hace falta).'
+        : 'Todo identificado automáticamente. Dale a «Transferir».'),
       ...blocks,
       el('div', { class: 'transferir-actions' },
         el('button', { type: 'button', class: 'button button-text', on: { click: () => paintLibrary() } }, 'Elegir otra cosa'),
@@ -214,21 +227,20 @@ function transferPanel(ctx) {
   }
 
   function renderRow(collection, result) {
-    const dupe = result.inLibrary;
-    // Por defecto se incluye si hay una coincidencia (alta O media, ya pre-elegida la mejor); las duplicadas y las de
-    // confianza baja sin candidato quedan fuera hasta que el usuario elija una versión.
-    const hasPick = Boolean(chosenEntry(collection, result));
-    if (dupe || !hasPick) collection.excluded.add(result.index);
-    const included = !collection.excluded.has(result.index) && !dupe;
+    // Solo se renderizan las de revisar (media/baja). Baja sin candidato elegido queda fuera por defecto; media viene con
+    // su mejor versión ya elegida e incluida.
+    const chosen = chosenEntry(collection, result);
+    if (!chosen) collection.excluded.add(result.index);
+    const included = !collection.excluded.has(result.index);
     const check = el('input', {
       type: 'checkbox', 'data-testid': 'transferir-include', 'data-index': String(result.index),
-      ...(included ? { checked: '' } : {}), ...(dupe ? { disabled: '' } : {}),
+      ...(included ? { checked: '' } : {}),
       on: { change: (e) => { if (e.target.checked) collection.excluded.delete(result.index); else collection.excluded.add(result.index); node._refreshCount?.(); } },
     });
 
-    const tierBadge = el('span', { class: `transferir-tier transferir-tier-${result.tier}` }, dupe ? 'Ya en tu biblioteca' : TIER_LABEL[result.tier]);
+    const tierBadge = el('span', { class: `transferir-tier transferir-tier-${result.tier}` }, TIER_LABEL[result.tier]);
     const match = el('div', { class: 'transferir-match', 'data-testid': 'transferir-match' });
-    paintMatch(collection, match, result, chosenEntry(collection, result));
+    paintMatch(collection, match, result, chosen);
 
     return el('div', { class: 'transferir-row', 'data-testid': 'transferir-row', 'data-index': String(result.index) },
       el('label', { class: 'transferir-pick' }, check,
@@ -239,30 +251,32 @@ function transferPanel(ctx) {
       match);
   }
 
+  // Selector de versión (compacto) + un enlace para buscar otra en YouTube (oculto hasta que se pulsa).
   function paintMatch(collection, container, result, chosen) {
     const options = dedupeCandidates([result.best, ...(result.alternatives || [])].filter(Boolean));
-    if (result.tier !== 'alta' || options.length > 1 || !chosen) {
-      const select = el('select', { class: 'input transferir-alt', 'data-testid': 'transferir-alt', 'data-index': String(result.index) });
-      if (!chosen) select.append(el('option', { value: '' }, '— Elige una versión —'));
-      for (const entry of options) {
-        const c = entry.candidate;
-        const opt = el('option', { value: c.url }, `${c.title} · ${fmtDuration(c.durationS)} · ${SOURCE_LABEL[c.source] || 'YouTube'}`);
-        if (chosen && chosen.candidate.url === c.url) opt.selected = true;
-        select.append(opt);
-      }
-      select.addEventListener('change', () => {
-        const entry = options.find((o) => o.candidate.url === select.value);
-        if (entry) { collection.overrides.set(result.index, entry); collection.excluded.delete(result.index); }
-        else collection.overrides.delete(result.index);
-        node._refreshCount?.();
-        const row = node.querySelector(`.transferir-row[data-index="${result.index}"] [data-testid="transferir-include"]`);
-        if (row) row.checked = !collection.excluded.has(result.index);
-      });
-      container.replaceChildren(select, manualSearch(collection, result));
-    } else {
-      const c = chosen.candidate;
-      container.replaceChildren(el('span', { class: 'transferir-chosen' }, `${c.title} · ${fmtDuration(c.durationS)} · ${SOURCE_LABEL[c.source] || 'YouTube'}`));
+    const select = el('select', { class: 'input transferir-alt', 'data-testid': 'transferir-alt', 'data-index': String(result.index) });
+    if (!chosen) select.append(el('option', { value: '' }, '— Elige una versión —'));
+    for (const entry of options) {
+      const c = entry.candidate;
+      const opt = el('option', { value: c.url }, `${c.title} · ${fmtDuration(c.durationS)} · ${SOURCE_LABEL[c.source] || 'YouTube'}`);
+      if (chosen && chosen.candidate.url === c.url) opt.selected = true;
+      select.append(opt);
     }
+    select.addEventListener('change', () => {
+      const entry = options.find((o) => o.candidate.url === select.value);
+      if (entry) { collection.overrides.set(result.index, entry); collection.excluded.delete(result.index); }
+      else collection.overrides.delete(result.index);
+      node._refreshCount?.();
+      const cb = node.querySelector(`.transferir-row[data-index="${result.index}"] [data-testid="transferir-include"]`);
+      if (cb) cb.checked = !collection.excluded.has(result.index);
+    });
+    const manual = manualSearch(collection, result);
+    manual.hidden = true;
+    const toggle = el('button', {
+      type: 'button', class: 'transferir-manual-toggle', 'data-testid': 'transferir-manual-toggle',
+      on: { click: () => { manual.hidden = !manual.hidden; if (!manual.hidden) manual.querySelector('input')?.focus(); } },
+    }, 'Buscar otra en YouTube');
+    container.replaceChildren(select, toggle, manual);
   }
 
   function manualSearch(collection, result) {

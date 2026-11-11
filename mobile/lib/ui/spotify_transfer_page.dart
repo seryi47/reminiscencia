@@ -334,13 +334,29 @@ class _TransferirSheetState extends State<_TransferirSheet> {
         FilledButton(onPressed: () => setState(() => _stage = _Stage.browse), child: const Text('Volver')),
       ]);
     }
+    // Solo se listan las de revisar (media/baja). Las seguras y las que ya tienes se cuentan pero no se muestran.
+    final children = <Widget>[];
+    var anyReview = false;
+    for (final c in nonEmpty) {
+      final dupes = c.results.where((r) => r.inLibrary).length;
+      final review = c.results.where((r) => !r.inLibrary && r.tier != 'alta').toList();
+      final sure = c.results.length - dupes - review.length;
+      final counts = [if (sure > 0) '$sure se añaden solas', if (review.isNotEmpty) '${review.length} a revisar', if (dupes > 0) '$dupes ya las tienes'].join(' · ');
+      children.add(Padding(
+        padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(c.name, style: theme.textTheme.labelLarge),
+          Text(counts, style: theme.textTheme.bodySmall),
+        ]),
+      ));
+      for (final r in review) { anyReview = true; children.add(_row(r, theme)); }
+    }
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Flexible(child: ListView(shrinkWrap: true, children: [
-        for (final collection in nonEmpty) ...[
-          Padding(padding: const EdgeInsets.fromLTRB(4, 10, 4, 4), child: Text('${collection.name} · ${collection.results.length} canciones', style: theme.textTheme.labelLarge)),
-          for (final result in collection.results) _row(result, theme),
-        ],
-      ])),
+      Text(anyReview
+          ? 'Las seguras se añaden solas. Abajo solo lo que conviene revisar (ya hay una versión elegida).'
+          : 'Todo identificado automáticamente. Dale a «Transferir».', style: theme.textTheme.bodySmall),
+      const SizedBox(height: 8),
+      Flexible(child: ListView(shrinkWrap: true, children: children)),
       const SizedBox(height: 12),
       FilledButton.icon(key: const Key('transferir-go'), onPressed: _transfer, icon: const Icon(Icons.download_rounded), label: Text('Transferir $_selectedCount canciones')),
       TextButton(onPressed: () => setState(() => _stage = _Stage.browse), child: const Text('Elegir otra cosa')),

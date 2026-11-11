@@ -4069,6 +4069,36 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+  margin-top: 8px;
+}
+
+/* Cabecera de cada colección: nombre + recuento (cuántas solas / a revisar / ya tienes). */
+.transferir-colhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.transferir-counts {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* Enlace discreto para revelar el buscador de YouTube de una fila (oculto por defecto). */
+.transferir-manual-toggle {
+  align-self: flex-start;
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--accent);
+}
+
+.transferir-manual-toggle:hover {
+  text-decoration: underline;
 }
 
 .transferir-progress,
