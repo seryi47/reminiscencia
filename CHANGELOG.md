@@ -21,9 +21,17 @@
   sin elegir y obligaba a ir canción por canción); solo «baja» pide elección.
 - **Antiduplicados reforzado:** detecta lo ya presente en un álbum también por **título+artista** (aunque difiera la
   duración), y `buildTransferPlan`/`_buildPlan` no repiten una canción entre varias listas ni dentro de la tanda.
-- **Interfaz de revisión rediseñada** y shell del service worker a v35 para que el nuevo diseño reemplace al cacheado.
-- **Pruebas:** web 995, APK 606. Set «dorado» del matcher (con el patrón «Mala Mujer» y la tolerancia de duración),
-  parser de YouTube Music con filtro de canciones y caché de credenciales (fetch simulado), dedup y plan.
+- **Interfaz de revisión rediseñada** y shell del service worker a v36 (web) para que el nuevo diseño reemplace al
+  cacheado; en la APK, el buscador manual de YouTube se oculta tras un toggle por fila, como la web (paridad de UX).
+- **Subida incremental por tandas (robustez en listas largas):** el conversor externo (yttowav) hace throttling (503)
+  cuando se le lanzan cientos de conversiones seguidas, y antes se convertía TODA la lista antes de subir nada → si se
+  atascaba a mitad, no se había publicado ninguna. Ahora, en la web, cada tanda convertida (4) se sube al momento
+  (`convertirPlaylist` con callback `onBatch`); las WAV siguen cacheadas en IndexedDB, así que reintentar no reconvierte.
+  En la APK, un fallo puntual de una pista de un lote ya **no tira el lote entero ni borra lo descargado** (antes
+  `importTracks` lanzaba y borraba toda la carpeta temporal); se omite esa pista y se siguen las demás.
+- **Pruebas:** web 995, APK 607. Set «dorado» del matcher (con el patrón «Mala Mujer» y la tolerancia de duración),
+  parser de YouTube Music con filtro de canciones y caché de credenciales (fetch simulado), tolerancia de lote en la
+  APK, dedup y plan.
 
 ## Sin publicar: «Transferir música» desde Spotify (web + APK) (2026-11-10)
 

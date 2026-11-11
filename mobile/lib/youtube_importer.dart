@@ -234,6 +234,10 @@ class YoutubeImporter {
     );
     await importDir.create(recursive: true);
 
+    // En un LOTE (varias pistas) el fallo de una no debe tirar las demás ni borrar lo ya descargado; en una importación de
+    // UNA sola pista sí se propaga el error, para que la interfaz lo muestre tal cual (p. ej. «la conversión ya no está
+    // disponible, inicia de nuevo»).
+    final tolerateFailures = tracks.length > 1;
     final output = List<YoutubeImportedAudio?>.filled(tracks.length, null);
     var next = 0;
     Future<void> worker() async {
@@ -242,14 +246,20 @@ class YoutubeImporter {
         next += 1;
         if (index >= tracks.length) return;
         final track = tracks[index];
-        output[index] = await _convertAndDownload(
-          track,
-          index: index,
-          total: tracks.length,
-          directory: importDir,
-          onProgress: onProgress,
-          cancellation: cancellation,
-        );
+        try {
+          output[index] = await _convertAndDownload(
+            track,
+            index: index,
+            total: tracks.length,
+            directory: importDir,
+            onProgress: onProgress,
+            cancellation: cancellation,
+          );
+        } catch (_) {
+          // Una cancelación aborta siempre; el fallo puntual de una pista de un lote (p. ej. el conversor la rechazó con
+          // 503) se omite y se sigue con las demás.
+          if (!tolerateFailures || (cancellation?.isCancelled ?? false)) rethrow;
+        }
       }
     }
 
@@ -258,7 +268,7 @@ class YoutubeImporter {
         for (var i = 0; i < min(kYoutubeConcurrency, tracks.length); i += 1)
           worker(),
       ]);
-      return output.cast<YoutubeImportedAudio>();
+      return output.whereType<YoutubeImportedAudio>().toList();
     } catch (_) {
       await _deleteQuietly(importDir);
       rethrow;

@@ -463,4 +463,43 @@ void main() {
       await importer.cleanup(audios);
     },
   );
+
+  test(
+    'en un lote, una pista que el conversor rechaza no tira las demás',
+    () async {
+      final wav = List<int>.filled(64, 0);
+      wav.setRange(0, 4, 'RIFF'.codeUnits);
+      wav.setRange(8, 12, 'WAVE'.codeUnits);
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/youtube/convert') {
+            // La segunda pista la rechaza siempre el conversor (503, reintentable).
+            if (request.body.contains('bbbbbbbbbbb')) {
+              return http.Response(jsonEncode({'error': 'saturado'}), 503);
+            }
+            return http.Response(jsonEncode({'jobId': 'job-ok'}), 200);
+          }
+          if (request.url.path == '/api/youtube/status') {
+            return http.Response(jsonEncode({'status': 'completed'}), 200);
+          }
+          if (request.url.path == '/api/youtube/download') {
+            return http.Response.bytes(wav, 200);
+          }
+          fail('Ruta inesperada: ${request.url}');
+        }),
+        base: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('youtube-batch-test'),
+        wait: (_) async {},
+      );
+
+      final audios = await importer.importTracks(const [
+        YoutubeTrack(url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', title: 'Buena'),
+        YoutubeTrack(url: 'https://www.youtube.com/watch?v=bbbbbbbbbbb', title: 'Rechazada'),
+      ]);
+
+      expect(audios, hasLength(1), reason: 'la buena se descarga; la rechazada se omite sin tirar el lote');
+      expect(audios.first.track.title, 'Buena');
+      await importer.cleanup(audios);
+    },
+  );
 }
