@@ -26,7 +26,9 @@ const CONFIG = {
   convertCreateGap: 2000,
   pollInterval: 3000,
   statusErrorRetries: 5,
-  jobTimeout: 600000
+  jobTimeout: 600000,
+  transferPasses: 5, // reintentos de la LISTA completa: tras cada pasada se reintentan solo las pistas que fallaron
+  transferPassGap: 30000, // espera entre pasadas para que el conversor (yttowav) se recupere del throttling
 };
 
 const IMPORT_STORAGE_KEY = 'reminiscencia.youtube-imports';
@@ -711,13 +713,33 @@ export async function importYoutubeVideo(ctx, url, { signal, onStatus, fallbackA
 export async function importYoutubeTracks(ctx, tracks, { album = null, onProgress = () => {}, signal } = {}) {
   const items = (tracks ?? []).filter((track) => track && track.url);
   if (items.length === 0) return { files: [], trackArtists: [], completedIds: [], errors: [], total: 0, processed: 0 };
-  // Subida incremental por tandas: cada grupo convertido se entrega a la cola de subidas al momento. Si el conversor se
-  // satura a mitad de una lista larga, lo ya convertido queda subido y publicándose (no se pierde al no llegar al final).
-  const result = await convertirPlaylist(items, onProgress, signal, async (files, trackArtists, completedIds) => {
+  // Subida incremental por tandas: cada grupo convertido se entrega a la cola de subidas al momento.
+  const uploadBatch = async (files, trackArtists, completedIds) => {
     await ctx.addUploads(files, { album, trackArtists });
     completedIds.forEach((id) => { completedVideos.add(id); saveImportRecord(id, { state: 'queued' }); });
-  });
-  return result;
+  };
+  // Varias PASADAS sobre la lista: el conversor externo (yttowav) hace throttling con listas grandes y rechaza algunas
+  // pistas con 503. Tras cada pasada se reintentan SOLO las que fallaron, con una espera para que yttowav se recupere; lo
+  // ya convertido y subido se omite al instante (completedVideos / estado 'queued' en caché, y la WAV en IndexedDB). Así
+  // una lista larga termina subiéndose ENTERA sin intervención, en vez de dejar un resto colgado (ADR-0044).
+  const aggregate = { files: [], trackArtists: [], completedIds: [], errors: [], total: items.length, processed: 0 };
+  let pending = items;
+  for (let pass = 0; pass < CONFIG.transferPasses; pass++) {
+    if (signal?.aborted) break;
+    const result = await convertirPlaylist(pending, onProgress, signal, uploadBatch);
+    aggregate.files.push(...result.files);
+    aggregate.trackArtists.push(...result.trackArtists);
+    aggregate.completedIds.push(...result.completedIds);
+    aggregate.processed += result.processed;
+    aggregate.errors = result.errors; // solo cuentan como error las que siguen fallando tras la última pasada
+    const failedItems = result.errors.map((entry) => entry.item).filter(Boolean);
+    if (failedItems.length === 0) break;
+    pending = failedItems;
+    if (pass < CONFIG.transferPasses - 1) {
+      try { await sleep(CONFIG.transferPassGap, signal); } catch { break; } // cancelado durante la espera
+    }
+  }
+  return aggregate;
 }
 
 // ==================================================
