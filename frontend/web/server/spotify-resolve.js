@@ -24,8 +24,13 @@ async function mapPool(items, limit, fn) {
 /** Identidad de álbum/carpeta para una colección de Spotify (playlist o álbum → una carpeta; ADR-0019). */
 export function albumOf(collection) {
   if (!collection || (collection.type !== 'album' && collection.type !== 'playlist')) return null;
+  // Id estable del álbum SIN dos puntos: el pipeline valida el id con [A-Za-z0-9_-] (cliente `cleanAlbum`, `upload-core` y
+  // el backend), así que `spotify:playlist:X` se descartaba y la canción se publicaba sin carpeta (ADR-0044). Con guiones
+  // bajos pasa las tres validaciones y el backend agrupa por este id (una re-importación de la misma lista reutiliza la
+  // carpeta). Se sanea el id de Spotify (base62) por si trajera algo raro.
+  const safeId = String(collection.id ?? '').replace(/[^A-Za-z0-9_-]/g, '');
   return {
-    id: `spotify:${collection.type}:${collection.id}`,
+    id: `spotify_${collection.type}_${safeId}`,
     name: collection.name,
     cover: collection.cover ?? null,
     artist: collection.artist ?? null,

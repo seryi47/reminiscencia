@@ -67,7 +67,7 @@ describe('resolve', () => {
     assert.equal(body.total, 3);
     assert.equal(body.hasMore, true);
     assert.deepEqual(body.results.map((r) => r.index), [0, 1]);
-    assert.equal(body.album.id, `spotify:playlist:${PL}`);
+    assert.equal(body.album.id, `spotify_playlist_${PL}`);
     assert.equal(body.results[0].tier, 'alta');
   });
 

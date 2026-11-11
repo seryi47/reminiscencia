@@ -61,7 +61,7 @@ describe('resolveCollection', () => {
     }));
     const summary = {};
     for (const t of ['alta', 'media', 'baja', 'error']) summary[t] = tierList.filter((x) => x === t).length;
-    return { album: { id: 'spotify:playlist:P', name: 'Lista' }, total: 4, hasMore, summary, results };
+    return { album: { id: 'spotify_playlist_P', name: 'Lista' }, total: 4, hasMore, summary, results };
   };
 
   test('acumula páginas en orden y suma el resumen', async () => {
@@ -74,7 +74,7 @@ describe('resolveCollection', () => {
     assert.equal(out.total, 4);
     assert.deepEqual(out.results.map((r) => r.index), [0, 1, 2, 3]);
     assert.deepEqual(out.summary, { total: 4, alta: 2, media: 1, baja: 1, error: 0 });
-    assert.equal(out.album.id, 'spotify:playlist:P');
+    assert.equal(out.album.id, 'spotify_playlist_P');
   });
 
   test('refresca el token y reintenta si caduca a mitad', async () => {

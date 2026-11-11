@@ -36,7 +36,7 @@ describe('resolveCollection', () => {
   test('resuelve en orden, con tier por pista y resumen', async () => {
     const result = await resolveCollection(collection, { searchYoutube });
     assert.equal(result.type, 'playlist');
-    assert.deepEqual(result.album, { id: 'spotify:playlist:PL1', name: 'Mi lista', cover: 'p.jpg', artist: null });
+    assert.deepEqual(result.album, { id: 'spotify_playlist_PL1', name: 'Mi lista', cover: 'p.jpg', artist: null });
     assert.deepEqual(result.results.map((r) => r.index), [0, 1, 2]); // orden conservado
     assert.equal(result.results[0].tier, 'alta');
     assert.equal(result.results[0].best.candidate.id, 'ok');
@@ -67,8 +67,8 @@ describe('resolveCollection', () => {
 
 describe('albumOf', () => {
   test('playlist y álbum dan una carpeta; una canción suelta, no', () => {
-    assert.equal(albumOf({ type: 'album', id: 'A1', name: 'X' }).id, 'spotify:album:A1');
-    assert.equal(albumOf({ type: 'playlist', id: 'P1', name: 'Y' }).id, 'spotify:playlist:P1');
+    assert.equal(albumOf({ type: 'album', id: 'A1', name: 'X' }).id, 'spotify_album_A1');
+    assert.equal(albumOf({ type: 'playlist', id: 'P1', name: 'Y' }).id, 'spotify_playlist_P1');
     assert.equal(albumOf({ type: 'track', id: 'T1' }), null);
   });
 });
