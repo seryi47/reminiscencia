@@ -125,6 +125,11 @@ function sleep(ms, signal) {
   });
 }
 
+/** ¿El error es el tope DIARIO del conversor (yttowav: «daily conversion limit (40 per day)»)? No se arregla hoy. */
+function isDailyLimit(error) {
+  return /daily conversion limit|per day|come back tomorrow|l[ií]mite diario/i.test(String(error?.message ?? ''));
+}
+
 async function esperarTurnoCreacion(signal, deadline) {
   const now = Date.now();
   const scheduledAt = Math.max(now, nextConvertCreateAt);
@@ -309,6 +314,9 @@ async function crearJob(url, title, signal, deadline, onRetry, traceId, onCreate
       );
       break;
     } catch (error) {
+      // Tope DIARIO del conversor (yttowav gratuito: 40/día): no tiene arreglo reintentando hoy, así que no se reintenta
+      // ni se sigue con la lista; se corta con un mensaje claro (lo detecta convertirPlaylist/importYoutubeTracks).
+      if (isDailyLimit(error)) throw error;
       const retryable = error?.name !== 'AbortError' && (
         error.status === undefined ||
         [408, 425, 429, 503, 504].includes(error.status)
@@ -572,6 +580,7 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
   // error (pendiente) para un reintento posterior, que al ir por caché salta lo ya hecho.
   let consecutiveFails = 0;
   let circuitOpen = false;
+  let dailyLimit = false; // tope diario del conversor alcanzado: corta y avisa (no se arregla hoy)
 
   const total = items.length;
 
@@ -641,7 +650,8 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
         } else if (!result.skipped) {
           errors.push(result);
           consecutiveFails++;
-          if (consecutiveFails >= CONFIG.circuitBreak) circuitOpen = true;
+          if (isDailyLimit(result.error)) { circuitOpen = true; dailyLimit = true; }
+          else if (consecutiveFails >= CONFIG.circuitBreak) circuitOpen = true;
         }
 
         onProgress({
@@ -672,7 +682,8 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
     completedIds,
     errors,
     total,
-    processed
+    processed,
+    dailyLimit,
   };
 }
 
@@ -747,6 +758,7 @@ export async function importYoutubeTracks(ctx, tracks, { album = null, onProgres
     aggregate.completedIds.push(...result.completedIds);
     aggregate.processed += result.processed;
     aggregate.errors = result.errors; // solo cuentan como error las que siguen fallando tras la última pasada
+    if (result.dailyLimit) { aggregate.dailyLimit = true; break; } // tope diario del conversor: no reintentar hoy
     const failedItems = result.errors.map((entry) => entry.item).filter(Boolean);
     if (failedItems.length === 0) break; // todo convertido
     // Si esta pasada no logró NINGUNA conversión nueva, el conversor está capado ahora mismo: no se sigue machacando.
