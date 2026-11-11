@@ -193,10 +193,12 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     if (extraUrl != null && extraUrl.isNotEmpty) sources.add(MapEntry(extraUrl, {'url': extraUrl}));
     if (sources.isEmpty) { setState(() => _error = 'Elige al menos una playlist, «Me gusta» o pega un enlace.'); return; }
 
-    setState(() { _stage = _Stage.working; _error = ''; _message = 'Analizando…'; });
+    setState(() { _stage = _Stage.working; _error = ''; _message = 'Comprobando tu biblioteca…'; });
     final collections = <_Collection>[];
     final done = await _loadDoneVideos(); // vídeos ya subidos (aunque aún no publicados): cuentan como «ya la tienes»
     try {
+      // Catálogo al día antes de comparar, para que «ya la tienes» no use una copia vieja (best-effort).
+      try { await widget.services.library.load(); } catch (_) {}
       for (final src in sources) {
         if (mounted) setState(() => _message = 'Analizando «${src.key}»…');
         final target = src.value;
@@ -399,7 +401,12 @@ class _TransferirSheetState extends State<_TransferirSheet> {
             value: _selected.contains('pl:${p.id}'),
             onChanged: (v) => setState(() => v == true ? _selected.add('pl:${p.id}') : _selected.remove('pl:${p.id}')),
             title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${p.total} canciones'),
+            // Si no es tuya (solo la sigues), Spotify no da su contenido por la API: se importa por la vía pública (máx 100).
+            subtitle: Text(
+              p.mine == false
+                  ? '${p.total} canciones · no es tuya (de ${p.ownerName ?? 'otra cuenta'}): vía pública, máx 100'
+                  : '${p.total} canciones',
+              maxLines: 2, overflow: TextOverflow.ellipsis),
           ),
       ])),
       const SizedBox(height: 8),

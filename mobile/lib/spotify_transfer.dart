@@ -177,16 +177,20 @@ class TransferResolution {
 
 /// Una playlist del usuario para elegir en la lista (no sus pistas todavía).
 class SpotifyPlaylistRef {
-  const SpotifyPlaylistRef({required this.id, required this.name, this.total = 0, this.image});
+  const SpotifyPlaylistRef({required this.id, required this.name, this.total = 0, this.image, this.mine, this.ownerName});
   final String id;
   final String name;
   final int total;
   final String? image;
+  final bool? mine; // null si no se pudo saber; false = no es tuya (en dev mode se importa por la vía pública, máx 100)
+  final String? ownerName;
   factory SpotifyPlaylistRef.fromJson(Map<String, dynamic> json) => SpotifyPlaylistRef(
         id: (json['id'] as String?) ?? '',
         name: (json['name'] as String?) ?? '',
         total: (json['total'] as num?)?.toInt() ?? 0,
         image: json['image'] as String?,
+        mine: json['mine'] as bool?,
+        ownerName: json['ownerName'] as String?,
       );
 }
 

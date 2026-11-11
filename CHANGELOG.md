@@ -1,5 +1,9 @@
 ## Sin publicar: Transferir música — matcher más preciso y autónomo (2026-11-11)
 
+- **Paridad APK:** la APK marca en su navegador las listas que no son tuyas ("no es tuya (de X): vía pública, máx 100",
+  usando el campo `mine`) y refresca el catálogo antes de comparar («ya la tienes» al día). El arreglo del álbum, la unión
+  por nombre, la importación de públicas por embed y el matcher ya le llegaban por el servidor; la recolocación de huérfanos
+  también, porque el catálogo es compartido (se recoloca desde la web y la APK lo ve).
 - **Importar listas públicas que solo sigues (vía embed):** como la API en dev mode no da el contenido de listas ajenas
   (ni el token de app: 403), para una lista PÚBLICA se leen sus pistas de la página pública `open.spotify.com/embed/playlist/<id>`
   (`server/spotify-embed.js`): título, artista y duración de hasta ~100 canciones. Así pegar el enlace de una lista que
