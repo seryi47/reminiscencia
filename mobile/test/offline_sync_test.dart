@@ -295,6 +295,20 @@ void main() {
       );
     }
 
+    test('la carga del catálogo pide songs.json y folders.json sin caché', () async {
+      final seen = <String, String?>{};
+      final s = LibraryStore(
+        root: () async => Directory('${tmp.path}/bib-nocache'),
+        client: MockClient((request) async {
+          seen[request.url.path] = request.headers['Cache-Control'];
+          return http.Response('[]', 200);
+        }),
+      );
+      await s.load();
+      expect(seen['/data/songs.json'], 'no-cache');
+      expect(seen['/data/folders.json'], 'no-cache');
+    });
+
     test(
       'la descarga reintenta, no deja ficheros a medias y una canción rota no frena a las demás',
       () async {

@@ -165,8 +165,10 @@ class LibraryStore implements LibrarySource {
   }
 
   Future<String> _get(String path) async {
+    // Sin caché, como el sondeo de publicación (HttpPublishedSongs): si no, al sincronizar tras publicar una canción se
+    // recibía un songs.json cacheado y el total y «Añadidas recientemente» no se actualizaban (solo las provisionales).
     final response = await _client
-        .get(Uri.parse('$kLibraryBase$path'))
+        .get(Uri.parse('$kLibraryBase$path'), headers: const {'Cache-Control': 'no-cache'})
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) {
       throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(path));
