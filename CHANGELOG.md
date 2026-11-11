@@ -1,5 +1,17 @@
 ## Sin publicar: Transferir música — matcher más preciso y autónomo (2026-11-11)
 
+- **Arreglo crítico: las canciones importadas no entraban en su álbum.** `albumOf` generaba el id del álbum con dos puntos
+  (`spotify:playlist:<id>`), que la validación `[A-Za-z0-9_-]` rechazaba (en `cleanAlbum`, `upload-core` y el backend), así
+  que el álbum se descartaba y la canción se publicaba **sin carpeta** (`folder_id: null`). Ahora el id va con guiones bajos
+  (`spotify_<type>_<id>`) y pasa las tres validaciones. Es server-side (cubre web y APK).
+- **Álbumes se unen por NOMBRE (no se duplican):** `youtube_album` empareja primero por id de fuente y, si no, por nombre
+  (casefold+trim), así importar un álbum/lista se une al que ya tengas con ese nombre (aunque viniera de otra fuente) en vez
+  de crear un duplicado; si no existe, lo crea. Cumple «si el álbum ya existe, que vaya todo ahí».
+- **Recolocar al transferir (web):** al analizar, las canciones que ya tienes pero **sueltas o en otro álbum** se mueven a
+  su álbum si existe uno con el nombre de la lista (`move_songs` por `/api/editar`). Recupera las que quedaron sin carpeta
+  por el bug anterior, sin volver a descargar; funciona incluso cuando no hay nada nuevo que importar. El catálogo es
+  compartido, así que recolocar desde la web arregla también lo que se ve en la APK.
+
 - **Búsqueda mejorada:** además de la búsqueda normal de YouTube (yt-dlp, por artista+título), ahora se piden
   candidatos **oficiales de YouTube Music** (canales «Topic»/«Art Track», con artista y duración limpios) y se combinan
   (music primero). Módulo propio `server/youtube-music.js` (sin `node:child_process`, así lo usa también el Worker); es

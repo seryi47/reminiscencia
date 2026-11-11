@@ -40,7 +40,7 @@ function transferPanel(ctx) {
   let abort = null;
 
   // sources: Map clave→{label, source?|ref?|url?}. collections: [{name, album, results, excluded:Set, overrides:Map}].
-  const state = { library: null, sources: new Map(), collections: [], transferring: false };
+  const state = { library: null, sources: new Map(), collections: [], transferring: false, recolocated: 0 };
 
   const setSection = (...children) => node.replaceChildren(...children);
 
@@ -170,6 +170,10 @@ function transferPanel(ctx) {
         collections.push({ name: source.label, album: out.album, results: out.results, excluded: new Set(), overrides: new Map() });
       }
       state.collections = collections;
+      // Recoloca al momento lo que ya tienes pero suelto/en otro álbum (cubre también el caso «todo ya lo tienes», en el
+      // que no hay nada que transferir pero sí que recolocar).
+      progress.textContent = 'Ordenando álbumes…';
+      state.recolocated = await recolocateOwned();
       renderReview();
     } catch (error) {
       if (error?.needsAuth) { renderConnect('Tu sesión de Spotify ha caducado. Conéctala de nuevo.'); return; }
@@ -223,11 +227,17 @@ function transferPanel(ctx) {
       blocks.push(list);
     }
 
+    const recolocNote = () => (state.recolocated > 0
+      ? el('p', { class: 'transferir-counts', 'data-testid': 'transferir-recolocadas' },
+        `✓ Recolocadas ${plural(state.recolocated, 'canción que ya tenías', 'canciones que ya tenías')} en su álbum.`)
+      : el('div'));
+
     // Ya lo tienes todo: nada nuevo que importar.
     if (totalNew === 0) {
       setSection(
         el('p', { class: 'transferir-intro', 'data-testid': 'transferir-nada-nuevo' },
           `Ya tienes en tu biblioteca todas las canciones de lo que elegiste (${plural(totalHave, 'canción', 'canciones')}). No hay nada nuevo que importar.`),
+        recolocNote(),
         ...blocks,
         el('button', { type: 'button', class: 'homeostasia-submit', on: { click: () => paintLibrary() } }, 'Elegir otra cosa'),
       );
@@ -245,6 +255,7 @@ function transferPanel(ctx) {
         `Comparado con tu biblioteca: ${plural(totalNew, 'canción nueva', 'canciones nuevas')}${totalHave ? `, ${totalHave} ya las tienes` : ''}. `
         + (anyReview ? 'Abajo solo lo que conviene revisar (ya hay una versión elegida; cámbiala solo si hace falta).'
           : 'Todo identificado automáticamente. Dale a «Transferir».')),
+      recolocNote(),
       ...blocks,
       el('div', { class: 'transferir-actions' },
         el('button', { type: 'button', class: 'button button-text', on: { click: () => paintLibrary() } }, 'Elegir otra cosa'),
@@ -359,6 +370,29 @@ function transferPanel(ctx) {
       const iv = setInterval(tick, 1000);
       tick();
     });
+  }
+
+  // Recoloca en su álbum las canciones que YA tienes en la biblioteca pero sueltas (o en otro álbum): si existe un álbum
+  // con el nombre de la colección, mueve ahí las coincidencias que no estén ya dentro. Así «importar el álbum X» deja todo
+  // en X aunque ya lo tuvieras (p. ej. las que quedaron sin carpeta por el bug del id con dos puntos). Devuelve cuántas movió.
+  async function recolocateOwned() {
+    const folders = ctx.libraryFolders?.() ?? [];
+    const byName = new Map(folders.map((f) => [String(f.name ?? '').trim().toLowerCase(), f]));
+    let moved = 0;
+    for (const collection of state.collections) {
+      if (!collection.album?.name) continue;
+      const folder = byName.get(String(collection.album.name).trim().toLowerCase());
+      if (!folder) continue; // si el álbum aún no existe, lo crea la subida de las nuevas
+      const ids = [];
+      for (const r of collection.results) {
+        const m = r.libraryMatch;
+        if (m?.id && m.folderId !== folder.id && !ids.includes(m.id)) ids.push(m.id);
+      }
+      if (ids.length === 0) continue;
+      try { await ctx.saveEdit?.({ op: 'move_songs', song_ids: ids, folder_id: folder.id }); moved += ids.length; }
+      catch (error) { console.error('Transferir: no se pudieron recolocar canciones en su álbum.', error); }
+    }
+    return moved;
   }
 
   async function transfer() {

@@ -133,10 +133,13 @@ const transferKey = (title, artist) => `${normalizeText(title)}|${normalizeText(
 export function markDuplicates(results, songs = []) {
   for (const result of results) {
     const probe = { title: result.track.title, artist: trackArtist(result.track), duration_s: trackDurationS(result.track) };
-    result.inLibrary = songs.some((song) => {
+    const match = songs.find((song) => {
       const candidate = { title: song.title, artist: song.artist, duration_s: song.durationS ?? song.duration_s };
       return isPossibleDuplicate(probe, candidate) || isPossibleDuplicate({ ...probe, duration_s: null }, candidate);
     });
+    result.inLibrary = Boolean(match);
+    // Guarda la canción de la biblioteca que coincide (id + carpeta actual) para poder recolocarla en su álbum al transferir.
+    result.libraryMatch = match ? { id: match.id, folderId: match.folder_id ?? match.folderId ?? null } : null;
   }
   return results;
 }

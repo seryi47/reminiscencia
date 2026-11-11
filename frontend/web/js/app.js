@@ -1141,6 +1141,8 @@ const ctx = {
   openTransferir: () => openTransferirSheet(ctx),
   // Canciones publicadas de la biblioteca, para el dedup de «Transferir música» (ADR-0044).
   librarySongs: () => state.catalog?.songs ?? [],
+  // Álbumes (carpetas) publicados, para recolocar en su álbum lo que ya tienes al transferir (ADR-0044).
+  libraryFolders: () => state.catalog?.folders ?? [],
   addUploads: (files, options) => addUploads(files, options),
   get uploads() {
     return uploads;
