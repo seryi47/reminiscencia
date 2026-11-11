@@ -35,9 +35,9 @@ una canción entre listas ni dentro de la tanda.
 
 ### Motor de puntuación (la parte más importante)
 
-Por cada pista de Spotify `{title, artists, album, durationMs, year, isrc}` se buscan candidatos en YouTube (reutilizando `server/youtube-search.js` y, para metadatos limpios/artista/álbum, YouTube Music InnerTube de `server/youtube-playlist.js`, que marca los canales «Topic»/«Art Track» = subidas oficiales de sello). Cada candidato se puntúa con señales ponderadas:
+Por cada pista de Spotify `{title, artists, album, durationMs, year, isrc}` se buscan candidatos en YouTube (reutilizando `server/youtube-search.js` y, para metadatos limpios/artista/álbum, la búsqueda de **YouTube Music** de `server/youtube-music.js`, que marca los canales «Topic»/«Art Track» = subidas oficiales de sello). La búsqueda de YouTube Music usa el **filtro «Canciones»** de InnerTube (`params`): sin él la respuesta es una página mixta de la que apenas se saca un resultado; con él devuelve la lista limpia de grabaciones oficiales, cada una con artista y duración exacta, y la mejor suele venir la primera. Las credenciales de InnerTube (`apiKey`/`clientVersion`) se cachean ~30 min para que una playlist larga no recargue la home en cada canción (evita el throttling que dejaba sin candidatos «Topic» a media lista). Cada candidato se puntúa con señales ponderadas:
 
-- **Duración** (señal más fiable): ±2 s fuerte, ±5 s media, >10 s penalización fuerte (descarta directos largos y versiones extendidas).
+- **Duración** (señal más fiable): ±3 s fuerte, ±8 s media, ±15 s leve, >15 s penalización fuerte (descarta directos largos y versiones extendidas). El margen es amplio a propósito: Spotify y YouTube difieren varios segundos de forma rutinaria (intros, silencios, conteos) para la MISMA grabación, y exigir ±2 s mandaba a «revisar» coincidencias correctas.
 - **Título** normalizado (reutiliza `foldText`/`normalizeText`/`editDistance`/`wordPoints` de `catalog.js`): el núcleo del título debe estar presente.
 - **Artista** normalizado (reutiliza la normalización de duplicados): coincide → suma; artista claramente distinto → penaliza (mata covers/tributos de «Various Artists»).
 - **Consistencia de versión**: se detectan etiquetas de versión en el título de Spotify y en el del candidato (live, acoustic, remix, instrumental, karaoke, cover, demo, nightcore, «sped up», 8d, extended…). Si Spotify es la versión de estudio y el candidato es otra versión → penalización fuerte; si Spotify ES «Live»/«Remix», se prefiere el candidato con esa misma etiqueta. «Remaster» es la misma grabación: penalización leve o nula.
@@ -46,8 +46,8 @@ Por cada pista de Spotify `{title, artists, album, durationMs, year, isrc}` se b
 
 ### Niveles de confianza (precisión por encima de velocidad)
 
-- **Alta** → se acepta sola: duración ±2 s, título+artista sólidos, versión consistente y ventaja clara sobre el segundo o fuente oficial.
-- **Media** → se muestran varias alternativas (título, artista, duración, miniatura, tipo de versión, enlace) para que el usuario elija.
+- **Alta** → se acepta sola: título+artista sólidos, duración ±8 s y versión consistente. **No se exige ventaja sobre el segundo**: cuando hay dos subidas de la MISMA canción (vídeo oficial + lyric video), ambas valen y escoger la primera es correcto; lo que descarta un candidato es ser OTRA versión (directo, remix, extendida, cover…), que rompe la consistencia de versión.
+- **Media** → título+artista cuadran pero algo no encaja del todo (duración 8–15 s, versión dudosa o puntuación justa): se **preselecciona el mejor** y se muestran alternativas (título, artista, duración, miniatura, tipo de versión, enlace) por si el usuario quiere cambiar.
 - **Baja** → no se selecciona nada automáticamente; búsqueda manual.
 
 ### Integración con el pipeline actual (nada de un sistema paralelo)

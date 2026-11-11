@@ -40,10 +40,11 @@ describe('resolveCollection', () => {
     assert.deepEqual(result.results.map((r) => r.index), [0, 1, 2]); // orden conservado
     assert.equal(result.results[0].tier, 'alta');
     assert.equal(result.results[0].best.candidate.id, 'ok');
-    assert.equal(result.results[1].tier, 'media'); // dos oficiales casi idénticos
+    assert.equal(result.results[1].tier, 'alta'); // dos subidas de la misma canción: se autoacepta la primera
+    assert.equal(result.results[1].best.candidate.id, 'a');
     assert.equal(result.results[2].tier, 'baja'); // nada encaja
     assert.equal(result.results[2].best, null);
-    assert.deepEqual(result.summary, { total: 3, alta: 1, media: 1, baja: 1, error: 0 });
+    assert.deepEqual(result.summary, { total: 3, alta: 2, media: 0, baja: 1, error: 0 });
   });
 
   test('un fallo de búsqueda de una pista no tumba el resto', async () => {

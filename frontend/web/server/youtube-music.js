@@ -15,6 +15,11 @@ const SEARCH_TIMEOUT_MS = 12_000;
 const MUSIC_HOME = 'https://music.youtube.com/';
 const MUSIC_SEARCH = 'https://music.youtube.com/youtubei/v1/search';
 export const MUSIC_MAX_RESULTS = 8;
+// Filtro «Canciones» de YouTube Music: sin él, la búsqueda devuelve una página mixta (tarjeta + vídeos + listas) de la
+// que apenas se puede extraer un par de canciones; con él, devuelve la LISTA limpia de grabaciones oficiales («Topic»/
+// «Art Track»), cada una con artista y duración exacta, y la mejor coincidencia suele venir la primera. Es la señal más
+// útil del matcher (ADR-0044): para casi cualquier canción trae la versión de estudio con la duración precisa.
+const MUSIC_SONGS_FILTER = 'EgWKAQIIAWoKEAkQBRAKEAMQBA==';
 
 /** «3:45» o «1:02:03» a segundos; null si no tiene el formato (por ejemplo, «EN DIRECTO»). */
 export function parseClock(text) {
@@ -64,26 +69,54 @@ export function extractMusicSearch(data) {
   return out.slice(0, MUSIC_MAX_RESULTS);
 }
 
+// La apiKey/clientVersion de InnerTube salen de la home de YouTube Music y apenas cambian (versión diaria). Recargar la
+// home en CADA búsqueda hace que, al resolver una playlist larga (decenas o cientos de canciones), YouTube empiece a
+// limitar y devuelva vacío para muchas → esas canciones pierden la señal «Topic». Se cachean ~30 min para que toda una
+// tanda reutilice una sola recarga (ADR-0044). Es memoria de proceso; en el Worker vive lo que dure la instancia.
+const CREDS_TTL_MS = 30 * 60 * 1000;
+let credsCache = null; // { apiKey, clientVersion, at }
+
+async function innertubeCreds(fetchImpl) {
+  const now = Date.now();
+  if (credsCache && now - credsCache.at < CREDS_TTL_MS) return credsCache;
+  const home = await fetchWithTimeout(fetchImpl, MUSIC_HOME, {
+    headers: { Accept: 'text/html', 'Accept-Language': 'es-ES,es;q=0.9', 'User-Agent': USER_AGENT },
+  }, HOME_TIMEOUT_MS);
+  if (!home.ok) return null;
+  const html = await home.text();
+  const apiKey = html.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/)?.[1];
+  const clientVersion = html.match(/"INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)"/)?.[1];
+  if (!apiKey || !clientVersion) return null;
+  credsCache = { apiKey, clientVersion, at: now };
+  return credsCache;
+}
+
+/** Vacía la caché de credenciales de InnerTube (para pruebas; en producción caduca sola). */
+export function resetMusicCredsCache() { credsCache = null; }
+
 /** Busca una canción en YouTube Music. Devuelve candidatos oficiales o [] si no se puede (fallback a la búsqueda normal). */
 export async function searchYoutubeMusic(query, { fetchImpl = globalThis.fetch } = {}) {
   try {
-    const home = await fetchWithTimeout(fetchImpl, MUSIC_HOME, {
-      headers: { Accept: 'text/html', 'Accept-Language': 'es-ES,es;q=0.9', 'User-Agent': USER_AGENT },
-    }, HOME_TIMEOUT_MS);
-    if (!home.ok) return [];
-    const html = await home.text();
-    const apiKey = html.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/)?.[1];
-    const clientVersion = html.match(/"INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)"/)?.[1];
-    if (!apiKey || !clientVersion) return [];
+    const creds = await innertubeCreds(fetchImpl);
+    if (!creds) return [];
+    const { apiKey, clientVersion } = creds;
     const response = await fetchWithTimeout(fetchImpl, `${MUSIC_SEARCH}?key=${apiKey}&prettyPrint=false`, {
       method: 'POST',
       headers: {
         Accept: 'application/json', 'Content-Type': 'application/json',
         Origin: 'https://music.youtube.com', Referer: MUSIC_HOME, 'User-Agent': USER_AGENT,
       },
-      body: JSON.stringify({ context: { client: { clientName: 'WEB_REMIX', clientVersion, hl: 'es', gl: 'ES' } }, query }),
+      body: JSON.stringify({
+        context: { client: { clientName: 'WEB_REMIX', clientVersion, hl: 'es', gl: 'ES' } },
+        query,
+        params: MUSIC_SONGS_FILTER,
+      }),
     }, SEARCH_TIMEOUT_MS);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      // Credenciales caducadas o bloqueo: olvida la caché para que la próxima llamada recargue claves frescas.
+      if (response.status === 400 || response.status === 401 || response.status === 403) credsCache = null;
+      return [];
+    }
     return extractMusicSearch(await response.json());
   } catch {
     return [];

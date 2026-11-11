@@ -4,13 +4,26 @@
   candidatos **oficiales de YouTube Music** (canales «Topic»/«Art Track», con artista y duración limpios) y se combinan
   (music primero). Módulo propio `server/youtube-music.js` (sin `node:child_process`, así lo usa también el Worker); es
   aditivo: si YouTube Music falla, se usa solo la búsqueda normal.
+- **YouTube Music con el filtro «Canciones»:** la búsqueda usaba la página mixta de YouTube Music, de la que apenas se
+  extraía un resultado (y a veces el remix en vez del original). Ahora pide el **filtro «Canciones»** (`params` de
+  InnerTube) y devuelve la lista limpia de grabaciones oficiales con duración exacta, con la mejor casi siempre la
+  primera. Para listas largas, las credenciales de InnerTube se **cachean ~30 min** (una recarga por tanda, no una por
+  canción) para no provocar el throttling que dejaba sin candidatos «Topic» a media playlist.
+- **Tolerancia de duración realista:** Spotify y YouTube difieren varios segundos (intros, silencios) para la MISMA
+  grabación. El margen de «aceptar sola» pasa de **±2 s a ±8 s** (y la puntuación gradúa ±3/±8/±15 s). Así «Mala Mujer»
+  (Spotify 223 s vs vídeo oficial 220 s) y muchas otras vuelven a ser **coincidencia alta** en lugar de «revisar».
+- **Menos «revisar» cuando no hace falta:** ya **no se exige ventaja sobre el segundo** candidato para autoaceptar.
+  Cuando hay dos subidas de la misma canción (vídeo oficial + lyric video), se toma la primera; lo que descarta un
+  candidato sigue siendo que sea OTRA versión (directo/remix/extendida/cover), vía la penalización de versión.
 - **Puerta de artista (precisión):** un candidato con título+duración exactos pero de OTRO artista ya **no se autoacepta**
   (se degrada a «baja», queda como alternativa) salvo fuente oficial o ISRC exacto. Evita colar canciones equivocadas.
 - **Autonomía:** las coincidencias **alta y media** entran ya **pre-elegidas con la mejor versión** (antes «media» salía
   sin elegir y obligaba a ir canción por canción); solo «baja» pide elección.
 - **Antiduplicados reforzado:** detecta lo ya presente en un álbum también por **título+artista** (aunque difiera la
   duración), y `buildTransferPlan`/`_buildPlan` no repiten una canción entre varias listas ni dentro de la tanda.
-- **Pruebas:** web 989, APK 606. Set «dorado» del matcher, parser de YouTube Music (fixture), dedup y plan.
+- **Interfaz de revisión rediseñada** y shell del service worker a v35 para que el nuevo diseño reemplace al cacheado.
+- **Pruebas:** web 995, APK 606. Set «dorado» del matcher (con el patrón «Mala Mujer» y la tolerancia de duración),
+  parser de YouTube Music con filtro de canciones y caché de credenciales (fetch simulado), dedup y plan.
 
 ## Sin publicar: «Transferir música» desde Spotify (web + APK) (2026-11-10)
 

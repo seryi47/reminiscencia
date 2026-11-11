@@ -44,10 +44,10 @@ const FEATURING = ['ft', 'feat', 'featuring', 'con'];
 // Pesos y umbrales (se fijan con el set de pruebas «dorado» de tests/web-unit/spotify-match.test.mjs).
 export const WEIGHTS = Object.freeze({
   title: 45, // 0..45 según cobertura del título
-  durationNear: 40, // ±2 s
-  durationClose: 25, // ±5 s
-  durationLoose: 5, // ±10 s
-  durationFar: -40, // >10 s: casi seguro otra versión
+  durationNear: 40, // ±3 s (la misma grabación; Spotify y YouTube suelen diferir unos segundos por intros/silencios)
+  durationClose: 30, // ±8 s (sigue siendo la misma canción)
+  durationLoose: 10, // ±15 s
+  durationFar: -40, // >15 s: casi seguro otra versión (directo, extendida…)
   artistMatch: 30,
   artistMismatch: -30,
   versionExtra: -45, // el candidato añade una versión que Spotify no tiene (directo, cover, remix…)
@@ -62,11 +62,10 @@ export const THRESHOLDS = Object.freeze({
   titleFloor: 0.5, // por debajo de esta cobertura de título, no es la misma canción
   mediumFloor: 45, // por debajo, confianza baja (revisión manual)
   autoScore: 90, // mínimo para confianza alta
-  autoGap: 15, // ventaja sobre el segundo para aceptar solo
-  autoGapOfficial: 6, // ventaja menor basta si la fuente es oficial
-  durationNearS: 2,
-  durationCloseS: 5,
-  durationLooseS: 10,
+  autoDurationS: 8, // para aceptar sola, la duración debe cuadrar dentro de ±8 s (misma grabación)
+  durationNearS: 3,
+  durationCloseS: 8,
+  durationLooseS: 15,
 });
 
 const SOURCE_BONUS = { topic: WEIGHTS.sourceTopic, official: WEIGHTS.sourceOfficial, search: 0 };
@@ -145,9 +144,9 @@ export function scoreCandidate(track, candidate) {
   let durDiff = null;
   if (spDur != null && candDur != null) {
     durDiff = Math.abs(spDur - candDur);
-    if (durDiff <= THRESHOLDS.durationNearS) { score += WEIGHTS.durationNear; reasons.push('duracion:±2s'); }
-    else if (durDiff <= THRESHOLDS.durationCloseS) { score += WEIGHTS.durationClose; reasons.push('duracion:±5s'); }
-    else if (durDiff <= THRESHOLDS.durationLooseS) { score += WEIGHTS.durationLoose; reasons.push('duracion:±10s'); }
+    if (durDiff <= THRESHOLDS.durationNearS) { score += WEIGHTS.durationNear; reasons.push('duracion:±3s'); }
+    else if (durDiff <= THRESHOLDS.durationCloseS) { score += WEIGHTS.durationClose; reasons.push('duracion:±8s'); }
+    else if (durDiff <= THRESHOLDS.durationLooseS) { score += WEIGHTS.durationLoose; reasons.push('duracion:±15s'); }
     else { score += WEIGHTS.durationFar; reasons.push('duracion:lejana'); }
   }
 
@@ -207,9 +206,13 @@ export function rankCandidates(track, candidates) {
 
 /**
  * Decide la coincidencia de una pista: { tier: 'alta'|'media'|'baja', best, alternatives, ranked }.
- * - alta: se puede aceptar sola (puntúa alto, duración ±2 s conocida, versión consistente y ventaja clara / fuente oficial).
- * - media: hay candidatos razonables pero ambiguos → el usuario elige entre `alternatives`.
- * - baja: nada supera el mínimo → búsqueda manual (best = null).
+ * - alta: se puede aceptar sola (título y artista cuadran, duración dentro de ±8 s y versión consistente). No se exige
+ *   ventaja sobre el segundo: cuando hay dos subidas de la MISMA canción (p. ej. vídeo oficial + lyric video), ambas
+ *   valen y escoger la primera es correcto. Lo que descarta un candidato es que sea OTRA versión (directo, remix,
+ *   extendida, cover…), que penaliza la puntuación y rompe `versionOk`, o que la duración se aleje (>8 s).
+ * - media: título y artista cuadran pero algo no encaja del todo (duración 8–15 s, versión dudosa o puntuación justa)
+ *   → se preselecciona el mejor, pero el usuario puede revisar entre `alternatives`.
+ * - baja: nada supera el mínimo o el artista no coincide → búsqueda manual (best = null).
  */
 export function classifyMatch(track, candidates, { maxAlternatives = 5 } = {}) {
   const ranked = rankCandidates(track, candidates);
@@ -221,14 +224,12 @@ export function classifyMatch(track, candidates, { maxAlternatives = 5 } = {}) {
   if (!best || best.score < THRESHOLDS.mediumFloor || !artistOk) {
     return { tier: 'baja', best: null, alternatives: ranked.slice(0, maxAlternatives), ranked };
   }
-  const second = ranked[1];
-  const gap = second ? best.score - second.score : Infinity;
-  const official = best.signals.source === 'topic' || best.signals.source === 'official';
-  const durationOk = best.signals.durDiff != null && best.signals.durDiff <= THRESHOLDS.durationNearS;
+  // Duración «de la misma grabación»: dentro de ±8 s. Spotify y YouTube difieren varios segundos de forma rutinaria
+  // (intros, silencios finales, conteos), así que exigir ±2 s mandaba a «revisar» coincidencias correctísimas.
+  const durationOk = best.signals.durDiff != null && best.signals.durDiff <= THRESHOLDS.autoDurationS;
   const versionOk = best.signals.extra.length === 0 && best.signals.missing.length === 0;
   const clear = best.signals.isrcExact
-    || (best.score >= THRESHOLDS.autoScore && durationOk && versionOk
-        && (gap >= THRESHOLDS.autoGap || (official && gap >= THRESHOLDS.autoGapOfficial)));
+    || (best.score >= THRESHOLDS.autoScore && durationOk && versionOk);
   if (clear) {
     return { tier: 'alta', best, alternatives: ranked.slice(1, maxAlternatives), ranked };
   }

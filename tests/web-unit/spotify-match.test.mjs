@@ -141,15 +141,54 @@ describe('acentos y feat', () => {
   });
 });
 
-describe('ambigüedad → el usuario elige', () => {
-  test('dos oficiales casi idénticos dan confianza media con alternativas', () => {
+describe('dos subidas de la misma canción → autoaceptar (sin dar trabajo al usuario)', () => {
+  test('dos oficiales casi idénticos: se acepta el primero con confianza alta y el otro queda como alternativa', () => {
+    // Son la MISMA canción subida dos veces (vídeo oficial + lyric/VEVO). Escoger cualquiera es correcto, así que no
+    // tiene sentido mandarlo a «revisar»: se autoacepta y la otra subida queda disponible por si se quiere cambiar.
     const clocks = track('Clocks', ['Coldplay'], 307000);
     const result = classifyMatch(clocks, [
       cand('a', 'Clocks - Coldplay', 'Coldplay', 307, 'official'),
       cand('b', 'Clocks (Official Video) - Coldplay', 'ColdplayVEVO', 308, 'official'),
     ]);
-    assert.equal(result.tier, 'media');
-    assert.ok(result.alternatives.length >= 2);
+    assert.equal(result.tier, 'alta');
+    assert.equal(result.best.candidate.id, 'a');
+    assert.ok(result.alternatives.length >= 1, 'la otra subida sigue disponible como alternativa');
+  });
+});
+
+describe('tolerancia de duración realista (el patrón «Mala Mujer»)', () => {
+  test('una diferencia de 3 s entre Spotify y el vídeo oficial sigue siendo confianza alta', () => {
+    // Spotify da 223 s para «Mala Mujer» (C. Tangana); el vídeo oficial dura 220 s. Esos 3 s de diferencia (intro,
+    // silencio final) son rutinarios y NO deben degradar la coincidencia: es la misma grabación.
+    const mala = track('Mala Mujer', ['C. Tangana'], 223000);
+    const result = classifyMatch(mala, [
+      cand('oficial', 'C. Tangana - Mala Mujer (Video Oficial)', 'C. Tangana', 220, 'official'),
+      cand('remix', 'Mala Mujer (Remix) - C. Tangana', 'C. Tangana', 232, 'search'),
+      cand('directo', 'Mala Mujer (En Directo) - C. Tangana', 'C. Tangana', 240, 'search'),
+    ]);
+    assert.equal(result.tier, 'alta');
+    assert.equal(result.best.candidate.id, 'oficial');
+    const byId = Object.fromEntries(result.ranked.map((r) => [r.candidate.id, r.score]));
+    assert.ok(byId.oficial > byId.remix, 'el remix puntúa menos (otra versión)');
+    assert.ok(byId.oficial > byId.directo, 'el directo puntúa menos (otra versión)');
+  });
+
+  test('un resultado de búsqueda normal (no oficial) con 5 s de diferencia también se autoacepta', () => {
+    // No depende de que la fuente sea oficial: la clave es que título, artista, versión y duración (±8 s) cuadren.
+    const song = track('Bohemian Rhapsody', ['Queen'], 355000);
+    const result = classifyMatch(song, [
+      cand('x', 'Queen - Bohemian Rhapsody', 'Some Music Channel', 350, 'search'),
+    ]);
+    assert.equal(result.tier, 'alta');
+    assert.equal(result.best.candidate.id, 'x');
+  });
+
+  test('una diferencia grande (>15 s) sin más candidatos cae a revisión, no a autoaceptar', () => {
+    const song = track('Song', ['Artist'], 200000);
+    const result = classifyMatch(song, [
+      cand('largo', 'Song - Artist', 'Artist', 240, 'search'), // 40 s: casi seguro otra versión
+    ]);
+    assert.notEqual(result.tier, 'alta');
   });
 });
 
