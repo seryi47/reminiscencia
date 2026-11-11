@@ -203,11 +203,14 @@ class SpotifyLibrary {
       );
 }
 
-/// Marca las pistas que ya están en la biblioteca (misma regla de duplicados: título + duración).
+/// Marca las pistas que ya están en la biblioteca, para no volver a añadirlas a un álbum. Dos vías: la regla común
+/// (título + duración ±2 s) y título + artista normalizados iguales (aunque la duración de Spotify y la de la versión ya
+/// importada de YouTube difieran).
 void markTransferDuplicates(List<TransferMatch> results, List<DuplicateCandidate> library) {
   for (final result in results) {
     final probe = DuplicateCandidate(title: result.track.title, artist: result.track.artist, durationS: result.track.durationS);
-    result.inLibrary = library.any((song) => isPossibleDuplicate(probe, song));
+    final probeNoDur = DuplicateCandidate(title: result.track.title, artist: result.track.artist);
+    result.inLibrary = library.any((song) => isPossibleDuplicate(probe, song) || isPossibleDuplicate(probeNoDur, song));
   }
 }
 

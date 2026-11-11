@@ -153,6 +153,21 @@ describe('ambigüedad → el usuario elige', () => {
   });
 });
 
+describe('puerta de artista (no autoaceptar otro artista)', () => {
+  test('título y duración exactos pero OTRO artista (no oficial) → baja, nada autoseleccionado', () => {
+    const song = track('Perfect', ['Ed Sheeran'], 263000);
+    const result = classifyMatch(song, [cand('x', 'Perfect', 'Random Covers Channel', 263, 'search')]);
+    assert.equal(result.tier, 'baja');
+    assert.equal(result.best, null);
+  });
+  test('el mismo caso con fuente oficial (Topic) sí se acepta', () => {
+    const song = track('Perfect', ['Ed Sheeran'], 263000);
+    const result = classifyMatch(song, [cand('ok', 'Perfect', 'Ed Sheeran', 263, 'topic')]);
+    assert.equal(result.best.candidate.id, 'ok');
+    assert.notEqual(result.tier, 'baja');
+  });
+});
+
 describe('ISRC decisivo', () => {
   test('un ISRC igual gana aunque el título difiera y la duración no cuadre', () => {
     const song = track('Título Oficial', ['Artista'], 200000, { isrc: 'USABC1234567' });

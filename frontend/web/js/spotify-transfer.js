@@ -4,6 +4,7 @@
 // importYoutubeTracks para el enganche al pipeline.
 
 import { isPossibleDuplicate } from './duplicates.js';
+import { normalizeText } from './catalog.js';
 
 export const SESSION_KEY = 'reminiscencia.spotify';
 export const PKCE_KEY = 'reminiscencia.spotify.pkce';
@@ -121,14 +122,43 @@ export async function listLibrary({ api, storage = globalThis.localStorage, now 
 const trackArtist = (track) => (Array.isArray(track.artists) ? track.artists[0] : track.artist) ?? '';
 const trackDurationS = (track) => (typeof track.durationMs === 'number' ? track.durationMs / 1000 : null);
 
-/** Marca cada resultado con `inLibrary` si la canción ya está en la biblioteca (misma regla de duplicados: título + duración). */
+/** Clave normalizada «título|artista» para no transferir dos veces la misma canción dentro de una misma tanda. */
+const transferKey = (title, artist) => `${normalizeText(title)}|${normalizeText(artist)}`;
+
+/**
+ * Marca cada resultado con `inLibrary` si la canción ya está en la biblioteca. Dos vías, para no volver a añadir lo que ya
+ * está en un álbum: (1) la regla común de duplicados (título + duración ±2 s), y (2) título + artista normalizados iguales
+ * (aunque la duración de Spotify y la de la versión ya importada de YouTube difieran).
+ */
 export function markDuplicates(results, songs = []) {
   for (const result of results) {
     const probe = { title: result.track.title, artist: trackArtist(result.track), duration_s: trackDurationS(result.track) };
-    result.inLibrary = songs.some((song) =>
-      isPossibleDuplicate(probe, { title: song.title, artist: song.artist, duration_s: song.durationS ?? song.duration_s }));
+    result.inLibrary = songs.some((song) => {
+      const candidate = { title: song.title, artist: song.artist, duration_s: song.durationS ?? song.duration_s };
+      return isPossibleDuplicate(probe, candidate) || isPossibleDuplicate({ ...probe, duration_s: null }, candidate);
+    });
   }
   return results;
+}
+
+/**
+ * Plan de transferencia: por cada colección, las pistas elegidas (selectedTracks), SIN repetir una misma canción que ya
+ * aparezca en otra colección o antes en la tanda (dedup por título+artista). Devuelve [{ album, tracks }].
+ */
+export function buildTransferPlan(collections) {
+  const seen = new Set();
+  const plan = [];
+  for (const collection of collections) {
+    const tracks = [];
+    for (const pick of selectedTracks(collection.results, { excluded: collection.excluded, overrides: collection.overrides })) {
+      const key = transferKey(pick.title, pick.artist);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tracks.push(pick);
+    }
+    if (tracks.length > 0) plan.push({ album: collection.album, tracks });
+  }
+  return plan;
 }
 
 /**

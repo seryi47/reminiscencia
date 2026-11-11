@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 
 import {
   readSession, writeSession, clearSession, isConnected, createTransferApi, beginConnect,
-  resolveCollection, listLibrary, markDuplicates, selectedTracks, SESSION_KEY, PKCE_KEY,
+  resolveCollection, listLibrary, markDuplicates, selectedTracks, buildTransferPlan, SESSION_KEY, PKCE_KEY,
 } from '../../frontend/web/js/spotify-transfer.js';
 
 const fakeStorage = () => {
@@ -134,6 +134,19 @@ describe('markDuplicates / selectedTracks', () => {
     const results = markDuplicates(makeResults(), [{ title: 'YaEstá', artist: 'A', durationS: 203 }]);
     assert.equal(results[3].inLibrary, true);
     assert.equal(results[0].inLibrary, false);
+  });
+
+  test('detecta el duplicado por título+artista aunque la duración difiera mucho', () => {
+    const results = markDuplicates(makeResults(), [{ title: 'Uno', artist: 'A', durationS: 240 }]); // +40 s
+    assert.equal(results[0].inLibrary, true); // «Uno» de «A» ya está, aunque dure distinto
+  });
+
+  test('buildTransferPlan no repite una misma canción entre colecciones ni dentro de la tanda', () => {
+    const mk = (index, title, url) => ({ index, tier: 'alta', best: { candidate: { url } }, track: { title, artists: ['A'], durationMs: 200000 } });
+    const colA = { album: { id: 'a' }, results: [mk(0, 'Song X', 'x')], excluded: new Set(), overrides: new Map() };
+    const colB = { album: { id: 'b' }, results: [mk(0, 'Song X', 'x2'), mk(1, 'Otra', 'o')], excluded: new Set(), overrides: new Map() };
+    const plan = buildTransferPlan([colA, colB]);
+    assert.deepEqual(plan.map((p) => p.tracks.map((t) => t.title)), [['Song X'], ['Otra']]); // Song X no se repite en colB
   });
 
   test('las excluidas, las duplicadas y las de baja-sin-elección quedan fuera; el override manda', () => {

@@ -182,13 +182,26 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     }
   }
 
-  int get _selectedCount => _collections.fold(0, (n, c) => n + selectedTransferTracks(c.results, album: c.album).length);
+  /// Plan de transferencia: las elegidas de cada colección, sin repetir una misma canción (título+artista) entre listas
+  /// ni dentro de la tanda.
+  List<MapEntry<_Collection, List<YoutubeTrack>>> _buildPlan() {
+    final seen = <String>{};
+    final plan = <MapEntry<_Collection, List<YoutubeTrack>>>[];
+    for (final c in _collections) {
+      final tracks = <YoutubeTrack>[];
+      for (final t in selectedTransferTracks(c.results, album: c.album)) {
+        final key = '${normalizeDuplicateTitle(t.title)}|${normalizeDuplicateArtist(t.artist)}';
+        if (seen.add(key)) tracks.add(t);
+      }
+      if (tracks.isNotEmpty) plan.add(MapEntry(c, tracks));
+    }
+    return plan;
+  }
+
+  int get _selectedCount => _buildPlan().fold(0, (n, e) => n + e.value.length);
 
   Future<void> _transfer() async {
-    final plan = _collections
-        .map((c) => MapEntry(c, selectedTransferTracks(c.results, album: c.album)))
-        .where((e) => e.value.isNotEmpty)
-        .toList();
+    final plan = _buildPlan();
     final totalTracks = plan.fold(0, (n, e) => n + e.value.length);
     if (totalTracks == 0) { setState(() => _error = 'Elige al menos una canción.'); return; }
     final importer = widget.services.youtube;

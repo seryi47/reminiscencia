@@ -6,7 +6,7 @@
 import { el, openDialog, toast } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import {
-  createTransferApi, beginConnect, isConnected, clearSession, listLibrary, resolveCollection, markDuplicates, selectedTracks,
+  createTransferApi, beginConnect, isConnected, clearSession, listLibrary, resolveCollection, markDuplicates, buildTransferPlan,
 } from '../spotify-transfer.js';
 import { importYoutubeTracks } from './homeostasia.js';
 
@@ -177,7 +177,7 @@ function transferPanel(ctx) {
 
   // --- Revisar ---------------------------------------------------------------------------------------------------------
   const chosenEntry = (collection, result) => collection.overrides.get(result.index) ?? result.best;
-  const totalSelected = () => state.collections.reduce((n, c) => n + selectedTracks(c.results, { excluded: c.excluded, overrides: c.overrides }).length, 0);
+  const totalSelected = () => buildTransferPlan(state.collections).reduce((n, c) => n + c.tracks.length, 0);
 
   function renderReview() {
     const empty = state.collections.every((c) => c.results.length === 0);
@@ -297,9 +297,7 @@ function transferPanel(ctx) {
   // --- Transferir ------------------------------------------------------------------------------------------------------
   async function transfer() {
     if (state.transferring) return;
-    const plan = state.collections
-      .map((c) => ({ album: c.album, tracks: selectedTracks(c.results, { excluded: c.excluded, overrides: c.overrides }) }))
-      .filter((c) => c.tracks.length > 0);
+    const plan = buildTransferPlan(state.collections); // ya sin repetir una misma canción entre listas
     const totalTracks = plan.reduce((n, c) => n + c.tracks.length, 0);
     if (totalTracks === 0) { toast('Elige al menos una canción.'); return; }
     state.transferring = true;

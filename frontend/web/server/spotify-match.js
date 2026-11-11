@@ -214,7 +214,11 @@ export function rankCandidates(track, candidates) {
 export function classifyMatch(track, candidates, { maxAlternatives = 5 } = {}) {
   const ranked = rankCandidates(track, candidates);
   const best = ranked[0];
-  if (!best || best.score < THRESHOLDS.mediumFloor) {
+  // Puerta de artista (precisión): no se autoacepta un candidato cuyo artista NO coincide, salvo que sea fuente oficial
+  // (Topic/VEVO) o tenga ISRC exacto. Así un título+duración que cuadran pero de OTRO artista no se cuela como «media».
+  const artistOk = !best || best.signals.artistMatch !== false
+    || best.signals.source === 'topic' || best.signals.source === 'official' || best.signals.isrcExact;
+  if (!best || best.score < THRESHOLDS.mediumFloor || !artistOk) {
     return { tier: 'baja', best: null, alternatives: ranked.slice(0, maxAlternatives), ranked };
   }
   const second = ranked[1];
