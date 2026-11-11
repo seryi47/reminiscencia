@@ -329,7 +329,33 @@ function transferPanel(ctx) {
     return el('div', { class: 'transferir-manual-row' }, input, button);
   }
 
-  // --- Transferir ------------------------------------------------------------------------------------------------------
+  // --- Transferir (con auto-reanudar) ----------------------------------------------------------------------------------
+  // El tope del conversor (yttowav/YouTube) es externo y no se puede eliminar en gratis. En vez de dejarlo a cargo del
+  // usuario, la transferencia se reintenta SOLA: cuando una tanda termina con fallos (tope alcanzado), espera unos minutos
+  // (para que el tope se recupere) y vuelve a intentar SOLO lo que falta (la caché salta lo ya hecho), en bucle, hasta
+  // completar. El usuario solo deja la pestaña abierta; puede pararlo cuando quiera (ADR-0044).
+  const AUTO_RESUME_GAP_MS = 10 * 60 * 1000; // espera entre ciclos
+  const AUTO_RESUME_MAX_CYCLES = 24; // tope de seguridad (~4 h) por si el bloqueo no se levanta
+
+  // Espera hasta `resumeAt` mostrando una cuenta atrás; se resuelve al llegar, se rechaza si se cancela.
+  function countdownWait(node, resumeAt, remaining, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) { reject(new Error('abort')); return; }
+      const tick = () => {
+        if (signal.aborted) { clearInterval(iv); reject(new Error('abort')); return; }
+        const ms = resumeAt - Date.now();
+        if (ms <= 0) { clearInterval(iv); signal.removeEventListener('abort', onAbort); resolve(); return; }
+        const m = Math.floor(ms / 60000);
+        const s = Math.floor((ms % 60000) / 1000);
+        node.textContent = `Tope del conversor alcanzado. Reintento automático en ${m}:${String(s).padStart(2, '0')} — quedan ~${remaining} canciones.`;
+      };
+      const onAbort = () => { clearInterval(iv); reject(new Error('abort')); };
+      signal.addEventListener('abort', onAbort, { once: true });
+      const iv = setInterval(tick, 1000);
+      tick();
+    });
+  }
+
   async function transfer() {
     if (state.transferring) return;
     const plan = buildTransferPlan(state.collections); // ya sin repetir una misma canción entre listas
@@ -338,30 +364,52 @@ function transferPanel(ctx) {
     state.transferring = true;
     abort = new AbortController();
     const progress = el('p', { class: 'transferir-progress', 'data-testid': 'transferir-doing' }, `Preparando ${totalTracks} canciones…`);
-    setSection(progress);
-    let added = 0;
-    let failed = 0;
+    const stop = el('button', { type: 'button', class: 'button button-text', 'data-testid': 'transferir-stop', on: { click: () => abort.abort() } }, 'Parar');
+    setSection(progress, el('div', { class: 'transferir-actions' }, stop));
+    let addedTotal = 0;
+    let lastFailed = 0;
     try {
-      let base = 0;
-      for (const collection of plan) {
-        const result = await importYoutubeTracks(ctx, collection.tracks, {
-          album: collection.album,
-          signal: abort.signal,
-          onProgress: ({ processed, total }) => { progress.textContent = `Descargando ${base + (processed || 0)} de ${totalTracks}…`; },
-        });
-        added += result.files.length;
-        failed += result.errors.length;
-        base += collection.tracks.length;
+      let cycle = 0;
+      while (!abort.signal.aborted) {
+        cycle += 1;
+        let base = 0;
+        let addedCycle = 0;
+        let failedCycle = 0;
+        for (const collection of plan) {
+          if (abort.signal.aborted) break;
+          const result = await importYoutubeTracks(ctx, collection.tracks, {
+            album: collection.album,
+            signal: abort.signal,
+            onProgress: ({ processed }) => {
+              const prefix = cycle > 1 ? `Reintento ${cycle}` : 'Descargando';
+              progress.textContent = `${prefix}: ${base + (processed || 0)} de ${totalTracks}…`;
+            },
+          });
+          addedCycle += result.files.length;
+          failedCycle += result.errors.length;
+          base += collection.tracks.length;
+        }
+        addedTotal += addedCycle;
+        lastFailed = failedCycle;
+        if (abort.signal.aborted) break;
+        if (failedCycle === 0) break; // completado: ya no falla nada
+        if (cycle >= AUTO_RESUME_MAX_CYCLES) break;
+        try { await countdownWait(progress, Date.now() + AUTO_RESUME_GAP_MS, failedCycle, abort.signal); }
+        catch { break; } // parado durante la espera
       }
-      toast(added ? `${added} canciones añadidas. Se publicarán en un momento.` : 'No se pudo añadir ninguna canción.');
+      const done = lastFailed === 0 && !abort.signal.aborted;
+      const stopped = abort.signal.aborted;
+      toast(addedTotal ? `${addedTotal} canciones añadidas. Se publicarán en un momento.` : 'No se pudo añadir ninguna canción.');
       setSection(
         el('p', { class: 'transferir-summary', 'data-testid': 'transferir-done' },
-          `Añadidas ${added}${failed ? ` · ${failed} con error` : ''}. Verás el progreso de publicación en «Tu biblioteca».`),
-        failed
-          ? el('p', { class: 'transferir-intro' },
-            'Las que dieron error suelen ser por el límite del conversor, no por un fallo. Cuando terminen de publicarse estas, '
-            + 'vuelve a darle a «Transferir» con la misma lista: saltará las que ya tienes y seguirá solo con las que faltan.')
-          : el('div'),
+          done
+            ? `¡Listo! Añadidas ${addedTotal}. Verás el progreso de publicación en «Tu biblioteca».`
+            : `Añadidas ${addedTotal}${lastFailed ? ` · quedan ~${lastFailed}` : ''}. ${stopped ? 'Reintento automático detenido.' : 'Se alcanzó el límite de reintentos.'}`),
+        done
+          ? el('div')
+          : el('p', { class: 'transferir-intro' },
+            'El tope es de YouTube, no un fallo. Vuelve a darle a «Transferir» más tarde (o déjalo e inténtalo luego): '
+            + 'saltará lo que ya tienes y seguirá solo con lo que falta.'),
         el('button', { type: 'button', class: 'homeostasia-submit', on: { click: () => { state.sources.clear(); state.collections = []; paintLibrary('¿Transferir algo más?'); } } }, 'Transferir más'),
       );
     } catch (error) {
