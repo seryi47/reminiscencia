@@ -12,6 +12,7 @@ import {
   publicError,
 } from './youtube-common.js';
 import { executable, parseAssignedJson } from './youtube-playlist.js';
+import { searchYoutubeMusic, mergeCandidates } from './youtube-music.js';
 
 export const MIN_QUERY_LENGTH = 2;
 export const MAX_QUERY_LENGTH = 100;
@@ -213,4 +214,14 @@ export async function handleSearch(request, { spawnImpl = nodeSpawn, env = proce
 
 export function GET(request) {
   return handleSearch(request);
+}
+
+/** Candidatos combinados (YouTube Music oficial + búsqueda normal con yt-dlp) para el resolver de «Transferir música»
+ *  (ADR-0044); YouTube Music primero. Solo para Node (usa yt-dlp): el Worker combina por su cuenta (sin child_process). */
+export async function searchCandidatesForTransfer(query, { spawnImpl, env, fetchImpl } = {}) {
+  const [music, regular] = await Promise.all([
+    searchYoutubeMusic(query, { fetchImpl }),
+    searchYoutubeCandidates(query, { spawnImpl, env, fetchImpl }).catch(() => []),
+  ]);
+  return mergeCandidates(music, regular);
 }

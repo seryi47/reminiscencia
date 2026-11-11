@@ -24,6 +24,15 @@ El usuario conecta su cuenta de Spotify en la web de Reminiscencia (flujo Author
 
 La resolución Spotify→YouTube corre en el servidor (funciones de Vercel + Worker, junto a `server/youtube-*.js`), **una sola implementación** que web y APK consumen por HTTP. No hay dos matchers que diverjan. El cliente solo pinta la revisión y manda la selección.
 
+### Mejora de búsqueda y autonomía (2026-11-11)
+
+Para que funcione solo en listas grandes sin ir canción por canción: (1) a los candidatos de la búsqueda normal se suman
+los **oficiales de YouTube Music** (canales «Topic», `server/youtube-music.js`, sin `child_process` para que lo use también
+el Worker; aditivo con *fallback*); (2) **puerta de artista**: un título+duración exactos pero de otro artista no se
+autoaceptan salvo fuente oficial o ISRC; (3) las coincidencias **alta y media** entran pre-elegidas con su mejor versión
+(solo «baja» pide elección); (4) antiduplicados por **título+artista** además de título+duración, y un plan que no repite
+una canción entre listas ni dentro de la tanda.
+
 ### Motor de puntuación (la parte más importante)
 
 Por cada pista de Spotify `{title, artists, album, durationMs, year, isrc}` se buscan candidatos en YouTube (reutilizando `server/youtube-search.js` y, para metadatos limpios/artista/álbum, YouTube Music InnerTube de `server/youtube-playlist.js`, que marca los canales «Topic»/«Art Track» = subidas oficiales de sello). Cada candidato se puntúa con señales ponderadas:

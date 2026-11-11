@@ -34,6 +34,7 @@ import { handleConvert } from '../../frontend/web/server/youtube-convert.js';
 import { handleStatus } from '../../frontend/web/server/youtube-status.js';
 import { handleDownload } from '../../frontend/web/server/youtube-download.js';
 import { YOUTUBE_MARK_HEADER, markYoutube } from '../../frontend/web/server/youtube-mark.js';
+import { searchYoutubeMusic, mergeCandidates } from '../../frontend/web/server/youtube-music.js';
 import {
   handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyCallback,
 } from '../../frontend/web/server/spotify-endpoints.js';
@@ -217,11 +218,16 @@ const SPOTIFY_PREFIX = '/api/spotify/';
  */
 function spotifySearch(env, fetchImpl) {
   return async (query) => {
-    const search = new Request(`https://worker.local/api/youtube/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
-    const response = await forwardYoutube(search, env, fetchImpl);
-    if (!response.ok) return [];
-    const data = await response.json().catch(() => ({}));
-    return Array.isArray(data.items) ? data.items : [];
+    // YouTube Music (oficial, el Worker lo hace por fetch) + búsqueda normal (yt-dlp, por el upstream); music primero.
+    const regular = (async () => {
+      const search = new Request(`https://worker.local/api/youtube/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      const response = await forwardYoutube(search, env, fetchImpl);
+      if (!response.ok) return [];
+      const data = await response.json().catch(() => ({}));
+      return Array.isArray(data.items) ? data.items : [];
+    })();
+    const [music, items] = await Promise.all([searchYoutubeMusic(query, { fetchImpl }).catch(() => []), regular]);
+    return mergeCandidates(music, items);
   };
 }
 

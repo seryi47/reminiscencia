@@ -1,3 +1,17 @@
+## Sin publicar: Transferir música — matcher más preciso y autónomo (2026-11-11)
+
+- **Búsqueda mejorada:** además de la búsqueda normal de YouTube (yt-dlp, por artista+título), ahora se piden
+  candidatos **oficiales de YouTube Music** (canales «Topic»/«Art Track», con artista y duración limpios) y se combinan
+  (music primero). Módulo propio `server/youtube-music.js` (sin `node:child_process`, así lo usa también el Worker); es
+  aditivo: si YouTube Music falla, se usa solo la búsqueda normal.
+- **Puerta de artista (precisión):** un candidato con título+duración exactos pero de OTRO artista ya **no se autoacepta**
+  (se degrada a «baja», queda como alternativa) salvo fuente oficial o ISRC exacto. Evita colar canciones equivocadas.
+- **Autonomía:** las coincidencias **alta y media** entran ya **pre-elegidas con la mejor versión** (antes «media» salía
+  sin elegir y obligaba a ir canción por canción); solo «baja» pide elección.
+- **Antiduplicados reforzado:** detecta lo ya presente en un álbum también por **título+artista** (aunque difiera la
+  duración), y `buildTransferPlan`/`_buildPlan` no repiten una canción entre varias listas ni dentro de la tanda.
+- **Pruebas:** web 989, APK 606. Set «dorado» del matcher, parser de YouTube Music (fixture), dedup y plan.
+
 ## Sin publicar: «Transferir música» desde Spotify (web + APK) (2026-11-10)
 
 - **Nueva funcionalidad en desarrollo** ([ADR-0044](docs/decisions/ADR-0044-transferir-musica-desde-spotify.md)): transferir canciones/álbumes/playlists de Spotify a Reminiscencia por el recorrido **Spotify → YouTube → biblioteca**, con mejor precisión que TuneMyMusic.
