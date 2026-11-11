@@ -1,6 +1,18 @@
 {
   "songs": [
     {
+      "id": "S11f230683154d556",
+      "title": "105 F Remix",
+      "artist": "KEVVO",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 36.608,
+      "public": true
+    },
+    {
       "id": "S6de55599b912288f",
       "title": "120",
       "artist": "Bad Bunny",
@@ -27,6 +39,18 @@
       "track": 2
     },
     {
+      "id": "S78896b7b7ea75951",
+      "title": "2 Catorce",
+      "artist": "Rauw Alejandro",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 11.52,
+      "public": true
+    },
+    {
       "id": "S65bfe90013b5e118",
       "title": "2 to 2",
       "artist": "",
@@ -50,6 +74,18 @@
       "duration_s": 370.016,
       "public": true,
       "track": 3
+    },
+    {
+      "id": "S9cd44f4286712216",
+      "title": "3G (feat. Jon Z, Don Chezina, Chencho Corleone & Myke Towers) - Remix",
+      "artist": "Wisin",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 32.789,
+      "public": true
     },
     {
       "id": "S1ed829a6f1bab8e2",
@@ -180,6 +216,30 @@
       "track": 10
     },
     {
+      "id": "S979e0ee5e21bd882",
+      "title": "Alocao (With Bad Gyal)",
+      "artist": "Omar Montes",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 160.5,
+      "public": true
+    },
+    {
+      "id": "S2999984792bfe733",
+      "title": "AM",
+      "artist": "Nio Garcia",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 76.032,
+      "public": true
+    },
+    {
       "id": "Sb2eabcbe4e638435",
       "title": "AM",
       "artist": "Nio Garcia y Flow La Movie",
@@ -204,6 +264,18 @@
       "duration_s": 176.861,
       "public": true,
       "track": 12
+    },
+    {
+      "id": "Sa3b7515fcd749aac",
+      "title": "Animal",
+      "artist": "Maria Becerra",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 47.466,
+      "public": true
     },
     {
       "id": "Sdb2cee6e278504e4",
@@ -295,6 +367,18 @@
       "public": true
     },
     {
+      "id": "S500bd6ecb0a28941",
+      "title": "Bailando Te Conocí",
+      "artist": "Rusherking",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 194.4,
+      "public": true
+    },
+    {
       "id": "S553593e1db579588",
       "title": "BAILE INoLVIDABLE",
       "artist": "Bad Bunny",
@@ -318,6 +402,18 @@
       "duration_s": 257.095,
       "public": true,
       "track": 6
+    },
+    {
+      "id": "S8d3cd032f2ba8d3f",
+      "title": "Bandido",
+      "artist": "Myke Towers",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 18.965,
+      "public": true
     },
     {
       "id": "Se3c20530a61a6ccf",
@@ -383,6 +479,18 @@
       "duration_s": 197.894,
       "public": true,
       "track": 20
+    },
+    {
+      "id": "Se29251964e3aee01",
+      "title": "Blin Blin",
+      "artist": "Bad Gyal",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 144.213,
+      "public": true
     },
     {
       "id": "Se4e3224701d48c78",
@@ -1152,6 +1260,18 @@
       "track": 42
     },
     {
+      "id": "S81b2475630fda7a8",
+      "title": "El Makinon",
+      "artist": "KAROL G",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 3.285,
+      "public": true
+    },
+    {
       "id": "S12798275cec523db",
       "title": "El Universo Sobre Mi",
       "artist": "Amaral",
@@ -1176,6 +1296,18 @@
       "duration_s": 363.422,
       "public": true,
       "track": 27
+    },
+    {
+      "id": "S2995a07d098227b1",
+      "title": "Ella",
+      "artist": "Boza",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 14.186,
+      "public": true
     },
     {
       "id": "S24abaac642b84805",
@@ -1215,6 +1347,30 @@
       "duration_s": 222.268,
       "public": true,
       "track": 45
+    },
+    {
+      "id": "S7dada9abbfefd449",
+      "title": "Ella No Es Tuya - Remix",
+      "artist": "Rochy RD",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 16.17,
+      "public": true
+    },
+    {
+      "id": "S0a77b7365ea17346",
+      "title": "Ella No Sigue Modas",
+      "artist": "Juan Magán",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 84.97,
+      "public": true
     },
     {
       "id": "S33f05597bce4aebf",
@@ -1293,6 +1449,18 @@
       "duration_s": 399.32,
       "public": true,
       "track": 5
+    },
+    {
+      "id": "S161e014611bef8f0",
+      "title": "Fan de Tus Fotos",
+      "artist": "Nicky Jam",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 197.647,
+      "public": true
     },
     {
       "id": "S6235eccd4683a2de",
@@ -1385,6 +1553,18 @@
       "track": 53
     },
     {
+      "id": "Sdd2df4ef7d7b1140",
+      "title": "Fiel",
+      "artist": "Los Legendarios",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 30.528,
+      "public": true
+    },
+    {
       "id": "See291ab7289d5671",
       "title": "Figa",
       "artist": "Tanxugueiras",
@@ -1424,6 +1604,18 @@
       "track": 111
     },
     {
+      "id": "S889303705cbb30a3",
+      "title": "Flying Free - Original Mix",
+      "artist": "Pont Aeri",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 50.453,
+      "public": true
+    },
+    {
       "id": "S004bfc98ee99b3e5",
       "title": "Formosa Kaio Viana MC CJ (Trap remix)",
       "artist": "Free Beats (Prod. KSK)",
@@ -1450,6 +1642,18 @@
       "track": 57
     },
     {
+      "id": "S6bb827825503ef99",
+      "title": "Gato Malo",
+      "artist": "KAROL G",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 225.173,
+      "public": true
+    },
+    {
       "id": "S7878ef5bd9842999",
       "title": "Gimme! Gimme! Gimme! (a man after midnight)",
       "artist": "Syzz",
@@ -1461,6 +1665,18 @@
       "duration_s": 152.678,
       "public": true,
       "track": 58
+    },
+    {
+      "id": "S0020d507b06d794f",
+      "title": "Girl",
+      "artist": "Myke Towers",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 29.354,
+      "public": true
     },
     {
       "id": "S577ccf4c3acf66bf",
@@ -1668,6 +1884,18 @@
       "track": 63
     },
     {
+      "id": "S7ba426af4d9cc787",
+      "title": "Imaginate",
+      "artist": "Rich Music LTD",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 140.352,
+      "public": true
+    },
+    {
       "id": "Se6e0534d70fe5ad0",
       "title": "Imagínate (con Lenny Tavárez, Cazzu, Feid y Justin Quiles)",
       "artist": "Dalex y Sech",
@@ -1796,6 +2024,18 @@
       "track": 4
     },
     {
+      "id": "Se26e468159c3d6ca",
+      "title": "L-Gante Bzrp Music Sessions, Vol. 38 66",
+      "artist": "Bizarrap",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 192.348,
+      "public": true
+    },
+    {
       "id": "Se816c090044cb9ba",
       "title": "La Bachata",
       "artist": "Manuel Turizo",
@@ -1874,6 +2114,18 @@
       "track": 1
     },
     {
+      "id": "S18338a37b2548064",
+      "title": "La Curiosidad",
+      "artist": "Jay Wheeler",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 27.178,
+      "public": true
+    },
+    {
       "id": "Sfc1de8438517e075",
       "title": "La Curiosidad",
       "artist": "Jay Wheeler, DJ Nelson y Myke Towers",
@@ -1885,6 +2137,18 @@
       "duration_s": 217.345,
       "public": true,
       "track": 73
+    },
+    {
+      "id": "Sf67829b7b2911d42",
+      "title": "La Curiosidad (feat. Dj Nelson, JHAYCO, Lunay & Kendo Kaponi) - Blue Grand Prix Remix",
+      "artist": "Jay Wheeler",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 110.186,
+      "public": true
     },
     {
       "id": "S5255de8eaebb683a",
@@ -1952,6 +2216,18 @@
       "track": 42
     },
     {
+      "id": "S5f98a45d79a7056e",
+      "title": "La Noche de Anoche",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 203.201,
+      "public": true
+    },
+    {
       "id": "S7883352f111c750a",
       "title": "La noche de anoche",
       "artist": "Bad Bunny y ROSALÍA",
@@ -1963,6 +2239,18 @@
       "duration_s": 217.067,
       "public": true,
       "track": 78
+    },
+    {
+      "id": "Sdf50593227c7bc4f",
+      "title": "La Nota",
+      "artist": "Manuel Turizo",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 216.107,
+      "public": true
     },
     {
       "id": "S79c725ba151c857a",
@@ -2041,6 +2329,18 @@
       "duration_s": 248.425,
       "public": true,
       "track": 81
+    },
+    {
+      "id": "S6c76c661cc5ae116",
+      "title": "Las Nenas (feat. La Duraca)",
+      "artist": "NATTI NATASHA",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 88.405,
+      "public": true
     },
     {
       "id": "S7ac8d5f8f4badd2d",
@@ -2195,6 +2495,18 @@
       "track": 86
     },
     {
+      "id": "S696cf1a4a6318d7b",
+      "title": "Mamichula - con Nicki Nicole",
+      "artist": "Trueno",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 189.184,
+      "public": true
+    },
+    {
       "id": "S4c387f277be286d0",
       "title": "mariposas",
       "artist": "sangiovanni y Aitana",
@@ -2232,6 +2544,18 @@
       "duration_s": 149.717,
       "public": true,
       "track": 45
+    },
+    {
+      "id": "S00c80921117a116c",
+      "title": "Me Fije",
+      "artist": "Alex Rose",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 61.098,
+      "public": true
     },
     {
       "id": "S50b352e0cf78348c",
@@ -2349,6 +2673,18 @@
       "track": 93
     },
     {
+      "id": "Sb4eb137cb7eb07cf",
+      "title": "Miénteme",
+      "artist": "TINI",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 88.725,
+      "public": true
+    },
+    {
       "id": "S9b335713c866fdff",
       "title": "Monaco",
       "artist": "Bad Bunny",
@@ -2400,6 +2736,18 @@
       "track": 47
     },
     {
+      "id": "S8545d4860e44c665",
+      "title": "Nathy Peluso Bzrp Music Sessions, Vol. 36 66",
+      "artist": "Bizarrap",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 95.168,
+      "public": true
+    },
+    {
       "id": "S5d6c2a846e741d84",
       "title": "No Longer You",
       "artist": "Jorge Rivera-Herrans y Mason Olshavsky",
@@ -2424,6 +2772,18 @@
       "duration_s": 247.078,
       "public": true,
       "track": 96
+    },
+    {
+      "id": "S493bb32be1f339b9",
+      "title": "No Toque Mi Naik",
+      "artist": "Nicki Nicole",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 122.965,
+      "public": true
     },
     {
       "id": "Sfdf3a9187bfb7cf0",
@@ -2476,6 +2836,18 @@
       "duration_s": 170.429,
       "public": true,
       "track": 98
+    },
+    {
+      "id": "Se10b75e640e58d0e",
+      "title": "Nota de Amor (feat. Daddy Yankee)",
+      "artist": "Wisin",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 232.267,
+      "public": true
     },
     {
       "id": "Sed7cbc9ca67d1e61",
@@ -2606,6 +2978,18 @@
       "track": 51
     },
     {
+      "id": "S11ab2d308b03a0e7",
+      "title": "Pa los Gustos los Colores (Remix)",
+      "artist": "Javiielo",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 17.984,
+      "public": true
+    },
+    {
       "id": "S117177117b0a5136",
       "title": "Pa toda la vida (con Mozart La Para)",
       "artist": "Don Patricio",
@@ -2653,6 +3037,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 177.614,
+      "public": true
+    },
+    {
+      "id": "S1bfe0d91878af923",
+      "title": "Pa' Romperla",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 41.066,
       "public": true
     },
     {
@@ -2760,6 +3156,18 @@
       "track": 109
     },
     {
+      "id": "S16ed3e779330968f",
+      "title": "Poblado",
+      "artist": "Crissin",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 201.597,
+      "public": true
+    },
+    {
       "id": "Sa683cc38cbf21f8b",
       "title": "Por la boca vive el pez",
       "artist": "Fito y Fitipaldis",
@@ -2784,6 +3192,18 @@
       "duration_s": 236.977,
       "public": true,
       "track": 54
+    },
+    {
+      "id": "S73456678ec10d39c",
+      "title": "Problema",
+      "artist": "Daddy Yankee",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 184.507,
+      "public": true
     },
     {
       "id": "S0553089c4ae3302f",
@@ -2822,6 +3242,18 @@
       "duration_s": 166.076,
       "public": true,
       "track": 113
+    },
+    {
+      "id": "S532d6ae3982bfda3",
+      "title": "Purpurina",
+      "artist": "Alberto Gambino",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 192.0,
+      "public": true
     },
     {
       "id": "S2ef6447b79058248",
@@ -2876,6 +3308,18 @@
       "track": 115
     },
     {
+      "id": "Sd7820586132e5403",
+      "title": "Qué Más Pues",
+      "artist": "J Balvin",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 26.026,
+      "public": true
+    },
+    {
       "id": "Sc50f66eebe73b5a1",
       "title": "Radio clandestina (Directo)",
       "artist": "La Raíz",
@@ -2887,6 +3331,18 @@
       "duration_s": 265.817,
       "public": true,
       "track": 57
+    },
+    {
+      "id": "S9af3edc0f8b0698b",
+      "title": "Ram Pam Pam",
+      "artist": "NATTI NATASHA",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 35.498,
+      "public": true
     },
     {
       "id": "Sba5ac0914ee809d7",
@@ -2992,6 +3448,18 @@
       "track": 119
     },
     {
+      "id": "S89a2e0d0a087b910",
+      "title": "Safaera",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 25.386,
+      "public": true
+    },
+    {
       "id": "S93e5cffcb019081a",
       "title": "Sal y perrea",
       "artist": "Sech",
@@ -3044,6 +3512,18 @@
       "track": 122
     },
     {
+      "id": "Sab3599dd15bd69d4",
+      "title": "Santa María (Feat. Busy Signal)",
+      "artist": "Bad Gyal",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 154.933,
+      "public": true
+    },
+    {
       "id": "Sb1a1a78286702444",
       "title": "Se Preparó",
       "artist": "Ozuna",
@@ -3068,6 +3548,18 @@
       "duration_s": 160.84,
       "public": true,
       "track": 124
+    },
+    {
+      "id": "Sc2784a1b0117f566",
+      "title": "Se Te Nota (with Guaynaa)",
+      "artist": "Lele Pons",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 155.825,
+      "public": true
     },
     {
       "id": "S419d9595268a1496",
@@ -3107,6 +3599,18 @@
       "duration_s": 269.553,
       "public": true,
       "track": 126
+    },
+    {
+      "id": "S873e99e2b52c7215",
+      "title": "Serpiente Veneno (feat. Ele A El Dominio)",
+      "artist": "Kidd Keo",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 268.437,
+      "public": true
     },
     {
       "id": "Sde1b582181d9eeb5",
@@ -3226,6 +3730,18 @@
       "track": 63
     },
     {
+      "id": "S92d9ccab2b79e854",
+      "title": "Snow Tha Product Bzrp Music Sessions, Vol. 39",
+      "artist": "Bizarrap",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 177.443,
+      "public": true
+    },
+    {
       "id": "S52de8a2edf03ead5",
       "title": "Snow Tha Product Bzrp Music Sessions, Vol. 39 66",
       "artist": "Snow Tha Product y Bizarrap",
@@ -3317,6 +3833,30 @@
       "track": 7
     },
     {
+      "id": "Sdeeadb8ea3c28967",
+      "title": "Sudores fríos",
+      "artist": "Natos y Waor",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 186.41,
+      "public": true
+    },
+    {
+      "id": "S355cdfdb04bb8eea",
+      "title": "Taxi",
+      "artist": "Mariah Angeliq",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 173.653,
+      "public": true
+    },
+    {
       "id": "Sf7fa5f0046a34f16",
       "title": "Te de Campana (Electro Dembow Remix)",
       "artist": "Atomic Otro Way",
@@ -3406,6 +3946,18 @@
       "duration_s": 50.638,
       "public": true,
       "track": 3
+    },
+    {
+      "id": "S8539faa8d767ff70",
+      "title": "Tiroteo - Remix",
+      "artist": "Marc Seguí",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 315.562,
+      "public": true
     },
     {
       "id": "Sde0595502eb7511c",
@@ -3576,6 +4128,18 @@
       "track": 43
     },
     {
+      "id": "S162b1476b421af4a",
+      "title": "Tropical",
+      "artist": "La Mafia del Amor",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 49.173,
+      "public": true
+    },
+    {
       "id": "S76d53d1100c305d4",
       "title": "Tropical",
       "artist": "Pipo Beatz y La Mafia del Amor",
@@ -3598,6 +4162,18 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 276.208,
+      "public": true
+    },
+    {
+      "id": "S4b27924e612f0972",
+      "title": "Tu Sicaria",
+      "artist": "Ms Nina",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 147.013,
       "public": true
     },
     {
@@ -3650,6 +4226,18 @@
       "duration_s": 242.631,
       "public": true,
       "track": 46
+    },
+    {
+      "id": "S7a15e95e950b94ee",
+      "title": "Una Locura",
+      "artist": "Ozuna",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 58.346,
+      "public": true
     },
     {
       "id": "Sf6370d58447e9f55",
@@ -3830,6 +4418,18 @@
       "duration_s": 222.605,
       "public": true,
       "track": 74
+    },
+    {
+      "id": "Sb8dfb34535c46cca",
+      "title": "Wao",
+      "artist": "Sech",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 80.341,
+      "public": true
     },
     {
       "id": "S2386f99bdbcfbecc",
