@@ -677,6 +677,18 @@
     "track": 1
   },
   {
+    "id": "Sc4536ce472aab525",
+    "title": "Carrer",
+    "artist": "EBRI KNIGHT",
+    "year": null,
+    "tags": [],
+    "folder_id": "F055ccbef8d7de2ca",
+    "duration_s": 222.293,
+    "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+    "audio": "audio/Sc4536ce472aab525.opus",
+    "track": 77
+  },
+  {
     "id": "S3e85dc507dd3c664",
     "title": "Celoso",
     "artist": "Lele Pons",
@@ -1220,6 +1232,18 @@
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S2f8e76ee6b7ea108.opus",
     "track": 19
+  },
+  {
+    "id": "Sefeb4ca4953cc976",
+    "title": "El Cap Per Avall",
+    "artist": "ZOO",
+    "year": null,
+    "tags": [],
+    "folder_id": "F055ccbef8d7de2ca",
+    "duration_s": 264.231,
+    "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+    "audio": "audio/Sefeb4ca4953cc976.opus",
+    "track": 79
   },
   {
     "id": "S9d3d80416ee58023",
@@ -3584,6 +3608,18 @@
     "track": 115
   },
   {
+    "id": "S1a4be3e81188cacc",
+    "title": "Radio Clandestina",
+    "artist": "La Raíz",
+    "year": null,
+    "tags": [],
+    "folder_id": "F055ccbef8d7de2ca",
+    "duration_s": 265.822,
+    "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+    "audio": "audio/S1a4be3e81188cacc.opus",
+    "track": 76
+  },
+  {
     "id": "Sc50f66eebe73b5a1",
     "title": "Radio clandestina (Directo)",
     "artist": "La Raíz",
@@ -3797,6 +3833,18 @@
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S419d9595268a1496.opus",
     "track": 60
+  },
+  {
+    "id": "S9235d3c11665641d",
+    "title": "Seguiré al Sol",
+    "artist": "Fyahbwoy",
+    "year": null,
+    "tags": [],
+    "folder_id": "F055ccbef8d7de2ca",
+    "duration_s": 185.934,
+    "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+    "audio": "audio/S9235d3c11665641d.opus",
+    "track": 78
   },
   {
     "id": "S9ada718f5eb4a133",
