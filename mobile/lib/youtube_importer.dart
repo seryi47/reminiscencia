@@ -23,6 +23,12 @@ const Duration kYoutubeJobTimeout = Duration(minutes: 10);
 const Duration kYoutubeRequestTimeout = Duration(seconds: 45);
 const Duration kYoutubeDownloadTimeout = Duration(minutes: 3);
 
+/// Conversor yttowav. La APK habla DIRECTAMENTE con él (no por el Worker) en convert/status/download: así cada teléfono
+/// usa su propia IP, con su propio cupo diario (40/día por IP), en vez de compartir la única IP del Worker con toda la
+/// web (que es lo que agotaba el cupo). La lista de la playlist y la búsqueda siguen yendo por el Worker, porque
+/// necesitan yt-dlp y no se pueden hacer desde el teléfono. ADR-0045.
+const String kConverterApi = 'https://api.yttowav.org';
+
 /// Canción que devuelve el proxy de playlists.
 class YoutubeTrack {
   const YoutubeTrack({
@@ -134,10 +140,11 @@ class _PendingYoutubeJob {
   final String traceId;
 }
 
-/// Cliente Android de los proxies de YouTube de la web.
+/// Cliente Android del importador de YouTube.
 ///
-/// El cliente nunca habla directamente con yt-dlp ni con yttowav: obtiene la
-/// playlist, crea los trabajos y descarga los WAV a una carpeta temporal para
+/// La lista de la playlist y la búsqueda las pide al Worker (necesitan yt-dlp). La conversión a WAV (convert, status y
+/// download) va DIRECTA a yttowav desde el teléfono (ADR-0045): así cada móvil usa su propia IP, con su cupo diario
+/// propio, en vez de compartir la única IP del Worker con toda la web. Los WAV se descargan a una carpeta temporal para
 /// que `homeostasia.dart` los entregue a `LibraryController.uploadShared`.
 /// Resultado de buscar en YouTube desde el buscador (ADR-0021).
 class YoutubeSearchResult {
@@ -208,16 +215,21 @@ class YoutubeImporter {
   YoutubeImporter({
     required this.client,
     Uri? base,
+    Uri? converterBase,
     Future<Directory> Function()? tempDir,
     Future<void> Function(Duration)? wait,
     DateTime Function()? clock,
   }) : base = base ?? Uri.parse(kLibraryBase),
+       converterBase = converterBase ?? Uri.parse('$kConverterApi/'),
        _tempDir = tempDir ?? getTemporaryDirectory,
        _wait = wait ?? Future<void>.delayed,
        _clock = clock ?? DateTime.now;
 
   final http.Client client;
   final Uri base;
+
+  /// Conversor yttowav (ADR-0045): convert/status/download van aquí, directos desde el teléfono.
+  final Uri converterBase;
   final Future<Directory> Function() _tempDir;
   final Future<void> Function(Duration) _wait;
   final DateTime Function() _clock;
@@ -429,6 +441,7 @@ class YoutubeImporter {
     var poll = 0;
     var statusErrors = 0;
     String? previousState;
+    String? downloadCandidate;
     while (true) {
       cancellation?.throwIfCancelled();
       poll++;
@@ -436,12 +449,13 @@ class YoutubeImporter {
       try {
         status = _json(
           await _get(
-            _endpoint(
-              'api/youtube/status',
+            _converterEndpoint(
+              'api/status',
             ).replace(queryParameters: {'jobId': jobId}),
             headers: {
               'X-Homeostasia-Trace': traceId,
               'X-Homeostasia-Poll': '$poll',
+              ..._converterHeaders(),
             },
             cancellation: cancellation,
           ),
@@ -518,12 +532,23 @@ class YoutubeImporter {
       if (state == 'error' || state == 'failed') {
         await _removePendingJob(videoId);
         throw AppException(
-          status['error'] is String
-              ? status['error'] as String
-              : 'La conversión de «${track.title}» falló.',
+          _firstString([
+                status['error'],
+                status['errorText'],
+                status['message'],
+              ]) ??
+              'La conversión de «${track.title}» falló.',
         );
       }
-      if (state == 'completed' || state == 'done') break;
+      // yttowav anuncia a veces el final solo con la URL de descarga, sin estado «completed».
+      downloadCandidate = _firstString([
+        status['downloadUrl'],
+        status['downloadPath'],
+        status['url'],
+      ]);
+      if (state == 'completed' || state == 'done' || downloadCandidate != null) {
+        break;
+      }
       if (DateTime.now().isAfter(deadline)) {
         throw AppException(
           'La conversión de «${track.title}» tardó demasiado.',
@@ -544,10 +569,9 @@ class YoutubeImporter {
     final safeTitle = _safeTitle(track.title);
     final output = File('${directory.path}/$index-$safeTitle.wav');
     await _downloadWav(
-      _endpoint(
-        'api/youtube/download',
-      ).replace(queryParameters: {'jobId': jobId}),
+      _resolveDownload(downloadCandidate, jobId),
       output,
+      headers: _converterHeaders(),
       cancellation: cancellation,
     );
     await _removePendingJob(videoId);
@@ -567,6 +591,14 @@ class YoutubeImporter {
     YoutubeImportProgressCallback? onProgress,
     YoutubeImportCancellation? cancellation,
   }) async {
+    final videoId = _videoId(track.url);
+    if (videoId == null) {
+      throw const AppException(
+        'El enlace de YouTube no contiene un vídeo válido.',
+      );
+    }
+    final canonicalUrl = _canonicalVideoUrl(videoId);
+    final title = String.fromCharCodes(track.title.runes.take(200));
     for (var attempt = 1; attempt <= kYoutubeConvertCreateAttempts; attempt++) {
       cancellation?.throwIfCancelled();
       await _waitForCreateTurn(deadline);
@@ -575,9 +607,14 @@ class YoutubeImporter {
       try {
         converted = _json(
           await _post(
-            _endpoint('api/youtube/convert'),
-            {'url': track.url, 'title': track.title},
-            headers: {'X-Homeostasia-Trace': traceId},
+            _converterEndpoint('api/convert'),
+            {
+              'url': canonicalUrl,
+              'title': title,
+              'format': 'wav',
+              'quality': 'original',
+            },
+            headers: {'X-Homeostasia-Trace': traceId, ..._converterHeaders()},
             cancellation: cancellation,
           ),
         );
@@ -622,8 +659,8 @@ class YoutubeImporter {
         continue;
       }
 
-      final jobId = converted['jobId'];
-      if (jobId is! String || jobId.trim().isEmpty) {
+      final jobId = _jobIdFrom(converted);
+      if (jobId == null) {
         throw const AppException('El conversor no devolvió un trabajo válido.');
       }
       return jobId;
@@ -816,12 +853,19 @@ class YoutubeImporter {
     }
     try {
       final data = jsonDecode(response.body);
-      if (data is Map && data['error'] is String) {
-        throw YoutubeHttpException(
-          data['error'] as String,
-          statusCode: response.statusCode,
-          retryAfter: response.headers['retry-after'],
-        );
+      if (data is Map) {
+        final message = _firstString([
+          data['error'],
+          data['errorText'],
+          data['message'],
+        ]);
+        if (message != null) {
+          throw YoutubeHttpException(
+            message,
+            statusCode: response.statusCode,
+            retryAfter: response.headers['retry-after'],
+          );
+        }
       }
     } on FormatException {
       // Se usa el mensaje genérico de abajo.
@@ -840,6 +884,33 @@ class YoutubeImporter {
     ).join();
     return '${hex(8)}-${hex(4)}-4${hex(3)}-'
         '${(8 + _random.nextInt(4)).toRadixString(16)}${hex(3)}-${hex(12)}';
+  }
+
+  /// Primer valor que sea una cadena no vacía, recortada; null si no hay ninguno.
+  static String? _firstString(List<Object?> values) {
+    for (final value in values) {
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return null;
+  }
+
+  static final RegExp _jobIdPattern = RegExp(r'^[A-Za-z0-9_-]{1,200}$');
+
+  /// Id de trabajo que devuelve yttowav: `jobId`, o `id`, o `job.id`; validado.
+  static String? _jobIdFrom(Map<String, dynamic> data) {
+    final job = data['job'];
+    final candidates = <Object?>[
+      data['jobId'],
+      data['id'],
+      job is Map ? job['id'] : null,
+    ];
+    for (final value in candidates) {
+      final text = value is String
+          ? value
+          : (value is num ? value.toString() : null);
+      if (text != null && _jobIdPattern.hasMatch(text)) return text;
+    }
+    return null;
   }
 
   static int? _safeInteger(Object? value) =>
@@ -875,6 +946,7 @@ class YoutubeImporter {
   Future<void> _downloadWav(
     Uri uri,
     File output, {
+    Map<String, String> headers = const {},
     YoutubeImportCancellation? cancellation,
   }) async {
     cancellation?.throwIfCancelled();
@@ -886,7 +958,7 @@ class YoutubeImporter {
               'GET',
               uri,
               abortTrigger: cancellation?.whenCancelled,
-            )..headers['Accept'] = 'audio/wav',
+            )..headers.addAll({'Accept': 'audio/wav', ...headers}),
           )
           .timeout(kYoutubeDownloadTimeout);
     } on TimeoutException {
@@ -951,6 +1023,35 @@ class YoutubeImporter {
   }
 
   Uri _endpoint(String path) => base.resolve(path);
+
+  /// Ruta del conversor yttowav (convert/status/download), directa desde el teléfono (ADR-0045).
+  Uri _converterEndpoint(String path) => converterBase.resolve(path);
+
+  /// Cabeceras con las que la APK se identifica ante yttowav como su cliente web (igual que hacía el Worker). No eluden
+  /// el cupo: cada teléfono sigue contando como una IP con su 40/día; solo hacen que la API acepte la petición.
+  Map<String, String> _converterHeaders() => const {
+    'Origin': 'https://www.yttowav.org',
+    'Referer': 'https://www.yttowav.org/',
+    'User-Agent': 'reminiscencia-youtube-importer',
+  };
+
+  static String _canonicalVideoUrl(String id) =>
+      'https://www.youtube.com/watch?v=$id';
+
+  /// URL de descarga del WAV: la que devuelva el estado, o `api/download/?jobId=…` si no la da. Debe quedarse en el
+  /// mismo origen que el conversor (no se sigue una redirección a otro host).
+  Uri _resolveDownload(String? candidate, String jobId) {
+    final path = candidate == null || candidate.trim().isEmpty
+        ? 'api/download/?jobId=${Uri.encodeQueryComponent(jobId)}'
+        : candidate.trim();
+    final uri = _converterEndpoint(path);
+    if (uri.origin != converterBase.resolve('/').origin) {
+      throw const AppException(
+        'El conversor devolvió una dirección de descarga no válida.',
+      );
+    }
+    return uri;
+  }
 
   static Map<String, dynamic> _json(http.Response response) {
     try {

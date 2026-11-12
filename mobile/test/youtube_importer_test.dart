@@ -154,17 +154,18 @@ void main() {
                 }),
                 200,
               );
-            case '/api/youtube/convert':
+            case '/api/convert':
               return http.Response(jsonEncode({'jobId': 'job-1'}), 200);
-            case '/api/youtube/status':
+            case '/api/status':
               return http.Response(jsonEncode({'status': 'completed'}), 200);
-            case '/api/youtube/download':
+            case '/api/download/':
               return http.Response.bytes(wav, 200);
             default:
               fail('Ruta inesperada: ${request.url}');
           }
         }),
         base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
         tempDir: () => Directory.systemTemp.createTemp('youtube-import-test'),
       );
 
@@ -208,7 +209,7 @@ void main() {
               200,
             );
           }
-          if (request.url.path == '/api/youtube/convert') {
+          if (request.url.path == '/api/convert') {
             createAttempts++;
             traceIds.add(request.headers['x-homeostasia-trace']);
             if (createAttempts == 1) {
@@ -223,7 +224,7 @@ void main() {
             }
             return http.Response(jsonEncode({'jobId': 'job-1'}), 200);
           }
-          if (request.url.path == '/api/youtube/status') {
+          if (request.url.path == '/api/status') {
             statusAttempts++;
             traceIds.add(request.headers['x-homeostasia-trace']);
             pollNumbers.add(request.headers['x-homeostasia-poll']);
@@ -248,12 +249,13 @@ void main() {
               200,
             );
           }
-          if (request.url.path == '/api/youtube/download') {
+          if (request.url.path == '/api/download/') {
             return http.Response.bytes(wav, 200);
           }
           fail('Ruta inesperada: ${request.url}');
         }),
         base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
         tempDir: () => Directory.systemTemp.createTemp('youtube-retry-test'),
         wait: (duration) async => waits.add(duration),
       );
@@ -325,11 +327,11 @@ void main() {
             ],
           }, 200);
         }
-        if (request.url.path == '/api/youtube/convert') {
+        if (request.url.path == '/api/convert') {
           createAttempts++;
           return jsonResponse({'jobId': 'job-persisted'}, 200);
         }
-        if (request.url.path == '/api/youtube/status') {
+        if (request.url.path == '/api/status') {
           statusAttempts++;
           if (statusAttempts == 1) {
             final abortable = request as http.AbortableRequest;
@@ -339,7 +341,7 @@ void main() {
           }
           return jsonResponse({'status': 'completed'}, 200);
         }
-        if (request.url.path == '/api/youtube/download') {
+        if (request.url.path == '/api/download/') {
           return http.StreamedResponse(Stream.value(wav), 200);
         }
         fail('Ruta inesperada: ${request.url}');
@@ -350,6 +352,7 @@ void main() {
       final firstImporter = YoutubeImporter(
         client: client,
         base: base,
+        converterBase: base,
         tempDir: tempDir,
         wait: (_) async {},
       );
@@ -373,6 +376,7 @@ void main() {
       final resumedImporter = YoutubeImporter(
         client: client,
         base: base,
+        converterBase: base,
         tempDir: tempDir,
         wait: (_) async {},
       );
@@ -417,7 +421,7 @@ void main() {
               200,
             );
           }
-          if (request.url.path == '/api/youtube/status') {
+          if (request.url.path == '/api/status') {
             statusAttempts++;
             return statusAttempts == 1
                 ? http.Response(
@@ -428,16 +432,17 @@ void main() {
                   )
                 : http.Response(jsonEncode({'status': 'completed'}), 200);
           }
-          if (request.url.path == '/api/youtube/convert') {
+          if (request.url.path == '/api/convert') {
             createAttempts++;
             return http.Response(jsonEncode({'jobId': 'job-new'}), 200);
           }
-          if (request.url.path == '/api/youtube/download') {
+          if (request.url.path == '/api/download/') {
             return http.Response.bytes(wav, 200);
           }
           fail('Ruta inesperada: ${request.url}');
         }),
         base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
         tempDir: () => Directory.systemTemp.createTemp('youtube-expired-test'),
         wait: (_) async {},
       );
@@ -472,22 +477,23 @@ void main() {
       wav.setRange(8, 12, 'WAVE'.codeUnits);
       final importer = YoutubeImporter(
         client: MockClient((request) async {
-          if (request.url.path == '/api/youtube/convert') {
+          if (request.url.path == '/api/convert') {
             // La segunda pista la rechaza siempre el conversor (503, reintentable).
             if (request.body.contains('bbbbbbbbbbb')) {
               return http.Response(jsonEncode({'error': 'saturado'}), 503);
             }
             return http.Response(jsonEncode({'jobId': 'job-ok'}), 200);
           }
-          if (request.url.path == '/api/youtube/status') {
+          if (request.url.path == '/api/status') {
             return http.Response(jsonEncode({'status': 'completed'}), 200);
           }
-          if (request.url.path == '/api/youtube/download') {
+          if (request.url.path == '/api/download/') {
             return http.Response.bytes(wav, 200);
           }
           fail('Ruta inesperada: ${request.url}');
         }),
         base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
         tempDir: () => Directory.systemTemp.createTemp('youtube-batch-test'),
         wait: (_) async {},
       );
@@ -509,7 +515,7 @@ void main() {
       var dailyLimitAvisos = 0;
       final importer = YoutubeImporter(
         client: MockClient((request) async {
-          if (request.url.path == '/api/youtube/convert') {
+          if (request.url.path == '/api/convert') {
             return http.Response(
               jsonEncode({'error': "You've reached the daily conversion limit (40 per day). Please come back tomorrow!"}),
               429,
@@ -518,6 +524,7 @@ void main() {
           fail('No debería llamar a ${request.url} tras el tope diario');
         }),
         base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
         tempDir: () => Directory.systemTemp.createTemp('youtube-daily-test'),
         wait: (_) async {},
       );
