@@ -3604,7 +3604,7 @@
     {
       "id": "S8c88131ae99c075a",
       "title": "You Are",
-      "artist": "Nic Johnston y Jape Enterprise",
+      "artist": "Nic Johnston",
       "year": null,
       "tags": [],
       "folder_id": "Fcaa6f9307e648e48",
@@ -7063,6 +7063,57 @@
       "size_bytes": 199050,
       "added_at": "2026-11-11T14:02:11+00:00",
       "public": false
+    },
+    {
+      "id": "S9ada718f5eb4a133",
+      "title": "Self Aware",
+      "artist": "LUM!X",
+      "year": null,
+      "tags": [],
+      "folder_id": "Fcaa6f9307e648e48",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "9ada718f5eb4a13339563cf761a35777855d4a1e258bee7eb90c0f0dcefb2513",
+      "duration_s": 151.742,
+      "codec": "opus",
+      "size_bytes": 932289,
+      "added_at": "2026-11-12T09:28:42+00:00",
+      "public": true,
+      "track": 4
+    },
+    {
+      "id": "Saabb7b84b7149955",
+      "title": "Slow Dive",
+      "artist": "feva.",
+      "year": null,
+      "tags": [],
+      "folder_id": "Fcaa6f9307e648e48",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "aabb7b84b714995521af3a9d126b89dae21b8e243813a7eabde514bb08fc55bf",
+      "duration_s": 12.885,
+      "codec": "opus",
+      "size_bytes": 78601,
+      "added_at": "2026-11-12T09:28:42+00:00",
+      "public": true,
+      "track": 5
+    },
+    {
+      "id": "S93007694f91c48ad",
+      "title": "Meet Me In The Dark",
+      "artist": "AVE",
+      "year": null,
+      "tags": [],
+      "folder_id": "Fcaa6f9307e648e48",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "93007694f91c48adec4fd9c654415a25c5afd8d215817f055a19589d7305cd7b",
+      "duration_s": 175.385,
+      "codec": "opus",
+      "size_bytes": 1076187,
+      "added_at": "2026-11-12T09:28:42+00:00",
+      "public": true,
+      "track": 6
     }
   ]
 }

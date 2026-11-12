@@ -2643,6 +2643,19 @@
       "track": 205
     },
     {
+      "id": "S93007694f91c48ad",
+      "title": "Meet Me In The Dark",
+      "artist": "AVE",
+      "year": null,
+      "tags": [],
+      "folder_id": "Fcaa6f9307e648e48",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 175.385,
+      "public": true,
+      "track": 6
+    },
+    {
       "id": "Sd118fa0109ddb0cd",
       "title": "Meet Me In The Dark (Sped Up Version)",
       "artist": "AVE",
@@ -3586,6 +3599,19 @@
       "track": 60
     },
     {
+      "id": "S9ada718f5eb4a133",
+      "title": "Self Aware",
+      "artist": "LUM!X",
+      "year": null,
+      "tags": [],
+      "folder_id": "Fcaa6f9307e648e48",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 151.742,
+      "public": true,
+      "track": 4
+    },
+    {
       "id": "S4a9b31361c345af3",
       "title": "Sera's Confession Sing-Along - Hazbin Hotel S2 Prime Video",
       "artist": "Prime Video",
@@ -3753,6 +3779,19 @@
       "duration_s": 235.91,
       "public": true,
       "track": 62
+    },
+    {
+      "id": "Saabb7b84b7149955",
+      "title": "Slow Dive",
+      "artist": "feva.",
+      "year": null,
+      "tags": [],
+      "folder_id": "Fcaa6f9307e648e48",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "duration_s": 12.885,
+      "public": true,
+      "track": 5
     },
     {
       "id": "S92d9ccab2b79e854",
@@ -4598,7 +4637,7 @@
     {
       "id": "S8c88131ae99c075a",
       "title": "You Are",
-      "artist": "Nic Johnston y Jape Enterprise",
+      "artist": "Nic Johnston",
       "year": null,
       "tags": [],
       "folder_id": "Fcaa6f9307e648e48",
