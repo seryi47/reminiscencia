@@ -568,33 +568,13 @@ class YoutubeImporter {
     );
     final safeTitle = _safeTitle(track.title);
     final output = File('${directory.path}/$index-$safeTitle.wav');
-    // La descarga puede quedar incompleta (WAV grandes + red móvil): se reintenta unas veces. La URL firmada dura
-    // 900 s, así que se puede reusar en estos reintentos rápidos.
-    var dlAttempt = 0;
-    while (true) {
-      try {
-        await _downloadWav(
-          _resolveDownload(downloadCandidate, jobId),
-          output,
-          headers: _converterHeaders(),
-          cancellation: cancellation,
-        );
-        break;
-      } on AppException {
-        cancellation?.throwIfCancelled();
-        dlAttempt++;
-        if (dlAttempt >= 3) rethrow;
-        onProgress?.call(
-          YoutubeImportProgress(
-            index: index,
-            total: total,
-            title: track.title,
-            phase: 'descarga incompleta; reintento $dlAttempt/3',
-          ),
-        );
-        await _waitCancellable(kYoutubePollInterval, cancellation);
-      }
-    }
+    // La descarga es reanudable: si el WAV (grande) se corta en móvil, _downloadWav pide el resto con Range.
+    await _downloadWav(
+      _resolveDownload(downloadCandidate, jobId),
+      output,
+      headers: _converterHeaders(),
+      cancellation: cancellation,
+    );
     await _removePendingJob(videoId);
     return YoutubeImportedAudio(
       name: '$safeTitle.wav',
@@ -964,97 +944,148 @@ class YoutubeImporter {
     return state;
   }
 
+  /// Descarga el WAV de forma REANUDABLE (ADR-0045). El WAV «original» de yttowav es enorme (~10 MB/min → una canción
+  /// de 4 min ≈ 48 MB) y en móvil la conexión se corta a mitad; si se guardaba el trozo, ffprobe no lo podía leer al
+  /// subir. Ahora: se sigue la redirección 302 a R2 (que admite `Range`), y si la descarga se queda corta se pide el
+  /// resto con `Range: bytes=<ya>-` hasta completar el tamaño anunciado (Content-Length o la cabecera RIFF).
   Future<void> _downloadWav(
     Uri uri,
     File output, {
     Map<String, String> headers = const {},
     YoutubeImportCancellation? cancellation,
   }) async {
-    cancellation?.throwIfCancelled();
-    http.StreamedResponse response;
-    try {
-      response = await client
-          .send(
-            http.AbortableRequest(
-              'GET',
-              uri,
-              abortTrigger: cancellation?.whenCancelled,
-            )
-              // yttowav responde a /api/download con un 302 a una URL firmada de almacenamiento (R2): hay que
-              // SEGUIR la redirección para llegar al WAV (ADR-0045).
-              ..followRedirects = true
-              ..maxRedirects = 5
-              ..headers.addAll({'Accept': 'audio/wav', ...headers}),
-          )
-          .timeout(kYoutubeDownloadTimeout);
-    } on TimeoutException {
-      throw const AppException('La descarga del WAV tardó demasiado.');
-    } on SocketException {
-      throw const AppException('No hay conexión con la web.');
-    } on http.ClientException {
-      throw const AppException('No hay conexión con la web.');
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await response.stream.bytesToString();
-      try {
-        final data = jsonDecode(body);
-        if (data is Map && data['error'] is String) {
-          throw AppException(data['error'] as String);
-        }
-        cancellation?.throwIfCancelled();
-      } on FormatException {
-        // Se usa el mensaje genérico de abajo.
-      }
-      throw AppException(
-        'No se pudo descargar el WAV (código ${response.statusCode}).',
-      );
-    }
-    final declared = response.contentLength;
-    if (declared != null &&
-        (declared <= 44 || declared > kYoutubeMaxWavBytes)) {
-      throw const AppException('El WAV descargado no tiene un tamaño válido.');
-    }
-    final sink = output.openWrite();
+    const maxAttempts = 6;
+    var have = 0;
+    var lastHave = -1;
+    int? expected;
     final prefix = <int>[];
-    var bytes = 0;
-    try {
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      cancellation?.throwIfCancelled();
+      final reqHeaders = <String, String>{'Accept': 'audio/wav', ...headers};
+      if (have > 0) reqHeaders['Range'] = 'bytes=$have-';
+      http.StreamedResponse response;
       try {
-        await for (final chunk in response.stream.timeout(
-          kYoutubeDownloadTimeout,
-        )) {
-          cancellation?.throwIfCancelled();
-          bytes += chunk.length;
-          if (bytes > kYoutubeMaxWavBytes) {
-            throw const AppException(
-              'El WAV supera el tamaño máximo permitido.',
-            );
-          }
-          if (prefix.length < 12) {
-            prefix.addAll(chunk.take(12 - prefix.length));
-          }
-          sink.add(chunk);
-        }
+        response = await client
+            .send(
+              http.AbortableRequest(
+                'GET',
+                uri,
+                abortTrigger: cancellation?.whenCancelled,
+              )
+                ..followRedirects = true
+                ..maxRedirects = 5
+                ..headers.addAll(reqHeaders),
+            )
+            .timeout(kYoutubeDownloadTimeout);
       } on TimeoutException {
-        throw const AppException('La descarga del WAV tardó demasiado.');
+        if (attempt == maxAttempts - 1) {
+          throw const AppException('La descarga del WAV tardó demasiado.');
+        }
+        await _waitCancellable(kYoutubePollInterval, cancellation);
+        continue;
+      } on SocketException {
+        if (attempt == maxAttempts - 1) {
+          throw const AppException('No hay conexión con la web.');
+        }
+        await _waitCancellable(kYoutubePollInterval, cancellation);
+        continue;
+      } on http.ClientException {
+        if (attempt == maxAttempts - 1) {
+          throw const AppException('No hay conexión con la web.');
+        }
+        await _waitCancellable(kYoutubePollInterval, cancellation);
+        continue;
       }
-      await sink.flush();
-    } finally {
-      await sink.close();
-    }
-    cancellation?.throwIfCancelled();
-    if (bytes <= 44 || !_validWavPrefix(prefix)) {
-      await _deleteQuietly(output);
-      throw const AppException('El conversor no devolvió un WAV válido.');
-    }
-    // Truncado: el WAV «original» pesa mucho (unos 10 MB por minuto) y en móvil la descarga se corta a veces. Si no
-    // llegaron todos los bytes que anunció el servidor, el archivo tiene cabecera RIFF válida pero el audio está
-    // incompleto y luego ffprobe no lo puede leer al subir. Se borra y se lanza un error reintentable (ADR-0045).
-    if (declared != null && bytes < declared) {
-      await _deleteQuietly(output);
-      throw AppException(
-        'La descarga del WAV quedó incompleta ($bytes de $declared bytes).',
+
+      final status = response.statusCode;
+      final fresh = status == 200;
+      if (fresh) {
+        have = 0; // respuesta completa: se (re)empieza desde cero
+        prefix.clear();
+        final cl = response.contentLength;
+        expected = (cl != null && cl > 0) ? cl : null;
+      } else if (status == 206) {
+        expected = _rangeTotal(response.headers['content-range']) ?? expected;
+      } else {
+        final body = await response.stream.bytesToString();
+        try {
+          final data = jsonDecode(body);
+          final msg = data is Map
+              ? _firstString([data['error'], data['errorText'], data['message']])
+              : null;
+          if (msg != null) throw AppException(msg);
+        } on FormatException {
+          // mensaje genérico de abajo
+        }
+        throw AppException('No se pudo descargar el WAV (código $status).');
+      }
+      if (expected != null && expected > kYoutubeMaxWavBytes) {
+        throw const AppException('El WAV descargado no tiene un tamaño válido.');
+      }
+
+      var timedOut = false;
+      final sink = output.openWrite(
+        mode: fresh ? FileMode.write : FileMode.writeOnlyAppend,
       );
+      try {
+        try {
+          await for (final chunk in response.stream.timeout(
+            kYoutubeDownloadTimeout,
+          )) {
+            cancellation?.throwIfCancelled();
+            if (prefix.length < 12) prefix.addAll(chunk.take(12 - prefix.length));
+            sink.add(chunk);
+            have += chunk.length;
+            if (have > kYoutubeMaxWavBytes) {
+              throw const AppException(
+                'El WAV supera el tamaño máximo permitido.',
+              );
+            }
+          }
+        } on TimeoutException {
+          timedOut = true; // corte: se guarda lo recibido y se reanuda
+        }
+        await sink.flush();
+      } finally {
+        await sink.close();
+      }
+      cancellation?.throwIfCancelled();
+
+      final target = expected ?? _riffTotal(prefix);
+      final validStart = have > 44 && _validWavPrefix(prefix);
+      if (validStart && target != null && have >= target) return; // completo
+      // Sin tamaño conocido y la respuesta terminó limpia: se acepta.
+      if (validStart && target == null && !timedOut && fresh) return;
+      // Sin avance entre intentos: no insistir más.
+      if (have <= lastHave) break;
+      lastHave = have;
     }
+    await _deleteQuietly(output);
+    throw AppException(
+      'La descarga del WAV quedó incompleta ($have bytes'
+      '${expected != null ? ' de $expected' : ''}).',
+    );
+  }
+
+  /// Tamaño total de una cabecera `Content-Range: bytes X-Y/TOTAL`, o null.
+  static int? _rangeTotal(String? header) {
+    if (header == null) return null;
+    final slash = header.lastIndexOf('/');
+    if (slash < 0) return null;
+    return int.tryParse(header.substring(slash + 1).trim());
+  }
+
+  /// Tamaño total que declara la cabecera RIFF del WAV (bytes 4-7, little-endian, + 8), o null si no es fiable.
+  static int? _riffTotal(List<int> prefix) {
+    if (prefix.length < 8 ||
+        String.fromCharCodes(prefix.sublist(0, 4)) != 'RIFF') {
+      return null;
+    }
+    final size = prefix[4] |
+        (prefix[5] << 8) |
+        (prefix[6] << 16) |
+        (prefix[7] << 24);
+    return size > 0 ? size + 8 : null;
   }
 
   Uri _endpoint(String path) => base.resolve(path);

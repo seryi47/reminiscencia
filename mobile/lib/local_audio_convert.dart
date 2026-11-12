@@ -99,7 +99,18 @@ class FfmpegOpusConverter implements AudioConverter {
     final audio = (info?.getStreams() ?? const [])
         .where((stream) => stream.getType() == 'audio')
         .toList();
-    if (audio.isEmpty || !(durationS > 0)) throw const AppException(_readError);
+    if (audio.isEmpty || !(durationS > 0)) {
+      // Se incluye el tamaño para diagnosticar: si es pequeño, el archivo llegó truncado; si es grande, llegó entero
+      // pero no se pudo leer la pista de audio.
+      var size = -1;
+      try {
+        size = await File(path).length();
+      } catch (_) {}
+      throw AppException(
+        'No se puede leer este archivo ($size bytes). Comprueba que es '
+        'audio válido (WAV, MP3, M4A, FLAC u OGG).',
+      );
+    }
     final channels = audio.first.getAllProperties()?['channels'];
     return _Probe(
       durationS: durationS,
