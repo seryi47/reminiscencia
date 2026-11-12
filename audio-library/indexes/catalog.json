@@ -8202,6 +8202,57 @@
       "added_at": "2026-11-12T10:42:31+00:00",
       "public": true,
       "track": 79
+    },
+    {
+      "id": "S3a01ba50a5890102",
+      "title": "Esbarzers - Remix",
+      "artist": "ZOO",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "3a01ba50a58901026b008638438a7dde9b8ead279acd4a67c48003f1450f714a",
+      "duration_s": 293.542,
+      "codec": "opus",
+      "size_bytes": 1736033,
+      "added_at": "2026-11-12T10:43:39+00:00",
+      "public": true,
+      "track": 80
+    },
+    {
+      "id": "Sec1376bc6000dc05",
+      "title": "Quemar el Mar",
+      "artist": "Lágrimas De Sangre",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "ec1376bc6000dc0507a141014d94efa0ddd1c1180667ec44fbb0851bfd1ec62d",
+      "duration_s": 289.379,
+      "codec": "opus",
+      "size_bytes": 1870204,
+      "added_at": "2026-11-12T10:43:39+00:00",
+      "public": true,
+      "track": 81
+    },
+    {
+      "id": "Se7cb6a8b80fc34e3",
+      "title": "Cuando sale el sol",
+      "artist": "Lágrimas De Sangre",
+      "year": null,
+      "tags": [],
+      "folder_id": "F055ccbef8d7de2ca",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "e7cb6a8b80fc34e3188692c21a4526f66a7af0e0326542e7c70f9ba4ae5d2c18",
+      "duration_s": 352.804,
+      "codec": "opus",
+      "size_bytes": 2151839,
+      "added_at": "2026-11-12T10:43:39+00:00",
+      "public": true,
+      "track": 82
     }
   ]
 }
