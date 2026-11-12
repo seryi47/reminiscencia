@@ -8558,6 +8558,57 @@
       "added_at": "2026-11-12T12:40:24+00:00",
       "public": true,
       "track": 39
+    },
+    {
+      "id": "S5dcbd4223211629b",
+      "title": "All You Wanna Do",
+      "artist": "SIX",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff2c2b94dc312cef6",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "5dcbd4223211629b8aaabe3164d0d774a9b6ba67a41cbcdc72e9ed8b7d529fac",
+      "duration_s": 408.381,
+      "codec": "opus",
+      "size_bytes": 2613479,
+      "added_at": "2026-11-12T15:39:19+00:00",
+      "public": true,
+      "track": 40
+    },
+    {
+      "id": "S2b5161564fb4cead",
+      "title": "Who Lives, Who Dies, Who Tells Your Story",
+      "artist": "Original Broadway Cast of Hamilton",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff2c2b94dc312cef6",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "2b5161564fb4cead647049198142a571a60da76fd577cae7257651fb2f6b80fe",
+      "duration_s": 217.536,
+      "codec": "opus",
+      "size_bytes": 1373718,
+      "added_at": "2026-11-12T15:39:19+00:00",
+      "public": true,
+      "track": 41
+    },
+    {
+      "id": "S7cd4d9edd584873c",
+      "title": "They're Only Human",
+      "artist": "Annapantsu",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff2c2b94dc312cef6",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "7cd4d9edd584873c97c000f6f5f9d9b6aade4cace907bae67f286c6df5feb77a",
+      "duration_s": 161.029,
+      "codec": "opus",
+      "size_bytes": 1022099,
+      "added_at": "2026-11-12T15:39:19+00:00",
+      "public": true,
+      "track": 42
     }
   ]
 }
