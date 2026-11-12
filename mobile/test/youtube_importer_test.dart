@@ -510,6 +510,61 @@ void main() {
   );
 
   test(
+    'una descarga truncada (menos bytes de los anunciados) se reintenta y acaba bien',
+    () async {
+      List<int> wav(int n) {
+        final b = List<int>.filled(n, 0);
+        b.setRange(0, 4, 'RIFF'.codeUnits);
+        b.setRange(8, 12, 'WAVE'.codeUnits);
+        return b;
+      }
+
+      var dl = 0;
+      final client = MockClient.streaming((request, _) async {
+        http.StreamedResponse js(Object body, int code) =>
+            http.StreamedResponse(
+              Stream.value(utf8.encode(jsonEncode(body))),
+              code,
+              headers: {'content-type': 'application/json'},
+            );
+        final p = request.url.path;
+        if (p == '/api/convert') return js({'jobId': 'job-1'}, 200);
+        if (p == '/api/status') return js({'status': 'completed'}, 200);
+        if (p == '/api/download/') {
+          dl++;
+          // La 1ª vez llega menos de lo anunciado (truncado); la 2ª, completo.
+          final body = dl == 1 ? wav(64) : wav(200);
+          return http.StreamedResponse(
+            Stream.value(body),
+            200,
+            contentLength: 200,
+            headers: {'content-type': 'audio/wav'},
+          );
+        }
+        fail('Ruta inesperada: ${request.url}');
+      });
+      final importer = YoutubeImporter(
+        client: client,
+        base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('yt-trunc-test'),
+        wait: (_) async {},
+      );
+
+      final audios = await importer.importTracks(const [
+        YoutubeTrack(
+          url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+          title: 'Una',
+        ),
+      ]);
+
+      expect(dl, 2, reason: 'la primera descarga truncada se reintenta');
+      expect(audios, hasLength(1));
+      await importer.cleanup(audios);
+    },
+  );
+
+  test(
     'el tope diario del conversor (429) corta la tanda y avisa',
     () async {
       var dailyLimitAvisos = 0;

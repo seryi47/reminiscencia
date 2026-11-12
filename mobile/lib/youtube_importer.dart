@@ -568,12 +568,33 @@ class YoutubeImporter {
     );
     final safeTitle = _safeTitle(track.title);
     final output = File('${directory.path}/$index-$safeTitle.wav');
-    await _downloadWav(
-      _resolveDownload(downloadCandidate, jobId),
-      output,
-      headers: _converterHeaders(),
-      cancellation: cancellation,
-    );
+    // La descarga puede quedar incompleta (WAV grandes + red móvil): se reintenta unas veces. La URL firmada dura
+    // 900 s, así que se puede reusar en estos reintentos rápidos.
+    var dlAttempt = 0;
+    while (true) {
+      try {
+        await _downloadWav(
+          _resolveDownload(downloadCandidate, jobId),
+          output,
+          headers: _converterHeaders(),
+          cancellation: cancellation,
+        );
+        break;
+      } on AppException {
+        cancellation?.throwIfCancelled();
+        dlAttempt++;
+        if (dlAttempt >= 3) rethrow;
+        onProgress?.call(
+          YoutubeImportProgress(
+            index: index,
+            total: total,
+            title: track.title,
+            phase: 'descarga incompleta; reintento $dlAttempt/3',
+          ),
+        );
+        await _waitCancellable(kYoutubePollInterval, cancellation);
+      }
+    }
     await _removePendingJob(videoId);
     return YoutubeImportedAudio(
       name: '$safeTitle.wav',
@@ -958,7 +979,12 @@ class YoutubeImporter {
               'GET',
               uri,
               abortTrigger: cancellation?.whenCancelled,
-            )..headers.addAll({'Accept': 'audio/wav', ...headers}),
+            )
+              // yttowav responde a /api/download con un 302 a una URL firmada de almacenamiento (R2): hay que
+              // SEGUIR la redirección para llegar al WAV (ADR-0045).
+              ..followRedirects = true
+              ..maxRedirects = 5
+              ..headers.addAll({'Accept': 'audio/wav', ...headers}),
           )
           .timeout(kYoutubeDownloadTimeout);
     } on TimeoutException {
@@ -1019,6 +1045,15 @@ class YoutubeImporter {
     if (bytes <= 44 || !_validWavPrefix(prefix)) {
       await _deleteQuietly(output);
       throw const AppException('El conversor no devolvió un WAV válido.');
+    }
+    // Truncado: el WAV «original» pesa mucho (unos 10 MB por minuto) y en móvil la descarga se corta a veces. Si no
+    // llegaron todos los bytes que anunció el servidor, el archivo tiene cabecera RIFF válida pero el audio está
+    // incompleto y luego ffprobe no lo puede leer al subir. Se borra y se lanza un error reintentable (ADR-0045).
+    if (declared != null && bytes < declared) {
+      await _deleteQuietly(output);
+      throw AppException(
+        'La descarga del WAV quedó incompleta ($bytes de $declared bytes).',
+      );
     }
   }
 
