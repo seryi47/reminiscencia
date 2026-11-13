@@ -158,4 +158,20 @@ describe('normalizeSingleTrack / youtubeQueryFor', () => {
     const track = { title: 'Dakiti', artists: ['Bad Bunny', 'Jhay Cortez'] };
     assert.equal(youtubeQueryFor(track), youtubeQueriesFor(track)[0]);
   });
+
+  test('con guion o tilde añade una variante PLEGADA (sin guion/acento) para que YouTube la encuentre', () => {
+    const hyphen = youtubeQueriesFor({ title: 'Peli-Culeo', artists: ['Cazzu', 'De La Ghetto'] });
+    assert.equal(hyphen[0], 'Cazzu Peli-Culeo');
+    assert.ok(hyphen.includes('cazzu peli culeo'), `falta la variante plegada: ${JSON.stringify(hyphen)}`);
+
+    const accent = youtubeQueriesFor({ title: 'AMANECIÓ', artists: ['Quevedo'] });
+    assert.equal(accent[0], 'Quevedo AMANECIÓ');
+    assert.ok(accent.includes('quevedo amanecio'), `falta la variante plegada: ${JSON.stringify(accent)}`);
+  });
+
+  test('sin guion ni tilde NO añade variantes redundantes solo por mayúsculas/minúsculas', () => {
+    // «Coldplay The Scientist» y su plegado «coldplay the scientist» son lo mismo para YouTube → una sola.
+    assert.deepEqual(youtubeQueriesFor({ title: 'The Scientist', artists: ['Coldplay'] }),
+      ['Coldplay The Scientist', 'The Scientist']);
+  });
 });

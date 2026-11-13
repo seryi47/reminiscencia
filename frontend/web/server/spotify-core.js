@@ -6,6 +6,8 @@
 // Forma interna de una pista: { title, artists:[principal, ...], album, durationMs, year, isrc, trackNumber, discNumber,
 // cover, spotifyId }. Forma de una colección: { type:'track'|'album'|'playlist', id, name, artist?, year?, cover?, tracks:[...] }.
 
+import { normalizeText } from '../js/catalog.js';
+
 const ID = '[A-Za-z0-9]{22}'; // los ids de Spotify son base62 de 22 caracteres
 const URL_RE = new RegExp(`open\\.spotify\\.com/(?:intl-[a-z]{2}/)?(track|album|playlist)/(${ID})`, 'i');
 const URI_RE = new RegExp(`^spotify:(track|album|playlist):(${ID})$`, 'i');
@@ -128,14 +130,26 @@ export function youtubeQueriesFor(internalTrack) {
     .replace(/\s*[([].*?(feat\.?|ft\.?|con)\s.*$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
+  const allArtists = artists.join(' ');
   const out = [];
+  const seen = new Set();
+  // Deduplica SIN distinguir mayúsculas (YouTube es insensible a mayúsculas): así la variante «plegada» solo se añade cuando
+  // de verdad cambia algo (quita tildes o guiones), no por el mero cambio de caja.
   const add = (parts) => {
     const q = parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-    if (q && !out.includes(q)) out.push(q);
+    const key = q.toLowerCase();
+    if (q && !seen.has(key)) { seen.add(key); out.push(q); }
   };
+  // Exacta y, justo detrás, la PLEGADA (sin tildes ni guiones): «Cazzu Peli-Culeo» → «cazzu peli culeo», «Quevedo AMANECIÓ»
+  // → «quevedo amanecio». Es la que rescata los títulos con guion o acento que YouTube no encontraba tal cual (ADR-0046).
   add([a0, titleCore]);
-  if (artists.length > 1) add([artists.join(' '), titleCore]);
+  add([normalizeText(a0), normalizeText(titleCore)]);
+  if (artists.length > 1) {
+    add([allArtists, titleCore]);
+    add([normalizeText(allArtists), normalizeText(titleCore)]);
+  }
   add([titleCore]);
+  add([normalizeText(titleCore)]);
   return out.length ? out : [String(internalTrack.title ?? '').replace(/\s+/g, ' ').trim()].filter(Boolean);
 }
 
