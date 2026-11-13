@@ -45,10 +45,16 @@ describe('isSameLibraryTrack: casos de regresión del usuario', () => {
     const library = { title: 'Clocks (Remastered 2011)', artist: 'Coldplay', durationS: 307 };
     assert.equal(isSameLibraryTrack(spotify, library), true);
   });
-  test('un «feat.» de más en el artista de la biblioteca no la cuenta como que falta', () => {
+  test('un «feat.» de más en el artista (misma grabación) no la cuenta como que falta', () => {
     const spotify = { title: 'Dakiti', artist: 'Bad Bunny', durationS: 205 };
-    const library = { title: 'Dakiti', artist: 'Bad Bunny, Jhay Cortez', durationS: 230 };
+    const library = { title: 'Dakiti', artist: 'Bad Bunny, Jhay Cortez', durationS: 208 };
     assert.equal(isSameLibraryTrack(spotify, library), true);
+  });
+
+  test('solape parcial de artista pero duración muy distinta = otra canción, NO la tienes', () => {
+    const spotify = { title: 'Forever', artist: 'Drake', durationS: 357 };
+    const library = { title: 'Forever', artist: 'Chris Brown, Lil Wayne, Drake', durationS: 290 };
+    assert.equal(isSameLibraryTrack(spotify, library), false);
   });
   test('una versión en directo NO cuenta como que ya la tienes', () => {
     const spotify = { title: 'Fix You', artist: 'Coldplay', durationS: 295 };

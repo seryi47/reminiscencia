@@ -214,4 +214,13 @@ describe('transferStats (contador total/tengo/faltan)', () => {
     assert.equal(stats.uniqueMissing, 3);
     assert.deepEqual(stats.perAlbum.map((a) => a.missing), [2, 2]);
   });
+
+  test('«ya tienes» global tampoco cuenta dos veces la misma canción (consistente con faltan)', () => {
+    const colA = { name: 'A', results: [res('Tengo', true), res('Falta A', false)] };
+    const colB = { name: 'B', results: [res('Tengo', true), res('Falta B', false)] };
+    const stats = transferStats([colA, colB]);
+    assert.equal(stats.totalHave, 1, '«Tengo» está en las dos listas pero cuenta una vez');
+    assert.equal(stats.uniqueMissing, 2);
+    assert.deepEqual(stats.perAlbum.map((a) => a.have), [1, 1], 'por álbum sí se ve en cada una');
+  });
 });

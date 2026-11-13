@@ -56,9 +56,19 @@ void main() {
     expect(
       isSameLibraryTrack(
         const DuplicateCandidate(title: 'Dakiti', artist: 'Bad Bunny', durationS: 205),
-        const DuplicateCandidate(title: 'Dakiti', artist: 'Bad Bunny, Jhay Cortez', durationS: 230),
+        const DuplicateCandidate(title: 'Dakiti', artist: 'Bad Bunny, Jhay Cortez', durationS: 208),
       ),
       isTrue,
+    );
+  });
+
+  test('solape parcial de artista pero otra canción (duración muy distinta): NO la tienes', () {
+    expect(
+      isSameLibraryTrack(
+        const DuplicateCandidate(title: 'Forever', artist: 'Drake', durationS: 357),
+        const DuplicateCandidate(title: 'Forever', artist: 'Chris Brown, Lil Wayne, Drake', durationS: 290),
+      ),
+      isFalse,
     );
   });
 

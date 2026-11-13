@@ -494,9 +494,10 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     final children = <Widget>[];
     var anyReview = false;
     var totalNew = 0;
-    var totalHave = 0;
-    // Total global de «faltan» SIN contar dos veces una misma canción que aparezca en varias listas (ADR-0046).
+    // Totales globales SIN contar dos veces una misma canción que aparezca en varias listas (ADR-0046); por álbum sí se ve
+    // su propio recuento.
     final missingKeys = <String>{};
+    final haveKeys = <String>{};
     for (final c in nonEmpty) {
       final total = c.results.length;
       final have = c.results.where((r) => r.inLibrary).length;
@@ -504,9 +505,9 @@ class _TransferirSheetState extends State<_TransferirSheet> {
       final sure = total - have - review.length;
       final missing = total - have; // lo que falta por transferir
       totalNew += missing;
-      totalHave += have;
-      for (final r in c.results.where((r) => !r.inLibrary)) {
-        missingKeys.add('${normalizeDuplicateTitle(r.track.title)}|${normalizeDuplicateArtist(r.track.artist)}');
+      for (final r in c.results) {
+        final key = '${normalizeDuplicateTitle(r.track.title)}|${normalizeDuplicateArtist(r.track.artist)}';
+        (r.inLibrary ? haveKeys : missingKeys).add(key);
       }
       final done = missing == 0;
       // Número EXPLÍCITO (ADR-0046): total del álbum, cuántas ya tienes y cuántas faltan; y el desglose de las que faltan.
@@ -527,7 +528,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     // Ya lo tienes todo: nada nuevo que importar.
     if (totalNew == 0) {
       return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Ya tienes en tu biblioteca todas las canciones de lo que elegiste ($totalHave). No hay nada nuevo que importar.',
+        Text('Ya tienes en tu biblioteca todas las canciones de lo que elegiste (${haveKeys.length}). No hay nada nuevo que importar.',
             key: const Key('transferir-nada-nuevo'), style: theme.textTheme.bodyMedium),
         const SizedBox(height: 8),
         Flexible(child: ListView(shrinkWrap: true, children: children)),
@@ -537,7 +538,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     }
 
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('Comparado con tu biblioteca: faltan ${missingKeys.length} ${missingKeys.length == 1 ? 'canción' : 'canciones'} por transferir${totalHave > 0 ? '; ya tienes $totalHave' : ''}. '
+      Text('Comparado con tu biblioteca: faltan ${missingKeys.length} ${missingKeys.length == 1 ? 'canción' : 'canciones'} por transferir${haveKeys.isNotEmpty ? '; ya tienes ${haveKeys.length}' : ''}. '
           '${anyReview ? 'Abajo solo lo que conviene revisar (ya hay una versión elegida).' : 'Todo identificado automáticamente. Dale a «Transferir».'}',
           style: theme.textTheme.bodySmall),
       const SizedBox(height: 8),

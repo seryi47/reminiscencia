@@ -46,7 +46,10 @@ function transferPanel(ctx) {
   // para esa comparación (se lee una vez por pintado del navegador).
   const state = {
     library: null, sources: new Map(), collections: [], transferring: false, recolocated: 0,
-    compareCache: new Map(), transferredKeys: new Set(), countLibrary: null,
+    compareCache: new Map(), transferredKeys: new Set(),
+    // Recuento al abrir: cola compartida con tope global de 2 a la vez, guardia de peticiones en curso y catálogo leído una
+    // sola vez (promesa memorizada), para no disparar lecturas duplicadas de Spotify al repintar/filtrar (ADR-0046).
+    countQueue: [], countActive: 0, countInFlight: new Set(), countLibraryPromise: null,
   };
 
   const setSection = (...children) => node.replaceChildren(...children);
@@ -171,28 +174,39 @@ function transferPanel(ctx) {
 
   // Rellena en segundo plano (concurrencia 2, con caché) el recuento de cada fila visible comparando con tu biblioteca, SIN
   // resolver YouTube (compareOnly). La actualización en vivo pasa `transferredKeys` como «ya la tienes».
-  const unawaitedCounts = (entries) => { if (entries.length) void refreshRowCounts(entries).catch(() => {}); };
+  // Catálogo publicado al día para comparar, leído UNA sola vez por sesión del panel (memoizado), aunque varias filas pidan
+  // su recuento a la vez.
+  const countLibrary = () => {
+    state.countLibraryPromise = state.countLibraryPromise ?? freshLibrary().then((lib) => lib.songs);
+    return state.countLibraryPromise;
+  };
 
-  async function refreshRowCounts(entries) {
-    state.countLibrary = state.countLibrary ?? (await freshLibrary()).songs;
-    const pending = entries.filter(({ key }) => !state.compareCache.has(key));
-    let next = 0;
-    const worker = async () => {
-      while (next < pending.length) {
-        const { key, source } = pending[next++];
-        try {
-          const stats = await compareCollection({
-            api, ...targetOf(source), songs: state.countLibrary, owned: state.transferredKeys,
-          });
+  // Encola el recuento de cada fila que no esté ya cacheada ni en curso, y arranca el procesador (tope global de 2).
+  function unawaitedCounts(entries) {
+    for (const entry of entries) {
+      if (state.compareCache.has(entry.key) || state.countInFlight.has(entry.key)) continue;
+      state.countInFlight.add(entry.key);
+      state.countQueue.push(entry);
+    }
+    pumpCounts();
+  }
+
+  function pumpCounts() {
+    while (state.countActive < 2 && state.countQueue.length > 0) {
+      const { key, source } = state.countQueue.shift();
+      state.countActive += 1;
+      countLibrary()
+        .then((songs) => compareCollection({ api, ...targetOf(source), songs, owned: state.transferredKeys }))
+        .then((stats) => {
           if (stats.total > 0) {
             state.compareCache.set(key, stats);
             const span = node.querySelector(`[data-count-key="${CSS.escape(key)}"]`);
             if (span) span.textContent = countLabel(stats);
           }
-        } catch { /* una lista que no se puede leer (p. ej. privada ajena) se deja sin recuento */ }
-      }
-    };
-    await Promise.all([worker(), worker()]);
+        })
+        .catch(() => { /* una lista que no se puede leer (p. ej. privada ajena) se deja sin recuento */ })
+        .finally(() => { state.countActive -= 1; state.countInFlight.delete(key); pumpCounts(); });
+    }
   }
 
   function toggleSource(key, source, on) {
@@ -525,7 +539,7 @@ function transferPanel(ctx) {
           for (const track of collection.tracks) state.transferredKeys.add(transferTrackKey({ title: track.title, artist: track.artist }));
         }
         state.compareCache.clear();
-        state.countLibrary = null;
+        state.countLibraryPromise = null; // recarga el catálogo para recomputar «faltan» con lo recién transferido
       }
       toast(addedTotal ? `${addedTotal} canciones añadidas. Se publicarán en un momento.` : 'No se pudo añadir ninguna canción.');
       setSection(

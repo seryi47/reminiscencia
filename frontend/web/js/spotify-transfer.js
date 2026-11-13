@@ -151,20 +151,22 @@ export function markDuplicates(results, songs = []) {
  * transferencia). Puro y sin DOM, para poder probarlo.
  */
 export function transferStats(collections) {
-  const seen = new Set();
+  const missingSeen = new Set();
+  const haveSeen = new Set();
   let uniqueMissing = 0;
   let totalHave = 0;
   const perAlbum = [];
   for (const collection of collections) {
     const total = collection.results.length;
     const have = collection.results.filter((r) => r.inLibrary).length;
-    const missing = total - have;
-    totalHave += have;
-    perAlbum.push({ name: collection.name ?? collection.album?.name ?? '', total, have, missing });
+    // El recuento por álbum es el suyo (sin deduplicar); los totales globales SÍ se deduplican, para que «faltan» y «ya
+    // tienes» usen el mismo criterio y una canción que esté en dos listas no se cuente dos veces.
+    perAlbum.push({ name: collection.name ?? collection.album?.name ?? '', total, have, missing: total - have });
     for (const result of collection.results) {
-      if (result.inLibrary) continue;
       const key = transferKey(result.track.title, trackArtist(result.track));
-      if (!seen.has(key)) { seen.add(key); uniqueMissing += 1; }
+      if (result.inLibrary) {
+        if (!haveSeen.has(key)) { haveSeen.add(key); totalHave += 1; }
+      } else if (!missingSeen.has(key)) { missingSeen.add(key); uniqueMissing += 1; }
     }
   }
   return { perAlbum, uniqueMissing, totalHave };

@@ -27,25 +27,21 @@ export const NEUTRAL_VERSION_TAGS = Object.freeze([
 ]);
 
 const FEATURING = new Set(['ft', 'feat', 'featuring', 'con']);
-const GROUP = /[([]([^()[\]]*)[)\]]/g;
-const padded = (text) => ` ${text} `;
+const YEAR = '(?:19|20)\\d\\d';
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Quita los grupos entre paréntesis/corchetes que contienen una etiqueta neutra, con todo lo que lleven dentro (así
- *  «(Remastered 2011)» desaparece entero, año incluido). Las versiones (live, remix…) no son neutras y se conservan. */
-function stripNeutralGroups(title) {
-  return String(title ?? '').replace(GROUP, (whole, inner) => {
-    const norm = normalizeDuplicateArtist(inner); // minúsculas, sin acentos ni signos
-    return NEUTRAL_VERSION_TAGS.some((tag) => padded(norm).includes(padded(tag))) ? ' ' : whole;
-  });
-}
-
-/** Clave de título para comparar presencia en biblioteca: quitar grupos neutros, normalizar como duplicados y, por último,
- *  quitar las etiquetas neutras sueltas (sin paréntesis, p. ej. «Tema - Radio Edit»). */
+/**
+ * Clave de título para comparar presencia en biblioteca: la normalización de duplicados (minúsculas, sin acentos, sin ruido
+ * tipo «(Official Video)» ni «feat») y, encima, quitar las etiquetas NEUTRAS (remaster, radio edit…) con un año pegado si lo
+ * llevan («Remastered 2011»), PERO conservando las de versión (live, remix…), que distinguen la grabación. Se quita solo la
+ * etiqueta neutra, no el grupo entero, para no tirar un «Live» que vaya junto a un «Remastered» (p. ej. «Live Remastered»).
+ */
 export function libraryTitleKey(title) {
-  let key = normalizeDuplicateTitle(stripNeutralGroups(title));
-  // Las frases más largas primero, para no dejar restos («radio edit» antes que «radio»).
+  let key = normalizeDuplicateTitle(title);
   for (const tag of [...NEUTRAL_VERSION_TAGS].sort((a, b) => b.length - a.length)) {
-    while (padded(key).includes(padded(tag))) key = padded(key).replaceAll(padded(tag), ' ').trim();
+    // La etiqueta como palabra(s) completas, con un año opcional pegado delante o detrás («2011 Remaster», «Remaster 2011»).
+    const re = new RegExp(`(?:^|\\s)(?:${YEAR}\\s+)?${escapeRe(tag)}(?:\\s+${YEAR})?(?=\\s|$)`, 'g');
+    key = key.replace(re, ' ');
   }
   return key.replace(/\s+/g, ' ').trim();
 }
@@ -53,33 +49,33 @@ export function libraryTitleKey(title) {
 const artistTokens = (artist) =>
   normalizeDuplicateArtist(artist).split(' ').filter((word) => word && !FEATURING.has(word));
 
-/** Los artistas se solapan si todos los tokens de uno están en el otro (tolera «feat» y acentos). */
-function artistsOverlap(a, b) {
-  const ta = artistTokens(a);
-  const tb = artistTokens(b);
-  if (ta.length === 0 || tb.length === 0) return false;
-  const subset = (x, y) => x.every((token) => y.includes(token));
-  return subset(ta, tb) || subset(tb, ta);
-}
-
+const isSubset = (x, y) => x.every((token) => y.includes(token));
+const sameArtistSet = (x, y) => x.length === y.length && isSubset(x, y) && isSubset(y, x);
 const durationOf = (value) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null);
 
 /**
  * ¿Esta pista ya está en la biblioteca? a y b: { title, artist, durationS }. Simétrica.
  * - clave de título igual y no vacía (obligatorio);
- * - si ambos artistas se conocen, deben solaparse (un «radio edit» del mismo artista cuenta aunque dure menos; dos
- *   canciones distintas del mismo título de artistas distintos, no);
+ * - si ambos artistas se conocen:
+ *   · el MISMO artista (mismos tokens) → es la misma grabación aunque la duración difiera (p. ej. un «radio edit»);
+ *   · artistas que SOLO se solapan (uno es «feat» del otro) → solo cuenta si la duración cuadra (±tolerancia), para no
+ *     confundir dos canciones distintas del mismo título donde el artista suelto es un colaborador de la otra;
+ *   · artistas claramente distintos → no es la misma;
  * - si a alguno le falta el artista, decide la duración (±tolerancia) y, sin duración, basta el título.
  */
 export function isSameLibraryTrack(a, b) {
   const keyA = libraryTitleKey(a?.title);
   const keyB = libraryTitleKey(b?.title);
   if (keyA === '' || keyA !== keyB) return false;
-  const tokensA = artistTokens(a?.artist);
-  const tokensB = artistTokens(b?.artist);
-  if (tokensA.length > 0 && tokensB.length > 0) return artistsOverlap(a?.artist, b?.artist);
+  const ta = artistTokens(a?.artist);
+  const tb = artistTokens(b?.artist);
   const da = durationOf(a?.durationS);
   const db = durationOf(b?.durationS);
-  if (da !== null && db !== null) return Math.abs(da - db) <= LIBRARY_MATCH_TOLERANCE_S;
-  return true;
+  const durationOk = da !== null && db !== null ? Math.abs(da - db) <= LIBRARY_MATCH_TOLERANCE_S : null;
+  if (ta.length > 0 && tb.length > 0) {
+    if (sameArtistSet(ta, tb)) return true;
+    if (!(isSubset(ta, tb) || isSubset(tb, ta))) return false;
+    return durationOk ?? true; // solape parcial: sin las dos duraciones, se confía en el solape
+  }
+  return durationOk ?? true;
 }
