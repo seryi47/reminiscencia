@@ -133,4 +133,30 @@ void main() {
     expect(chosen.first.playlistId, 'spotify:playlist:P');
     expect(chosen.first.title, 'Dos');
   });
+
+  test('compareCollection cuenta total/tengo/faltan pidiendo compareOnly (sin resolver YouTube)', () async {
+    final store = _MemStore()..write(SpotifySession(accessToken: 'AT', refreshToken: 'RT', expiresAt: DateTime.now().millisecondsSinceEpoch + 3600000));
+    var askedCompareOnly = false;
+    final client = MockClient((req) async {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      if (body['compareOnly'] == true) askedCompareOnly = true;
+      return _json({'album': {'id': 'spotify:album:A', 'name': 'Álbum'}, 'total': 3, 'hasMore': false, 'results': [
+        _result(0, 'baja', 'Uno'), _result(1, 'baja', 'Dos'), _result(2, 'baja', 'Tres'),
+      ]});
+    });
+    final t = SpotifyTransfer(client: client, store: store, base: base);
+    final stats = await t.compareCollection(
+      {'ref': {'type': 'album', 'id': 'A'}},
+      [const DuplicateCandidate(title: 'Uno', artist: 'A', durationS: 200)],
+    );
+    expect(askedCompareOnly, isTrue);
+    expect([stats.total, stats.have, stats.missing], [3, 1, 2]);
+
+    // owned (recién transferido, aún sin publicar) cuenta como que ya la tienes.
+    final stats2 = await t.compareCollection(
+      {'ref': {'type': 'album', 'id': 'A'}}, const [],
+      owned: {transferTrackKeyOf(const SpotifyTrackMeta(title: 'Dos', artists: ['A']))},
+    );
+    expect([stats2.total, stats2.have, stats2.missing], [3, 1, 2]);
+  });
 }

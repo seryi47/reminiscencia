@@ -7,7 +7,7 @@ import { el, openDialog, toast } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import {
   createTransferApi, beginConnect, isConnected, clearSession, listLibrary, resolveCollection, markDuplicates, buildTransferPlan,
-  transferStats,
+  transferStats, compareCollection, transferTrackKey,
 } from '../spotify-transfer.js';
 import { importYoutubeTracks, isUploadedRecently } from './homeostasia.js';
 
@@ -41,7 +41,13 @@ function transferPanel(ctx) {
   let abort = null;
 
   // sources: Map clave→{label, source?|ref?|url?}. collections: [{name, album, results, excluded:Set, overrides:Map}].
-  const state = { library: null, sources: new Map(), collections: [], transferring: false, recolocated: 0 };
+  // compareCache: clave→{total,have,missing} de la comparación ligera al abrir (ADR-0046). transferredKeys: título|artista
+  // de lo recién transferido (aún sin publicar), para la actualización EN VIVO del contador. countLibrary: catálogo fresco
+  // para esa comparación (se lee una vez por pintado del navegador).
+  const state = {
+    library: null, sources: new Map(), collections: [], transferring: false, recolocated: 0,
+    compareCache: new Map(), transferredKeys: new Set(), countLibrary: null,
+  };
 
   const setSection = (...children) => node.replaceChildren(...children);
 
@@ -101,6 +107,8 @@ function transferPanel(ctx) {
         return sourceRow(`pl:${p.id}`, p.name, `${p.total} canciones`, { ref: { type: 'playlist', id: p.id } },
           { note: notMine ? `No es tuya (de ${p.ownerName || 'otra cuenta'}): se importa por la vía pública, máx 100` : null });
       }));
+      // Recuento automático al abrir (ADR-0046), solo de las listas PROPIAS visibles (las ajenas no dan contenido en dev).
+      unawaitedCounts(shown.filter((p) => p.mine !== false).map((p) => ({ key: `pl:${p.id}`, source: { ref: { type: 'playlist', id: p.id } } })));
     };
     const search = el('input', {
       type: 'search', class: 'input', placeholder: `Buscar entre tus ${playlists.length} playlists…`, 'aria-label': 'Buscar playlists',
@@ -132,6 +140,8 @@ function transferPanel(ctx) {
       el('button', { type: 'button', class: 'button button-text', 'data-testid': 'transferir-disconnect', on: { click: () => { clearSession(); state.library = null; state.sources.clear(); renderConnect('Sesión cerrada. Conecta de nuevo cuando quieras.'); } } }, 'Desconectar'),
     );
     if (liked > 0) search.focus();
+    // Recuento automático de «Me gusta» al abrir (ADR-0046).
+    unawaitedCounts(liked > 0 ? [{ key: 'liked', source: { source: 'liked' } }] : []);
   }
 
   const analyzeLabel = () => (state.sources.size > 0 ? `Analizar ${state.sources.size} selección${state.sources.size > 1 ? 'es' : ''}` : 'Elige algo para analizar');
@@ -143,11 +153,46 @@ function transferPanel(ctx) {
       ...(state.sources.has(key) ? { checked: '' } : {}),
       on: { change: (e) => toggleSource(key, { label: title, ...source }, e.target.checked) },
     });
+    const cached = state.compareCache.get(key);
     return el('label', { class: `transferir-source-row${disabled ? ' transferir-source-off' : ''}` }, check,
       el('span', { class: 'transferir-track' },
         el('span', { class: 'transferir-title' }, title),
         el('span', { class: 'transferir-artist' }, subtitle),
+        // Recuento «faltan K de N» que se rellena solo al abrir el panel (ADR-0046), sin iniciar una transferencia.
+        el('span', { class: 'transferir-count', 'data-testid': 'transferir-source-count', 'data-count-key': key },
+          cached ? countLabel(cached) : ''),
         ...(note ? [el('span', { class: 'transferir-note' }, note)] : [])));
+  }
+
+  const countLabel = ({ total, have, missing }) =>
+    missing === 0 ? `✓ Ya las tienes todas (${total})` : `Faltan ${missing} de ${total} · ya tienes ${have}`;
+
+  const targetOf = (source) => (source.source ? { source: source.source } : (source.ref ? { ref: source.ref } : { url: source.url }));
+
+  // Rellena en segundo plano (concurrencia 2, con caché) el recuento de cada fila visible comparando con tu biblioteca, SIN
+  // resolver YouTube (compareOnly). La actualización en vivo pasa `transferredKeys` como «ya la tienes».
+  const unawaitedCounts = (entries) => { if (entries.length) void refreshRowCounts(entries).catch(() => {}); };
+
+  async function refreshRowCounts(entries) {
+    state.countLibrary = state.countLibrary ?? (await freshLibrary()).songs;
+    const pending = entries.filter(({ key }) => !state.compareCache.has(key));
+    let next = 0;
+    const worker = async () => {
+      while (next < pending.length) {
+        const { key, source } = pending[next++];
+        try {
+          const stats = await compareCollection({
+            api, ...targetOf(source), songs: state.countLibrary, owned: state.transferredKeys,
+          });
+          if (stats.total > 0) {
+            state.compareCache.set(key, stats);
+            const span = node.querySelector(`[data-count-key="${CSS.escape(key)}"]`);
+            if (span) span.textContent = countLabel(stats);
+          }
+        } catch { /* una lista que no se puede leer (p. ej. privada ajena) se deja sin recuento */ }
+      }
+    };
+    await Promise.all([worker(), worker()]);
   }
 
   function toggleSource(key, source, on) {
@@ -191,7 +236,9 @@ function transferPanel(ctx) {
         // Además de lo publicado, cuenta como «ya la tienes» lo recién subido/en cola (aún sin publicar), para no ofrecer
         // como nuevas las que acabas de transferir hace un momento.
         for (const r of out.results) {
-          if (!r.inLibrary && r.best && isUploadedRecently(r.best.candidate.url)) r.inLibrary = true;
+          if (r.inLibrary) continue;
+          if (r.best && isUploadedRecently(r.best.candidate.url)) r.inLibrary = true;
+          else if (state.transferredKeys.has(transferTrackKey(r.track))) r.inLibrary = true; // recién transferida (en vivo)
         }
         collections.push({ name: source.label, album: out.album, results: out.results, excluded: new Set(), overrides: new Map() });
       }
@@ -471,6 +518,15 @@ function transferPanel(ctx) {
       }
       const done = lastFailed === 0 && !abort.signal.aborted && !hitDailyLimit;
       const stopped = abort.signal.aborted;
+      // Actualización EN VIVO (ADR-0046): si se transfirió todo sin fallos, esas canciones ya las tienes (aunque tarden un
+      // poco en publicarse). Se guardan sus claves y se vacía la caché de recuentos para que el navegador recompute «faltan».
+      if (done) {
+        for (const collection of plan) {
+          for (const track of collection.tracks) state.transferredKeys.add(transferTrackKey({ title: track.title, artist: track.artist }));
+        }
+        state.compareCache.clear();
+        state.countLibrary = null;
+      }
       toast(addedTotal ? `${addedTotal} canciones añadidas. Se publicarán en un momento.` : 'No se pudo añadir ninguna canción.');
       setSection(
         el('p', { class: 'transferir-summary', 'data-testid': 'transferir-done' },

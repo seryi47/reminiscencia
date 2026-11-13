@@ -6,7 +6,8 @@ import { describe, test } from 'node:test';
 
 import {
   readSession, writeSession, clearSession, isConnected, createTransferApi, beginConnect,
-  resolveCollection, listLibrary, markDuplicates, selectedTracks, buildTransferPlan, transferStats, SESSION_KEY, PKCE_KEY,
+  resolveCollection, listLibrary, markDuplicates, selectedTracks, buildTransferPlan, transferStats, compareCollection,
+  transferTrackKey, SESSION_KEY, PKCE_KEY,
 } from '../../frontend/web/js/spotify-transfer.js';
 
 const fakeStorage = () => {
@@ -163,6 +164,33 @@ describe('markDuplicates / selectedTracks', () => {
     const chosen = selectedTracks(makeResults()); // ninguna marcada inLibrary ni excluida
     // 0 alta (u0), 1 media (u1, su mejor), 3 alta (u3); la 2 es baja (best null) y queda fuera
     assert.deepEqual(chosen.map((t) => [t.index, t.url]), [[0, 'u0'], [1, 'u1'], [3, 'u3']]);
+  });
+});
+
+describe('compareCollection (comparación al abrir, sin resolver YouTube)', () => {
+  const comparePage = (titles) => ({
+    album: { id: 'spotify_album_A', name: 'Álbum' }, total: titles.length, hasMore: false,
+    summary: { total: titles.length, baja: titles.length }, // compareOnly: todo «baja», sin best
+    results: titles.map((t, i) => ({ index: i, tier: 'baja', best: null, track: { title: t, artists: ['A'] } })),
+  });
+
+  test('cuenta total/tengo/faltan comparando con la biblioteca y pide compareOnly', async () => {
+    const storage = fakeStorage();
+    writeSession({ accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3_600_000 }, storage);
+    let askedCompareOnly = false;
+    const api = { resolve: async (params) => { askedCompareOnly = params.compareOnly === true; return comparePage(['Uno', 'Dos', 'Tres']); } };
+    const out = await compareCollection({ api, ref: { type: 'album', id: 'A' }, storage, songs: [{ title: 'Uno', artist: 'A', durationS: 200 }] });
+    assert.ok(askedCompareOnly, 'pide compareOnly (no resuelve YouTube)');
+    assert.deepEqual([out.total, out.have, out.missing], [3, 1, 2]);
+  });
+
+  test('el conjunto «owned» (recién transferidas, aún sin publicar) cuenta como que ya la tienes', async () => {
+    const storage = fakeStorage();
+    writeSession({ accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3_600_000 }, storage);
+    const api = { resolve: async () => comparePage(['Uno', 'Dos']) };
+    const owned = new Set([transferTrackKey({ title: 'Dos', artists: ['A'] })]);
+    const out = await compareCollection({ api, ref: { type: 'album', id: 'A' }, storage, songs: [], owned });
+    assert.deepEqual([out.total, out.have, out.missing], [2, 1, 1]);
   });
 });
 

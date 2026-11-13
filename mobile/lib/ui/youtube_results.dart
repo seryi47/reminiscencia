@@ -123,8 +123,10 @@ class YoutubeDownloads extends ChangeNotifier {
       if (!await services.library.canUpload()) {
         throw const AppException(kOfflineMessage);
       }
+      // Un resultado de búsqueda trae su duración: se pasa como referencia para detectar una descarga truncada (ADR-0046).
       imported = await importer.importPlaylist(
         result.url,
+        expectedDurationS: result.durationS > 0 ? result.durationS.toDouble() : null,
         onProgress: (progress) {
           if (of(result.id).state == YoutubeDownloadState.running) {
             _set(

@@ -265,10 +265,27 @@ class YoutubeImporter {
     String playlistUrl, {
     YoutubeImportProgressCallback? onProgress,
     YoutubeImportCancellation? cancellation,
+    double? expectedDurationS,
   }) async {
     cancellation?.throwIfCancelled();
-    final tracks = await listPlaylist(playlistUrl, cancellation: cancellation);
+    final listed = await listPlaylist(playlistUrl, cancellation: cancellation);
     cancellation?.throwIfCancelled();
+    // Para un vídeo suelto (descarga manual), el buscador ya conoce su duración: se pasa como referencia anti-truncado
+    // (ADR-0046). En una playlist real el proxy no da duración, así que `expectedDurationS` es null y no se valida.
+    final tracks = expectedDurationS == null
+        ? listed
+        : [
+            for (final track in listed)
+              YoutubeTrack(
+                url: track.url,
+                title: track.title,
+                artist: track.artist,
+                playlistId: track.playlistId,
+                playlistTitle: track.playlistTitle,
+                expectedDurationS: expectedDurationS,
+                alternatives: track.alternatives,
+              ),
+          ];
     return importTracks(tracks, onProgress: onProgress, cancellation: cancellation);
   }
 

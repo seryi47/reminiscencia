@@ -1,6 +1,6 @@
 # ADR-0046: Reproductor fluido, transferencias sin truncar, autobuscador autónomo y comparación con la biblioteca
 
-- Estado: **implementada y probada** (2026-11-13). Suites verdes: web `node --test tests/web-unit/*.test.mjs` 1012/1012; APK `flutter test` 619/619. Falta la verificación en vivo del usuario (dispositivo real + Spotify real), que no se puede hacer desde el entorno de desarrollo.
+- Estado: **implementada y probada** (2026-11-13). Suites verdes: web `node --test tests/web-unit/*.test.mjs` 1016/1016; APK `flutter test` 620/620. Falta la verificación en vivo del usuario (dispositivo real + Spotify real), que no se puede hacer desde el entorno de desarrollo.
 - Fecha: 2026-11-13.
 - Relacionadas: [ADR-0036](ADR-0036-estabilidad-del-reproductor.md) (estabilidad del reproductor), [ADR-0044](ADR-0044-transferir-musica-desde-spotify.md) (Transferir música), [ADR-0045](ADR-0045-apk-conversor-directo.md) (APK conversor directo), [ADR-0026](ADR-0026-albumes-orden-seleccion-duplicados.md) (regla de duplicados), [ADR-0028](ADR-0028-contrato-comun-y-busqueda.md) (normalización común), [ADR-0031](ADR-0031-audio-por-el-worker.md) (direcciones de audio).
 
@@ -43,16 +43,21 @@ Causas reales encontradas (auditoría del código, no suposiciones):
 
 - **Regla de presencia tolerante** (nueva, `frontend/web/js/library-match.js` y `mobile/lib/library_match.dart`, con contrato común `tests/contrato/biblioteca-match.json`), separada de la regla de duplicados (ADR-0026) para no tocar ese contrato. Parte del título ya normalizado de duplicados (sin ruido ni `feat`) y, encima, quita las etiquetas NEUTRAS (misma grabación: remaster, radio edit…) pero CONSERVA las de versión (live, remix, acústico…). Coincide si la clave de título es igual y no vacía y, además: si ambos artistas se conocen, deben solaparse (tolera `feat` y acentos); si a alguno le falta, decide la duración (±8 s) o, sin ella, basta el título. Así deja de contar como «falta» una canción que ya tienes por un «Remastered», un `feat.` o unos segundos de diferencia, sin confundir una versión en directo con la de estudio ni dos canciones distintas de artistas distintos con el mismo título.
 - **Contador explícito** (`transferStats` en `spotify-transfer.js`, con prueba): por álbum, **total, cuántas ya tienes y cuántas faltan**; y el total global de «faltan» **sin contar dos veces** una misma canción que aparezca en varias listas. La web (`views/transferir.js`) y la APK (`ui/spotify_transfer_page.dart`) lo muestran («Faltan N de M · ya tienes K»).
+- **Comparación automática al abrir** (sin transferir): modo `compareOnly` en `/api/spotify/resolve` (lista las pistas SIN resolver YouTube) + `compareCollection` (web y APK). Al abrir el panel, cada lista/álbum propio muestra «Faltan K de N» solo, en segundo plano y con caché (web: concurrencia 2; APK: cola acotada a 2). Ya no hace falta pulsar «Analizar» para ver qué falta.
+- **Actualización en vivo**: al terminar una transferencia completa, esas canciones se marcan como «ya la tienes» (conjunto `transferredKeys`, aunque tarden en publicarse) y se vacía la caché de recuentos, así el navegador recalcula «faltan» al momento. `analyzeSelected`/`_analyze` también lo respetan.
 
 ## Consecuencias
 
 - **Pruebas nuevas/ampliadas:**
   - APK: `youtube_importer_test.dart` (salto a otro candidato por truncado, truncado sin alternativa que falla, íntegra que no se rechaza); `audio_handler_test.dart` (metadata inmediata en siguiente/anterior, con un fake que retiene `currentIndexStream`); `library_match_test.dart` (contrato de presencia). `fake_audio_player.dart` gana `nextIndex`/`previousIndex`/`seekToPrevious` y un modo de retención del stream de índice.
   - Web: `spotify-core.test.mjs` (variantes de consulta), `spotify-resolve.test.mjs` (recuperación con 2.ª variante, parada en ALTA, acumulación de candidatos), `library-match.test.mjs` (contrato), `spotify-transfer.test.mjs` (`transferStats`).
+- **Ampliación (2026-11-13, misma tanda):** se completaron los puntos que antes quedaban fuera:
+  - Comparación **automática al abrir** cada lista/álbum (compareOnly), ya no hace falta «Analizar» para ver el recuento.
+  - **Actualización en vivo** del recuento tras una transferencia completa.
+  - **Prefetch de portada** de la canción vecina en la web (`prefetchNeighbors` en `player.js`): al saltar, la portada ya está en caché.
+  - **Validación de duración en la descarga manual** de YouTube: el buscador pasa la duración del resultado como referencia (`importPlaylist(..., expectedDurationS)`). Las **playlists reales** siguen sin validar porque el proxy no da duración por pista (límite real documentado).
 - **Qué NO se ha hecho (honestidad):**
-  - La comparación sigue ejecutándose al pulsar «Analizar», no automáticamente al abrir cada álbum; el modelo actual es elegir un lote y analizarlo. Cambiarlo a comparación automática por álbum al abrir es un rediseño de UX pendiente.
-  - No hay recuento «en vivo» por pista durante la descarga; tras transferir, el recuento se refresca al volver a analizar (las subidas recientes ya se tienen en cuenta por `isUploadedRecently`/el set de vídeos hechos).
-  - La web mantiene el retraso de portada al cambiar de canción (texto ya instantáneo); no se añadió prefetch de portada.
-  - La validación de duración no cubre las playlists de YouTube ni la descarga manual (sin duración de referencia).
+  - El recuento «en vivo» se actualiza al **terminar** la transferencia, no pista a pista mientras descarga (durante la descarga el usuario está en la pantalla de progreso, no en el navegador de listas).
+  - Las **playlists de YouTube** (no las de Spotify) siguen sin validación de duración (sin duración de referencia por pista).
 - `SHELL_VERSION` 45 → 46 (nuevo módulo `js/library-match.js` en el shell offline).
 - Verificación en vivo (dispositivo real + Spotify real + tanda grande) pendiente del usuario, como en ADR-0044/0045.

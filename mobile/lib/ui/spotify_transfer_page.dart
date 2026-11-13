@@ -100,6 +100,41 @@ class _TransferirSheetState extends State<_TransferirSheet> {
   static const int _autoResumeMaxCycles = 24;
   static const String _doneVideosKey = 'transferir.done.videos';
 
+  // Recuento «faltan K de N» al abrir cada lista/álbum (ADR-0046), sin resolver YouTube. Caché por clave, cola acotada a 2 a
+  // la vez para no saturar Spotify, y `_transferredKeys` (recién transferido, aún sin publicar) para la actualización en vivo.
+  final Map<String, ({int total, int have, int missing})> _compareCache = {};
+  final Set<String> _countInFlight = {};
+  final List<MapEntry<String, Map<String, dynamic>>> _countQueue = [];
+  int _countActive = 0;
+  final Set<String> _transferredKeys = {};
+
+  void _ensureCount(String key, Map<String, dynamic> target) {
+    if (_compareCache.containsKey(key) || _countInFlight.contains(key)) return;
+    _countInFlight.add(key);
+    _countQueue.add(MapEntry(key, target));
+    _pumpCounts();
+  }
+
+  void _pumpCounts() {
+    while (_countActive < 2 && _countQueue.isNotEmpty) {
+      final entry = _countQueue.removeAt(0);
+      _countActive++;
+      _spotify.compareCollection(entry.value, _library0, owned: _transferredKeys).then((stats) {
+        if (mounted && stats.total > 0) setState(() => _compareCache[entry.key] = stats);
+      }).catchError((_) {/* una lista que no se puede leer se deja sin recuento */}).whenComplete(() {
+        _countActive--;
+        _countInFlight.remove(entry.key);
+        _pumpCounts();
+      });
+    }
+  }
+
+  String? _countText(String key) {
+    final s = _compareCache[key];
+    if (s == null) return null;
+    return s.missing == 0 ? '✓ Ya las tienes todas (${s.total})' : 'Faltan ${s.missing} de ${s.total} · ya tienes ${s.have}';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -209,11 +244,12 @@ class _TransferirSheetState extends State<_TransferirSheet> {
                 : await _spotify.resolve(target['url'] as String, onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); });
         markTransferDuplicates(res.results, _library0);
         for (final r in res.results) {
-          // Además de lo publicado, lo recién subido (set `done`) también cuenta como «ya la tienes».
+          // Además de lo publicado, lo recién subido (set `done`) o recién transferido en vivo también cuenta como «ya la tienes».
           if (!r.inLibrary && r.best != null) {
             final vid = YoutubeImporter.videoIdOf(r.best!.url);
             if (vid != null && done.contains(vid)) r.inLibrary = true;
           }
+          if (!r.inLibrary && _transferredKeys.contains(transferTrackKeyOf(r.track))) r.inLibrary = true;
           // Incluida por defecto si hay coincidencia (alta o media, ya pre-elegida); baja sin candidato y duplicadas, fuera.
           r.excluded = r.inLibrary || r.best == null;
         }
@@ -303,6 +339,16 @@ class _TransferirSheetState extends State<_TransferirSheet> {
         if (!await _countdown(_autoResumeGap, failedCycle)) break; // parado durante la espera
       }
       final complete = lastFailed == 0 && !cancel.isCancelled && !hitDailyLimit;
+      // Actualización EN VIVO (ADR-0046): si se transfirió todo, esas canciones ya las tienes; se guardan sus claves y se
+      // vacía la caché de recuentos para que el navegador vuelva a calcular «faltan» con lo recién transferido.
+      if (complete) {
+        for (final entry in plan) {
+          for (final track in entry.value) {
+            _transferredKeys.add('${normalizeDuplicateTitle(track.title)}|${normalizeDuplicateArtist(track.artist)}');
+          }
+        }
+        _compareCache.clear();
+      }
       if (mounted) {
         setState(() {
           _stage = _Stage.done;
@@ -391,29 +437,37 @@ class _TransferirSheetState extends State<_TransferirSheet> {
       const SizedBox(height: 8),
       Flexible(child: ListView(shrinkWrap: true, children: [
         if (lib.liked > 0)
-          CheckboxListTile(
-            key: const Key('transferir-source-liked'),
-            value: _selected.contains('liked'),
-            onChanged: (v) => setState(() => v == true ? _selected.add('liked') : _selected.remove('liked')),
-            title: const Text('Canciones favoritas'),
-            subtitle: Text('${lib.liked} canciones'),
-            secondary: const Icon(Icons.favorite_rounded),
-          ),
+          Builder(builder: (_) {
+            _ensureCount('liked', {'source': 'liked'}); // recuento automático al abrir (ADR-0046)
+            return CheckboxListTile(
+              key: const Key('transferir-source-liked'),
+              value: _selected.contains('liked'),
+              onChanged: (v) => setState(() => v == true ? _selected.add('liked') : _selected.remove('liked')),
+              title: const Text('Canciones favoritas'),
+              subtitle: Text(_countText('liked') ?? '${lib.liked} canciones'),
+              secondary: const Icon(Icons.favorite_rounded),
+            );
+          }),
         Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text('Tus playlists (${lib.playlists.length})', style: theme.textTheme.labelLarge)),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(controller: _search, decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search), hintText: 'Buscar playlists'), onChanged: (_) => setState(() {}))),
         for (final p in playlists)
-          CheckboxListTile(
-            key: Key('transferir-source-pl-${p.id}'),
-            value: _selected.contains('pl:${p.id}'),
-            onChanged: (v) => setState(() => v == true ? _selected.add('pl:${p.id}') : _selected.remove('pl:${p.id}')),
-            title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            // Si no es tuya (solo la sigues), Spotify no da su contenido por la API: se importa por la vía pública (máx 100).
-            subtitle: Text(
-              p.mine == false
-                  ? '${p.total} canciones · no es tuya (de ${p.ownerName ?? 'otra cuenta'}): vía pública, máx 100'
-                  : '${p.total} canciones',
-              maxLines: 2, overflow: TextOverflow.ellipsis),
-          ),
+          Builder(builder: (_) {
+            // Recuento automático solo de las listas PROPIAS (las ajenas no dan contenido en modo desarrollo).
+            if (p.mine != false) _ensureCount('pl:${p.id}', {'ref': {'type': 'playlist', 'id': p.id}});
+            final count = _countText('pl:${p.id}');
+            return CheckboxListTile(
+              key: Key('transferir-source-pl-${p.id}'),
+              value: _selected.contains('pl:${p.id}'),
+              onChanged: (v) => setState(() => v == true ? _selected.add('pl:${p.id}') : _selected.remove('pl:${p.id}')),
+              title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              // Si no es tuya (solo la sigues), Spotify no da su contenido por la API: se importa por la vía pública (máx 100).
+              subtitle: Text(
+                p.mine == false
+                    ? '${p.total} canciones · no es tuya (de ${p.ownerName ?? 'otra cuenta'}): vía pública, máx 100'
+                    : (count ?? '${p.total} canciones'),
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            );
+          }),
       ])),
       const SizedBox(height: 8),
       Row(children: [

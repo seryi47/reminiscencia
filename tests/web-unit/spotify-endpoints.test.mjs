@@ -95,6 +95,26 @@ describe('resolve', () => {
     assert.equal(res.status, 401);
     assert.equal((await res.json()).needsAuth, true);
   });
+
+  test('compareOnly lista las pistas SIN resolver YouTube (ni siquiera necesita search)', async () => {
+    // Sin `search` en las dependencias: con compareOnly no debe fallar (ADR-0046).
+    const res = await handleSpotifyResolve(
+      post({ url: `https://open.spotify.com/playlist/${PL}`, accessToken: 'AT', compareOnly: true }),
+      { fetchImpl },
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.total, 3);
+    assert.deepEqual(body.results.map((r) => r.index), [0, 1, 2]);
+    assert.ok(body.results.every((r) => r.best === null), 'no trae candidatos de YouTube');
+    assert.ok(body.results[0].track, 'sí trae la pista para comparar');
+    assert.equal(body.album.id, `spotify_playlist_${PL}`);
+  });
+
+  test('sin compareOnly y sin search → 500', async () => {
+    const res = await handleSpotifyResolve(post({ url: `https://open.spotify.com/playlist/${PL}`, accessToken: 'AT' }), { fetchImpl });
+    assert.equal(res.status, 500);
+  });
 });
 
 describe('mine / resolve liked', () => {

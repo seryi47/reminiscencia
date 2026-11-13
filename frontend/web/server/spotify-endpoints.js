@@ -10,7 +10,7 @@
 import { startLogin, exchangeCode, refreshAccess } from './spotify-auth.js';
 import { parseSpotifyRef } from './spotify-core.js';
 import { fetchCollection, listMine, SpotifyApiError } from './spotify-fetch.js';
-import { resolveCollection } from './spotify-resolve.js';
+import { resolveCollection, albumOf } from './spotify-resolve.js';
 import { spotifyClientId, SPOTIFY_REDIRECT_URI } from './spotify-config.js';
 
 export const RESOLVE_DEFAULT_LIMIT = 25;
@@ -86,8 +86,11 @@ export async function handleSpotifyMine(request, { fetchImpl = fetch } = {}) {
  */
 export async function handleSpotifyResolve(request, { search, fetchImpl = fetch } = {}) {
   if (request.method !== 'POST') return json(405, { error: 'método no permitido' });
-  if (typeof search !== 'function') return json(500, { error: 'búsqueda de YouTube no disponible' });
   const body = await readJson(request);
+  // compareOnly (ADR-0046): solo listar las pistas y dejar que el cliente compare con la biblioteca (total/tengo/faltan),
+  // SIN resolver YouTube. Es rápido (una lectura de Spotify) y permite enseñar el recuento al abrir un álbum sin transferir.
+  const compareOnly = body.compareOnly === true;
+  if (!compareOnly && typeof search !== 'function') return json(500, { error: 'búsqueda de YouTube no disponible' });
   const ref = body.ref ?? (body.source === 'liked' ? { type: 'liked' } : parseSpotifyRef(body.url));
   if (!ref) return json(400, { error: 'enlace de Spotify no válido' });
   if (!isText(body.accessToken)) return json(401, { error: 'falta el token de Spotify', needsAuth: true });
@@ -109,7 +112,19 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   }
 
   const total = collection.tracks.length;
-  const pageCollection = { ...collection, tracks: collection.tracks.slice(offset, offset + limit) };
+  const pageTracks = collection.tracks.slice(offset, offset + limit);
+
+  if (compareOnly) {
+    // Solo pistas, sin candidatos de YouTube: el cliente marca `inLibrary` y cuenta total/tengo/faltan.
+    const results = pageTracks.map((track, i) => ({ index: offset + i, track, tier: 'baja', best: null, alternatives: [] }));
+    const summary = { total: results.length, alta: 0, media: 0, baja: results.length, error: 0 };
+    return json(200, {
+      type: collection.type, id: collection.id, name: collection.name, album: albumOf(collection),
+      results, summary, offset, limit, total, hasMore: offset + limit < total,
+    });
+  }
+
+  const pageCollection = { ...collection, tracks: pageTracks };
   const resolved = await resolveCollection(pageCollection, { searchYoutube: search }, { concurrency: 4 });
   for (const result of resolved.results) result.index += offset; // índices globales
 

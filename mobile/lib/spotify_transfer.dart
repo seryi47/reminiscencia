@@ -211,6 +211,10 @@ class SpotifyLibrary {
 /// Marca las pistas que ya están en la biblioteca con la regla TOLERANTE de presencia (ADR-0046, library_match.dart): más
 /// laxa que la de duplicados a propósito, para no contar como «falta» algo que ya tienes por un «Remastered», un «feat.» o
 /// unos segundos de diferencia; pero una versión en directo o un remix siguen sin contar como que ya la tienes.
+/// Clave título|artista de una pista de Spotify, para el conjunto «ya la tienes» de la vista en vivo (ADR-0046).
+String transferTrackKeyOf(SpotifyTrackMeta track) =>
+    '${normalizeDuplicateTitle(track.title)}|${normalizeDuplicateArtist(track.artist)}';
+
 void markTransferDuplicates(List<TransferMatch> results, List<DuplicateCandidate> library) {
   for (final result in results) {
     final probe = DuplicateCandidate(title: result.track.title, artist: result.track.artist, durationS: result.track.durationS);
@@ -345,7 +349,26 @@ class SpotifyTransfer {
   Future<TransferResolution> resolveRef(Map<String, dynamic> ref, {void Function(int, int)? onPage}) =>
       _resolve({'ref': ref}, onPage: onPage);
 
-  Future<TransferResolution> _resolve(Map<String, dynamic> target, {void Function(int loaded, int total)? onPage}) async {
+  /// Comparación LIGERA al abrir (ADR-0046): lista las pistas (compareOnly, sin resolver YouTube) y cuenta total/tengo/faltan
+  /// contra la biblioteca. `owned` son claves título|artista de lo recién transferido (aún sin publicar), para la vista en vivo.
+  Future<({int total, int have, int missing})> compareCollection(
+    Map<String, dynamic> target,
+    List<DuplicateCandidate> library, {
+    Set<String>? owned,
+  }) async {
+    final res = await _resolve(target, compareOnly: true);
+    markTransferDuplicates(res.results, library);
+    if (owned != null && owned.isNotEmpty) {
+      for (final r in res.results) {
+        if (!r.inLibrary && owned.contains(transferTrackKeyOf(r.track))) r.inLibrary = true;
+      }
+    }
+    final total = res.results.length;
+    final have = res.results.where((r) => r.inLibrary).length;
+    return (total: total, have: have, missing: total - have);
+  }
+
+  Future<TransferResolution> _resolve(Map<String, dynamic> target, {void Function(int loaded, int total)? onPage, bool compareOnly = false}) async {
     var accessToken = await _freshAccessToken();
     final results = <TransferMatch>[];
     TransferAlbum? album;
@@ -353,7 +376,7 @@ class SpotifyTransfer {
     var offset = 0;
     while (true) {
       Map<String, dynamic> page;
-      final body = {...target, 'accessToken': accessToken, 'offset': offset, 'limit': _pageLimit};
+      final body = {...target, if (compareOnly) 'compareOnly': true, 'accessToken': accessToken, 'offset': offset, 'limit': _pageLimit};
       try {
         page = await _post('/api/spotify/resolve', body);
       } on SpotifyNeedsAuth {

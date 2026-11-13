@@ -260,6 +260,21 @@ export function createPlayer(options = {}) {
     }
   }
 
+  // Precarga la portada de las canciones vecinas (ADR-0046): al saltar, el navegador ya la tiene en caché y la imagen
+  // aparece al instante en vez de descargarse en ese momento. `seq` está reordenada también en aleatorio, así que pos±1 son
+  // las vecinas reales. Es best-effort: si no hay constructor de imagen (pruebas), no hace nada.
+  function prefetchCover(entry) {
+    const url = entry?.track?.cover;
+    const ImageCtor = runtime.Image || (typeof Image === 'function' ? Image : null);
+    if (!url || !ImageCtor) return;
+    try { const img = new ImageCtor(); img.decoding = 'async'; img.src = url; } catch { /* sin red o sin soporte: da igual */ }
+  }
+
+  function prefetchNeighbors() {
+    prefetchCover(seq[pos + 1]);
+    prefetchCover(seq[pos - 1]);
+  }
+
   function updateMediaSession() {
     const session = runtime.navigator ? runtime.navigator.mediaSession : null;
     if (!session) return;
@@ -391,6 +406,7 @@ export function createPlayer(options = {}) {
     setNotice(skipped ? NOTICES.unavailable : null);
     if (autoplay && item) startPlayback();
     updateMediaSession();
+    prefetchNeighbors();
     notify();
   }
 

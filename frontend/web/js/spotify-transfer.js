@@ -78,8 +78,9 @@ async function freshAccessToken({ api, storage, now }) {
  * Resuelve una colección entera llamando a /resolve por páginas (y refrescando el token si caduca a mitad). Devuelve
  * { album, results, total, summary }. `onPage({ loaded, total, album })` informa del avance.
  */
-export async function resolveCollection({ api, url, source, ref, storage = globalThis.localStorage, onPage, now = () => Date.now(), pageLimit = 25 }) {
+export async function resolveCollection({ api, url, source, ref, storage = globalThis.localStorage, onPage, now = () => Date.now(), pageLimit = 25, compareOnly = false }) {
   const target = ref ? { ref } : (source ? { source } : { url }); // qué se resuelve: enlace, «Me gusta» o una referencia
+  if (compareOnly) target.compareOnly = true; // solo listar y comparar, sin resolver YouTube (ADR-0046)
   let accessToken = await freshAccessToken({ api, storage, now });
   const results = [];
   const summary = { total: 0, alta: 0, media: 0, baja: 0, error: 0 };
@@ -168,6 +169,28 @@ export function transferStats(collections) {
   }
   return { perAlbum, uniqueMissing, totalHave };
 }
+
+/**
+ * Comparación LIGERA de una colección contra la biblioteca (ADR-0046): lista las pistas de Spotify (compareOnly, sin
+ * resolver YouTube) y cuenta total/tengo/faltan, para enseñarlo al abrir un álbum/lista SIN iniciar una transferencia. El
+ * conjunto `owned` (opcional) son claves título|artista de canciones que ya tienes aunque no estén aún en el catálogo
+ * publicado (recién transferidas), para la actualización en vivo.
+ */
+export async function compareCollection({ api, url, source, ref, songs = [], storage = globalThis.localStorage, owned = null }) {
+  const { results } = await resolveCollection({ api, url, source, ref, storage, compareOnly: true });
+  markDuplicates(results, songs);
+  if (owned && owned.size > 0) {
+    for (const r of results) {
+      if (!r.inLibrary && owned.has(transferKey(r.track.title, trackArtist(r.track)))) r.inLibrary = true;
+    }
+  }
+  const total = results.length;
+  const have = results.filter((r) => r.inLibrary).length;
+  return { total, have, missing: total - have, results };
+}
+
+/** Clave título|artista de una pista de Spotify, para el conjunto «ya la tienes» de la actualización en vivo. */
+export const transferTrackKey = (track) => transferKey(track.title, trackArtist(track));
 
 /**
  * Plan de transferencia: por cada colección, las pistas elegidas (selectedTracks), SIN repetir una misma canción que ya
