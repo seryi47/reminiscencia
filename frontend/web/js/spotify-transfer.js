@@ -3,7 +3,7 @@
 // ya están en la biblioteca y decide qué pistas se transfieren. La UI (views/transferir.js) solo pinta esto y llama a
 // importYoutubeTracks para el enganche al pipeline.
 
-import { isPossibleDuplicate } from './duplicates.js';
+import { isSameLibraryTrack } from './library-match.js';
 import { normalizeText } from './catalog.js';
 
 export const SESSION_KEY = 'reminiscencia.spotify';
@@ -126,22 +126,47 @@ const trackDurationS = (track) => (typeof track.durationMs === 'number' ? track.
 const transferKey = (title, artist) => `${normalizeText(title)}|${normalizeText(artist)}`;
 
 /**
- * Marca cada resultado con `inLibrary` si la canción ya está en la biblioteca. Dos vías, para no volver a añadir lo que ya
- * está en un álbum: (1) la regla común de duplicados (título + duración ±2 s), y (2) título + artista normalizados iguales
- * (aunque la duración de Spotify y la de la versión ya importada de YouTube difieran).
+ * Marca cada resultado con `inLibrary` si la canción ya está en la biblioteca, con la regla TOLERANTE de presencia en
+ * biblioteca (ADR-0046, library-match.js): más laxa que la de duplicados a propósito, para no contar como «falta» algo que
+ * ya tienes por un «Remastered», un «feat.» o unos segundos de diferencia; pero la regla de versión sigue distinguiendo
+ * (una versión en directo o un remix NO cuentan como que ya la tienes).
  */
 export function markDuplicates(results, songs = []) {
   for (const result of results) {
-    const probe = { title: result.track.title, artist: trackArtist(result.track), duration_s: trackDurationS(result.track) };
-    const match = songs.find((song) => {
-      const candidate = { title: song.title, artist: song.artist, duration_s: song.durationS ?? song.duration_s };
-      return isPossibleDuplicate(probe, candidate) || isPossibleDuplicate({ ...probe, duration_s: null }, candidate);
-    });
+    const probe = { title: result.track.title, artist: trackArtist(result.track), durationS: trackDurationS(result.track) };
+    const match = songs.find((song) =>
+      isSameLibraryTrack(probe, { title: song.title, artist: song.artist, durationS: song.durationS ?? song.duration_s }));
     result.inLibrary = Boolean(match);
     // Guarda la canción de la biblioteca que coincide (id + carpeta actual) para poder recolocarla en su álbum al transferir.
     result.libraryMatch = match ? { id: match.id, folderId: match.folder_id ?? match.folderId ?? null } : null;
   }
   return results;
+}
+
+/**
+ * Recuento por colección y global para el panel (ADR-0046): por cada álbum/lista, el TOTAL de canciones, cuántas ya TIENES
+ * en la biblioteca (`inLibrary`, marcado por markDuplicates con la regla tolerante) y cuántas te FALTAN. El total global de
+ * «faltan» NO cuenta dos veces una misma canción que aparezca en varias listas (dedup por título+artista, como el plan de
+ * transferencia). Puro y sin DOM, para poder probarlo.
+ */
+export function transferStats(collections) {
+  const seen = new Set();
+  let uniqueMissing = 0;
+  let totalHave = 0;
+  const perAlbum = [];
+  for (const collection of collections) {
+    const total = collection.results.length;
+    const have = collection.results.filter((r) => r.inLibrary).length;
+    const missing = total - have;
+    totalHave += have;
+    perAlbum.push({ name: collection.name ?? collection.album?.name ?? '', total, have, missing });
+    for (const result of collection.results) {
+      if (result.inLibrary) continue;
+      const key = transferKey(result.track.title, trackArtist(result.track));
+      if (!seen.has(key)) { seen.add(key); uniqueMissing += 1; }
+    }
+  }
+  return { perAlbum, uniqueMissing, totalHave };
 }
 
 /**

@@ -23,6 +23,15 @@ const Duration kYoutubeJobTimeout = Duration(minutes: 10);
 const Duration kYoutubeRequestTimeout = Duration(seconds: 45);
 const Duration kYoutubeDownloadTimeout = Duration(minutes: 3);
 
+/// Validación anti-truncado (ADR-0046): si la duración REAL del WAV descargado es menor que la esperada por este factor,
+/// se considera un recorte/descarga incompleta y se rechaza (y se prueba otro candidato si lo hay). El margen es amplio a
+/// propósito para no rechazar ediciones legítimas (un «radio edit» frente a la versión de álbum difiere como mucho un
+/// 10-20 %); solo ataja los cortes graves que reportaba el usuario (unos segundos o un minuto de una canción de varios
+/// minutos). Solo se aplica cuando se conoce la duración esperada y supera el suelo (los interludios cortos no se validan,
+/// porque unos segundos de diferencia son un porcentaje enorme sin que haya truncado).
+const double kYoutubeMinDurationRatio = 0.70;
+const double kYoutubeDurationCheckFloorS = 60;
+
 /// Conversor yttowav. La APK habla DIRECTAMENTE con él (no por el Worker) en convert/status/download: así cada teléfono
 /// usa su propia IP, con su propio cupo diario (40/día por IP), en vez de compartir la única IP del Worker con toda la
 /// web (que es lo que agotaba el cupo). La lista de la playlist y la búsqueda siguen yendo por el Worker, porque
@@ -37,6 +46,8 @@ class YoutubeTrack {
     this.artist = '',
     this.playlistId,
     this.playlistTitle,
+    this.expectedDurationS,
+    this.alternatives = const [],
   });
 
   final String url;
@@ -44,6 +55,14 @@ class YoutubeTrack {
   final String artist;
   final String? playlistId;
   final String? playlistTitle;
+
+  /// Duración esperada de la canción en segundos (de Spotify o del propio candidato de YouTube), si se conoce. Sirve para
+  /// detectar descargas truncadas: un WAV mucho más corto que esto es un recorte/incompleto y se rechaza (ADR-0046).
+  final double? expectedDurationS;
+
+  /// URLs de respaldo (otros candidatos de YouTube) a los que saltar si la descarga sale truncada. El primero que dé un WAV
+  /// con duración coherente gana; así una transferencia no se queda con un archivo inservible (ADR-0046).
+  final List<String> alternatives;
 }
 
 String _artistText(Object? value) {
@@ -105,6 +124,12 @@ class YoutubeDailyLimitException extends AppException {
   const YoutubeDailyLimitException([
     super.message = 'Límite diario del conversor alcanzado (40/día). Vuelve mañana.',
   ]);
+}
+
+/// La descarga salió truncada/incompleta (duración real muy por debajo de la esperada) y no quedaban más candidatos a los
+/// que saltar. No se entrega un audio inservible: la pista falla (en un lote se omite, en una sola se muestra; ADR-0046).
+class YoutubeTruncatedException extends AppException {
+  const YoutubeTruncatedException(super.message);
 }
 
 bool _isDailyLimit(Object error) {
@@ -395,7 +420,96 @@ class YoutubeImporter {
     return tracks;
   }
 
+  /// Convierte y descarga una pista, con validación anti-truncado y salto automático a otro candidato (ADR-0046).
+  ///
+  /// Recorre `[track.url, ...track.alternatives]`: por cada uno convierte+descarga el WAV (`_convertOneUrl`) y comprueba que
+  /// su duración REAL cuadra con `track.expectedDurationS`. Si sale truncado (o la conversión de ese candidato falla) y queda
+  /// otro candidato, salta al siguiente; si no queda ninguno, lanza el error. Así una transferencia nunca se queda con un
+  /// archivo de unos segundos: o entrega una versión íntegra o falla (sin marcarse como completada).
   Future<YoutubeImportedAudio> _convertAndDownload(
+    YoutubeTrack track, {
+    required int index,
+    required int total,
+    required Directory directory,
+    YoutubeImportProgressCallback? onProgress,
+    YoutubeImportCancellation? cancellation,
+  }) async {
+    final urls = <String>[
+      track.url,
+      for (final alt in track.alternatives)
+        if (alt.isNotEmpty && alt != track.url) alt,
+    ];
+    Object lastError = const AppException('No se pudo transferir la canción.');
+    for (var i = 0; i < urls.length; i++) {
+      cancellation?.throwIfCancelled();
+      final hasMore = i < urls.length - 1;
+      final candidate = YoutubeTrack(
+        url: urls[i],
+        title: track.title,
+        artist: track.artist,
+        playlistId: track.playlistId,
+        playlistTitle: track.playlistTitle,
+        expectedDurationS: track.expectedDurationS,
+      );
+      try {
+        final file = await _convertOneUrl(
+          candidate,
+          index: index,
+          total: total,
+          directory: directory,
+          onProgress: onProgress,
+          cancellation: cancellation,
+        );
+        // Validación anti-truncado: la duración REAL del WAV (de los bytes, no de la cabecera, que yttowav puede falsear)
+        // frente a la esperada. Un recorte grave se rechaza.
+        final expected = track.expectedDurationS;
+        if (expected != null && expected >= kYoutubeDurationCheckFloorS) {
+          final actual = await _wavDurationS(file);
+          if (actual != null && actual < expected * kYoutubeMinDurationRatio) {
+            await _deleteQuietly(file);
+            final message =
+                'La descarga de «${track.title}» salió incompleta '
+                '(${actual.round()} s de ${expected.round()} s esperados).';
+            if (hasMore) {
+              onProgress?.call(
+                YoutubeImportProgress(
+                  index: index,
+                  total: total,
+                  title: track.title,
+                  phase: 'salió incompleta; probando otra versión',
+                ),
+              );
+              lastError = YoutubeTruncatedException(message);
+              continue;
+            }
+            throw YoutubeTruncatedException(message);
+          }
+        }
+        return YoutubeImportedAudio(
+          name: '${_safeTitle(track.title)}.wav',
+          path: file.path,
+          track: track,
+        );
+      } on YoutubeDailyLimitException {
+        rethrow; // el tope diario corta la tanda; no es cosa del candidato
+      } catch (error) {
+        if (cancellation?.isCancelled ?? false) rethrow; // una cancelación aborta siempre
+        lastError = error;
+        if (!hasMore) rethrow;
+        onProgress?.call(
+          YoutubeImportProgress(
+            index: index,
+            total: total,
+            title: track.title,
+            phase: 'no se pudo con esa versión; probando otra',
+          ),
+        );
+      }
+    }
+    throw lastError;
+  }
+
+  Future<File> _convertOneUrl(
     YoutubeTrack track, {
     required int index,
     required int total,
@@ -576,11 +690,7 @@ class YoutubeImporter {
       cancellation: cancellation,
     );
     await _removePendingJob(videoId);
-    return YoutubeImportedAudio(
-      name: '$safeTitle.wav',
-      path: output.path,
-      track: track,
-    );
+    return output;
   }
 
   Future<String> _createJob(
@@ -1073,6 +1183,57 @@ class YoutubeImporter {
     final slash = header.lastIndexOf('/');
     if (slash < 0) return null;
     return int.tryParse(header.substring(slash + 1).trim());
+  }
+
+  /// Duración REAL del WAV en segundos, calculada a partir de los bytes realmente presentes (no del tamaño que declara la
+  /// cabecera RIFF, que yttowav puede falsear al transmitir). Lee la cabecera para sacar el `byteRate` del trozo `fmt ` y la
+  /// posición del trozo `data`, y hace `duración = (bytes_de_archivo − inicio_de_data) / byteRate`. Devuelve null si no se
+  /// puede leer (en cuyo caso no se valida, para no rechazar por no poder medir). ADR-0046.
+  static Future<double?> _wavDurationS(File file) async {
+    RandomAccessFile? handle;
+    try {
+      final length = await file.length();
+      if (length <= 44) return null;
+      handle = await file.open();
+      // La cabecera (RIFF/WAVE + fmt + data y algún trozo auxiliar) cabe de sobra en los primeros KB.
+      final head = await handle.read(min(length, 65536));
+      if (head.length < 12 ||
+          String.fromCharCodes(head.sublist(0, 4)) != 'RIFF' ||
+          String.fromCharCodes(head.sublist(8, 12)) != 'WAVE') {
+        return null;
+      }
+      int? byteRate;
+      int? dataStart;
+      var offset = 12;
+      while (offset + 8 <= head.length) {
+        final id = String.fromCharCodes(head.sublist(offset, offset + 4));
+        final size = head[offset + 4] |
+            (head[offset + 5] << 8) |
+            (head[offset + 6] << 16) |
+            (head[offset + 7] << 24);
+        final body = offset + 8;
+        if (id == 'fmt ' && body + 16 <= head.length) {
+          // byteRate = bytes 8-11 del cuerpo de `fmt ` (little-endian) = sampleRate * canales * bytesPorMuestra.
+          byteRate = head[body + 8] |
+              (head[body + 9] << 8) |
+              (head[body + 10] << 16) |
+              (head[body + 11] << 24);
+        } else if (id == 'data') {
+          dataStart = body;
+          break; // `data` suele ser el último trozo; su contenido es el resto del archivo
+        }
+        if (size <= 0) break;
+        offset = body + size + (size.isOdd ? 1 : 0); // los trozos se alinean a bytes pares
+      }
+      if (byteRate == null || byteRate <= 0 || dataStart == null) return null;
+      final dataBytes = length - dataStart;
+      if (dataBytes <= 0) return null;
+      return dataBytes / byteRate;
+    } catch (_) {
+      return null;
+    } finally {
+      await handle?.close();
+    }
   }
 
   /// Tamaño total que declara la cabecera RIFF del WAV (bytes 4-7, little-endian, + 8), o null si no es fiable.

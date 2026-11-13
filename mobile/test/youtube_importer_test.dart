@@ -596,4 +596,149 @@ void main() {
       expect(dailyLimitAvisos, greaterThanOrEqualTo(1), reason: 'se avisa del tope diario');
     },
   );
+
+  // WAV válido con un `fmt ` real (byteRate configurable) y un `data` del tamaño pedido, para que _wavDurationS calcule la
+  // duración = dataBytes / byteRate. Con byteRate = 100, la duración en segundos = dataBytes / 100.
+  List<int> wavOf({required int byteRate, required int dataBytes}) {
+    final total = 44 + dataBytes;
+    final b = List<int>.filled(total, 0);
+    void str(int off, String s) => b.setRange(off, off + s.length, s.codeUnits);
+    void le32(int off, int v) {
+      b[off] = v & 0xff;
+      b[off + 1] = (v >> 8) & 0xff;
+      b[off + 2] = (v >> 16) & 0xff;
+      b[off + 3] = (v >> 24) & 0xff;
+    }
+    void le16(int off, int v) {
+      b[off] = v & 0xff;
+      b[off + 1] = (v >> 8) & 0xff;
+    }
+    str(0, 'RIFF');
+    le32(4, total - 8);
+    str(8, 'WAVE');
+    str(12, 'fmt ');
+    le32(16, 16);
+    le16(20, 1); // PCM
+    le16(22, 2); // canales
+    le32(24, 48000); // sampleRate
+    le32(28, byteRate);
+    le16(32, 4);
+    le16(34, 16);
+    str(36, 'data');
+    le32(40, dataBytes);
+    return b;
+  }
+
+  test(
+    'una descarga truncada salta al siguiente candidato y entrega la versión íntegra',
+    () async {
+      final truncated = wavOf(byteRate: 100, dataBytes: 1000); // 10 s
+      final full = wavOf(byteRate: 100, dataBytes: 18000); // 180 s
+      final downloaded = <String?>[];
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          final p = request.url.path;
+          if (p == '/api/convert') {
+            final job = request.body.contains('bbbbbbbbbbb') ? 'job-B' : 'job-A';
+            return http.Response(jsonEncode({'jobId': job}), 200);
+          }
+          if (p == '/api/status') {
+            return http.Response(jsonEncode({'status': 'completed'}), 200);
+          }
+          if (p == '/api/download/') {
+            final job = request.url.queryParameters['jobId'];
+            downloaded.add(job);
+            return http.Response.bytes(job == 'job-B' ? full : truncated, 200);
+          }
+          fail('Ruta inesperada: ${request.url}');
+        }),
+        base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('yt-fallback-test'),
+        wait: (_) async {},
+      );
+
+      final audios = await importer.importTracks(const [
+        YoutubeTrack(
+          url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+          title: 'Una',
+          expectedDurationS: 180,
+          alternatives: ['https://www.youtube.com/watch?v=bbbbbbbbbbb'],
+        ),
+      ]);
+
+      expect(downloaded, ['job-A', 'job-B'],
+          reason: 'el truncado (A) se descarta y se prueba el alternativo (B)');
+      expect(audios, hasLength(1));
+      expect(await File(audios.single.path).length(), full.length,
+          reason: 'se entrega la versión íntegra, no la truncada');
+      await importer.cleanup(audios);
+    },
+  );
+
+  test(
+    'una descarga truncada sin alternativas falla (no entrega un audio inservible)',
+    () async {
+      final truncated = wavOf(byteRate: 100, dataBytes: 1000); // 10 s de 180 esperados
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          final p = request.url.path;
+          if (p == '/api/convert') return http.Response(jsonEncode({'jobId': 'job-A'}), 200);
+          if (p == '/api/status') return http.Response(jsonEncode({'status': 'completed'}), 200);
+          if (p == '/api/download/') return http.Response.bytes(truncated, 200);
+          fail('Ruta inesperada: ${request.url}');
+        }),
+        base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('yt-trunc-fail-test'),
+        wait: (_) async {},
+      );
+
+      await expectLater(
+        importer.importTracks(const [
+          YoutubeTrack(
+            url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+            title: 'Una',
+            expectedDurationS: 180,
+          ),
+        ]),
+        throwsA(isA<YoutubeTruncatedException>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('incompleta'), contains('180 s')),
+        )),
+      );
+    },
+  );
+
+  test(
+    'no rechaza una canción íntegra aunque difiera unos segundos de la esperada',
+    () async {
+      final almost = wavOf(byteRate: 100, dataBytes: 17500); // 175 s de 180 esperados
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          final p = request.url.path;
+          if (p == '/api/convert') return http.Response(jsonEncode({'jobId': 'job-A'}), 200);
+          if (p == '/api/status') return http.Response(jsonEncode({'status': 'completed'}), 200);
+          if (p == '/api/download/') return http.Response.bytes(almost, 200);
+          fail('Ruta inesperada: ${request.url}');
+        }),
+        base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('yt-ok-test'),
+        wait: (_) async {},
+      );
+
+      final audios = await importer.importTracks(const [
+        YoutubeTrack(
+          url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+          title: 'Una',
+          expectedDurationS: 180,
+        ),
+      ]);
+
+      expect(audios, hasLength(1), reason: '175 s de 180 está dentro del margen, no es truncado');
+      await importer.cleanup(audios);
+    },
+  );
 }

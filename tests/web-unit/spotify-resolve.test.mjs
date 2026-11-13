@@ -63,6 +63,47 @@ describe('resolveCollection', () => {
     await assert.rejects(() => resolveCollection(null, { searchYoutube }), /colección/);
     await assert.rejects(() => resolveCollection(collection, {}), /searchYoutube/);
   });
+
+  test('una primera consulta floja se recupera con una segunda variante (ADR-0046)', async () => {
+    // Artista localizado distinto en YouTube: la consulta «artista título» no encuentra nada bueno, pero la variante amplia
+    // «solo título» sí. El resolver no debe dejar la pista en «baja».
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Despacito', 'Luis Fonsi', 229000)] };
+    const calls = [];
+    const search = async (query) => {
+      calls.push(query);
+      if (query === 'Despacito') { // la variante amplia (solo título)
+        return [cand('good', 'Despacito', 'Luis Fonsi', 229, 'official')];
+      }
+      return [cand('bad', 'Reacción a Despacito', 'Otro Canal', 500)]; // la primaria trae ruido
+    };
+    const result = await resolveCollection(col, { searchYoutube: search });
+    assert.notEqual(result.results[0].tier, 'baja');
+    assert.equal(result.results[0].best.candidate.id, 'good');
+    assert.deepEqual(calls, ['Luis Fonsi Despacito', 'Despacito'], 'prueba la segunda variante al no bastar la primera');
+  });
+
+  test('para en cuanto hay una coincidencia ALTA (no gasta consultas de más)', async () => {
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [track('The Scientist', 'Coldplay', 309000)] };
+    const calls = [];
+    const search = async (query) => {
+      calls.push(query);
+      return [cand('ok', 'The Scientist - Coldplay', 'Coldplay', 309, 'official')];
+    };
+    const result = await resolveCollection(col, { searchYoutube: search });
+    assert.equal(result.results[0].tier, 'alta');
+    assert.deepEqual(calls, ['Coldplay The Scientist'], 'con una coincidencia alta no se prueba la segunda variante');
+  });
+
+  test('acumula candidatos de varias variantes para ofrecer alternativas', async () => {
+    // Ninguna variante da «alta», pero juntando ambas hay alternativas para el salto anti-truncado de la APK.
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Tema', 'Grupo', 200000)] };
+    const search = async (query) => (query === 'Tema'
+      ? [cand('v2', 'Tema (Audio)', 'Grupo', 232)]
+      : [cand('v1', 'Tema', 'Grupo', 231)]);
+    const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
+    const ids = [result.results[0].best?.candidate.id, ...result.results[0].alternatives.map((a) => a.candidate.id)];
+    assert.ok(ids.includes('v1') && ids.includes('v2'), 'las dos variantes aportan candidatos');
+  });
 });
 
 describe('albumOf', () => {

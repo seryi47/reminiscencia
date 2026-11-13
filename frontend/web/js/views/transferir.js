@@ -7,6 +7,7 @@ import { el, openDialog, toast } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import {
   createTransferApi, beginConnect, isConnected, clearSession, listLibrary, resolveCollection, markDuplicates, buildTransferPlan,
+  transferStats,
 } from '../spotify-transfer.js';
 import { importYoutubeTracks, isUploadedRecently } from './homeostasia.js';
 
@@ -232,17 +233,21 @@ function transferPanel(ctx) {
     let totalHave = 0;
     for (const collection of state.collections) {
       if (collection.results.length === 0) continue;
-      const dupes = collection.results.filter((r) => r.inLibrary).length;
+      const total = collection.results.length;
+      const have = collection.results.filter((r) => r.inLibrary).length;
       const review = collection.results.filter((r) => !r.inLibrary && r.tier !== 'alta');
-      const sure = collection.results.length - dupes - review.length;
-      const nuevas = sure + review.length;
-      totalNew += nuevas;
-      totalHave += dupes;
-      const counts = nuevas === 0
-        ? `✓ Ya la tienes entera (${plural(dupes, 'canción', 'canciones')})`
-        : [sure ? `${sure} se añaden solas` : null, review.length ? `${review.length} a revisar` : null,
-          dupes ? `${dupes} ya las tienes` : null].filter(Boolean).join(' · ');
-      blocks.push(el('div', { class: `transferir-colhead${nuevas === 0 ? ' transferir-colhead-done' : ''}` },
+      const sure = total - have - review.length;
+      const missing = total - have; // lo que falta por transferir = se añaden solas + a revisar
+      totalNew += missing;
+      totalHave += have;
+      // Número EXPLÍCITO (ADR-0046): total del álbum, cuántas ya tienes y cuántas faltan; y, si hay que revisar, el desglose
+      // de las que faltan (se añaden solas / a revisar).
+      const breakdown = [sure ? `${sure} se añaden solas` : null, review.length ? `${review.length} a revisar` : null]
+        .filter(Boolean).join(' · ');
+      const counts = missing === 0
+        ? `✓ Ya las tienes todas (${total})`
+        : `Faltan ${missing} de ${total} · ya tienes ${have}${breakdown ? ` · ${breakdown}` : ''}`;
+      blocks.push(el('div', { class: `transferir-colhead${missing === 0 ? ' transferir-colhead-done' : ''}`, 'data-testid': 'transferir-colhead' },
         el('span', { class: 'transferir-sub' }, collection.name),
         el('span', { class: 'transferir-counts' }, counts)));
       if (review.length === 0) continue;
@@ -275,9 +280,10 @@ function transferPanel(ctx) {
     }, icon('upload', { size: 18 }), el('span', { 'data-testid': 'transferir-go-text' }, `Transferir ${totalSelected()} canciones`));
     node._refreshCount = () => { go.querySelector('[data-testid="transferir-go-text"]').textContent = `Transferir ${totalSelected()} canciones`; };
 
+    const stats = transferStats(state.collections);
     setSection(
       el('p', { class: 'transferir-intro' },
-        `Comparado con tu biblioteca: ${plural(totalNew, 'canción nueva', 'canciones nuevas')}${totalHave ? `, ${totalHave} ya las tienes` : ''}. `
+        `Comparado con tu biblioteca: faltan ${plural(stats.uniqueMissing, 'canción', 'canciones')} por transferir${stats.totalHave ? `; ya tienes ${stats.totalHave}` : ''}. `
         + (anyReview ? 'Abajo solo lo que conviene revisar (ya hay una versión elegida; cámbiala solo si hace falta).'
           : 'Todo identificado automáticamente. Dale a «Transferir».')),
       recolocNote(),

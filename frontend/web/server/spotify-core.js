@@ -112,11 +112,34 @@ export function normalizeSingleTrack(track) {
 }
 
 /**
- * Consulta de YouTube para buscar una pista: «artista título», ya sin la cola de «feat» del título (el matcher ya la
- * ignora, pero acortar la consulta mejora los resultados). No normaliza acentos: YouTube los maneja.
+ * Consultas de YouTube para buscar una pista, de la más precisa a la más amplia (ADR-0046). El resolver las prueba en orden
+ * y acumula candidatos hasta tener una coincidencia sólida, en vez de depender de un único intento. Variantes:
+ *   1. «artista principal + título» (sin la cola de «feat»): la de siempre, la mejor en el caso normal.
+ *   2. «todos los artistas + título» (solo si hay colaboración): desambigua los temas con featuring, que YouTube suele
+ *      titular con todos los artistas.
+ *   3. «título solo»: último recurso amplio para cuando el nombre del artista en Spotify no coincide con el de YouTube
+ *      (localizaciones, grafías distintas).
+ * No normaliza acentos: YouTube los maneja. Sin duplicados ni cadenas vacías.
  */
+export function youtubeQueriesFor(internalTrack) {
+  const artists = Array.isArray(internalTrack.artists) ? internalTrack.artists.filter(Boolean) : [];
+  const a0 = artists[0] ?? '';
+  const titleCore = String(internalTrack.title ?? '')
+    .replace(/\s*[([].*?(feat\.?|ft\.?|con)\s.*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const out = [];
+  const add = (parts) => {
+    const q = parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    if (q && !out.includes(q)) out.push(q);
+  };
+  add([a0, titleCore]);
+  if (artists.length > 1) add([artists.join(' '), titleCore]);
+  add([titleCore]);
+  return out.length ? out : [String(internalTrack.title ?? '').replace(/\s+/g, ' ').trim()].filter(Boolean);
+}
+
+/** La mejor consulta (primera variante). Se conserva para compatibilidad y para la reselección manual. */
 export function youtubeQueryFor(internalTrack) {
-  const artist = internalTrack.artists?.[0] ?? '';
-  const title = String(internalTrack.title ?? '').replace(/\s*[([].*?(feat\.?|ft\.?|con)\s.*$/i, '').trim();
-  return [artist, title].filter(Boolean).join(' ').trim();
+  return youtubeQueriesFor(internalTrack)[0] ?? '';
 }

@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
 import 'app_error.dart';
 import 'duplicates.dart';
+import 'library_match.dart';
 import 'youtube_importer.dart';
 
 const _sessionKey = 'reminiscencia.spotify.session';
@@ -207,14 +208,13 @@ class SpotifyLibrary {
       );
 }
 
-/// Marca las pistas que ya están en la biblioteca, para no volver a añadirlas a un álbum. Dos vías: la regla común
-/// (título + duración ±2 s) y título + artista normalizados iguales (aunque la duración de Spotify y la de la versión ya
-/// importada de YouTube difieran).
+/// Marca las pistas que ya están en la biblioteca con la regla TOLERANTE de presencia (ADR-0046, library_match.dart): más
+/// laxa que la de duplicados a propósito, para no contar como «falta» algo que ya tienes por un «Remastered», un «feat.» o
+/// unos segundos de diferencia; pero una versión en directo o un remix siguen sin contar como que ya la tienes.
 void markTransferDuplicates(List<TransferMatch> results, List<DuplicateCandidate> library) {
   for (final result in results) {
     final probe = DuplicateCandidate(title: result.track.title, artist: result.track.artist, durationS: result.track.durationS);
-    final probeNoDur = DuplicateCandidate(title: result.track.title, artist: result.track.artist);
-    result.inLibrary = library.any((song) => isPossibleDuplicate(probe, song) || isPossibleDuplicate(probeNoDur, song));
+    result.inLibrary = library.any((song) => isSameLibraryTrack(probe, song));
   }
 }
 
@@ -226,12 +226,23 @@ List<YoutubeTrack> selectedTransferTracks(List<TransferMatch> results, {Transfer
     if (result.excluded || result.inLibrary) continue;
     final pick = result.chosen;
     if (pick == null || pick.url.isEmpty) continue;
+    // Candidatos de respaldo a los que saltar si la descarga del elegido sale truncada (ADR-0046): las alternativas que
+    // dio el resolver (y la mejor automática, si el usuario eligió otra), sin repetir ni incluir el propio elegido.
+    final seen = {pick.url};
+    final alternatives = <String>[];
+    for (final extra in [result.best, ...result.alternatives]) {
+      final url = extra?.url ?? '';
+      if (url.isNotEmpty && seen.add(url)) alternatives.add(url);
+    }
     chosen.add(YoutubeTrack(
       url: pick.url,
       title: result.track.title,
       artist: result.track.artist,
       playlistId: album?.id,
       playlistTitle: album?.name,
+      // Duración exacta de Spotify: la referencia para detectar un WAV truncado (ADR-0046).
+      expectedDurationS: result.track.durationS,
+      alternatives: alternatives,
     ));
   }
   return chosen;

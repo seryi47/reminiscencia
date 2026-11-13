@@ -6,6 +6,7 @@ import { describe, test } from 'node:test';
 
 import {
   parseSpotifyRef, normalizeTrack, normalizeAlbum, normalizePlaylist, normalizeSingleTrack, youtubeQueryFor,
+  youtubeQueriesFor,
 } from '../../frontend/web/server/spotify-core.js';
 
 const TRACK_ID = '3n3Ppam7vgaVa1iaRUc9Lp'; // 22 base62
@@ -140,5 +141,21 @@ describe('normalizeSingleTrack / youtubeQueryFor', () => {
   test('la consulta de YouTube es «artista título» sin la cola de feat', () => {
     assert.equal(youtubeQueryFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown'] }), 'Chris Brown Loyal');
     assert.equal(youtubeQueryFor({ title: 'The Scientist', artists: ['Coldplay'] }), 'Coldplay The Scientist');
+  });
+
+  test('youtubeQueriesFor da variantes de la más precisa a la más amplia, sin duplicados', () => {
+    // Un solo artista: primaria + «solo título» (la de feat coincide con la primaria y no se duplica).
+    assert.deepEqual(youtubeQueriesFor({ title: 'The Scientist', artists: ['Coldplay'] }),
+      ['Coldplay The Scientist', 'The Scientist']);
+    // Colaboración: se añade la variante con TODOS los artistas, entre la primaria y la amplia.
+    assert.deepEqual(youtubeQueriesFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown', 'Lil Wayne', 'Tyga'] }),
+      ['Chris Brown Loyal', 'Chris Brown Lil Wayne Tyga Loyal', 'Loyal']);
+    // Sin artista: queda solo el título.
+    assert.deepEqual(youtubeQueriesFor({ title: 'Clocks', artists: [] }), ['Clocks']);
+  });
+
+  test('youtubeQueryFor es la primera variante de youtubeQueriesFor', () => {
+    const track = { title: 'Dakiti', artists: ['Bad Bunny', 'Jhay Cortez'] };
+    assert.equal(youtubeQueryFor(track), youtubeQueriesFor(track)[0]);
   });
 });

@@ -208,6 +208,39 @@ void main() {
     );
   });
 
+  group('cambio de canción: metadata inmediata (ADR-0046)', () {
+    test('playNext publica ya la canción de destino, sin esperar a la transición real', () async {
+      await handler.playAt(songs, 0);
+      expect(handler.nowPlaying.value.songId, 's0');
+      // Se retiene la emisión del índice real: solo la publicación optimista puede cambiar la metadata ahora.
+      player.holdIndexStream = true;
+      final pending = handler.playNext();
+      expect(
+        handler.nowPlaying.value.songId,
+        's1',
+        reason: 'la metadata cambia al instante, sin esperar a que just_audio transite de índice',
+      );
+      expect(handler.mediaItem.value?.id, 's1');
+      // Llega la confirmación del índice real: sigue en s1.
+      player.emitHeldIndex();
+      await pending;
+      await drain();
+      expect(handler.nowPlaying.value.songId, 's1');
+    });
+
+    test('playPrevious (al principio de la canción) publica ya la anterior al instante', () async {
+      await handler.playAt(songs, 2);
+      expect(handler.nowPlaying.value.songId, 's2');
+      player.holdIndexStream = true;
+      final pending = handler.playPrevious();
+      expect(handler.nowPlaying.value.songId, 's1');
+      player.emitHeldIndex();
+      await pending;
+      await drain();
+      expect(handler.nowPlaying.value.songId, 's1');
+    });
+  });
+
   group('arranque en frío', () {
     test('al crear el reproductor no hay canción, cola ni carga', () {
       expect(handler.nowPlaying.value, NowPlaying.none);

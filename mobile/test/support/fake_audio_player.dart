@@ -94,6 +94,13 @@ class FakeAudioPlayer implements AudioPlayer {
   @override
   bool get hasPrevious => (_currentIndex ?? 0) > 0;
 
+  // Sin aleatorio ni repetición en el fake: el siguiente/anterior son contiguos (el handler acota el rango).
+  @override
+  int? get nextIndex => (_currentIndex ?? 0) + 1;
+
+  @override
+  int? get previousIndex => (_currentIndex ?? 0) > 0 ? (_currentIndex ?? 0) - 1 : null;
+
   void _emit() => _events.add(
     PlaybackEvent(
       processingState: _state,
@@ -136,12 +143,27 @@ class FakeAudioPlayer implements AudioPlayer {
     return const Duration(minutes: 3);
   }
 
+  /// Si está activo, un cambio de índice por `seek` NO se emite por `currentIndexStream` hasta llamar a [emitHeldIndex]. Sirve
+  /// para probar la publicación optimista del handler: la metadata debe cambiar sin esperar a que el índice real transite.
+  bool holdIndexStream = false;
+  int? _heldIndex;
+  void emitHeldIndex() {
+    if (_heldIndex != null) {
+      _index.add(_heldIndex);
+      _heldIndex = null;
+    }
+  }
+
   @override
   Future<void> seek(Duration? position, {int? index}) {
     log.add('seek:${index ?? _currentIndex}');
     if (index != null && index != _currentIndex) {
       _currentIndex = index;
-      _index.add(index);
+      if (holdIndexStream) {
+        _heldIndex = index;
+      } else {
+        _index.add(index);
+      }
     }
     _position = position ?? Duration.zero;
     if (failingIndexes.contains(_currentIndex)) {
@@ -155,6 +177,10 @@ class FakeAudioPlayer implements AudioPlayer {
   @override
   Future<void> seekToNext() =>
       seek(Duration.zero, index: (_currentIndex ?? 0) + 1);
+
+  @override
+  Future<void> seekToPrevious() =>
+      seek(Duration.zero, index: (_currentIndex ?? 0) - 1);
 
   @override
   Future<void> play() async {

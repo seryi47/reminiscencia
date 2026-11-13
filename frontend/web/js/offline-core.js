@@ -8,7 +8,7 @@ import { normalizeApiBase, WORKER_API_BASE } from './api-config.js';
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 45;
+export const SHELL_VERSION = 46;
 
 /** Origen público del bucket de audio en Cloudflare R2 por r2.dev (ADR-0020): las portadas y, desde ADR-0031, el
  *  respaldo del audio. Debe coincidir con media-src, connect-src e img-src de vercel.json y _headers. */
@@ -96,6 +96,7 @@ export const SHELL_ASSETS = Object.freeze([
   '/js/duplicates.js',
   '/js/edit-pending.js',
   '/js/edit-remote.js',
+  '/js/library-match.js',
   '/js/local-library.js',
   '/js/offline-core.js',
   '/js/offline-downloads.js',

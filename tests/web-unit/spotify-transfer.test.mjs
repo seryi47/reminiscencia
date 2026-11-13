@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 
 import {
   readSession, writeSession, clearSession, isConnected, createTransferApi, beginConnect,
-  resolveCollection, listLibrary, markDuplicates, selectedTracks, buildTransferPlan, SESSION_KEY, PKCE_KEY,
+  resolveCollection, listLibrary, markDuplicates, selectedTracks, buildTransferPlan, transferStats, SESSION_KEY, PKCE_KEY,
 } from '../../frontend/web/js/spotify-transfer.js';
 
 const fakeStorage = () => {
@@ -163,5 +163,27 @@ describe('markDuplicates / selectedTracks', () => {
     const chosen = selectedTracks(makeResults()); // ninguna marcada inLibrary ni excluida
     // 0 alta (u0), 1 media (u1, su mejor), 3 alta (u3); la 2 es baja (best null) y queda fuera
     assert.deepEqual(chosen.map((t) => [t.index, t.url]), [[0, 'u0'], [1, 'u1'], [3, 'u3']]);
+  });
+});
+
+describe('transferStats (contador total/tengo/faltan)', () => {
+  const res = (title, inLibrary) => ({ track: { title, artists: ['A'] }, inLibrary });
+
+  test('por álbum da total, cuántas tienes y cuántas faltan (ejemplo del usuario: 15, 11, 4)', () => {
+    const results = [];
+    for (let i = 0; i < 15; i += 1) results.push(res(`Tema ${i}`, i < 11));
+    const stats = transferStats([{ name: 'Mi álbum', results }]);
+    assert.deepEqual(stats.perAlbum, [{ name: 'Mi álbum', total: 15, have: 11, missing: 4 }]);
+    assert.equal(stats.uniqueMissing, 4);
+    assert.equal(stats.totalHave, 11);
+  });
+
+  test('el total global de «faltan» no cuenta dos veces la misma canción en dos listas', () => {
+    const colA = { name: 'A', results: [res('Compartida', false), res('Solo A', false)] };
+    const colB = { name: 'B', results: [res('Compartida', false), res('Solo B', false)] };
+    const stats = transferStats([colA, colB]);
+    // 4 pistas en total, pero «Compartida» cuenta una sola vez → 3 únicas por transferir
+    assert.equal(stats.uniqueMissing, 3);
+    assert.deepEqual(stats.perAlbum.map((a) => a.missing), [2, 2]);
   });
 });

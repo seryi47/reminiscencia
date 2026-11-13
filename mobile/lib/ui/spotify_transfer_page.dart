@@ -441,17 +441,25 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     var anyReview = false;
     var totalNew = 0;
     var totalHave = 0;
+    // Total global de «faltan» SIN contar dos veces una misma canción que aparezca en varias listas (ADR-0046).
+    final missingKeys = <String>{};
     for (final c in nonEmpty) {
-      final dupes = c.results.where((r) => r.inLibrary).length;
+      final total = c.results.length;
+      final have = c.results.where((r) => r.inLibrary).length;
       final review = c.results.where((r) => !r.inLibrary && r.tier != 'alta').toList();
-      final sure = c.results.length - dupes - review.length;
-      final nuevas = sure + review.length;
-      totalNew += nuevas;
-      totalHave += dupes;
-      final done = nuevas == 0;
+      final sure = total - have - review.length;
+      final missing = total - have; // lo que falta por transferir
+      totalNew += missing;
+      totalHave += have;
+      for (final r in c.results.where((r) => !r.inLibrary)) {
+        missingKeys.add('${normalizeDuplicateTitle(r.track.title)}|${normalizeDuplicateArtist(r.track.artist)}');
+      }
+      final done = missing == 0;
+      // Número EXPLÍCITO (ADR-0046): total del álbum, cuántas ya tienes y cuántas faltan; y el desglose de las que faltan.
+      final breakdown = [if (sure > 0) '$sure se añaden solas', if (review.isNotEmpty) '${review.length} a revisar'].join(' · ');
       final counts = done
-          ? '✓ Ya la tienes entera ($dupes ${dupes == 1 ? 'canción' : 'canciones'})'
-          : [if (sure > 0) '$sure se añaden solas', if (review.isNotEmpty) '${review.length} a revisar', if (dupes > 0) '$dupes ya las tienes'].join(' · ');
+          ? '✓ Ya las tienes todas ($total)'
+          : 'Faltan $missing de $total · ya tienes $have${breakdown.isNotEmpty ? ' · $breakdown' : ''}';
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -475,7 +483,7 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     }
 
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('Comparado con tu biblioteca: $totalNew ${totalNew == 1 ? 'canción nueva' : 'canciones nuevas'}${totalHave > 0 ? ', $totalHave ya las tienes' : ''}. '
+      Text('Comparado con tu biblioteca: faltan ${missingKeys.length} ${missingKeys.length == 1 ? 'canción' : 'canciones'} por transferir${totalHave > 0 ? '; ya tienes $totalHave' : ''}. '
           '${anyReview ? 'Abajo solo lo que conviene revisar (ya hay una versión elegida).' : 'Todo identificado automáticamente. Dale a «Transferir».'}',
           style: theme.textTheme.bodySmall),
       const SizedBox(height: 8),

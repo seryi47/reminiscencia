@@ -4,7 +4,7 @@
 // producción envuelve la búsqueda real (server/youtube-search.js + YouTube Music); en pruebas, respuestas simuladas.
 
 import { classifyMatch } from './spotify-match.js';
-import { youtubeQueryFor } from './spotify-core.js';
+import { youtubeQueriesFor } from './spotify-core.js';
 
 // Ejecuta `fn` sobre cada elemento con como mucho `limit` en paralelo, conservando el orden de salida.
 async function mapPool(items, limit, fn) {
@@ -47,19 +47,42 @@ export function albumOf(collection) {
  * - `best` es { candidate, score, ... } (la coincidencia elegida) o null.
  * - un fallo de búsqueda de una pista no tumba el resto: queda como tier 'baja' con `error`.
  */
-export async function resolveCollection(collection, { searchYoutube }, { concurrency = 4, maxAlternatives = 5 } = {}) {
+export async function resolveCollection(
+  collection,
+  { searchYoutube },
+  { concurrency = 4, maxAlternatives = 5, maxQueries = 2 } = {},
+) {
   if (!collection || !Array.isArray(collection.tracks)) throw new Error('colección inválida');
   if (typeof searchYoutube !== 'function') throw new Error('falta searchYoutube');
 
   const results = await mapPool(collection.tracks, concurrency, async (track, index) => {
-    const query = youtubeQueryFor(track);
-    try {
-      const candidates = (await searchYoutube(query, track)) ?? [];
-      const match = classifyMatch(track, candidates, { maxAlternatives });
-      return { index, track, query, tier: match.tier, best: match.best, alternatives: match.alternatives };
-    } catch (error) {
-      return { index, track, query, tier: 'baja', best: null, alternatives: [], error: String(error?.message ?? error) };
+    // Se prueban varias variantes de consulta (ADR-0046) acumulando candidatos: así una primera búsqueda floja no deja la
+    // pista en «revisión manual». Se para en cuanto hay una coincidencia ALTA para no gastar llamadas de más (YouTube Music
+    // limita en listas largas). Si TODAS las variantes fallan por red y no se juntó ni un candidato, queda baja con error.
+    const queries = youtubeQueriesFor(track).slice(0, Math.max(1, maxQueries));
+    const byKey = new Map();
+    let lastError = null;
+    let match = { tier: 'baja', best: null, alternatives: [] };
+    for (const query of queries) {
+      let candidates;
+      try {
+        candidates = (await searchYoutube(query, track)) ?? [];
+      } catch (error) {
+        lastError = error;
+        continue;
+      }
+      for (const candidate of candidates) {
+        const key = candidate?.id || candidate?.url;
+        if (key && !byKey.has(key)) byKey.set(key, candidate);
+      }
+      match = classifyMatch(track, [...byKey.values()], { maxAlternatives });
+      if (match.tier === 'alta') break;
     }
+    const query = queries[0];
+    if (byKey.size === 0 && lastError) {
+      return { index, track, query, tier: 'baja', best: null, alternatives: [], error: String(lastError?.message ?? lastError) };
+    }
+    return { index, track, query, tier: match.tier, best: match.best, alternatives: match.alternatives };
   });
 
   const summary = { total: results.length, alta: 0, media: 0, baja: 0, error: 0 };

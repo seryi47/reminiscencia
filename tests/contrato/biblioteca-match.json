@@ -1,0 +1,93 @@
+{
+  "_nota": "Regla común (web + APK) de «¿esta pista de Spotify ya está en mi biblioteca?» para el panel de «Transferir música» (ADR-0046). Es MÁS TOLERANTE que la regla de duplicados (ADR-0026) a propósito: evita falsos «faltan» por diferencias menores de metadatos. Parte del título ya normalizado de duplicados (sin ruido tipo «(Official Video)» ni «feat»), y encima quita las etiquetas NEUTRAS (misma grabación: remaster, radio edit) pero CONSERVA las de versión (live, remix, acústico…), que sí distinguen grabaciones. Coincide si la clave de título es igual y no vacía y, además: si AMBOS artistas se conocen, deben solaparse (los tokens de uno contenidos en los del otro, ignorando «feat» y acentos) — así un «radio edit» del mismo artista cuenta aunque dure un minuto menos, pero dos canciones distintas con el mismo título de artistas distintos NO; si a alguno le falta el artista, decide la duración (±tolerancia_s) y, si tampoco hay duración, basta el título. Implementado igual en frontend/web/js/library-match.js y mobile/lib/library_match.dart.",
+  "tolerancia_s": 8,
+  "etiquetas_neutras": [
+    "remaster",
+    "remastered",
+    "remasterizado",
+    "remasterizada",
+    "remastered version",
+    "radio edit",
+    "radio version",
+    "single version",
+    "album version",
+    "original mix"
+  ],
+  "clave_titulo": [
+    { "entrada": "Clocks (Remastered)", "salida": "clocks" },
+    { "entrada": "Clocks (Remastered 2011)", "salida": "clocks" },
+    { "entrada": "Viva la Vida - Radio Edit", "salida": "viva la vida" },
+    { "entrada": "Song (Official Video)", "salida": "song" },
+    { "entrada": "Tema (En Directo)", "salida": "tema en directo" },
+    { "entrada": "Canción (Remix)", "salida": "cancion remix" },
+    { "entrada": "Dakiti (feat. Jhay Cortez)", "salida": "dakiti" }
+  ],
+  "casos": [
+    {
+      "nota": "remaster = misma grabación: ya la tienes",
+      "a": { "title": "Clocks", "artist": "Coldplay", "duration_s": 307 },
+      "b": { "title": "Clocks (Remastered)", "artist": "Coldplay", "duration_s": 307 },
+      "esperado": true
+    },
+    {
+      "nota": "radio edit = misma grabación aunque la duración difiera, el artista coincide",
+      "a": { "title": "Song", "artist": "A", "duration_s": 240 },
+      "b": { "title": "Song (Radio Edit)", "artist": "A", "duration_s": 200 },
+      "esperado": true
+    },
+    {
+      "nota": "featuring en la biblioteca pero no en Spotify: los artistas se solapan",
+      "a": { "title": "Dakiti", "artist": "Bad Bunny", "duration_s": 205 },
+      "b": { "title": "Dakiti", "artist": "Bad Bunny, Jhay Cortez", "duration_s": 222 },
+      "esperado": true
+    },
+    {
+      "nota": "misma canción con unos segundos de diferencia y mismo artista: ya la tienes",
+      "a": { "title": "The Scientist", "artist": "Coldplay", "duration_s": 309 },
+      "b": { "title": "The Scientist", "artist": "Coldplay", "duration_s": 315 },
+      "esperado": true
+    },
+    {
+      "nota": "falta el artista en un lado: decide la duración (±8 s)",
+      "a": { "title": "Interludio", "artist": "", "duration_s": 60 },
+      "b": { "title": "Interludio", "artist": "Grupo", "duration_s": 62 },
+      "esperado": true
+    },
+    {
+      "nota": "falta el artista pero la duración es lejana: no es la misma",
+      "a": { "title": "Intro", "artist": "", "duration_s": 60 },
+      "b": { "title": "Intro", "artist": "Otro", "duration_s": 200 },
+      "esperado": false
+    },
+    {
+      "nota": "ruido «(Official Video)» en la biblioteca: ya la tienes",
+      "a": { "title": "Song", "artist": "A", "duration_s": 180 },
+      "b": { "title": "Song (Official Video)", "artist": "A", "duration_s": 181 },
+      "esperado": true
+    },
+    {
+      "nota": "versión en directo: NO es la misma grabación",
+      "a": { "title": "Song", "artist": "A", "duration_s": 180 },
+      "b": { "title": "Song (Live)", "artist": "A", "duration_s": 200 },
+      "esperado": false
+    },
+    {
+      "nota": "remix: NO es la misma grabación",
+      "a": { "title": "Song", "artist": "A", "duration_s": 180 },
+      "b": { "title": "Song (Remix)", "artist": "A", "duration_s": 180 },
+      "esperado": false
+    },
+    {
+      "nota": "mismo título, artista distinto y duración lejana: canciones distintas",
+      "a": { "title": "Hello", "artist": "Adele", "duration_s": 295 },
+      "b": { "title": "Hello", "artist": "Lionel Richie", "duration_s": 300 },
+      "esperado": false
+    },
+    {
+      "nota": "título distinto: no es la misma",
+      "a": { "title": "Yellow", "artist": "Coldplay", "duration_s": 269 },
+      "b": { "title": "Clocks", "artist": "Coldplay", "duration_s": 269 },
+      "esperado": false
+    }
+  ]
+}

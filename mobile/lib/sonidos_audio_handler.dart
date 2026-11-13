@@ -710,7 +710,10 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> playNext() => _guard(() => _bounded(_player.seekToNext()));
+  Future<void> playNext() => _guard(() {
+    _publishIndexOptimistically(_player.nextIndex);
+    return _bounded(_player.seekToNext());
+  });
 
   /// Como en cualquier reproductor: pasados unos segundos, «Anterior» vuelve al principio de la canción.
   @override
@@ -718,8 +721,23 @@ class SonidosAudioHandler extends BaseAudioHandler
     if (_player.position > kRestartThreshold || !_player.hasPrevious) {
       return _bounded(_player.seek(Duration.zero));
     }
+    _publishIndexOptimistically(_player.previousIndex);
     return _bounded(_player.seekToPrevious());
   });
+
+  /// Publica YA la metadata de la canción de destino de un salto (título, artista y portada), sin esperar a que just_audio
+  /// transite de índice: así la interfaz cambia al instante en lugar de quedarse varios segundos con la canción anterior
+  /// mientras se bufferea la siguiente (ADR-0046). `nextIndex`/`previousIndex` respetan el orden aleatorio y el modo de
+  /// repetición. Es optimista: `currentIndexStream` confirma o corrige el índice real cuando la transición termina, y no se
+  /// toca `_lastIndex` (lo gobierna ese stream). No modifica el reproductor.
+  void _publishIndexOptimistically(int? index) {
+    final items = queue.value;
+    if (_active && index != null && index >= 0 && index < items.length && index != _lastIndex) {
+      mediaItem.add(items[index]);
+      _fillArtwork(index);
+      _publish();
+    }
+  }
 
   @override
   Future<void> play() async {
