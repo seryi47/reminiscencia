@@ -326,10 +326,11 @@
     "artist": "SAIKO, JC Reyes, Dei V",
     "year": null,
     "tags": [],
-    "folder_id": null,
+    "folder_id": "F417639bc3d88755f",
     "duration_s": 251.804,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
-    "audio": "audio/S0f7b8d99f0ae5c38.opus"
+    "audio": "audio/S0f7b8d99f0ae5c38.opus",
+    "track": 222
   },
   {
     "id": "S500bd6ecb0a28941",
@@ -615,7 +616,7 @@
     "duration_s": 339.749,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S1c81343857010b80.opus",
-    "track": 84
+    "track": 83
   },
   {
     "id": "S1fc0b6a1923ebc29",
@@ -723,7 +724,7 @@
     "duration_s": 222.293,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sc4536ce472aab525.opus",
-    "track": 77
+    "track": 76
   },
   {
     "id": "Sa8f4b4e7d6a74728",
@@ -911,7 +912,7 @@
     "duration_s": 340.051,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Scd66b4911b38a089.opus",
-    "track": 41
+    "track": 40
   },
   {
     "id": "Sa8d3816182aaad67",
@@ -958,7 +959,7 @@
     "duration_s": 352.804,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Se7cb6a8b80fc34e3.opus",
-    "track": 82
+    "track": 81
   },
   {
     "id": "S9404cbb4fd2f7953",
@@ -1340,7 +1341,7 @@
     "duration_s": 264.231,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sefeb4ca4953cc976.opus",
-    "track": 79
+    "track": 78
   },
   {
     "id": "S9d3d80416ee58023",
@@ -1604,7 +1605,7 @@
     "duration_s": 292.264,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S48a421b452aa81f5.opus",
-    "track": 75
+    "track": 74
   },
   {
     "id": "S3a01ba50a5890102",
@@ -1616,7 +1617,7 @@
     "duration_s": 293.542,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S3a01ba50a5890102.opus",
-    "track": 80
+    "track": 79
   },
   {
     "id": "S8c42572b918b322b",
@@ -2289,11 +2290,11 @@
     "artist": "Bad Bunny y Eladio Carrion",
     "year": null,
     "tags": [],
-    "folder_id": "F055ccbef8d7de2ca",
+    "folder_id": "F417639bc3d88755f",
     "duration_s": 153.014,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sec8f5c3aadd170e6.opus",
-    "track": 34
+    "track": 220
   },
   {
     "id": "S2d64fc21d7de996a",
@@ -2317,7 +2318,7 @@
     "duration_s": 246.913,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S02efdb93dab9d736.opus",
-    "track": 35
+    "track": 34
   },
   {
     "id": "S6a20f2e2ca7dbd64",
@@ -2377,7 +2378,7 @@
     "duration_s": 243.816,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S20dcfe28f92b979b.opus",
-    "track": 36
+    "track": 35
   },
   {
     "id": "Sc93080307ef09bc9",
@@ -2497,7 +2498,7 @@
     "duration_s": 265.329,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sa491620b85d93cf8.opus",
-    "track": 42
+    "track": 41
   },
   {
     "id": "S7883352f111c750a",
@@ -2557,7 +2558,7 @@
     "duration_s": 209.286,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S20ee9884209dec2d.opus",
-    "track": 37
+    "track": 36
   },
   {
     "id": "S83400e538c88a1d4",
@@ -2581,7 +2582,7 @@
     "duration_s": 264.966,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S40da8b0bf2c4db16.opus",
-    "track": 38
+    "track": 37
   },
   {
     "id": "Sbd5d76cfc1069d05",
@@ -2593,7 +2594,7 @@
     "duration_s": 283.058,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sbd5d76cfc1069d05.opus",
-    "track": 39
+    "track": 38
   },
   {
     "id": "S902bc3322eba9e80",
@@ -2772,7 +2773,7 @@
     "duration_s": 183.345,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S84a1733c0cdfb77d.opus",
-    "track": 40
+    "track": 39
   },
   {
     "id": "Sb180c8bab74f0167",
@@ -2890,7 +2891,7 @@
     "duration_s": 223.975,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S5e2d7a49060194eb.opus",
-    "track": 44
+    "track": 43
   },
   {
     "id": "S39b89faa95fbc057",
@@ -2902,7 +2903,7 @@
     "duration_s": 149.717,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S39b89faa95fbc057.opus",
-    "track": 45
+    "track": 44
   },
   {
     "id": "S50b352e0cf78348c",
@@ -3139,7 +3140,7 @@
     "duration_s": 298.652,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sd7b3dd94e0ecc320.opus",
-    "track": 47
+    "track": 46
   },
   {
     "id": "S8545d4860e44c665",
@@ -3331,7 +3332,7 @@
     "duration_s": 236.153,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S5602b9873b6acca2.opus",
-    "track": 48
+    "track": 47
   },
   {
     "id": "S8dde08f2a538bfc0",
@@ -3378,7 +3379,7 @@
     "duration_s": 201.113,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sa01435c80917aa25.opus",
-    "track": 49
+    "track": 48
   },
   {
     "id": "S150a5c106f8d4236",
@@ -3414,7 +3415,7 @@
     "duration_s": 310.933,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S76836540fee7bcf1.opus",
-    "track": 50
+    "track": 49
   },
   {
     "id": "Sc561a4ba1ae57521",
@@ -3473,7 +3474,7 @@
     "duration_s": 317.468,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sb4ae2fc710a4872c.opus",
-    "track": 51
+    "track": 50
   },
   {
     "id": "S117177117b0a5136",
@@ -3617,7 +3618,7 @@
     "duration_s": 191.025,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S3d591d2c7d75214a.opus",
-    "track": 52
+    "track": 51
   },
   {
     "id": "S1e56cffecde2180a",
@@ -3653,7 +3654,7 @@
     "duration_s": 270.809,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sa683cc38cbf21f8b.opus",
-    "track": 53
+    "track": 52
   },
   {
     "id": "S515f0bf6dcb2ea8e",
@@ -3665,7 +3666,7 @@
     "duration_s": 236.977,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S515f0bf6dcb2ea8e.opus",
-    "track": 54
+    "track": 53
   },
   {
     "id": "S73456678ec10d39c",
@@ -3749,7 +3750,7 @@
     "duration_s": 323.542,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S2789c1f67c23b171.opus",
-    "track": 55
+    "track": 54
   },
   {
     "id": "Sec1376bc6000dc05",
@@ -3761,7 +3762,7 @@
     "duration_s": 289.379,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sec1376bc6000dc05.opus",
-    "track": 81
+    "track": 80
   },
   {
     "id": "S68fb3ad0955656c1",
@@ -3773,7 +3774,7 @@
     "duration_s": 300.209,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S68fb3ad0955656c1.opus",
-    "track": 56
+    "track": 55
   },
   {
     "id": "S48668adfa12c655c",
@@ -3797,7 +3798,7 @@
     "duration_s": 265.822,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S1a4be3e81188cacc.opus",
-    "track": 76
+    "track": 75
   },
   {
     "id": "Sc50f66eebe73b5a1",
@@ -3809,7 +3810,7 @@
     "duration_s": 265.817,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sc50f66eebe73b5a1.opus",
-    "track": 57
+    "track": 56
   },
   {
     "id": "Sba5ac0914ee809d7",
@@ -3833,7 +3834,7 @@
     "duration_s": 304.902,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S9b891847da790397.opus",
-    "track": 58
+    "track": 57
   },
   {
     "id": "S8246ba1023dee20b",
@@ -3928,7 +3929,7 @@
     "duration_s": 208.51,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sd2e4a81d434b61fc.opus",
-    "track": 59
+    "track": 58
   },
   {
     "id": "S2574e545f47818dd",
@@ -4036,7 +4037,7 @@
     "duration_s": 203.053,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S419d9595268a1496.opus",
-    "track": 60
+    "track": 59
   },
   {
     "id": "S9235d3c11665641d",
@@ -4048,7 +4049,7 @@
     "duration_s": 185.934,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S9235d3c11665641d.opus",
-    "track": 78
+    "track": 77
   },
   {
     "id": "S9ada718f5eb4a133",
@@ -4120,7 +4121,7 @@
     "duration_s": 190.996,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sa5a67cb6b2c009b8.opus",
-    "track": 83
+    "track": 82
   },
   {
     "id": "Sde1b582181d9eeb5",
@@ -4164,11 +4165,11 @@
     "artist": "Eladio Carrion",
     "year": null,
     "tags": [],
-    "folder_id": "F055ccbef8d7de2ca",
+    "folder_id": "F417639bc3d88755f",
     "duration_s": 171.138,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S97667e5351d09d3f.opus",
-    "track": 85
+    "track": 221
   },
   {
     "id": "Sf9354dc306a130e4",
@@ -4216,7 +4217,7 @@
     "duration_s": 279.819,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S9c5696a962907910.opus",
-    "track": 61
+    "track": 60
   },
   {
     "id": "S04af5e83e9fbb398",
@@ -4228,7 +4229,7 @@
     "duration_s": 235.91,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S04af5e83e9fbb398.opus",
-    "track": 62
+    "track": 61
   },
   {
     "id": "S63b5e134914b15ae",
@@ -4300,7 +4301,7 @@
     "duration_s": 311.758,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S6e61247551537851.opus",
-    "track": 63
+    "track": 62
   },
   {
     "id": "Sf1d763b3eba3b9df",
@@ -4324,7 +4325,7 @@
     "duration_s": 252.373,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S67393e57adf4d7fa.opus",
-    "track": 64
+    "track": 63
   },
   {
     "id": "Sde48dacb12fc391f",
@@ -4480,7 +4481,7 @@
     "duration_s": 179.057,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S760e448946508609.opus",
-    "track": 65
+    "track": 64
   },
   {
     "id": "S225904ac02823b4f",
@@ -4504,7 +4505,7 @@
     "duration_s": 318.433,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sd4e852db84113b42.opus",
-    "track": 66
+    "track": 65
   },
   {
     "id": "Sf944519f0a312276",
@@ -4648,7 +4649,7 @@
     "duration_s": 293.611,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S28e675c914164a1b.opus",
-    "track": 67
+    "track": 66
   },
   {
     "id": "S12d6b208f1069add",
@@ -4672,7 +4673,7 @@
     "duration_s": 242.822,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S0ce6b6d7abba8e78.opus",
-    "track": 68
+    "track": 67
   },
   {
     "id": "S470f7db2dbbb9283",
@@ -4732,7 +4733,7 @@
     "duration_s": 211.645,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S5fe8088455b19624.opus",
-    "track": 69
+    "track": 68
   },
   {
     "id": "S9c9cc99e8b851ec9",
@@ -4816,7 +4817,7 @@
     "duration_s": 170.035,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S98a1c79e3ac22dfe.opus",
-    "track": 43
+    "track": 42
   },
   {
     "id": "S76d53d1100c305d4",
@@ -4898,7 +4899,7 @@
     "duration_s": 223.729,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sd3134a6620b20bf9.opus",
-    "track": 70
+    "track": 69
   },
   {
     "id": "Sdf06c3c4bf526812",
@@ -4910,7 +4911,7 @@
     "duration_s": 242.631,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sdf06c3c4bf526812.opus",
-    "track": 46
+    "track": 45
   },
   {
     "id": "Sf6370d58447e9f55",
@@ -4982,7 +4983,7 @@
     "duration_s": 214.303,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S1b3ac3afdf049cf0.opus",
-    "track": 71
+    "track": 70
   },
   {
     "id": "S1caa3b3300fea8e4",
@@ -5090,7 +5091,7 @@
     "duration_s": 427.416,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sde0a5b797207c308.opus",
-    "track": 72
+    "track": 71
   },
   {
     "id": "S0951194da7739feb",
@@ -5102,7 +5103,7 @@
     "duration_s": 222.605,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S0951194da7739feb.opus",
-    "track": 73
+    "track": 72
   },
   {
     "id": "Sb8dfb34535c46cca",
@@ -5388,7 +5389,7 @@
     "duration_s": 294.983,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sfe3bdf2e3119f25f.opus",
-    "track": 74
+    "track": 73
   },
   {
     "id": "Sb798bee63502967b",
