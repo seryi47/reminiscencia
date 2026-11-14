@@ -57,16 +57,23 @@ def test_publishing_uploads_to_r2_and_deletes_unpublished_audio_before_pushing_t
 
 def test_only_the_r2_steps_receive_the_r2_credentials_and_never_the_github_token():
     # El paso que sincroniza los dos buckets y, en el buzón, el que borra de entrada/ lo ya publicado (ADR-0024).
+    # R2_ACCOUNT_ID se reutiliza como el id de cuenta de Cloudflare para desplegar el Worker (ADR-0034); no es una
+    # credencial, así que lo que se vigila es la CLAVE de R2 (R2_ACCESS_KEY_ID y, con ella, el secreto y los buckets).
     expected = {"biblioteca.yml": ["sync_r2.py"], "buzon.yml": ["sync_r2.py", "entrada_r2.py limpiar"]}
     for path in PUBLISHERS:
-        with_secrets = [step for step in _steps(_publicar(path)) if "secrets.R2_" in step]
-        assert [next(tool for tool in expected[path.name] if tool in step) for step in with_secrets] == \
+        steps = _steps(_publicar(path))
+        with_keys = [step for step in steps if "secrets.R2_ACCESS_KEY_ID" in step]
+        assert [next(tool for tool in expected[path.name] if tool in step) for step in with_keys] == \
             expected[path.name], path.name
-        for step in with_secrets:
+        for step in with_keys:
             assert "GH_TOKEN" not in step and "git push" not in step and "github.token" not in step
-        sync = with_secrets[0]
+        sync = with_keys[0]
         for name in (*SECRETS, "R2_PRIVATE_BUCKET"):
             assert f"{name}: ${{{{ secrets.{name} }}}}" in sync
+        # Un paso que use solo el id de cuenta (p. ej. desplegar el Worker) nunca recibe la clave ni el secreto de R2.
+        for step in steps:
+            if "secrets.R2_ACCOUNT_ID" in step and "secrets.R2_ACCESS_KEY_ID" not in step:
+                assert "secrets.R2_SECRET_ACCESS_KEY" not in step, path.name
 
 
 def test_the_review_workflow_knows_the_private_bucket_and_no_longer_watches_the_audio_folder():

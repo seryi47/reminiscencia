@@ -135,11 +135,13 @@ def test_permissions_are_declared_on_the_job_not_on_the_whole_workflow():
 def test_web_has_no_administration_code():
     for folder in ("admin", "lib"):
         assert not (ROOT / "frontend" / "web" / folder).exists()
-    # Las funciones públicas son la subida al buzón y el importador seguro de YouTube;
-    # server solo contiene módulos compartidos, no rutas alternativas de publicación.
+    # Las funciones públicas son la subida al buzón, el importador seguro de YouTube y «Transferir música»
+    # (login/lectura de Spotify y resolución a YouTube, ADR-0044); server solo contiene módulos compartidos,
+    # no rutas alternativas de publicación.
     api = ROOT / "frontend" / "web" / "api"
-    assert sorted(path.name for path in api.iterdir()) == ["editar.js", "subir.js", "youtube"]
+    assert sorted(path.name for path in api.iterdir()) == ["editar.js", "spotify", "subir.js", "youtube"]
     assert sorted(path.name for path in (api / "youtube").iterdir()) == ["convert.js", "download.js", "playlist.js", "search.js", "status.js"]
+    assert sorted(path.name for path in (api / "spotify").iterdir()) == ["callback.js", "login.js", "mine.js", "refresh.js", "resolve.js", "token.js"]
 
 
 # --- Corrección de la ronda 2 (2026-11-02): procesado separado de la publicación -----------------

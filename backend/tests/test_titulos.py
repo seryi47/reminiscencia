@@ -73,6 +73,9 @@ REAL_CHANNELS = {
     "IkonProducciones", "Imagine Dragons FAN", "KapitalMusicTv", "Luxury Life Music", "OmarMontesVEVO",
     "Warner Music Spain Archivos", "YouMoreTv - Espectáculo", "antifa93cat", "gigatr0n", "ra29597",
     "Rich Music LTD",
+    # Alias de productor de car music / phonk, estilizados con números (leet): son el nombre real del artista,
+    # no un canal (revisados con el usuario el 2026-11-14).
+    "DavidK3y", "K3YN0T3",
 }
 
 
