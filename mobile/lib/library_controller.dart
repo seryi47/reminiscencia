@@ -506,11 +506,19 @@ class LibraryController extends ChangeNotifier {
     await playSong(song);
   }
 
-  /// Al salir de la app: para la conversión (no sigue en segundo plano) y deja de comprobar la publicación.
-  Future<void> pauseImport() => uploads.pause();
+  /// Al salir de la app: para la conversión (no sigue en segundo plano) y deja de comprobar la publicación ni las
+  /// ediciones pendientes (así, con la pantalla apagada mientras suena música, no se gasta red ni batería; ADR-0046).
+  Future<void> pauseImport() {
+    edits.setForeground(false);
+    return uploads.pause();
+  }
 
-  /// Al volver a primer plano: comprueba enseguida lo que se está publicando y sigue cada 20 s.
-  void resumeUploads() => uploads.setForeground(true);
+  /// Al volver a primer plano: comprueba enseguida lo que se está publicando y sigue cada 20 s, y retoma la revisión
+  /// de las ediciones pendientes si queda algo.
+  void resumeUploads() {
+    uploads.setForeground(true);
+    edits.setForeground(true);
+  }
 
   /// Borra una canción subida desde este teléfono. Las canciones del catálogo público no se pueden borrar desde aquí.
   Future<void> deleteLocal(Song song) async {

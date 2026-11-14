@@ -679,5 +679,62 @@ void main() {
         expect(edits.items, isEmpty);
       },
     );
+
+    test(
+      'en segundo plano no se revisa (ahorro de batería) y al volver se retoma',
+      () async {
+        final edits = build();
+        await edits.submit(rename, send);
+        expect(timers.active, hasLength(1), reason: 'En primer plano revisa.');
+
+        // La app pasa al fondo (pantalla apagada mientras suena música): se cancela la revisión.
+        edits.setForeground(false);
+        expect(edits.foreground, isFalse);
+        expect(
+          timers.active,
+          isEmpty,
+          reason: 'En segundo plano no gasta red ni batería revisando.',
+        );
+
+        // Aunque venza un temporizador anterior, no se programa otro mientras esté al fondo.
+        timers.fire();
+        await pumpEventQueue();
+        expect(timers.active, isEmpty);
+        expect(edits.items.single.pending, isTrue);
+
+        // Al volver al primer plano se retoma la revisión enseguida.
+        edits.setForeground(true);
+        expect(edits.foreground, isTrue);
+        expect(timers.active, hasLength(1));
+        expect(
+          timers.active.single.period,
+          Duration.zero,
+          reason: 'Al volver revisa de inmediato.',
+        );
+      },
+    );
+
+    test('la corrección se conserva: una edición caducada falla al volver', () async {
+      final edits = build();
+      await edits.submit(rename, send);
+      edits.setForeground(false);
+      // Pasan más de 30 min con la app al fondo (no se revisó nada en ese tiempo).
+      now = t0.add(kEditMaxPending + const Duration(minutes: 5));
+      edits.setForeground(true);
+      await edits.check();
+      expect(
+        edits.items.single.failed,
+        isTrue,
+        reason: 'La antigüedad real desde createdAt se respeta pese a la pausa.',
+      );
+    });
+
+    test('en segundo plano, un envío queda pendiente pero no programa revisión', () async {
+      final edits = build();
+      edits.setForeground(false);
+      await edits.submit(rename, send);
+      expect(edits.items.single.pending, isTrue);
+      expect(timers.active, isEmpty);
+    });
   });
 }

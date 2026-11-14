@@ -873,6 +873,7 @@ class PendingEditsController extends ChangeNotifier {
   bool _checking = false;
   bool _restored = false;
   bool _disposed = false;
+  bool _foreground = true;
 
   /// Todas, en orden de envío.
   List<PendingEdit> get items => List.unmodifiable(_items);
@@ -884,6 +885,25 @@ class PendingEditsController extends ChangeNotifier {
 
   /// True si hay una revisión programada.
   bool get scheduled => _timer != null;
+
+  @visibleForTesting
+  bool get foreground => _foreground;
+
+  /// La app pasa a primer plano (true) o al fondo (false). En segundo plano se pausan las revisiones
+  /// periódicas: mientras suena música con la pantalla apagada no se gasta red ni batería comprobando el
+  /// catálogo (ADR-0046). La corrección se conserva: `reviewEdit` usa la antigüedad real desde `createdAt`,
+  /// así que al volver al primer plano una edición caducada (> [kEditMaxPending]) se detecta igual. Al
+  /// volver se retoma la revisión enseguida si queda algo pendiente.
+  void setForeground(bool value) {
+    if (_disposed || _foreground == value) return;
+    _foreground = value;
+    if (!value) {
+      _cancelTimer();
+    } else if (!_checking && _items.any((e) => e.pending)) {
+      _attempt = 0;
+      _schedule(first: Duration.zero);
+    }
+  }
 
   /// El catálogo con las pendientes aplicadas.
   PendingView apply(List<Song> songs, List<Folder> folders) =>
@@ -1154,7 +1174,12 @@ class PendingEditsController extends ChangeNotifier {
   }
 
   void _schedule({Duration? first}) {
-    if (_disposed || _timer != null || !_items.any((e) => e.pending)) return;
+    if (_disposed ||
+        _timer != null ||
+        !_foreground ||
+        !_items.any((e) => e.pending)) {
+      return;
+    }
     final generation = ++_timerGeneration;
     _timer = _timerFactory(first ?? editCheckDelay(_attempt), () {
       if (generation != _timerGeneration) return;

@@ -62,9 +62,9 @@ class _HomeShellState extends State<HomeShell> {
     // La biblioteca se sincroniza al volver a primer plano (si pasó un tiempo). Al salir de la app se para la
     // conversión y la comprobación de lo que se está publicando; al volver, se comprueba enseguida.
     final state = WidgetsBinding.instance.lifecycleState;
-    library.uploads.setForeground(
-      state == null || state == AppLifecycleState.resumed,
-    );
+    final foreground = state == null || state == AppLifecycleState.resumed;
+    library.uploads.setForeground(foreground);
+    library.edits.setForeground(foreground);
     _lifecycle = AppLifecycleListener(
       onResume: () {
         library.resumeUploads();
