@@ -9385,6 +9385,23 @@
       "added_at": "2026-11-14T15:00:02+00:00",
       "public": true,
       "track": 242
+    },
+    {
+      "id": "S22b35ae27c2f3089",
+      "title": "Ella",
+      "artist": "El Bobe",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "22b35ae27c2f3089d3ec428ee04a51f43c908b77a5acb68081dfa6b24703f7b8",
+      "duration_s": 165.008,
+      "codec": "opus",
+      "size_bytes": 1013138,
+      "added_at": "2026-11-14T15:06:00+00:00",
+      "public": true,
+      "track": 243
     }
   ]
 }
