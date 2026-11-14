@@ -248,8 +248,8 @@
     },
     {
       "id": "Sb5cc9432ffa50503",
-      "title": "Nomyn Fragments",
-      "artist": "",
+      "title": "Fragments",
+      "artist": "Nomyn",
       "year": null,
       "tags": [],
       "folder_id": null,
@@ -1742,8 +1742,8 @@
     },
     {
       "id": "S2d64fc21d7de996a",
-      "title": "KEVVO - 105 F Remix 2022 GRAMMYs",
-      "artist": "TOP SONGS",
+      "title": "105 F Remix 2022 GRAMMYs",
+      "artist": "Kevvo",
       "year": null,
       "tags": [],
       "folder_id": "F417639bc3d88755f",
@@ -3218,7 +3218,7 @@
     },
     {
       "id": "S804ec3408d605cec",
-      "title": "TOP 5",
+      "title": "Top 5",
       "artist": "Duki",
       "year": null,
       "tags": [],
@@ -3469,8 +3469,8 @@
     },
     {
       "id": "S281461d80ae2fc0f",
-      "title": "Hell is Forever Sing-Along Hazbin Hotel Prime Video",
-      "artist": "Prime Video",
+      "title": "Hell Is Forever (Sing-Along)",
+      "artist": "Hazbin Hotel",
       "year": null,
       "tags": [],
       "folder_id": "Ff2c2b94dc312cef6",
@@ -3487,8 +3487,8 @@
     },
     {
       "id": "Seec56252c8b8f203",
-      "title": "Respectless Sing-Along Hazbin Hotel Prime Video",
-      "artist": "Prime Video",
+      "title": "Respectless (Sing-Along)",
+      "artist": "Hazbin Hotel",
       "year": null,
       "tags": [],
       "folder_id": "Ff2c2b94dc312cef6",
@@ -3535,7 +3535,7 @@
       "codec": "opus",
       "size_bytes": 310645,
       "added_at": "2026-11-05T09:17:10+00:00",
-      "public": true,
+      "public": false,
       "track": 3,
       "gain_db": -10.5
     },
@@ -5200,8 +5200,8 @@
     },
     {
       "id": "S1d2d4e556a1e293f",
-      "title": "Gravity - Hazbin Hotel Prime Video",
-      "artist": "Vivziepop",
+      "title": "Gravity",
+      "artist": "Hazbin Hotel",
       "year": null,
       "tags": [],
       "folder_id": "Ff2c2b94dc312cef6",
@@ -5254,8 +5254,8 @@
     },
     {
       "id": "Sd15250858fd02708",
-      "title": "Love In A Bottle LYRIC VIDEO from HAZBIN HOTEL - SCREAM RAIN S2 Episode 6",
-      "artist": "BULBA",
+      "title": "Love In A Bottle",
+      "artist": "Hazbin Hotel",
       "year": null,
       "tags": [],
       "folder_id": "Ff2c2b94dc312cef6",
@@ -5308,8 +5308,8 @@
     },
     {
       "id": "Sed7cbc9ca67d1e61",
-      "title": "Nothing Left to Lose Music Video Rapunzel's Tangled Adventure Disney Channel",
-      "artist": "Disney Channel Animation",
+      "title": "Nothing Left to Lose",
+      "artist": "Eden Espinosa",
       "year": null,
       "tags": [],
       "folder_id": "Ff2c2b94dc312cef6",
@@ -5327,7 +5327,7 @@
     {
       "id": "S8246ba1023dee20b",
       "title": "Ready As I'll Ever Be",
-      "artist": "Varian y Cast - Tangled",
+      "artist": "Tangled",
       "year": null,
       "tags": [],
       "folder_id": "Ff2c2b94dc312cef6",
@@ -5362,8 +5362,8 @@
     },
     {
       "id": "S4a9b31361c345af3",
-      "title": "Sera's Confession Sing-Along - Hazbin Hotel S2 Prime Video",
-      "artist": "Prime Video",
+      "title": "Sera's Confession (Sing-Along)",
+      "artist": "Hazbin Hotel",
       "year": null,
       "tags": [],
       "folder_id": "Ff2c2b94dc312cef6",
@@ -5410,14 +5410,14 @@
       "codec": "opus",
       "size_bytes": 452746,
       "added_at": "2026-11-05T21:25:32+00:00",
-      "public": true,
+      "public": false,
       "track": 20,
       "gain_db": -7.2
     },
     {
       "id": "Sa101b9820ffa5a3e",
-      "title": "Watch the Opening Number From Beetlejuice on Broadway - The Whole Being Dead Thing",
-      "artist": "Playbill",
+      "title": "The Whole «Being Dead» Thing (Live)",
+      "artist": "Beetlejuice Broadway Cast",
       "year": null,
       "tags": [],
       "folder_id": "Ff2c2b94dc312cef6",
@@ -6145,7 +6145,7 @@
       "codec": "opus",
       "size_bytes": 542813,
       "added_at": "2026-11-11T13:57:54+00:00",
-      "public": true,
+      "public": false,
       "track": 178,
       "gain_db": -8.1
     },
@@ -6297,7 +6297,7 @@
       "codec": "opus",
       "size_bytes": 520361,
       "added_at": "2026-11-11T13:57:54+00:00",
-      "public": true,
+      "public": false,
       "track": 181,
       "gain_db": -8.5
     },
@@ -6416,7 +6416,7 @@
       "codec": "opus",
       "size_bytes": 543216,
       "added_at": "2026-11-11T13:57:54+00:00",
-      "public": true,
+      "public": false,
       "track": 186,
       "gain_db": -8.2
     },
@@ -6535,7 +6535,7 @@
       "codec": "opus",
       "size_bytes": 493254,
       "added_at": "2026-11-11T13:57:54+00:00",
-      "public": true,
+      "public": false,
       "track": 190,
       "gain_db": -8.2
     },
@@ -7489,7 +7489,7 @@
       "codec": "opus",
       "size_bytes": 456977,
       "added_at": "2026-11-12T09:29:36+00:00",
-      "public": true,
+      "public": false,
       "track": 7,
       "gain_db": -9.0
     },
@@ -7507,7 +7507,7 @@
       "codec": "opus",
       "size_bytes": 14550,
       "added_at": "2026-11-12T09:29:36+00:00",
-      "public": true,
+      "public": false,
       "track": 8,
       "gain_db": -5.2
     },
@@ -7758,7 +7758,7 @@
       "codec": "opus",
       "size_bytes": 539553,
       "added_at": "2026-11-12T09:44:38+00:00",
-      "public": true,
+      "public": false,
       "track": 22,
       "gain_db": -7.6
     },
@@ -7793,7 +7793,7 @@
       "codec": "opus",
       "size_bytes": 102899,
       "added_at": "2026-11-12T09:44:38+00:00",
-      "public": true,
+      "public": false,
       "track": 24,
       "gain_db": 0.9
     },
@@ -7897,7 +7897,7 @@
       "codec": "opus",
       "size_bytes": 24032,
       "added_at": "2026-11-12T09:46:27+00:00",
-      "public": true,
+      "public": false,
       "track": 30,
       "gain_db": -7.6
     },
@@ -8017,7 +8017,7 @@
       "codec": "opus",
       "size_bytes": 409267,
       "added_at": "2026-11-12T09:46:28+00:00",
-      "public": true,
+      "public": false,
       "track": 37,
       "gain_db": -8.5
     },
@@ -8209,7 +8209,7 @@
       "codec": "opus",
       "size_bytes": 38201,
       "added_at": "2026-11-12T09:46:28+00:00",
-      "public": true,
+      "public": false,
       "track": 48,
       "gain_db": -4.4
     },
@@ -8401,7 +8401,7 @@
       "codec": "opus",
       "size_bytes": 124377,
       "added_at": "2026-11-12T09:46:28+00:00",
-      "public": true,
+      "public": false,
       "track": 59,
       "gain_db": -0.9
     },
@@ -8437,7 +8437,7 @@
       "codec": "opus",
       "size_bytes": 110909,
       "added_at": "2026-11-12T09:46:28+00:00",
-      "public": true,
+      "public": false,
       "track": 61,
       "gain_db": -9.6
     },
@@ -8472,7 +8472,7 @@
       "codec": "opus",
       "size_bytes": 509062,
       "added_at": "2026-11-12T09:46:28+00:00",
-      "public": true,
+      "public": false,
       "track": 63,
       "gain_db": -7.6
     },
