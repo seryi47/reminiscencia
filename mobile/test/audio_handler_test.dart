@@ -209,19 +209,29 @@ void main() {
   });
 
   group('normalización de volumen (ADR-0046)', () {
-    test('aplica la ganancia al reproducir: atenúa el fuerte, no sube el flojo, sin dato deja volumen pleno', () async {
-      final loud = fakeSong('loud', gainDb: -6); // factor 10^(-6/20) ≈ 0.50119
-      final quiet = fakeSong('quiet', gainDb: 6); // positivo: se recorta a 1.0
+    test('normaliza en ambos sentidos: atenúa el fuerte (volumen), SUBE el flojo (realzador), sin dato nada', () async {
+      final loud = fakeSong('loud', gainDb: -6); // fuerte → se baja con volumen: 10^(-6/20) ≈ 0.50119
+      final quiet = fakeSong('quiet', gainDb: 6); // flojo → se sube con el realzador (+6 dB), volumen pleno
       final plain = fakeSong('plain'); // sin gainDb
       await handler.playAt([loud, quiet, plain], 0);
       await drain();
-      expect(player.volumeValue, closeTo(0.501187, 1e-4), reason: 'el tema fuerte se atenúa');
+      expect(player.volumeValue, closeTo(0.501187, 1e-4), reason: 'el fuerte se atenúa con volumen');
+      expect(handler.currentLoudnessGainDb, 0, reason: 'el fuerte no se realza');
       await handler.playNext();
       await drain();
-      expect(player.volumeValue, 1.0, reason: 'el flojo no sube de 1 (just_audio no pasa de 1)');
+      expect(player.volumeValue, 1.0, reason: 'el flojo suena a volumen pleno');
+      expect(handler.currentLoudnessGainDb, 6, reason: 'el flojo se SUBE con el realzador (+6 dB)');
       await handler.playNext();
       await drain();
-      expect(player.volumeValue, 1.0, reason: 'sin gainDb, volumen pleno');
+      expect(player.volumeValue, 1.0);
+      expect(handler.currentLoudnessGainDb, 0, reason: 'sin gainDb, ni atenuación ni realce');
+    });
+
+    test('el realce se acota para no distorsionar', () async {
+      final veryQuiet = fakeSong('vq', gainDb: 20); // por encima del tope
+      await handler.playAt([veryQuiet], 0);
+      await drain();
+      expect(handler.currentLoudnessGainDb, kMaxBoostDb);
     });
   });
 

@@ -42,6 +42,10 @@ const Duration kStallTimeout = Duration(seconds: 15);
 /// canción de destino falla, y la orden no debe quedarse colgada.
 const Duration kSeekWait = Duration(seconds: 5);
 
+/// Tope de realce de volumen (dB) para los temas flojos (ADR-0046): por encima, el realzador de Android empieza a
+/// distorsionar. Los `gain_db` reales de la biblioteca no pasan de ~+8, así que rara vez se toca este límite.
+const double kMaxBoostDb = 12;
+
 /// Estado que se publica al servicio de audio. Mientras haya una cola activa nunca se publica `idle`: para
 /// audio_service, `idle` significa «parar el servicio» (stopSelf), y un error que se está reintentando o saltando
 /// (just_audio queda en `idle` tras cualquier error) cerraría el servicio en primer plano mientras la música sigue.
@@ -95,10 +99,17 @@ class SonidosAudioHandler extends BaseAudioHandler
     this.idleStopAfter = kIdleStopAfter,
     this.stallTimeout = kStallTimeout,
     this.seekWait = kSeekWait,
-  }) : // Las interrupciones las atiende el handler (ver la clase), no just_audio.
-       _player = player ?? AudioPlayer(handleInterruptions: false),
-       // ignore: prefer_initializing_formals
-       _covers = covers {
+    // ignore: prefer_initializing_formals
+  }) : _covers = covers {
+    // Normalización de volumen (ADR-0046): el realzador de Android SUBE los temas flojos (setTargetGain en dB, >1.0 real);
+    // los fuertes se BAJAN con setVolume. Las interrupciones las atiende el handler (ver la clase), no just_audio.
+    _loudness = AndroidLoudnessEnhancer();
+    _player = player ??
+        AudioPlayer(
+          handleInterruptions: false,
+          audioPipeline: AudioPipeline(androidAudioEffects: [_loudness]),
+        );
+    unawaited(_loudness.setEnabled(true));
     _player.playbackEventStream.listen((_) => _broadcastState());
     // just_audio 0.10 da los errores por errorStream (ya no por el onError de playbackEventStream).
     _player.errorStream.listen(_onPlayerError);
@@ -137,7 +148,11 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   /// Portadas guardadas: la notificación usa el fichero local (file://), nunca descarga por su cuenta.
   final CoverCache? _covers;
-  final AudioPlayer _player;
+  late final AudioPlayer _player;
+
+  /// Realzador de volumen de Android (ADR-0046): sube los temas flojos (ganancia positiva en dB). Se crea siempre; solo se
+  /// engancha al pipeline cuando el handler crea su propio AudioPlayer (en pruebas se inyecta un reproductor falso).
+  late final AndroidLoudnessEnhancer _loudness;
   final ValueNotifier<NowPlaying> _now = ValueNotifier<NowPlaying>(
     NowPlaying.none,
   );
@@ -744,13 +759,25 @@ class SonidosAudioHandler extends BaseAudioHandler
     }
   }
 
-  /// Aplica la normalización de volumen (ADR-0046) de la canción que suena: `setVolume(10^(gainDb/20))`, recortado a 1.0
-  /// porque just_audio no sube de 1 (solo se atenúan los temas fuertes; sin `gainDb`, volumen pleno). Best-effort.
+  /// Aplica la normalización de volumen (ADR-0046) de la canción que suena. Normalización COMPLETA en Android:
+  ///  - tema FLOJO (gainDb > 0): se SUBE con el realzador de Android (`setTargetGain` en dB, amplifica de verdad), con el
+  ///    volumen al 100 %; se acota a [kMaxBoostDb] para no distorsionar;
+  ///  - tema FUERTE o neutro (gainDb ≤ 0): se BAJA con `setVolume` (10^(gainDb/20)) y sin realce.
+  /// Best-effort; sin `gainDb`, volumen pleno y sin realce.
   void _applyGain(Song song) {
-    final gainDb = song.gainDb;
-    final factor = gainDb == null ? 1.0 : math.min(1.0, math.pow(10, gainDb / 20).toDouble());
-    unawaited(_guardQuiet(() => _player.setVolume(factor)));
+    final gainDb = song.gainDb ?? 0;
+    if (gainDb > 0) {
+      unawaited(_guardQuiet(() => _player.setVolume(1)));
+      unawaited(_guardQuiet(() => _loudness.setTargetGain(math.min(gainDb, kMaxBoostDb))));
+    } else {
+      unawaited(_guardQuiet(() => _loudness.setTargetGain(0)));
+      unawaited(_guardQuiet(() => _player.setVolume(gainDb == 0 ? 1 : math.pow(10, gainDb / 20).toDouble())));
+    }
   }
+
+  /// Ganancia de realce aplicada ahora mismo (dB), para las pruebas.
+  @visibleForTesting
+  double get currentLoudnessGainDb => _loudness.targetGain;
 
   @override
   Future<void> play() async {
