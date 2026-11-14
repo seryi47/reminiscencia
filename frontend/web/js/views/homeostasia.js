@@ -456,6 +456,14 @@ async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId, vid
         );
       }
 
+      // Suelo de 90 s (ADR-0046): se mide la duración real del WAV por su cabecera (byteRate + tamaño del trozo «data»); si sale
+      // muy corto, es un recorte y NO se guarda (se trata como error y se reintenta), para que una canción no entre a medias.
+      const head = new Uint8Array(await blob.slice(0, Math.min(blob.size, 65536)).arrayBuffer());
+      const seconds = wavDurationSeconds(head, blob.size);
+      if (seconds !== null && seconds < MIN_TRANSFER_DURATION_S) {
+        throw new Error(`La descarga salió demasiado corta (${Math.round(seconds)} s).`);
+      }
+
       return blob;
     }
 
@@ -470,6 +478,33 @@ async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId, vid
 // ==================================================
 // CONVERTIR UNA CANCIÓN A WAV
 // ==================================================
+
+// Suelo de duración de una transferencia (ADR-0046): nada por debajo se da por bueno (la web no conoce la duración de Spotify
+// aquí, así que es un suelo absoluto, como la APK sin referencia).
+export const MIN_TRANSFER_DURATION_S = 90;
+
+/** Duración real de un WAV en segundos a partir de su cabecera (`byteRate` del trozo «fmt » y bytes reales de «data»), o null
+ *  si no se puede leer. No se fía del tamaño que declara la cabecera RIFF, que yttowav puede falsear. Espejo de la APK. */
+export function wavDurationSeconds(head, totalSize) {
+  if (head.length < 12 || String.fromCharCode(...head.slice(0, 4)) !== 'RIFF'
+    || String.fromCharCode(...head.slice(8, 12)) !== 'WAVE') return null;
+  const le32 = (o) => head[o] | (head[o + 1] << 8) | (head[o + 2] << 16) | (head[o + 3] << 24);
+  let byteRate = null;
+  let dataStart = null;
+  let offset = 12;
+  while (offset + 8 <= head.length) {
+    const id = String.fromCharCode(...head.slice(offset, offset + 4));
+    const size = le32(offset + 4);
+    const body = offset + 8;
+    if (id === 'fmt ' && body + 16 <= head.length) byteRate = le32(body + 8);
+    else if (id === 'data') { dataStart = body; break; }
+    if (size <= 0) break;
+    offset = body + size + (size % 2); // los trozos se alinean a bytes pares
+  }
+  if (!byteRate || byteRate <= 0 || dataStart === null) return null;
+  const dataBytes = totalSize - dataStart;
+  return dataBytes > 0 ? dataBytes / byteRate : null;
+}
 
 async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
   const videoId = getVideoId(item.url);
