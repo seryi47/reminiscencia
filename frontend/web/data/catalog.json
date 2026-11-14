@@ -5581,14 +5581,15 @@
     {
       "id": "Sbe39f741c0f17f27",
       "title": "Thunder Bringer",
-      "artist": "",
+      "artist": "Cast of EPIC: The Musical, Jorge Rivera-Herrans, Luke Holt y Anna Lea",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F57b6ba796b6d57a9",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 253.794,
-      "public": true
+      "public": true,
+      "track": 6
     },
     {
       "id": "S799c9029166caf07",
