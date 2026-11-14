@@ -120,6 +120,24 @@ void main() {
       },
     );
 
+    test(
+      'sin Content-Length, un cuerpo demasiado corto para la duración NO se guarda (suelo por duración, ADR-0046)',
+      () async {
+        var calls = 0;
+        final s = store((request, _) async {
+          calls += 1;
+          // Sin Content-Length y con solo 3 bytes para una canción de 60 s: es una descarga cortada.
+          return http.StreamedResponse(Stream.value([1, 2, 3]), 200);
+        });
+        await expectLater(
+          s.downloadAll([song('S1')], (_, _) {}),
+          throwsA(isA<HttpException>()),
+        );
+        expect(calls, 3, reason: 'se reintenta como cualquier fallo');
+        expect(audio('S1').existsSync(), isFalse, reason: 'no se guarda un fichero cortado que el reproductor saltaría solo');
+      },
+    );
+
     test('una descarga completa con Content-Length se guarda entera', () async {
       final s = store(
         (request, _) async => http.StreamedResponse(
@@ -150,6 +168,7 @@ void main() {
               [4, 5],
             ]),
             200,
+            contentLength: 5,
           );
         });
         await audio('S0').create(recursive: true);
@@ -188,7 +207,7 @@ void main() {
           requests += 1;
           final id = request.url.pathSegments.last;
           if (id == 'S0.opus') {
-            return http.StreamedResponse(Stream.value([1, 2, 3]), 200);
+            return http.StreamedResponse(Stream.value([1, 2, 3]), 200, contentLength: 3);
           }
           // Las demás mandan un trozo y se quedan esperando: se cortan al cancelar.
           final gate = gates[id] = Completer<void>();
@@ -224,7 +243,7 @@ void main() {
         final again = <String>[];
         final s2 = store((request, _) async {
           again.add(request.url.pathSegments.last);
-          return http.StreamedResponse(Stream.value([7]), 200);
+          return http.StreamedResponse(Stream.value([7]), 200, contentLength: 1);
         });
         expect(
           await s2.downloadAll([

@@ -16,6 +16,7 @@ class Song {
     this.local = false,
     this.uploadStatus,
     this.track,
+    this.gainDb,
     this.pendingEdit = false,
   });
 
@@ -44,6 +45,9 @@ class Song {
   /// Número de pista dentro de su álbum (ADR-0026): entero desde 1. Null si no tiene álbum o el catálogo no lo trae.
   final int? track;
 
+  /// Ganancia de normalización de volumen en dB (ADR-0046): puede ser negativa (atenuar) o positiva; null si no se conoce.
+  final double? gainDb;
+
   /// True si se ve con un cambio enviado que todavía no ha llegado al catálogo (ADR-0027, «Pendiente»).
   final bool pendingEdit;
 
@@ -65,12 +69,17 @@ class Song {
       audio: json['audio'] as String,
       cover: cleanCoverPath(json['cover']),
       track: cleanTrack(json['track']),
+      gainDb: cleanGain(json['gain_db']),
     );
   }
 }
 
 /// Número de pista válido (entero desde 1) o null. Un 2.0, un texto o un booleano no valen.
 int? cleanTrack(Object? value) => value is int && value >= 1 ? value : null;
+
+/// Ganancia de normalización válida (número finito, puede ser negativa) o null (ADR-0046).
+double? cleanGain(Object? value) =>
+    value is num && value is! bool && value.toDouble().isFinite ? value.toDouble() : null;
 
 /// Canciones de un álbum en su orden (ADR-0026): primero las que tienen número de pista, de menor a mayor (a igualdad,
 /// en el orden en que llegan), y después las que no lo tienen, en el orden en que llegan (el de hoy).

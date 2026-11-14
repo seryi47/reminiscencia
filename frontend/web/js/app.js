@@ -487,6 +487,7 @@ function trackOf(song) {
     // La portada ya resuelta (la de la canción o la de su álbum): la usan la barra y Media Session.
     cover: songCoverSrc(song),
     durationS: song.durationS,
+    gainDb: song.gainDb, // normalización de volumen (ADR-0046)
     local: song.local,
   };
 }

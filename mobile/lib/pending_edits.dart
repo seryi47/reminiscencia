@@ -315,6 +315,7 @@ Song _songWith(
   local: song.local,
   uploadStatus: song.uploadStatus,
   track: identical(track, _keep) ? song.track : track as int?,
+  gainDb: song.gainDb, // la normalización de volumen (ADR-0046) no es editable: se conserva
   pendingEdit: pendingEdit ?? song.pendingEdit,
 );
 

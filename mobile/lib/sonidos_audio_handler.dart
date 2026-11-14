@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
@@ -111,6 +112,9 @@ class SonidosAudioHandler extends BaseAudioHandler
       if (_active && index != null && index >= 0 && index < items.length) {
         mediaItem.add(items[index]);
         _fillArtwork(index);
+      }
+      if (_active && index != null && index >= 0 && index < _queueSongs.length) {
+        _applyGain(_queueSongs[index]); // normalización de volumen de la canción que suena (ADR-0046)
       }
       // Otra canción: el reintento por parón vuelve a estar disponible.
       if (index != _lastIndex) _stallRetried = false;
@@ -735,8 +739,17 @@ class SonidosAudioHandler extends BaseAudioHandler
     if (_active && index != null && index >= 0 && index < items.length && index != _lastIndex) {
       mediaItem.add(items[index]);
       _fillArtwork(index);
+      if (index < _queueSongs.length) _applyGain(_queueSongs[index]); // volumen al instante en el salto (ADR-0046)
       _publish();
     }
+  }
+
+  /// Aplica la normalización de volumen (ADR-0046) de la canción que suena: `setVolume(10^(gainDb/20))`, recortado a 1.0
+  /// porque just_audio no sube de 1 (solo se atenúan los temas fuertes; sin `gainDb`, volumen pleno). Best-effort.
+  void _applyGain(Song song) {
+    final gainDb = song.gainDb;
+    final factor = gainDb == null ? 1.0 : math.min(1.0, math.pow(10, gainDb / 20).toDouble());
+    unawaited(_guardQuiet(() => _player.setVolume(factor)));
   }
 
   @override

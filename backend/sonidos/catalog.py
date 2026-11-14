@@ -145,9 +145,10 @@ def sync_youtube_album_artist(data: dict, folder_id: str) -> bool:
 
 def add_song(data: dict, *, sha256: str, title: str, license: str, source: str,
              codec: str, duration_s: float, size_bytes: int, artist: str = "",
-             year: int | None = None) -> tuple[dict, bool]:
+             year: int | None = None, gain_db: float | None = None) -> tuple[dict, bool]:
     """Devuelve (canción, creada). Si el contenido ya existe, no duplica (ni cambia su artista ni su año).
-    artist y year llegan ya validados (por ejemplo, de los metadatos de Internet Archive)."""
+    artist y year llegan ya validados (por ejemplo, de los metadatos de Internet Archive).
+    gain_db (ADR-0046) es la ganancia de normalización de volumen, opcional; solo se guarda cuando se conoce."""
     if not license or not license.strip():
         raise CatalogError("no se puede importar una canción sin licencia declarada")
     for song in data["songs"]:
@@ -169,8 +170,27 @@ def add_song(data: dict, *, sha256: str, title: str, license: str, source: str,
         "added_at": _now(),
         "public": False,  # las canciones nuevas nacen privadas
     }
+    if gain_db is not None:
+        song["gain_db"] = round(float(gain_db), 1)
     data["songs"].append(song)
     return song, True
+
+
+def set_gain(data: dict, song_id: str, gain_db: float | None) -> bool:
+    """Fija (o quita, con None) la ganancia de normalización de una canción (ADR-0046). Idempotente: devuelve si cambió algo.
+    La usa el backfill scripts/analizar_volumen.py para rellenar `gain_db` del catálogo existente."""
+    song = find_song(data, song_id)
+    new_value = round(float(gain_db), 1) if gain_db is not None else None
+    old_value = song.get("gain_db")
+    if new_value is None:
+        if "gain_db" in song:
+            del song["gain_db"]
+            return True
+        return False
+    if old_value == new_value:
+        return False
+    song["gain_db"] = new_value
+    return True
 
 
 def update_song(data: dict, song_id: str, fields: dict) -> dict:

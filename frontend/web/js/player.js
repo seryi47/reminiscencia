@@ -57,6 +57,7 @@ function copyTrack(item) {
     folderId: item.folderId ?? null,
     cover: typeof item.cover === 'string' && item.cover !== '' ? item.cover : null,
     durationS: Number.isFinite(item.durationS) ? item.durationS : null,
+    gainDb: Number.isFinite(item.gainDb) ? item.gainDb : null, // normalización de volumen (ADR-0046)
     local: item.local === true,
   };
 }
@@ -235,9 +236,18 @@ export function createPlayer(options = {}) {
     cachedUpcoming = null;
   }
 
+  // Factor de volumen por normalización (ADR-0046): 10^(gainDb/20), recortado a 1 porque audio.volume no sube de 1 (solo se
+  // atenúan los temas fuertes; subir los flojos necesitaría un GainNode). Sin gainDb o sin canción, factor 1 (sin cambios).
+  function gainFactor() {
+    const gainDb = current()?.track?.gainDb;
+    if (typeof gainDb !== 'number' || !Number.isFinite(gainDb)) return 1;
+    const factor = Math.pow(10, gainDb / 20);
+    return factor < 1 ? factor : 1;
+  }
+
   function applyVolume() {
     try {
-      audio.volume = muted ? 0 : volume;
+      audio.volume = muted ? 0 : Math.min(1, volume * gainFactor());
     } catch {
       // Navegadores que no dejan fijar el volumen (iOS): manda el del sistema.
     }
@@ -258,6 +268,7 @@ export function createPlayer(options = {}) {
     } catch {
       sourceLoaded = false;
     }
+    applyVolume(); // la ganancia de normalización depende de la canción actual (ADR-0046)
   }
 
   // Precarga la portada de las canciones vecinas (ADR-0046): al saltar, el navegador ya la tiene en caché y la imagen

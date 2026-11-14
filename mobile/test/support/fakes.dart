@@ -34,6 +34,7 @@ Song fakeSong(
   String? folderId,
   String artist = 'Artista',
   String? cover,
+  double? gainDb,
 }) {
   return Song(
     cover: cover,
@@ -46,6 +47,7 @@ Song fakeSong(
     durationS: 185,
     license: 'Dominio público',
     audio: 'audio/$id.opus',
+    gainDb: gainDb,
   );
 }
 

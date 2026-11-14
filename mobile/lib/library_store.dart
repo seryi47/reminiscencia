@@ -362,6 +362,20 @@ class LibraryStore implements LibrarySource {
             uri: uri,
           );
         }
+        // Sin Content-Length no se puede comparar byte a byte, así que se usa un SUELO por duración (ADR-0046): un Opus ocupa
+        // de sobra 2 KB/s (≈16 kbps, muy por debajo de los 48 kbps reales). Si el cuerpo es muchísimo más corto de lo que la
+        // canción debería durar, es una descarga cortada y NO se guarda: si no, el reproductor la tomaría como completa y
+        // saltaría sola a la siguiente. Margen amplio para no rechazar un fichero íntegro.
+        const minOpusBytesPerSecond = 2000;
+        if ((expected == null || expected < 0) && song.durationS > 1) {
+          final floor = (song.durationS * minOpusBytesPerSecond).round();
+          if (received < floor) {
+            throw HttpException(
+              'descarga incompleta: $received bytes para ${song.durationS.round()} s (mínimo $floor)',
+              uri: uri,
+            );
+          }
+        }
         await part.rename(file.path);
         return true;
       } catch (error) {

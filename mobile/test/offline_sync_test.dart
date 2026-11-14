@@ -322,7 +322,7 @@ void main() {
             }
             attempts += 1;
             if (attempts == 1) throw const SocketException('corte');
-            return http.StreamedResponse(Stream.value([1, 2, 3, 4]), 200);
+            return http.StreamedResponse(Stream.value([1, 2, 3, 4]), 200, contentLength: 4);
           }),
         );
         Song song(String id) => Song.fromJson(FakeWeb._json(id));
@@ -349,7 +349,7 @@ void main() {
             if (request.url.host.endsWith('r2.dev')) {
               return http.StreamedResponse(const Stream.empty(), 404);
             }
-            return http.StreamedResponse(Stream.value([1, 2, 3]), 200);
+            return http.StreamedResponse(Stream.value([1, 2, 3]), 200, contentLength: 3);
           }),
         );
         final song = Song.fromJson(FakeWeb._json('Sr2'));
@@ -411,6 +411,7 @@ void main() {
           return http.StreamedResponse(
             Stream.value([7, 7]),
             200,
+            contentLength: 2,
             headers: {kWorkerHeader: '1'},
           );
         });
@@ -432,7 +433,7 @@ void main() {
               headers: {kWorkerHeader: '1'},
             );
           }
-          return http.StreamedResponse(Stream.value([1]), 200);
+          return http.StreamedResponse(Stream.value([1]), 200, contentLength: 1);
         });
         final song = Song.fromJson(FakeWeb._json('Sw2'));
         expect(await store2.downloadAll([song], (_, _) {}), 1);
@@ -453,7 +454,7 @@ void main() {
             if (request.url.host.endsWith('r2.dev')) {
               return http.StreamedResponse(const Stream.empty(), 503);
             }
-            return http.StreamedResponse(Stream.value([1]), 200);
+            return http.StreamedResponse(Stream.value([1]), 200, contentLength: 1);
           });
           Song song(String id) => Song.fromJson(FakeWeb._json(id));
           expect(
@@ -477,7 +478,7 @@ void main() {
             if (request.url.host == workerHost) {
               return http.StreamedResponse(const Stream.empty(), 500);
             }
-            return http.StreamedResponse(Stream.value([1]), 200);
+            return http.StreamedResponse(Stream.value([1]), 200, contentLength: 1);
           });
           final song = Song.fromJson(FakeWeb._json('Sw5'));
           expect(await store2.downloadAll([song], (_, _) {}), 1);

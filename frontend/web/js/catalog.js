@@ -61,6 +61,8 @@ export function normalizeSong(raw, index = 0) {
     addedAt,
     // Número de pista en su álbum (ADR-0026): entero desde 1, o null si no lo tiene.
     track: raw.local !== true && Number.isInteger(raw.track) && raw.track >= 1 ? raw.track : null,
+    // Ganancia de normalización de volumen en dB (ADR-0046): puede ser negativa (atenuar) o positiva; null si no se conoce.
+    gainDb: typeof raw.gain_db === 'number' && Number.isFinite(raw.gain_db) ? raw.gain_db : null,
     order: index,
   };
 }

@@ -712,6 +712,63 @@ void main() {
   );
 
   test(
+    'sin duración esperada, una descarga por debajo de 90 s se rechaza (suelo absoluto)',
+    () async {
+      final short = wavOf(byteRate: 100, dataBytes: 8000); // 80 s, sin referencia de Spotify
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          final p = request.url.path;
+          if (p == '/api/convert') return http.Response(jsonEncode({'jobId': 'job-A'}), 200);
+          if (p == '/api/status') return http.Response(jsonEncode({'status': 'completed'}), 200);
+          if (p == '/api/download/') return http.Response.bytes(short, 200);
+          fail('Ruta inesperada: ${request.url}');
+        }),
+        base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('yt-floor-test'),
+        wait: (_) async {},
+      );
+
+      await expectLater(
+        importer.importTracks(const [
+          YoutubeTrack(url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', title: 'Una'),
+        ]),
+        throwsA(isA<YoutubeTruncatedException>().having((e) => e.message, 'message', contains('demasiado corta'))),
+      );
+    },
+  );
+
+  test(
+    'una canción genuinamente corta (<90 s según Spotify) sí se acepta',
+    () async {
+      final short = wavOf(byteRate: 100, dataBytes: 4000); // 40 s, y Spotify dice 40 s
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          final p = request.url.path;
+          if (p == '/api/convert') return http.Response(jsonEncode({'jobId': 'job-A'}), 200);
+          if (p == '/api/status') return http.Response(jsonEncode({'status': 'completed'}), 200);
+          if (p == '/api/download/') return http.Response.bytes(short, 200);
+          fail('Ruta inesperada: ${request.url}');
+        }),
+        base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('yt-shortok-test'),
+        wait: (_) async {},
+      );
+
+      final audios = await importer.importTracks(const [
+        YoutubeTrack(
+          url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+          title: 'Interludio',
+          expectedDurationS: 40,
+        ),
+      ]);
+      expect(audios, hasLength(1), reason: 'un tema de 40 s confirmado por Spotify no es un truncado');
+      await importer.cleanup(audios);
+    },
+  );
+
+  test(
     'no rechaza una canción íntegra aunque difiera unos segundos de la esperada',
     () async {
       final almost = wavOf(byteRate: 100, dataBytes: 17500); // 175 s de 180 esperados

@@ -714,3 +714,25 @@ describe('Media Session y destrucción', () => {
     assert.equal(audio.listeners.get('ended').size, 0);
   });
 });
+
+describe('normalización de volumen (ADR-0046)', () => {
+  const loud = track('loud', { gainDb: -6 }); // factor 10^(-6/20) ≈ 0.501
+  const quiet = track('quiet', { gainDb: 6 }); // positivo: el reproductor lo recorta a 1
+  const plain = track('plain'); // sin gainDb
+
+  test('atenúa un tema fuerte, no sube uno flojo de 1 y sin dato deja el volumen pleno', () => {
+    const { audio, player } = setup({ volume: 1 });
+    player.load([loud, quiet, plain], 0);
+    assert.ok(Math.abs(audio.volumeValue - Math.pow(10, -6 / 20)) < 1e-9, 'el fuerte se atenúa');
+    player.next();
+    assert.equal(audio.volumeValue, 1, 'el flojo no pasa de 1 (audio.volume no sube de 1)');
+    player.next();
+    assert.equal(audio.volumeValue, 1, 'sin gainDb, volumen pleno');
+  });
+
+  test('la ganancia se combina con el volumen base del usuario', () => {
+    const { audio, player } = setup({ volume: 0.5 });
+    player.load([loud], 0);
+    assert.ok(Math.abs(audio.volumeValue - 0.5 * Math.pow(10, -6 / 20)) < 1e-9);
+  });
+});

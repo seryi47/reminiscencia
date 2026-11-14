@@ -174,6 +174,11 @@ class FakeAudioPlayer implements AudioPlayer {
     return Future<void>.value();
   }
 
+  // Normalización de volumen (ADR-0046): se guarda el último valor para poder comprobarlo en las pruebas.
+  double volumeValue = 1.0;
+  @override
+  Future<void> setVolume(double volume) async => volumeValue = volume;
+
   @override
   Future<void> seekToNext() =>
       seek(Duration.zero, index: (_currentIndex ?? 0) + 1);

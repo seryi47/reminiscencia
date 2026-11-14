@@ -32,6 +32,11 @@ const Duration kYoutubeDownloadTimeout = Duration(minutes: 3);
 const double kYoutubeMinDurationRatio = 0.70;
 const double kYoutubeDurationCheckFloorS = 60;
 
+/// Suelo ABSOLUTO (ADR-0046): ninguna descarga por debajo de este umbral se da por buena, aunque no se conozca la duración
+/// esperada (p. ej. una playlist de YouTube). Ataja los recortes de «unos segundos o un minuto». Excepción: si se conoce la
+/// duración esperada y el tema es genuinamente más corto que esto, se respeta (hay interludios/skits de menos de 90 s).
+const double kYoutubeMinDurationS = 90;
+
 /// Conversor yttowav. La APK habla DIRECTAMENTE con él (no por el Worker) en convert/status/download: así cada teléfono
 /// usa su propia IP, con su propio cupo diario (40/día por IP), en vez de compartir la única IP del Worker con toda la
 /// web (que es lo que agotaba el cupo). La lista de la playlist y la búsqueda siguen yendo por el Worker, porque
@@ -477,30 +482,36 @@ class YoutubeImporter {
           onProgress: onProgress,
           cancellation: cancellation,
         );
-        // Validación anti-truncado: la duración REAL del WAV (de los bytes, no de la cabecera, que yttowav puede falsear)
-        // frente a la esperada. Un recorte grave se rechaza.
+        // Validación anti-truncado (duración REAL del WAV, de los bytes, no de la cabecera que yttowav puede falsear):
+        //  1) recorte respecto a la duración esperada de Spotify (si se conoce y no es un tema genuinamente corto), y
+        //  2) SUELO ABSOLUTO de 90 s: nada por debajo cuenta como válido aunque no se conozca la esperada (p. ej. playlist
+        //     de YouTube), salvo que Spotify diga que el tema dura de verdad menos de 90 s.
         final expected = track.expectedDurationS;
-        if (expected != null && expected >= kYoutubeDurationCheckFloorS) {
-          final actual = await _wavDurationS(file);
-          if (actual != null && actual < expected * kYoutubeMinDurationRatio) {
-            await _deleteQuietly(file);
-            final message =
-                'La descarga de «${track.title}» salió incompleta '
-                '(${actual.round()} s de ${expected.round()} s esperados).';
-            if (hasMore) {
-              onProgress?.call(
-                YoutubeImportProgress(
-                  index: index,
-                  total: total,
-                  title: track.title,
-                  phase: 'salió incompleta; probando otra versión',
-                ),
-              );
-              lastError = YoutubeTruncatedException(message);
-              continue;
-            }
-            throw YoutubeTruncatedException(message);
+        final actual = await _wavDurationS(file);
+        final genuinelyShort = expected != null && expected < kYoutubeMinDurationS;
+        final tooShort = actual != null &&
+            ((expected != null &&
+                    expected >= kYoutubeDurationCheckFloorS &&
+                    actual < expected * kYoutubeMinDurationRatio) ||
+                (actual < kYoutubeMinDurationS && !genuinelyShort));
+        if (tooShort) {
+          await _deleteQuietly(file);
+          final message =
+              'La descarga de «${track.title}» salió incompleta o demasiado corta '
+              '(${actual.round()} s${expected != null ? ' de ${expected.round()} s esperados' : ''}).';
+          if (hasMore) {
+            onProgress?.call(
+              YoutubeImportProgress(
+                index: index,
+                total: total,
+                title: track.title,
+                phase: 'salió corta; probando otra versión',
+              ),
+            );
+            lastError = YoutubeTruncatedException(message);
+            continue;
           }
+          throw YoutubeTruncatedException(message);
         }
         return YoutubeImportedAudio(
           name: '${_safeTitle(track.title)}.wav',

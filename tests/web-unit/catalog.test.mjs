@@ -64,8 +64,16 @@ describe('lectura del catálogo', () => {
       pending: false,
       addedAt: null,
       track: null,
+      gainDb: null,
       order: 0,
     });
+  });
+
+  test('normaliza gain_db (normalización de volumen, ADR-0046): acepta negativos, rechaza lo no numérico', () => {
+    assert.equal(normalizeSong({ id: 'S1', audio: 'audio/S1.opus', gain_db: -7.3 }).gainDb, -7.3);
+    assert.equal(normalizeSong({ id: 'S1', audio: 'audio/S1.opus', gain_db: 4 }).gainDb, 4);
+    assert.equal(normalizeSong({ id: 'S1', audio: 'audio/S1.opus' }).gainDb, null);
+    assert.equal(normalizeSong({ id: 'S1', audio: 'audio/S1.opus', gain_db: 'x' }).gainDb, null);
   });
 
   test('descarta canciones sin id seguro o sin audio, y da título por defecto', () => {

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import filecmp
 import json
+import math
 import re
 import shutil
 from pathlib import Path
@@ -57,6 +58,15 @@ def _track_of(song: dict) -> int | None:
     if song.get("folder_id") is None or isinstance(track, bool) or not isinstance(track, int) or track < 1:
         return None
     return track
+
+
+def _gain_of(song: dict) -> float | None:
+    """La ganancia de normalización de volumen (ADR-0046), o None si no es un número finito."""
+    gain = song.get("gain_db")
+    if isinstance(gain, bool) or not isinstance(gain, (int, float)):
+        return None
+    gain = float(gain)
+    return gain if math.isfinite(gain) else None
 
 
 def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_dir: Path | None = None) -> dict:
@@ -108,6 +118,8 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
             entry["cover"] = song_covers[song["id"]]
         if _track_of(song) is not None:
             entry["track"] = _track_of(song)
+        if _gain_of(song) is not None:
+            entry["gain_db"] = _gain_of(song)
         songs.append(entry)
     songs.sort(key=lambda item: item["title"].lower())
 
@@ -131,6 +143,8 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
             entry["cover"] = song_covers[song["id"]]
         if _track_of(song) is not None:
             entry["track"] = _track_of(song)
+        if _gain_of(song) is not None:
+            entry["gain_db"] = _gain_of(song)
         catalog_songs.append(entry)
     catalog_songs.sort(key=lambda item: ((item["title"] or "").lower(), item["id"]))
     catalog_view = {"songs": catalog_songs, "folders": folders}

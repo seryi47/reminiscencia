@@ -208,6 +208,23 @@ void main() {
     );
   });
 
+  group('normalización de volumen (ADR-0046)', () {
+    test('aplica la ganancia al reproducir: atenúa el fuerte, no sube el flojo, sin dato deja volumen pleno', () async {
+      final loud = fakeSong('loud', gainDb: -6); // factor 10^(-6/20) ≈ 0.50119
+      final quiet = fakeSong('quiet', gainDb: 6); // positivo: se recorta a 1.0
+      final plain = fakeSong('plain'); // sin gainDb
+      await handler.playAt([loud, quiet, plain], 0);
+      await drain();
+      expect(player.volumeValue, closeTo(0.501187, 1e-4), reason: 'el tema fuerte se atenúa');
+      await handler.playNext();
+      await drain();
+      expect(player.volumeValue, 1.0, reason: 'el flojo no sube de 1 (just_audio no pasa de 1)');
+      await handler.playNext();
+      await drain();
+      expect(player.volumeValue, 1.0, reason: 'sin gainDb, volumen pleno');
+    });
+  });
+
   group('cambio de canción: metadata inmediata (ADR-0046)', () {
     test('playNext publica ya la canción de destino, sin esperar a la transición real', () async {
       await handler.playAt(songs, 0);
