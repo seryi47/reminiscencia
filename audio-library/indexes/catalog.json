@@ -8815,6 +8815,23 @@
       "added_at": "2026-11-14T13:40:34+00:00",
       "public": true,
       "track": 234
+    },
+    {
+      "id": "S6aa62b830c47618b",
+      "title": "Cuando zarpa el amor",
+      "artist": "Camela",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "6aa62b830c47618b48fe56bcdd65c4f59b3991efb6f3c7cb1e9fcce8b99cde7b",
+      "duration_s": 212.4,
+      "codec": "opus",
+      "size_bytes": 1300229,
+      "added_at": "2026-11-14T13:50:03+00:00",
+      "public": true,
+      "track": 235
     }
   ]
 }
