@@ -10120,10 +10120,10 @@
     {
       "id": "S96a0311f11bb2f2e",
       "title": "Help Me Up",
-      "artist": "",
+      "artist": "Dallax",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "Fcaa6f9307e648e48",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "96a0311f11bb2f2ed001ebb318a12569cf7e080a40c9d342503af8b8a46f2894",
@@ -10131,7 +10131,8 @@
       "codec": "opus",
       "size_bytes": 896360,
       "added_at": "2026-11-14T15:54:56+00:00",
-      "public": true
+      "public": true,
+      "track": 69
     },
     {
       "id": "S0fb0190ac03f656b",

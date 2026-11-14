@@ -2547,14 +2547,15 @@
     {
       "id": "S96a0311f11bb2f2e",
       "title": "Help Me Up",
-      "artist": "",
+      "artist": "Dallax",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "Fcaa6f9307e648e48",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 154.219,
-      "public": true
+      "public": true,
+      "track": 69
     },
     {
       "id": "S4b8e59026c17c3f0",
