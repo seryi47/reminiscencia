@@ -8781,6 +8781,23 @@
       "added_at": "2026-11-14T13:37:02+00:00",
       "public": true,
       "track": 232
+    },
+    {
+      "id": "Sb7bbe1b229d80482",
+      "title": "Es un Secreto",
+      "artist": "Plan B",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "b7bbe1b229d80482504e5bdb35dc7cf83e2d13b670b771edcc294b4a1a89bab9",
+      "duration_s": 190.56,
+      "codec": "opus",
+      "size_bytes": 1170462,
+      "added_at": "2026-11-14T13:39:15+00:00",
+      "public": true,
+      "track": 233
     }
   ]
 }
