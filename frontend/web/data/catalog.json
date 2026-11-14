@@ -2505,7 +2505,7 @@
     {
       "id": "S3558a2f1ac2678f5",
       "title": "Kater St. Rag",
-      "artist": "",
+      "artist": "Bennie Moten",
       "year": null,
       "tags": [],
       "folder_id": null,
@@ -3030,19 +3030,6 @@
       "public": true,
       "track": 85,
       "gain_db": -8.1
-    },
-    {
-      "id": "S91d37e166698c941",
-      "title": "Lágrimas de sangre Canción de Kimetsu No Yaiba CI Akaza Giyu",
-      "artist": "",
-      "year": null,
-      "tags": [],
-      "folder_id": null,
-      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
-      "source": "Subida por seryi47",
-      "duration_s": 335.744,
-      "public": true,
-      "gain_db": -2.9
     },
     {
       "id": "S15adadb126f444b2",
@@ -5611,7 +5598,7 @@
     {
       "id": "Sf749859f9e2e7ec1",
       "title": "Whispering",
-      "artist": "",
+      "artist": "Paul Whiteman",
       "year": null,
       "tags": [],
       "folder_id": null,
