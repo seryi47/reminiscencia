@@ -11,7 +11,8 @@
       "source": "Subida por seryi47",
       "duration_s": 151.494,
       "public": true,
-      "track": 1
+      "track": 1,
+      "gain_db": -6.5
     },
     {
       "id": "S6e8e469f1f6ea917",
@@ -24,7 +25,8 @@
       "source": "Subida por seryi47",
       "duration_s": 212.516,
       "public": true,
-      "track": 2
+      "track": 2,
+      "gain_db": -4.7
     },
     {
       "id": "S65bfe90013b5e118",
@@ -36,7 +38,8 @@
       "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:Free_20s_Jazz_Collection",
       "duration_s": 177.685,
-      "public": true
+      "public": true,
+      "gain_db": -1.2
     },
     {
       "id": "S92f5539025a6abc7",
@@ -49,7 +52,8 @@
       "source": "Subida por seryi47",
       "duration_s": 370.016,
       "public": true,
-      "track": 3
+      "track": 3,
+      "gain_db": -3.2
     },
     {
       "id": "S1ed829a6f1bab8e2",
@@ -62,7 +66,8 @@
       "source": "Subida por seryi47",
       "duration_s": 368.177,
       "public": true,
-      "track": 4
+      "track": 4,
+      "gain_db": -8.9
     },
     {
       "id": "Sdbf79f5318252dcf",
@@ -75,7 +80,8 @@
       "source": "Subida por seryi47",
       "duration_s": 193.636,
       "public": true,
-      "track": 159
+      "track": 159,
+      "gain_db": -4.9
     },
     {
       "id": "Sfb2d0500aa3c6e26",
@@ -88,7 +94,8 @@
       "source": "Subida por seryi47",
       "duration_s": 195.809,
       "public": true,
-      "track": 5
+      "track": 5,
+      "gain_db": -5.0
     },
     {
       "id": "S4d2238caa1722bdd",
@@ -101,7 +108,8 @@
       "source": "Subida por seryi47",
       "duration_s": 220.608,
       "public": true,
-      "track": 6
+      "track": 6,
+      "gain_db": -8.3
     },
     {
       "id": "S134ae74e57dc15f5",
@@ -114,7 +122,8 @@
       "source": "Subida por seryi47",
       "duration_s": 281.327,
       "public": true,
-      "track": 1
+      "track": 1,
+      "gain_db": -8.7
     },
     {
       "id": "S69967586ea132d49",
@@ -127,7 +136,8 @@
       "source": "Subida por seryi47",
       "duration_s": 239.16,
       "public": true,
-      "track": 2
+      "track": 2,
+      "gain_db": -7.9
     },
     {
       "id": "S9f1ac2d40a22c16e",
@@ -140,7 +150,8 @@
       "source": "Subida por seryi47",
       "duration_s": 233.413,
       "public": true,
-      "track": 8
+      "track": 8,
+      "gain_db": -5.6
     },
     {
       "id": "S6a9d3a580e0b127e",
@@ -153,7 +164,8 @@
       "source": "Subida por seryi47",
       "duration_s": 216.208,
       "public": true,
-      "track": 9
+      "track": 9,
+      "gain_db": 5.2
     },
     {
       "id": "Sd6f31b71eac6f8c2",
@@ -165,7 +177,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 230.813,
-      "public": true
+      "public": true,
+      "gain_db": -3.0
     },
     {
       "id": "S5dcbd4223211629b",
@@ -178,7 +191,8 @@
       "source": "Subida por seryi47",
       "duration_s": 408.381,
       "public": true,
-      "track": 40
+      "track": 40,
+      "gain_db": -4.9
     },
     {
       "id": "Sf887b845d068aef4",
@@ -191,7 +205,8 @@
       "source": "Subida por seryi47",
       "duration_s": 213.809,
       "public": true,
-      "track": 10
+      "track": 10,
+      "gain_db": -7.7
     },
     {
       "id": "S979e0ee5e21bd882",
@@ -204,7 +219,8 @@
       "source": "Subida por seryi47",
       "duration_s": 160.5,
       "public": true,
-      "track": 175
+      "track": 175,
+      "gain_db": -0.2
     },
     {
       "id": "Sb2eabcbe4e638435",
@@ -217,7 +233,8 @@
       "source": "Subida por seryi47",
       "duration_s": 182.364,
       "public": true,
-      "track": 11
+      "track": 11,
+      "gain_db": -7.0
     },
     {
       "id": "S49c1846d1885eb5a",
@@ -230,7 +247,8 @@
       "source": "Subida por seryi47",
       "duration_s": 176.861,
       "public": true,
-      "track": 12
+      "track": 12,
+      "gain_db": -6.3
     },
     {
       "id": "Sdb2cee6e278504e4",
@@ -243,7 +261,8 @@
       "source": "Subida por seryi47",
       "duration_s": 231.567,
       "public": true,
-      "track": 13
+      "track": 13,
+      "gain_db": -6.6
     },
     {
       "id": "Sb721835fc334a625",
@@ -256,7 +275,8 @@
       "source": "Subida por seryi47",
       "duration_s": 206.165,
       "public": true,
-      "track": 3
+      "track": 3,
+      "gain_db": -7.9
     },
     {
       "id": "Se28a8942af52d3b0",
@@ -269,7 +289,8 @@
       "source": "Subida por seryi47",
       "duration_s": 319.293,
       "public": true,
-      "track": 18
+      "track": 18,
+      "gain_db": -7.7
     },
     {
       "id": "S25f115748a3b000f",
@@ -282,7 +303,8 @@
       "source": "Subida por seryi47",
       "duration_s": 196.888,
       "public": true,
-      "track": 14
+      "track": 14,
+      "gain_db": -9.0
     },
     {
       "id": "Sc0a849f992039c40",
@@ -295,7 +317,8 @@
       "source": "Subida por seryi47",
       "duration_s": 159.771,
       "public": true,
-      "track": 5
+      "track": 5,
+      "gain_db": -7.7
     },
     {
       "id": "S0f7b8d99f0ae5c38",
@@ -308,7 +331,8 @@
       "source": "Subida por seryi47",
       "duration_s": 251.804,
       "public": true,
-      "track": 222
+      "track": 222,
+      "gain_db": -10.8
     },
     {
       "id": "S500bd6ecb0a28941",
@@ -321,7 +345,8 @@
       "source": "Subida por seryi47",
       "duration_s": 194.4,
       "public": true,
-      "track": 200
+      "track": 200,
+      "gain_db": -8.1
     },
     {
       "id": "S553593e1db579588",
@@ -333,7 +358,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 378.016,
-      "public": true
+      "public": true,
+      "gain_db": -3.7
     },
     {
       "id": "Scfd338e7b59a7d30",
@@ -346,7 +372,8 @@
       "source": "Subida por seryi47",
       "duration_s": 257.095,
       "public": true,
-      "track": 6
+      "track": 6,
+      "gain_db": -8.5
     },
     {
       "id": "Se3c20530a61a6ccf",
@@ -359,7 +386,8 @@
       "source": "Subida por seryi47",
       "duration_s": 232.659,
       "public": true,
-      "track": 17
+      "track": 17,
+      "gain_db": -5.0
     },
     {
       "id": "Sa934e73f6280030f",
@@ -372,7 +400,8 @@
       "source": "Subida por seryi47",
       "duration_s": 227.632,
       "public": true,
-      "track": 7
+      "track": 7,
+      "gain_db": -8.0
     },
     {
       "id": "Sad1e9cd62c2f8959",
@@ -385,7 +414,8 @@
       "source": "Subida por seryi47",
       "duration_s": 216.544,
       "public": true,
-      "track": 8
+      "track": 8,
+      "gain_db": -7.3
     },
     {
       "id": "S937d859a52d19501",
@@ -398,7 +428,8 @@
       "source": "Subida por seryi47",
       "duration_s": 87.829,
       "public": true,
-      "track": 22
+      "track": 22,
+      "gain_db": -7.6
     },
     {
       "id": "S0272f55a541cf42e",
@@ -411,7 +442,8 @@
       "source": "Subida por seryi47",
       "duration_s": 196.5,
       "public": true,
-      "track": 226
+      "track": 226,
+      "gain_db": -7.8
     },
     {
       "id": "Sa51a1c8ed82ce63f",
@@ -424,7 +456,8 @@
       "source": "Subida por seryi47",
       "duration_s": 265.933,
       "public": true,
-      "track": 19
+      "track": 19,
+      "gain_db": -2.2
     },
     {
       "id": "Sa0763047d954178c",
@@ -437,7 +470,8 @@
       "source": "Subida por seryi47",
       "duration_s": 178.693,
       "public": true,
-      "track": 217
+      "track": 217,
+      "gain_db": -8.0
     },
     {
       "id": "Sacbc7b0935008d48",
@@ -450,7 +484,8 @@
       "source": "Subida por seryi47",
       "duration_s": 197.894,
       "public": true,
-      "track": 20
+      "track": 20,
+      "gain_db": -7.5
     },
     {
       "id": "Se29251964e3aee01",
@@ -463,7 +498,8 @@
       "source": "Subida por seryi47",
       "duration_s": 144.213,
       "public": true,
-      "track": 170
+      "track": 170,
+      "gain_db": -9.0
     },
     {
       "id": "Se4e3224701d48c78",
@@ -476,7 +512,8 @@
       "source": "Subida por seryi47",
       "duration_s": 160.689,
       "public": true,
-      "track": 21
+      "track": 21,
+      "gain_db": -9.0
     },
     {
       "id": "Saad44321b5c06399",
@@ -489,7 +526,8 @@
       "source": "Subida por seryi47",
       "duration_s": 281.386,
       "public": true,
-      "track": 22
+      "track": 22,
+      "gain_db": -9.6
     },
     {
       "id": "S6a44efbf35cc1b8b",
@@ -502,7 +540,8 @@
       "source": "Subida por seryi47",
       "duration_s": 145.956,
       "public": true,
-      "track": 9
+      "track": 9,
+      "gain_db": -6.9
     },
     {
       "id": "S1c86d1bc07851404",
@@ -515,7 +554,8 @@
       "source": "Subida por seryi47",
       "duration_s": 165.089,
       "public": true,
-      "track": 10
+      "track": 10,
+      "gain_db": -7.5
     },
     {
       "id": "Sbe4fc4751acbd4b5",
@@ -527,7 +567,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 237.338,
-      "public": true
+      "public": true,
+      "gain_db": -10.2
     },
     {
       "id": "S857787e00d7d0a0b",
@@ -540,7 +581,8 @@
       "source": "Subida por seryi47",
       "duration_s": 245.191,
       "public": true,
-      "track": 161
+      "track": 161,
+      "gain_db": -5.6
     },
     {
       "id": "Sf27b0a86e67c6ffd",
@@ -553,7 +595,8 @@
       "source": "Subida por seryi47",
       "duration_s": 237.767,
       "public": true,
-      "track": 23
+      "track": 23,
+      "gain_db": -5.7
     },
     {
       "id": "S16ac7b45706ee77f",
@@ -566,7 +609,8 @@
       "source": "Subida por seryi47",
       "duration_s": 142.143,
       "public": true,
-      "track": 64
+      "track": 64,
+      "gain_db": -9.1
     },
     {
       "id": "S557af51341218214",
@@ -579,7 +623,8 @@
       "source": "Subida por seryi47",
       "duration_s": 194.834,
       "public": true,
-      "track": 24
+      "track": 24,
+      "gain_db": -9.7
     },
     {
       "id": "S1c81343857010b80",
@@ -592,7 +637,8 @@
       "source": "Subida por seryi47",
       "duration_s": 339.749,
       "public": true,
-      "track": 83
+      "track": 83,
+      "gain_db": -7.4
     },
     {
       "id": "S1fc0b6a1923ebc29",
@@ -605,7 +651,8 @@
       "source": "Subida por seryi47",
       "duration_s": 339.749,
       "public": true,
-      "track": 11
+      "track": 11,
+      "gain_db": -7.4
     },
     {
       "id": "S49d114a1b7d8133a",
@@ -618,7 +665,8 @@
       "source": "Subida por seryi47",
       "duration_s": 202.972,
       "public": true,
-      "track": 25
+      "track": 25,
+      "gain_db": -7.1
     },
     {
       "id": "S0f3fddf8876bd793",
@@ -631,7 +679,8 @@
       "source": "Subida por seryi47",
       "duration_s": 253.603,
       "public": true,
-      "track": 15
+      "track": 15,
+      "gain_db": -7.7
     },
     {
       "id": "S6f215b92f6efb230",
@@ -644,7 +693,8 @@
       "source": "Subida por seryi47",
       "duration_s": 140.907,
       "public": true,
-      "track": 44
+      "track": 44,
+      "gain_db": -7.0
     },
     {
       "id": "Sb8b7f8ac78d3d944",
@@ -657,7 +707,8 @@
       "source": "Subida por seryi47",
       "duration_s": 207.686,
       "public": true,
-      "track": 26
+      "track": 26,
+      "gain_db": -8.0
     },
     {
       "id": "S73d5be1e6c6fa5ee",
@@ -670,7 +721,8 @@
       "source": "Subida por seryi47",
       "duration_s": 172.827,
       "public": true,
-      "track": 27
+      "track": 27,
+      "gain_db": -6.2
     },
     {
       "id": "S5ab42d928f96fa4b",
@@ -683,7 +735,8 @@
       "source": "Subida por seryi47",
       "duration_s": 290.07,
       "public": true,
-      "track": 1
+      "track": 1,
+      "gain_db": 3.0
     },
     {
       "id": "S5911271bdb1cd3e7",
@@ -696,7 +749,8 @@
       "source": "Subida por seryi47",
       "duration_s": 205.484,
       "public": true,
-      "track": 33
+      "track": 33,
+      "gain_db": -6.9
     },
     {
       "id": "Sc4536ce472aab525",
@@ -709,7 +763,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.293,
       "public": true,
-      "track": 76
+      "track": 76,
+      "gain_db": -8.7
     },
     {
       "id": "Sa8f4b4e7d6a74728",
@@ -722,7 +777,8 @@
       "source": "Subida por seryi47",
       "duration_s": 442.733,
       "public": true,
-      "track": 39
+      "track": 39,
+      "gain_db": -1.7
     },
     {
       "id": "S3e85dc507dd3c664",
@@ -735,7 +791,8 @@
       "source": "Subida por seryi47",
       "duration_s": 217.436,
       "public": true,
-      "track": 27
+      "track": 27,
+      "gain_db": -6.7
     },
     {
       "id": "S6bd2f49c0fecd680",
@@ -748,7 +805,8 @@
       "source": "Subida por seryi47",
       "duration_s": 182.19,
       "public": true,
-      "track": 28
+      "track": 28,
+      "gain_db": -5.8
     },
     {
       "id": "S9eb980acdc168bc3",
@@ -761,7 +819,8 @@
       "source": "Subida por seryi47",
       "duration_s": 206.931,
       "public": true,
-      "track": 29
+      "track": 29,
+      "gain_db": -13.1
     },
     {
       "id": "S5aac103b6eb2ecf4",
@@ -773,7 +832,8 @@
       "license": "Dominio público según Internet Archive (item charleston1925; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:charleston1925",
       "duration_s": 242.416,
-      "public": true
+      "public": true,
+      "gain_db": -3.7
     },
     {
       "id": "S20338961bcc688e8",
@@ -786,7 +846,8 @@
       "source": "Subida por seryi47",
       "duration_s": 220.735,
       "public": true,
-      "track": 31
+      "track": 31,
+      "gain_db": -7.6
     },
     {
       "id": "S5bf3b26b83582a89",
@@ -798,7 +859,8 @@
       "license": "Dominio público (Creative Commons) (Internet Archive: christmasbells1919)",
       "source": "internet-archive:christmasbells1919",
       "duration_s": 180.661,
-      "public": true
+      "public": true,
+      "gain_db": -3.1
     },
     {
       "id": "Sa4a2d2dbe3733169",
@@ -811,7 +873,8 @@
       "source": "Subida por seryi47",
       "duration_s": 218.933,
       "public": true,
-      "track": 218
+      "track": 218,
+      "gain_db": -8.9
     },
     {
       "id": "Sc424aec9a6b3978d",
@@ -824,7 +887,8 @@
       "source": "Subida por seryi47",
       "duration_s": 200.894,
       "public": true,
-      "track": 12
+      "track": 12,
+      "gain_db": -7.9
     },
     {
       "id": "S4c756cb0d98ce438",
@@ -837,7 +901,8 @@
       "source": "Subida por seryi47",
       "duration_s": 183.2,
       "public": true,
-      "track": 32
+      "track": 32,
+      "gain_db": -8.5
     },
     {
       "id": "Sdd6288196af8c27c",
@@ -850,7 +915,8 @@
       "source": "Subida por seryi47",
       "duration_s": 221.235,
       "public": true,
-      "track": 33
+      "track": 33,
+      "gain_db": -5.4
     },
     {
       "id": "S83ed687d05863586",
@@ -863,7 +929,8 @@
       "source": "Subida por seryi47",
       "duration_s": 212.078,
       "public": true,
-      "track": 16
+      "track": 16,
+      "gain_db": -7.7
     },
     {
       "id": "Sc92ec52c5a72c75d",
@@ -875,7 +942,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 221.373,
-      "public": true
+      "public": true,
+      "gain_db": -9.3
     },
     {
       "id": "S1906ea0dc1bcb3a4",
@@ -888,7 +956,8 @@
       "source": "Subida por seryi47",
       "duration_s": 203.913,
       "public": true,
-      "track": 13
+      "track": 13,
+      "gain_db": -9.5
     },
     {
       "id": "Scd66b4911b38a089",
@@ -901,7 +970,8 @@
       "source": "Subida por seryi47",
       "duration_s": 340.051,
       "public": true,
-      "track": 40
+      "track": 40,
+      "gain_db": -8.3
     },
     {
       "id": "Sa8d3816182aaad67",
@@ -914,7 +984,8 @@
       "source": "Subida por seryi47",
       "duration_s": 201.602,
       "public": true,
-      "track": 110
+      "track": 110,
+      "gain_db": -6.9
     },
     {
       "id": "Sfd8b389010a484a1",
@@ -927,7 +998,8 @@
       "source": "Subida por seryi47",
       "duration_s": 162.695,
       "public": true,
-      "track": 1
+      "track": 1,
+      "gain_db": -6.3
     },
     {
       "id": "Seb7a0e77692d5c2b",
@@ -939,7 +1011,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 348.088,
-      "public": true
+      "public": true,
+      "gain_db": -5.2
     },
     {
       "id": "Se7cb6a8b80fc34e3",
@@ -952,7 +1025,8 @@
       "source": "Subida por seryi47",
       "duration_s": 352.804,
       "public": true,
-      "track": 81
+      "track": 81,
+      "gain_db": -7.2
     },
     {
       "id": "S9404cbb4fd2f7953",
@@ -965,7 +1039,8 @@
       "source": "Subida por seryi47",
       "duration_s": 352.81,
       "public": true,
-      "track": 14
+      "track": 14,
+      "gain_db": -7.2
     },
     {
       "id": "Sa886421c43a60416",
@@ -978,7 +1053,8 @@
       "source": "Subida por seryi47",
       "duration_s": 210.82,
       "public": true,
-      "track": 15
+      "track": 15,
+      "gain_db": -7.3
     },
     {
       "id": "S6aa62b830c47618b",
@@ -991,7 +1067,8 @@
       "source": "Subida por seryi47",
       "duration_s": 212.4,
       "public": true,
-      "track": 235
+      "track": 235,
+      "gain_db": -8.5
     },
     {
       "id": "S91961ed9145103fe",
@@ -1004,7 +1081,8 @@
       "source": "Subida por seryi47",
       "duration_s": 239.811,
       "public": true,
-      "track": 16
+      "track": 16,
+      "gain_db": 2.3
     },
     {
       "id": "S22702cdd7f83613f",
@@ -1017,7 +1095,8 @@
       "source": "Subida por seryi47",
       "duration_s": 164.706,
       "public": true,
-      "track": 206
+      "track": 206,
+      "gain_db": -8.5
     },
     {
       "id": "S5da780494e13770a",
@@ -1030,7 +1109,8 @@
       "source": "Subida por seryi47",
       "duration_s": 144.168,
       "public": true,
-      "track": 1
+      "track": 1,
+      "gain_db": -7.5
     },
     {
       "id": "S8fe5499d36d6dad8",
@@ -1043,7 +1123,8 @@
       "source": "Subida por seryi47",
       "duration_s": 174.087,
       "public": true,
-      "track": 35
+      "track": 35,
+      "gain_db": -8.4
     },
     {
       "id": "S473de7c379e26100",
@@ -1056,7 +1137,8 @@
       "source": "Subida por seryi47",
       "duration_s": 228.572,
       "public": true,
-      "track": 17
+      "track": 17,
+      "gain_db": -9.7
     },
     {
       "id": "S4c567bb07d984517",
@@ -1069,7 +1151,8 @@
       "source": "Subida por seryi47",
       "duration_s": 166.6,
       "public": true,
-      "track": 28
+      "track": 28,
+      "gain_db": -4.8
     },
     {
       "id": "S5b3e870d79393fd8",
@@ -1082,7 +1165,8 @@
       "source": "Subida por seryi47",
       "duration_s": 173.68,
       "public": true,
-      "track": 2
+      "track": 2,
+      "gain_db": -9.3
     },
     {
       "id": "S33ed27e7f0d9c341",
@@ -1095,7 +1179,8 @@
       "source": "Subida por seryi47",
       "duration_s": 351.527,
       "public": true,
-      "track": 31
+      "track": 31,
+      "gain_db": -5.0
     },
     {
       "id": "S05eb80526711439f",
@@ -1108,7 +1193,8 @@
       "source": "Subida por seryi47",
       "duration_s": 125.952,
       "public": true,
-      "track": 20
+      "track": 20,
+      "gain_db": -9.0
     },
     {
       "id": "S219e7eba5f438dfb",
@@ -1121,7 +1207,8 @@
       "source": "Subida por seryi47",
       "duration_s": 149.226,
       "public": true,
-      "track": 207
+      "track": 207,
+      "gain_db": -7.3
     },
     {
       "id": "S0039cbc18b4e1003",
@@ -1134,7 +1221,8 @@
       "source": "Subida por seryi47",
       "duration_s": 231.37,
       "public": true,
-      "track": 36
+      "track": 36,
+      "gain_db": -8.5
     },
     {
       "id": "S6e4bacd48788cbf7",
@@ -1147,7 +1235,8 @@
       "source": "Subida por seryi47",
       "duration_s": 98.41,
       "public": true,
-      "track": 214
+      "track": 214,
+      "gain_db": -8.9
     },
     {
       "id": "S6fbe0affd5e12a6f",
@@ -1160,7 +1249,8 @@
       "source": "Subida por seryi47",
       "duration_s": 158.935,
       "public": true,
-      "track": 37
+      "track": 37,
+      "gain_db": -5.6
     },
     {
       "id": "S81994d89876c6550",
@@ -1173,7 +1263,8 @@
       "source": "Subida por seryi47",
       "duration_s": 265.306,
       "public": true,
-      "track": 16
+      "track": 16,
+      "gain_db": -5.1
     },
     {
       "id": "See831b9708d6a589",
@@ -1186,7 +1277,8 @@
       "source": "Subida por seryi47",
       "duration_s": 196.134,
       "public": true,
-      "track": 38
+      "track": 38,
+      "gain_db": -3.6
     },
     {
       "id": "S8bc66fcd1d0dfeb9",
@@ -1199,7 +1291,8 @@
       "source": "Subida por seryi47",
       "duration_s": 176.374,
       "public": true,
-      "track": 39
+      "track": 39,
+      "gain_db": -7.8
     },
     {
       "id": "Sd856594c126ca26e",
@@ -1212,7 +1305,8 @@
       "source": "Subida por seryi47",
       "duration_s": 174.387,
       "public": true,
-      "track": 210
+      "track": 210,
+      "gain_db": -7.8
     },
     {
       "id": "Sc173d744a371ce32",
@@ -1225,7 +1319,8 @@
       "source": "Subida por seryi47",
       "duration_s": 153.014,
       "public": true,
-      "track": 18
+      "track": 18,
+      "gain_db": -9.0
     },
     {
       "id": "Sec1811a19fc9f616",
@@ -1237,7 +1332,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 158.449,
-      "public": true
+      "public": true,
+      "gain_db": -7.1
     },
     {
       "id": "S68dc6264fd7c2af3",
@@ -1250,7 +1346,8 @@
       "source": "Subida por seryi47",
       "duration_s": 245.303,
       "public": true,
-      "track": 38
+      "track": 38,
+      "gain_db": -4.7
     },
     {
       "id": "S2061590b27722c69",
@@ -1263,7 +1360,8 @@
       "source": "Subida por seryi47",
       "duration_s": 247.009,
       "public": true,
-      "track": 3
+      "track": 3,
+      "gain_db": -4.7
     },
     {
       "id": "S0984aaf3eb1ec7ff",
@@ -1276,7 +1374,8 @@
       "source": "Subida por seryi47",
       "duration_s": 156.017,
       "public": true,
-      "track": 68
+      "track": 68,
+      "gain_db": -7.2
     },
     {
       "id": "Se2e1e27c25c3fc4c",
@@ -1289,7 +1388,8 @@
       "source": "Subida por seryi47",
       "duration_s": 153.182,
       "public": true,
-      "track": 12
+      "track": 12,
+      "gain_db": -8.7
     },
     {
       "id": "S98dc8dcc15a21007",
@@ -1302,7 +1402,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.627,
       "public": true,
-      "track": 219
+      "track": 219,
+      "gain_db": -8.3
     },
     {
       "id": "Sa828477772cd3e27",
@@ -1314,7 +1415,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 240.287,
-      "public": true
+      "public": true,
+      "gain_db": -5.8
     },
     {
       "id": "Sc7c58716d89e3cd0",
@@ -1327,7 +1429,8 @@
       "source": "Subida por seryi47",
       "duration_s": 205.09,
       "public": true,
-      "track": 164
+      "track": 164,
+      "gain_db": -7.2
     },
     {
       "id": "S2f8e76ee6b7ea108",
@@ -1340,7 +1443,8 @@
       "source": "Subida por seryi47",
       "duration_s": 229.536,
       "public": true,
-      "track": 19
+      "track": 19,
+      "gain_db": -1.9
     },
     {
       "id": "Sefeb4ca4953cc976",
@@ -1353,7 +1457,8 @@
       "source": "Subida por seryi47",
       "duration_s": 264.231,
       "public": true,
-      "track": 78
+      "track": 78,
+      "gain_db": -8.3
     },
     {
       "id": "S9d3d80416ee58023",
@@ -1366,7 +1471,8 @@
       "source": "Subida por seryi47",
       "duration_s": 322.323,
       "public": true,
-      "track": 20
+      "track": 20,
+      "gain_db": -7.7
     },
     {
       "id": "S44570a864c8cd4b9",
@@ -1379,7 +1485,8 @@
       "source": "Subida por seryi47",
       "duration_s": 424.327,
       "public": true,
-      "track": 21
+      "track": 21,
+      "gain_db": -6.0
     },
     {
       "id": "Sbef7a95db8982ceb",
@@ -1392,7 +1499,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.428,
       "public": true,
-      "track": 22
+      "track": 22,
+      "gain_db": -12.4
     },
     {
       "id": "S18de4c5b0499cd52",
@@ -1405,7 +1513,8 @@
       "source": "Subida por seryi47",
       "duration_s": 301.1,
       "public": true,
-      "track": 41
+      "track": 41,
+      "gain_db": -8.2
     },
     {
       "id": "S912c542f06ea0665",
@@ -1418,7 +1527,8 @@
       "source": "Subida por seryi47",
       "duration_s": 280.327,
       "public": true,
-      "track": 23
+      "track": 23,
+      "gain_db": -0.3
     },
     {
       "id": "Sf06b77bc1f61bb7e",
@@ -1431,7 +1541,8 @@
       "source": "Subida por seryi47",
       "duration_s": 247.623,
       "public": true,
-      "track": 24
+      "track": 24,
+      "gain_db": -7.7
     },
     {
       "id": "S2db46a7706c3e3fe",
@@ -1444,7 +1555,8 @@
       "source": "Subida por seryi47",
       "duration_s": 403.846,
       "public": true,
-      "track": 25
+      "track": 25,
+      "gain_db": -7.3
     },
     {
       "id": "S279666d83978a3e4",
@@ -1457,7 +1569,8 @@
       "source": "Subida por seryi47",
       "duration_s": 213.688,
       "public": true,
-      "track": 42
+      "track": 42,
+      "gain_db": -8.9
     },
     {
       "id": "S12798275cec523db",
@@ -1470,7 +1583,8 @@
       "source": "Subida por seryi47",
       "duration_s": 246.214,
       "public": true,
-      "track": 26
+      "track": 26,
+      "gain_db": -1.9
     },
     {
       "id": "Se94e3110ef16653c",
@@ -1483,7 +1597,8 @@
       "source": "Subida por seryi47",
       "duration_s": 363.422,
       "public": true,
-      "track": 27
+      "track": 27,
+      "gain_db": -6.2
     },
     {
       "id": "S24abaac642b84805",
@@ -1496,7 +1611,8 @@
       "source": "Subida por seryi47",
       "duration_s": 191.618,
       "public": true,
-      "track": 43
+      "track": 43,
+      "gain_db": -6.3
     },
     {
       "id": "S9dbbc0adb4e201e8",
@@ -1509,7 +1625,8 @@
       "source": "Subida por seryi47",
       "duration_s": 209.5,
       "public": true,
-      "track": 44
+      "track": 44,
+      "gain_db": -8.9
     },
     {
       "id": "S07967453fc31337c",
@@ -1522,7 +1639,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.268,
       "public": true,
-      "track": 45
+      "track": 45,
+      "gain_db": -9.5
     },
     {
       "id": "S0a77b7365ea17346",
@@ -1535,7 +1653,8 @@
       "source": "Subida por seryi47",
       "duration_s": 84.97,
       "public": true,
-      "track": 181
+      "track": 181,
+      "gain_db": -8.5
     },
     {
       "id": "Scf00e8c85dda5c22",
@@ -1548,7 +1667,8 @@
       "source": "Subida por seryi47",
       "duration_s": 125.139,
       "public": true,
-      "track": 225
+      "track": 225,
+      "gain_db": -8.3
     },
     {
       "id": "S33f05597bce4aebf",
@@ -1561,7 +1681,8 @@
       "source": "Subida por seryi47",
       "duration_s": 211.97,
       "public": true,
-      "track": 46
+      "track": 46,
+      "gain_db": -9.0
     },
     {
       "id": "Sf7f18202e9b796b4",
@@ -1574,7 +1695,8 @@
       "source": "Subida por seryi47",
       "duration_s": 136.853,
       "public": true,
-      "track": 28
+      "track": 28,
+      "gain_db": -7.5
     },
     {
       "id": "Sf04b63733012f7d2",
@@ -1587,7 +1709,8 @@
       "source": "Subida por seryi47",
       "duration_s": 112.64,
       "public": true,
-      "track": 17
+      "track": 17,
+      "gain_db": -10.2
     },
     {
       "id": "Se1a40010dd1973e5",
@@ -1600,7 +1723,8 @@
       "source": "Subida por seryi47",
       "duration_s": 132.309,
       "public": true,
-      "track": 202
+      "track": 202,
+      "gain_db": -6.9
     },
     {
       "id": "S099eae5babccd0a3",
@@ -1613,7 +1737,8 @@
       "source": "Subida por seryi47",
       "duration_s": 288.41,
       "public": true,
-      "track": 47
+      "track": 47,
+      "gain_db": -7.4
     },
     {
       "id": "Sdb4918215115f346",
@@ -1626,7 +1751,8 @@
       "source": "Subida por seryi47",
       "duration_s": 260.0,
       "public": true,
-      "track": 209
+      "track": 209,
+      "gain_db": -7.5
     },
     {
       "id": "S840cf6ec18ec09b1",
@@ -1639,7 +1765,8 @@
       "source": "Subida por seryi47",
       "duration_s": 267.651,
       "public": true,
-      "track": 48
+      "track": 48,
+      "gain_db": -8.2
     },
     {
       "id": "Sb7bbe1b229d80482",
@@ -1652,7 +1779,8 @@
       "source": "Subida por seryi47",
       "duration_s": 190.56,
       "public": true,
-      "track": 233
+      "track": 233,
+      "gain_db": -7.0
     },
     {
       "id": "S48a421b452aa81f5",
@@ -1665,7 +1793,8 @@
       "source": "Subida por seryi47",
       "duration_s": 292.264,
       "public": true,
-      "track": 74
+      "track": 74,
+      "gain_db": -10.3
     },
     {
       "id": "S3a01ba50a5890102",
@@ -1678,7 +1807,8 @@
       "source": "Subida por seryi47",
       "duration_s": 293.542,
       "public": true,
-      "track": 79
+      "track": 79,
+      "gain_db": -10.4
     },
     {
       "id": "S8c42572b918b322b",
@@ -1691,7 +1821,8 @@
       "source": "Subida por seryi47",
       "duration_s": 399.32,
       "public": true,
-      "track": 5
+      "track": 5,
+      "gain_db": -5.5
     },
     {
       "id": "S161e014611bef8f0",
@@ -1704,7 +1835,8 @@
       "source": "Subida por seryi47",
       "duration_s": 197.647,
       "public": true,
-      "track": 192
+      "track": 192,
+      "gain_db": -7.9
     },
     {
       "id": "S6235eccd4683a2de",
@@ -1717,7 +1849,8 @@
       "source": "Subida por seryi47",
       "duration_s": 240.832,
       "public": true,
-      "track": 49
+      "track": 49,
+      "gain_db": -7.3
     },
     {
       "id": "Se13367533dd2fb00",
@@ -1730,7 +1863,8 @@
       "source": "Subida por seryi47",
       "duration_s": 177.24,
       "public": true,
-      "track": 215
+      "track": 215,
+      "gain_db": -9.3
     },
     {
       "id": "Sd5dd274923cb135e",
@@ -1743,7 +1877,8 @@
       "source": "Subida por seryi47",
       "duration_s": 177.291,
       "public": true,
-      "track": 30
+      "track": 30,
+      "gain_db": -9.2
     },
     {
       "id": "S24c8b9323d7d5146",
@@ -1756,7 +1891,8 @@
       "source": "Subida por seryi47",
       "duration_s": 154.756,
       "public": true,
-      "track": 50
+      "track": 50,
+      "gain_db": -7.2
     },
     {
       "id": "Sd12b718f2f76b856",
@@ -1769,7 +1905,8 @@
       "source": "Subida por seryi47",
       "duration_s": 192.813,
       "public": true,
-      "track": 51
+      "track": 51,
+      "gain_db": -4.8
     },
     {
       "id": "S1c79134918f046f4",
@@ -1782,7 +1919,8 @@
       "source": "Subida por seryi47",
       "duration_s": 248.007,
       "public": true,
-      "track": 52
+      "track": 52,
+      "gain_db": -7.2
     },
     {
       "id": "Sc1156642d1f99589",
@@ -1794,7 +1932,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 248.054,
-      "public": true
+      "public": true,
+      "gain_db": -7.0
     },
     {
       "id": "S51ee706b86d99bd6",
@@ -1807,7 +1946,8 @@
       "source": "Subida por seryi47",
       "duration_s": 275.79,
       "public": true,
-      "track": 53
+      "track": 53,
+      "gain_db": -8.4
     },
     {
       "id": "S20997ea1ff63152f",
@@ -1820,7 +1960,8 @@
       "source": "Subida por seryi47",
       "duration_s": 175.788,
       "public": true,
-      "track": 234
+      "track": 234,
+      "gain_db": -8.2
     },
     {
       "id": "See291ab7289d5671",
@@ -1833,7 +1974,8 @@
       "source": "Subida por seryi47",
       "duration_s": 179.497,
       "public": true,
-      "track": 29
+      "track": 29,
+      "gain_db": -5.3
     },
     {
       "id": "Sb13bc9a127baeb28",
@@ -1846,7 +1988,8 @@
       "source": "Subida por seryi47",
       "duration_s": 155.213,
       "public": true,
-      "track": 231
+      "track": 231,
+      "gain_db": -8.7
     },
     {
       "id": "Sc915b66de5beb65e",
@@ -1859,7 +2002,8 @@
       "source": "Subida por seryi47",
       "duration_s": 162.291,
       "public": true,
-      "track": 54
+      "track": 54,
+      "gain_db": -8.7
     },
     {
       "id": "Sd051b53c36bdf2aa",
@@ -1872,7 +2016,8 @@
       "source": "Subida por seryi47",
       "duration_s": 408.062,
       "public": true,
-      "track": 111
+      "track": 111,
+      "gain_db": -5.9
     },
     {
       "id": "Se8636e1086e42ec4",
@@ -1885,7 +2030,8 @@
       "source": "Subida por seryi47",
       "duration_s": 180.48,
       "public": true,
-      "track": 232
+      "track": 232,
+      "gain_db": -6.6
     },
     {
       "id": "S004bfc98ee99b3e5",
@@ -1898,7 +2044,8 @@
       "source": "Subida por seryi47",
       "duration_s": 212.759,
       "public": true,
-      "track": 55
+      "track": 55,
+      "gain_db": -4.1
     },
     {
       "id": "S4074e294567174de",
@@ -1911,7 +2058,8 @@
       "source": "Subida por seryi47",
       "duration_s": 225.17,
       "public": true,
-      "track": 57
+      "track": 57,
+      "gain_db": -8.7
     },
     {
       "id": "S6bb827825503ef99",
@@ -1924,7 +2072,8 @@
       "source": "Subida por seryi47",
       "duration_s": 225.173,
       "public": true,
-      "track": 180
+      "track": 180,
+      "gain_db": -8.7
     },
     {
       "id": "S7878ef5bd9842999",
@@ -1937,7 +2086,8 @@
       "source": "Subida por seryi47",
       "duration_s": 152.678,
       "public": true,
-      "track": 58
+      "track": 58,
+      "gain_db": -10.6
     },
     {
       "id": "S577ccf4c3acf66bf",
@@ -1950,7 +2100,8 @@
       "source": "Subida por seryi47",
       "duration_s": 224.973,
       "public": true,
-      "track": 59
+      "track": 59,
+      "gain_db": -3.3
     },
     {
       "id": "S56cf13592b7bbcad",
@@ -1962,7 +2113,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 163.283,
-      "public": true
+      "public": true,
+      "gain_db": -8.8
     },
     {
       "id": "S1d2d4e556a1e293f",
@@ -1975,7 +2127,8 @@
       "source": "Subida por seryi47",
       "duration_s": 119.729,
       "public": true,
-      "track": 6
+      "track": 6,
+      "gain_db": -3.0
     },
     {
       "id": "Se95c18ca87f699d9",
@@ -1987,7 +2140,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 194.681,
-      "public": true
+      "public": true,
+      "gain_db": -8.2
     },
     {
       "id": "S678873d043277045",
@@ -2000,7 +2154,8 @@
       "source": "Subida por seryi47",
       "duration_s": 272.007,
       "public": true,
-      "track": 30
+      "track": 30,
+      "gain_db": -7.2
     },
     {
       "id": "Sb58e24ea8c069425",
@@ -2013,7 +2168,8 @@
       "source": "Subida por seryi47",
       "duration_s": 16.682,
       "public": true,
-      "track": 24
+      "track": 24,
+      "gain_db": 0.9
     },
     {
       "id": "S062bb43f8acf128e",
@@ -2026,7 +2182,8 @@
       "source": "Subida por seryi47",
       "duration_s": 287.196,
       "public": true,
-      "track": 132
+      "track": 132,
+      "gain_db": -8.0
     },
     {
       "id": "S0d721d46acafca5c",
@@ -2039,7 +2196,8 @@
       "source": "Subida por seryi47",
       "duration_s": 127.585,
       "public": true,
-      "track": 7
+      "track": 7,
+      "gain_db": -5.1
     },
     {
       "id": "S6aa8353659853ff4",
@@ -2052,7 +2210,8 @@
       "source": "Subida por seryi47",
       "duration_s": 171.254,
       "public": true,
-      "track": 31
+      "track": 31,
+      "gain_db": -7.7
     },
     {
       "id": "S00190e4d0b8cb7f5",
@@ -2065,7 +2224,8 @@
       "source": "Subida por seryi47",
       "duration_s": 128.006,
       "public": true,
-      "track": 8
+      "track": 8,
+      "gain_db": -6.2
     },
     {
       "id": "Se9a198b0091553c0",
@@ -2078,7 +2238,8 @@
       "source": "Subida por seryi47",
       "duration_s": 313.012,
       "public": true,
-      "track": 9
+      "track": 9,
+      "gain_db": -5.1
     },
     {
       "id": "S781193f0f288b323",
@@ -2091,7 +2252,8 @@
       "source": "Subida por seryi47",
       "duration_s": 124.747,
       "public": true,
-      "track": 41
+      "track": 41,
+      "gain_db": -9.2
     },
     {
       "id": "S73c1a35e4c660024",
@@ -2104,7 +2266,8 @@
       "source": "Subida por seryi47",
       "duration_s": 140.653,
       "public": true,
-      "track": 35
+      "track": 35,
+      "gain_db": -8.3
     },
     {
       "id": "S281461d80ae2fc0f",
@@ -2117,7 +2280,8 @@
       "source": "Subida por seryi47",
       "duration_s": 157.67,
       "public": true,
-      "track": 10
+      "track": 10,
+      "gain_db": 4.2
     },
     {
       "id": "Se17ab89c47750cdc",
@@ -2130,7 +2294,8 @@
       "source": "Subida por seryi47",
       "duration_s": 246.36,
       "public": true,
-      "track": 29
+      "track": 29,
+      "gain_db": -2.0
     },
     {
       "id": "S7dea284bbfd8c00d",
@@ -2143,7 +2308,8 @@
       "source": "Subida por seryi47",
       "duration_s": 217.194,
       "public": true,
-      "track": 60
+      "track": 60,
+      "gain_db": -9.4
     },
     {
       "id": "Sc64c92a0f81efdca",
@@ -2156,7 +2322,8 @@
       "source": "Subida por seryi47",
       "duration_s": 20.245,
       "public": true,
-      "track": 59
+      "track": 59,
+      "gain_db": -0.9
     },
     {
       "id": "S4b8e59026c17c3f0",
@@ -2168,7 +2335,8 @@
       "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:Free_20s_Jazz_Collection",
       "duration_s": 189.857,
-      "public": true
+      "public": true,
+      "gain_db": -2.2
     },
     {
       "id": "S75a5c61350f0bdc8",
@@ -2181,7 +2349,8 @@
       "source": "Subida por seryi47",
       "duration_s": 244.721,
       "public": true,
-      "track": 61
+      "track": 61,
+      "gain_db": -8.6
     },
     {
       "id": "S32f9cc74e4842795",
@@ -2193,7 +2362,8 @@
       "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:Free_20s_Jazz_Collection",
       "duration_s": 156.508,
-      "public": true
+      "public": true,
+      "gain_db": -3.0
     },
     {
       "id": "S51ed5e9529414b20",
@@ -2206,7 +2376,8 @@
       "source": "Subida por seryi47",
       "duration_s": 6.162,
       "public": true,
-      "track": 48
+      "track": 48,
+      "gain_db": -4.4
     },
     {
       "id": "S9419cbbc34c776e5",
@@ -2219,7 +2390,8 @@
       "source": "Subida por seryi47",
       "duration_s": 2.304,
       "public": true,
-      "track": 8
+      "track": 8,
+      "gain_db": -5.2
     },
     {
       "id": "Sea2ff1ce9e4e447d",
@@ -2232,7 +2404,8 @@
       "source": "Subida por seryi47",
       "duration_s": 215.623,
       "public": true,
-      "track": 62
+      "track": 62,
+      "gain_db": -7.0
     },
     {
       "id": "S613be6e4a3adafd0",
@@ -2245,7 +2418,8 @@
       "source": "Subida por seryi47",
       "duration_s": 263.857,
       "public": true,
-      "track": 63
+      "track": 63,
+      "gain_db": -6.7
     },
     {
       "id": "S7c0aa20fe0f17185",
@@ -2258,7 +2432,8 @@
       "source": "Subida por seryi47",
       "duration_s": 148.187,
       "public": true,
-      "track": 65
+      "track": 65,
+      "gain_db": -7.8
     },
     {
       "id": "S7ba426af4d9cc787",
@@ -2271,7 +2446,8 @@
       "source": "Subida por seryi47",
       "duration_s": 140.352,
       "public": true,
-      "track": 183
+      "track": 183,
+      "gain_db": -5.9
     },
     {
       "id": "Se6e0534d70fe5ad0",
@@ -2284,7 +2460,8 @@
       "source": "Subida por seryi47",
       "duration_s": 225.275,
       "public": true,
-      "track": 64
+      "track": 64,
+      "gain_db": -6.1
     },
     {
       "id": "S4203a3f644c4147f",
@@ -2297,7 +2474,8 @@
       "source": "Subida por seryi47",
       "duration_s": 66.645,
       "public": true,
-      "track": 37
+      "track": 37,
+      "gain_db": -8.5
     },
     {
       "id": "S1df66c440634bead",
@@ -2310,7 +2488,8 @@
       "source": "Subida por seryi47",
       "duration_s": 182.214,
       "public": true,
-      "track": 65
+      "track": 65,
+      "gain_db": -7.5
     },
     {
       "id": "Sace009d85e0d1b3f",
@@ -2323,7 +2502,8 @@
       "source": "Subida por seryi47",
       "duration_s": 136.738,
       "public": true,
-      "track": 213
+      "track": 213,
+      "gain_db": -8.8
     },
     {
       "id": "Sf228fb3d894c782a",
@@ -2336,7 +2516,8 @@
       "source": "Subida por seryi47",
       "duration_s": 261.672,
       "public": true,
-      "track": 66
+      "track": 66,
+      "gain_db": -6.1
     },
     {
       "id": "Sd49bf8e121bb57ea",
@@ -2349,7 +2530,8 @@
       "source": "Subida por seryi47",
       "duration_s": 262.684,
       "public": true,
-      "track": 33
+      "track": 33,
+      "gain_db": -8.6
     },
     {
       "id": "Sa235a20ec3418d03",
@@ -2361,7 +2543,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 184.007,
-      "public": true
+      "public": true,
+      "gain_db": -7.6
     },
     {
       "id": "S3558a2f1ac2678f5",
@@ -2373,7 +2556,8 @@
       "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:Free_20s_Jazz_Collection",
       "duration_s": 151.284,
-      "public": true
+      "public": true,
+      "gain_db": -2.6
     },
     {
       "id": "Sec8f5c3aadd170e6",
@@ -2386,7 +2570,8 @@
       "source": "Subida por seryi47",
       "duration_s": 153.014,
       "public": true,
-      "track": 220
+      "track": 220,
+      "gain_db": -6.4
     },
     {
       "id": "S2d64fc21d7de996a",
@@ -2399,7 +2584,8 @@
       "source": "Subida por seryi47",
       "duration_s": 561.221,
       "public": true,
-      "track": 67
+      "track": 67,
+      "gain_db": -4.8
     },
     {
       "id": "S02efdb93dab9d736",
@@ -2412,7 +2598,8 @@
       "source": "Subida por seryi47",
       "duration_s": 246.913,
       "public": true,
-      "track": 34
+      "track": 34,
+      "gain_db": -8.9
     },
     {
       "id": "S6a20f2e2ca7dbd64",
@@ -2425,7 +2612,8 @@
       "source": "Subida por seryi47",
       "duration_s": 227.945,
       "public": true,
-      "track": 4
+      "track": 4,
+      "gain_db": -7.6
     },
     {
       "id": "Se26e468159c3d6ca",
@@ -2438,7 +2626,8 @@
       "source": "Subida por seryi47",
       "duration_s": 192.348,
       "public": true,
-      "track": 182
+      "track": 182,
+      "gain_db": -9.7
     },
     {
       "id": "Se816c090044cb9ba",
@@ -2451,7 +2640,8 @@
       "source": "Subida por seryi47",
       "duration_s": 194.369,
       "public": true,
-      "track": 70
+      "track": 70,
+      "gain_db": -8.5
     },
     {
       "id": "S7923821939a93787",
@@ -2464,7 +2654,8 @@
       "source": "Subida por seryi47",
       "duration_s": 225.942,
       "public": true,
-      "track": 230
+      "track": 230,
+      "gain_db": -8.5
     },
     {
       "id": "S7934668a1e5649a9",
@@ -2477,7 +2668,8 @@
       "source": "Subida por seryi47",
       "duration_s": 238.208,
       "public": true,
-      "track": 71
+      "track": 71,
+      "gain_db": -8.2
     },
     {
       "id": "S20dcfe28f92b979b",
@@ -2490,7 +2682,8 @@
       "source": "Subida por seryi47",
       "duration_s": 243.816,
       "public": true,
-      "track": 35
+      "track": 35,
+      "gain_db": -4.8
     },
     {
       "id": "Sc93080307ef09bc9",
@@ -2503,7 +2696,8 @@
       "source": "Subida por seryi47",
       "duration_s": 184.025,
       "public": true,
-      "track": 40
+      "track": 40,
+      "gain_db": -8.8
     },
     {
       "id": "Sa456cb1cff3d08f9",
@@ -2516,7 +2710,8 @@
       "source": "Subida por seryi47",
       "duration_s": 280.875,
       "public": true,
-      "track": 72
+      "track": 72,
+      "gain_db": -5.7
     },
     {
       "id": "S4870623de92f3869",
@@ -2529,7 +2724,8 @@
       "source": "Subida por seryi47",
       "duration_s": 256.647,
       "public": true,
-      "track": 1
+      "track": 1,
+      "gain_db": -8.6
     },
     {
       "id": "Sfc1de8438517e075",
@@ -2542,7 +2738,8 @@
       "source": "Subida por seryi47",
       "duration_s": 217.345,
       "public": true,
-      "track": 73
+      "track": 73,
+      "gain_db": -7.2
     },
     {
       "id": "S5255de8eaebb683a",
@@ -2555,7 +2752,8 @@
       "source": "Subida por seryi47",
       "duration_s": 247.09,
       "public": true,
-      "track": 74
+      "track": 74,
+      "gain_db": 6.9
     },
     {
       "id": "S0e69016547cc4d02",
@@ -2568,7 +2766,8 @@
       "source": "Subida por seryi47",
       "duration_s": 192.094,
       "public": true,
-      "track": 75
+      "track": 75,
+      "gain_db": -8.4
     },
     {
       "id": "S973fc9ef7d4f6f2a",
@@ -2581,7 +2780,8 @@
       "source": "Subida por seryi47",
       "duration_s": 204.052,
       "public": true,
-      "track": 76
+      "track": 76,
+      "gain_db": -8.7
     },
     {
       "id": "S4a8f73ec777e28eb",
@@ -2594,7 +2794,8 @@
       "source": "Subida por seryi47",
       "duration_s": 193.905,
       "public": true,
-      "track": 77
+      "track": 77,
+      "gain_db": -6.9
     },
     {
       "id": "Sa491620b85d93cf8",
@@ -2607,7 +2808,8 @@
       "source": "Subida por seryi47",
       "duration_s": 265.329,
       "public": true,
-      "track": 41
+      "track": 41,
+      "gain_db": -8.5
     },
     {
       "id": "S5f98a45d79a7056e",
@@ -2620,7 +2822,8 @@
       "source": "Subida por seryi47",
       "duration_s": 203.201,
       "public": true,
-      "track": 189
+      "track": 189,
+      "gain_db": -7.7
     },
     {
       "id": "S7883352f111c750a",
@@ -2633,7 +2836,8 @@
       "source": "Subida por seryi47",
       "duration_s": 217.067,
       "public": true,
-      "track": 78
+      "track": 78,
+      "gain_db": -7.0
     },
     {
       "id": "Sdf50593227c7bc4f",
@@ -2646,7 +2850,8 @@
       "source": "Subida por seryi47",
       "duration_s": 216.107,
       "public": true,
-      "track": 195
+      "track": 195,
+      "gain_db": -8.2
     },
     {
       "id": "S79c725ba151c857a",
@@ -2659,7 +2864,8 @@
       "source": "Subida por seryi47",
       "duration_s": 194.764,
       "public": true,
-      "track": 79
+      "track": 79,
+      "gain_db": -8.7
     },
     {
       "id": "S20ee9884209dec2d",
@@ -2672,7 +2878,8 @@
       "source": "Subida por seryi47",
       "duration_s": 209.286,
       "public": true,
-      "track": 36
+      "track": 36,
+      "gain_db": -10.1
     },
     {
       "id": "S83400e538c88a1d4",
@@ -2685,7 +2892,8 @@
       "source": "Subida por seryi47",
       "duration_s": 150.007,
       "public": true,
-      "track": 80
+      "track": 80,
+      "gain_db": -8.9
     },
     {
       "id": "S40da8b0bf2c4db16",
@@ -2698,7 +2906,8 @@
       "source": "Subida por seryi47",
       "duration_s": 264.966,
       "public": true,
-      "track": 37
+      "track": 37,
+      "gain_db": -7.5
     },
     {
       "id": "Sbd5d76cfc1069d05",
@@ -2711,7 +2920,8 @@
       "source": "Subida por seryi47",
       "duration_s": 283.058,
       "public": true,
-      "track": 38
+      "track": 38,
+      "gain_db": -9.2
     },
     {
       "id": "S902bc3322eba9e80",
@@ -2724,7 +2934,8 @@
       "source": "Subida por seryi47",
       "duration_s": 248.425,
       "public": true,
-      "track": 81
+      "track": 81,
+      "gain_db": -8.6
     },
     {
       "id": "S6c76c661cc5ae116",
@@ -2737,7 +2948,8 @@
       "source": "Subida por seryi47",
       "duration_s": 88.405,
       "public": true,
-      "track": 186
+      "track": 186,
+      "gain_db": -8.2
     },
     {
       "id": "S7ac8d5f8f4badd2d",
@@ -2750,7 +2962,8 @@
       "source": "Subida por seryi47",
       "duration_s": 265.863,
       "public": true,
-      "track": 82
+      "track": 82,
+      "gain_db": -9.0
     },
     {
       "id": "S7d18f1d2aea06a70",
@@ -2763,7 +2976,8 @@
       "source": "Subida por seryi47",
       "duration_s": 169.237,
       "public": true,
-      "track": 15
+      "track": 15,
+      "gain_db": -8.3
     },
     {
       "id": "S4a07332b2fe045eb",
@@ -2776,7 +2990,8 @@
       "source": "Subida por seryi47",
       "duration_s": 218.413,
       "public": true,
-      "track": 83
+      "track": 83,
+      "gain_db": -8.7
     },
     {
       "id": "S79b6a85ae796e942",
@@ -2788,7 +3003,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 200.607,
-      "public": true
+      "public": true,
+      "gain_db": -9.9
     },
     {
       "id": "S188b5014210abc6b",
@@ -2801,7 +3017,8 @@
       "source": "Subida por seryi47",
       "duration_s": 177.661,
       "public": true,
-      "track": 55
+      "track": 55,
+      "gain_db": -4.9
     },
     {
       "id": "S1d7592fad35e594b",
@@ -2814,7 +3031,8 @@
       "source": "Subida por seryi47",
       "duration_s": 140.193,
       "public": true,
-      "track": 58
+      "track": 58,
+      "gain_db": -7.1
     },
     {
       "id": "Sd15250858fd02708",
@@ -2827,7 +3045,8 @@
       "source": "Subida por seryi47",
       "duration_s": 124.524,
       "public": true,
-      "track": 11
+      "track": 11,
+      "gain_db": -7.1
     },
     {
       "id": "Sbca4762f8f280a9a",
@@ -2840,7 +3059,8 @@
       "source": "Subida por seryi47",
       "duration_s": 219.725,
       "public": true,
-      "track": 84
+      "track": 84,
+      "gain_db": -7.2
     },
     {
       "id": "S84a1733c0cdfb77d",
@@ -2853,7 +3073,8 @@
       "source": "Subida por seryi47",
       "duration_s": 183.345,
       "public": true,
-      "track": 39
+      "track": 39,
+      "gain_db": -9.1
     },
     {
       "id": "Sb180c8bab74f0167",
@@ -2866,7 +3087,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.023,
       "public": true,
-      "track": 85
+      "track": 85,
+      "gain_db": -8.1
     },
     {
       "id": "S91d37e166698c941",
@@ -2878,7 +3100,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 335.744,
-      "public": true
+      "public": true,
+      "gain_db": -2.9
     },
     {
       "id": "S15adadb126f444b2",
@@ -2891,7 +3114,8 @@
       "source": "Subida por seryi47",
       "duration_s": 248.634,
       "public": true,
-      "track": 69
+      "track": 69,
+      "gain_db": -6.4
     },
     {
       "id": "Sced2dc2002d48755",
@@ -2904,7 +3128,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.893,
       "public": true,
-      "track": 165
+      "track": 165,
+      "gain_db": -7.8
     },
     {
       "id": "S8221961b31eec47b",
@@ -2916,7 +3141,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 215.25,
-      "public": true
+      "public": true,
+      "gain_db": -5.9
     },
     {
       "id": "Safcaf154b3f4dcd5",
@@ -2929,7 +3155,8 @@
       "source": "Subida por seryi47",
       "duration_s": 218.054,
       "public": true,
-      "track": 86
+      "track": 86,
+      "gain_db": -5.9
     },
     {
       "id": "S696cf1a4a6318d7b",
@@ -2942,7 +3169,8 @@
       "source": "Subida por seryi47",
       "duration_s": 189.184,
       "public": true,
-      "track": 177
+      "track": 177,
+      "gain_db": -8.2
     },
     {
       "id": "S3ed03dd784ed27cd",
@@ -2955,7 +3183,8 @@
       "source": "Subida por seryi47",
       "duration_s": 154.0,
       "public": true,
-      "track": 216
+      "track": 216,
+      "gain_db": -8.8
     },
     {
       "id": "S4c387f277be286d0",
@@ -2968,7 +3197,8 @@
       "source": "Subida por seryi47",
       "duration_s": 162.674,
       "public": true,
-      "track": 87
+      "track": 87,
+      "gain_db": -8.9
     },
     {
       "id": "S5e2d7a49060194eb",
@@ -2981,7 +3211,8 @@
       "source": "Subida por seryi47",
       "duration_s": 223.975,
       "public": true,
-      "track": 43
+      "track": 43,
+      "gain_db": 0.1
     },
     {
       "id": "S39b89faa95fbc057",
@@ -2994,7 +3225,8 @@
       "source": "Subida por seryi47",
       "duration_s": 149.717,
       "public": true,
-      "track": 44
+      "track": 44,
+      "gain_db": -7.7
     },
     {
       "id": "S50b352e0cf78348c",
@@ -3007,7 +3239,8 @@
       "source": "Subida por seryi47",
       "duration_s": 225.159,
       "public": true,
-      "track": 88
+      "track": 88,
+      "gain_db": -7.8
     },
     {
       "id": "S627b2671199868ec",
@@ -3020,7 +3253,8 @@
       "source": "Subida por seryi47",
       "duration_s": 181.122,
       "public": true,
-      "track": 89
+      "track": 89,
+      "gain_db": -7.3
     },
     {
       "id": "S8972e3e2a0e96aa9",
@@ -3033,7 +3267,8 @@
       "source": "Subida por seryi47",
       "duration_s": 178.567,
       "public": true,
-      "track": 212
+      "track": 212,
+      "gain_db": -7.4
     },
     {
       "id": "Se0d610614505c67b",
@@ -3046,7 +3281,8 @@
       "source": "Subida por seryi47",
       "duration_s": 191.084,
       "public": true,
-      "track": 90
+      "track": 90,
+      "gain_db": -7.4
     },
     {
       "id": "Sb56f367ba011992c",
@@ -3059,7 +3295,8 @@
       "source": "Subida por seryi47",
       "duration_s": 241.829,
       "public": true,
-      "track": 199
+      "track": 199,
+      "gain_db": -7.1
     },
     {
       "id": "S45c6453687380b3f",
@@ -3072,7 +3309,8 @@
       "source": "Subida por seryi47",
       "duration_s": 205.715,
       "public": true,
-      "track": 205
+      "track": 205,
+      "gain_db": -5.9
     },
     {
       "id": "S93007694f91c48ad",
@@ -3085,7 +3323,8 @@
       "source": "Subida por seryi47",
       "duration_s": 175.385,
       "public": true,
-      "track": 6
+      "track": 6,
+      "gain_db": -6.4
     },
     {
       "id": "Sd118fa0109ddb0cd",
@@ -3098,7 +3337,8 @@
       "source": "Subida por seryi47",
       "duration_s": 177.407,
       "public": true,
-      "track": 1
+      "track": 1,
+      "gain_db": -6.0
     },
     {
       "id": "S1def3318048cc674",
@@ -3111,7 +3351,8 @@
       "source": "Subida por seryi47",
       "duration_s": 233.628,
       "public": true,
-      "track": 91
+      "track": 91,
+      "gain_db": -7.9
     },
     {
       "id": "S3d6ccc3dfebbe39d",
@@ -3124,7 +3365,8 @@
       "source": "Subida por seryi47",
       "duration_s": 161.452,
       "public": true,
-      "track": 236
+      "track": 236,
+      "gain_db": -10.1
     },
     {
       "id": "S0eeeff531b7c16ab",
@@ -3136,7 +3378,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 186.207,
-      "public": true
+      "public": true,
+      "gain_db": -8.6
     },
     {
       "id": "S3c4e5791f1556467",
@@ -3148,7 +3391,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 126.364,
-      "public": true
+      "public": true,
+      "gain_db": -10.2
     },
     {
       "id": "Sa79f35698f92afe0",
@@ -3161,7 +3405,8 @@
       "source": "Subida por seryi47",
       "duration_s": 183.549,
       "public": true,
-      "track": 92
+      "track": 92,
+      "gain_db": -7.0
     },
     {
       "id": "S6f92921b388ef230",
@@ -3174,7 +3419,8 @@
       "source": "Subida por seryi47",
       "duration_s": 173.12,
       "public": true,
-      "track": 13
+      "track": 13,
+      "gain_db": -10.1
     },
     {
       "id": "S970451c8bca59224",
@@ -3187,7 +3433,8 @@
       "source": "Subida por seryi47",
       "duration_s": 182.852,
       "public": true,
-      "track": 93
+      "track": 93,
+      "gain_db": -7.5
     },
     {
       "id": "Sb4eb137cb7eb07cf",
@@ -3200,7 +3447,8 @@
       "source": "Subida por seryi47",
       "duration_s": 88.725,
       "public": true,
-      "track": 178
+      "track": 178,
+      "gain_db": -8.1
     },
     {
       "id": "S9b335713c866fdff",
@@ -3212,7 +3460,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 439.932,
-      "public": true
+      "public": true,
+      "gain_db": -4.7
     },
     {
       "id": "S3950c6e0ba0e0991",
@@ -3225,7 +3474,8 @@
       "source": "Subida por seryi47",
       "duration_s": 252.384,
       "public": true,
-      "track": 94
+      "track": 94,
+      "gain_db": -7.0
     },
     {
       "id": "S5ecf8b90a18b6b1d",
@@ -3238,7 +3488,8 @@
       "source": "Subida por seryi47",
       "duration_s": 172.345,
       "public": true,
-      "track": 95
+      "track": 95,
+      "gain_db": -5.7
     },
     {
       "id": "Sd7b3dd94e0ecc320",
@@ -3251,7 +3502,8 @@
       "source": "Subida por seryi47",
       "duration_s": 298.652,
       "public": true,
-      "track": 46
+      "track": 46,
+      "gain_db": -5.0
     },
     {
       "id": "S8545d4860e44c665",
@@ -3264,7 +3516,8 @@
       "source": "Subida por seryi47",
       "duration_s": 95.168,
       "public": true,
-      "track": 197
+      "track": 197,
+      "gain_db": -8.5
     },
     {
       "id": "Sb6f5fa5261ae1cec",
@@ -3277,7 +3530,8 @@
       "source": "Subida por seryi47",
       "duration_s": 138.283,
       "public": true,
-      "track": 14
+      "track": 14,
+      "gain_db": -10.3
     },
     {
       "id": "S5d6c2a846e741d84",
@@ -3290,7 +3544,8 @@
       "source": "Subida por seryi47",
       "duration_s": 167.707,
       "public": true,
-      "track": 12
+      "track": 12,
+      "gain_db": -7.9
     },
     {
       "id": "S5391e8d9e6b97ac8",
@@ -3303,7 +3558,8 @@
       "source": "Subida por seryi47",
       "duration_s": 280.274,
       "public": true,
-      "track": 201
+      "track": 201,
+      "gain_db": -9.4
     },
     {
       "id": "S501a198a01b4e93d",
@@ -3316,7 +3572,8 @@
       "source": "Subida por seryi47",
       "duration_s": 247.078,
       "public": true,
-      "track": 96
+      "track": 96,
+      "gain_db": 0.2
     },
     {
       "id": "S493bb32be1f339b9",
@@ -3329,7 +3586,8 @@
       "source": "Subida por seryi47",
       "duration_s": 122.965,
       "public": true,
-      "track": 176
+      "track": 176,
+      "gain_db": -9.0
     },
     {
       "id": "Sfdf3a9187bfb7cf0",
@@ -3342,7 +3600,8 @@
       "source": "Subida por seryi47",
       "duration_s": 155.143,
       "public": true,
-      "track": 97
+      "track": 97,
+      "gain_db": -8.8
     },
     {
       "id": "Sc8a491dda0ce2f27",
@@ -3355,7 +3614,8 @@
       "source": "Subida por seryi47",
       "duration_s": 243.015,
       "public": true,
-      "track": 13
+      "track": 13,
+      "gain_db": -5.8
     },
     {
       "id": "Sb5cc9432ffa50503",
@@ -3368,7 +3628,8 @@
       "source": "internet-archive:nomyn-fragments",
       "duration_s": 226.795,
       "public": true,
-      "cover": "covers/Sb5cc9432ffa50503.jpg"
+      "cover": "covers/Sb5cc9432ffa50503.jpg",
+      "gain_db": -3.8
     },
     {
       "id": "Sc3883ce1230642e7",
@@ -3381,7 +3642,8 @@
       "source": "Subida por seryi47",
       "duration_s": 170.429,
       "public": true,
-      "track": 98
+      "track": 98,
+      "gain_db": -7.5
     },
     {
       "id": "Sa1b1cb2425eb0f7f",
@@ -3394,7 +3656,8 @@
       "source": "Subida por seryi47",
       "duration_s": 18.026,
       "public": true,
-      "track": 61
+      "track": 61,
+      "gain_db": -9.6
     },
     {
       "id": "Se10b75e640e58d0e",
@@ -3407,7 +3670,8 @@
       "source": "Subida por seryi47",
       "duration_s": 232.267,
       "public": true,
-      "track": 198
+      "track": 198,
+      "gain_db": -8.8
     },
     {
       "id": "S5cd63d8ddc69caa9",
@@ -3420,7 +3684,8 @@
       "source": "Subida por seryi47",
       "duration_s": 210.733,
       "public": true,
-      "track": 34
+      "track": 34,
+      "gain_db": -6.9
     },
     {
       "id": "Sed7cbc9ca67d1e61",
@@ -3433,7 +3698,8 @@
       "source": "Subida por seryi47",
       "duration_s": 199.373,
       "public": true,
-      "track": 14
+      "track": 14,
+      "gain_db": 2.1
     },
     {
       "id": "S5602b9873b6acca2",
@@ -3446,7 +3712,8 @@
       "source": "Subida por seryi47",
       "duration_s": 236.153,
       "public": true,
-      "track": 47
+      "track": 47,
+      "gain_db": -9.4
     },
     {
       "id": "S8dde08f2a538bfc0",
@@ -3459,7 +3726,8 @@
       "source": "Subida por seryi47",
       "duration_s": 153.827,
       "public": true,
-      "track": 99
+      "track": 99,
+      "gain_db": -9.1
     },
     {
       "id": "S3553302be7b118c6",
@@ -3472,7 +3740,8 @@
       "source": "Subida por seryi47",
       "duration_s": 185.151,
       "public": true,
-      "track": 2
+      "track": 2,
+      "gain_db": -6.3
     },
     {
       "id": "Sa6aaea52da7a56d5",
@@ -3484,7 +3753,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 223.429,
-      "public": true
+      "public": true,
+      "gain_db": -5.8
     },
     {
       "id": "Sa01435c80917aa25",
@@ -3497,7 +3767,8 @@
       "source": "Subida por seryi47",
       "duration_s": 201.113,
       "public": true,
-      "track": 48
+      "track": 48,
+      "gain_db": -8.3
     },
     {
       "id": "S9044be185a9c44d7",
@@ -3510,7 +3781,8 @@
       "source": "Subida por seryi47",
       "duration_s": 160.482,
       "public": true,
-      "track": 229
+      "track": 229,
+      "gain_db": -8.2
     },
     {
       "id": "S76836540fee7bcf1",
@@ -3523,7 +3795,8 @@
       "source": "Subida por seryi47",
       "duration_s": 310.933,
       "public": true,
-      "track": 49
+      "track": 49,
+      "gain_db": -6.6
     },
     {
       "id": "Sc561a4ba1ae57521",
@@ -3535,7 +3808,8 @@
       "license": "Dominio público según Internet Archive (item Blind_Lemon_Jefferson_One_Dime_Blues; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:Blind_Lemon_Jefferson_One_Dime_Blues",
       "duration_s": 169.04,
-      "public": true
+      "public": true,
+      "gain_db": 4.3
     },
     {
       "id": "S5cfd67552a4b1d2f",
@@ -3548,7 +3822,8 @@
       "source": "Subida por seryi47",
       "duration_s": 296.388,
       "public": true,
-      "track": 25
+      "track": 25,
+      "gain_db": -4.3
     },
     {
       "id": "S835f7975e1fde000",
@@ -3561,7 +3836,8 @@
       "source": "Subida por seryi47",
       "duration_s": 165.5,
       "public": true,
-      "track": 60
+      "track": 60,
+      "gain_db": -8.8
     },
     {
       "id": "Se2c7d8b18ea26306",
@@ -3574,7 +3850,8 @@
       "source": "Subida por seryi47",
       "duration_s": 287.771,
       "public": true,
-      "track": 125
+      "track": 125,
+      "gain_db": -8.8
     },
     {
       "id": "Sb4ae2fc710a4872c",
@@ -3587,7 +3864,8 @@
       "source": "Subida por seryi47",
       "duration_s": 317.468,
       "public": true,
-      "track": 50
+      "track": 50,
+      "gain_db": -8.1
     },
     {
       "id": "S117177117b0a5136",
@@ -3600,7 +3878,8 @@
       "source": "Subida por seryi47",
       "duration_s": 213.553,
       "public": true,
-      "track": 101
+      "track": 101,
+      "gain_db": -8.5
     },
     {
       "id": "See5642223d88e2db",
@@ -3613,7 +3892,8 @@
       "source": "Subida por seryi47",
       "duration_s": 212.331,
       "public": true,
-      "track": 168
+      "track": 168,
+      "gain_db": -8.5
     },
     {
       "id": "S20c6fc5b4a97a5cb",
@@ -3626,7 +3906,8 @@
       "source": "Subida por seryi47",
       "duration_s": 177.009,
       "public": true,
-      "track": 102
+      "track": 102,
+      "gain_db": -7.5
     },
     {
       "id": "Sbc729df6abe41130",
@@ -3639,7 +3920,8 @@
       "source": "Subida por seryi47",
       "duration_s": 177.614,
       "public": true,
-      "track": 163
+      "track": 163,
+      "gain_db": -7.8
     },
     {
       "id": "S5eff67720401e9a4",
@@ -3652,7 +3934,8 @@
       "source": "Subida por seryi47",
       "duration_s": 194.056,
       "public": true,
-      "track": 103
+      "track": 103,
+      "gain_db": -7.1
     },
     {
       "id": "Sc290d8b243637d7d",
@@ -3665,7 +3948,8 @@
       "source": "Subida por seryi47",
       "duration_s": 187.81,
       "public": true,
-      "track": 104
+      "track": 104,
+      "gain_db": -8.1
     },
     {
       "id": "S3f74559230778186",
@@ -3678,7 +3962,8 @@
       "source": "Subida por seryi47",
       "duration_s": 207.14,
       "public": true,
-      "track": 105
+      "track": 105,
+      "gain_db": -7.1
     },
     {
       "id": "S6b2a13a07831a826",
@@ -3691,7 +3976,8 @@
       "source": "Subida por seryi47",
       "duration_s": 227.841,
       "public": true,
-      "track": 106
+      "track": 106,
+      "gain_db": -7.5
     },
     {
       "id": "S67a88f48a58d2dc2",
@@ -3704,7 +3990,8 @@
       "source": "Subida por seryi47",
       "duration_s": 205.382,
       "public": true,
-      "track": 107
+      "track": 107,
+      "gain_db": -6.9
     },
     {
       "id": "S6bd0799e56dd72d0",
@@ -3717,7 +4004,8 @@
       "source": "Subida por seryi47",
       "duration_s": 128.409,
       "public": true,
-      "track": 10
+      "track": 10,
+      "gain_db": -8.8
     },
     {
       "id": "Sc400ca2fd6c752e6",
@@ -3730,7 +4018,8 @@
       "source": "Subida por seryi47",
       "duration_s": 125.724,
       "public": true,
-      "track": 108
+      "track": 108,
+      "gain_db": 0.2
     },
     {
       "id": "S3d591d2c7d75214a",
@@ -3743,7 +4032,8 @@
       "source": "Subida por seryi47",
       "duration_s": 191.025,
       "public": true,
-      "track": 51
+      "track": 51,
+      "gain_db": -7.8
     },
     {
       "id": "S1e56cffecde2180a",
@@ -3756,7 +4046,8 @@
       "source": "Subida por seryi47",
       "duration_s": 213.642,
       "public": true,
-      "track": 109
+      "track": 109,
+      "gain_db": -5.2
     },
     {
       "id": "Sf464d379bb3a9a0a",
@@ -3782,7 +4073,8 @@
       "source": "Subida por seryi47",
       "duration_s": 201.597,
       "public": true,
-      "track": 187
+      "track": 187,
+      "gain_db": -6.9
     },
     {
       "id": "Sa683cc38cbf21f8b",
@@ -3795,7 +4087,8 @@
       "source": "Subida por seryi47",
       "duration_s": 270.809,
       "public": true,
-      "track": 52
+      "track": 52,
+      "gain_db": -3.8
     },
     {
       "id": "S515f0bf6dcb2ea8e",
@@ -3808,7 +4101,8 @@
       "source": "Subida por seryi47",
       "duration_s": 236.977,
       "public": true,
-      "track": 53
+      "track": 53,
+      "gain_db": -9.0
     },
     {
       "id": "S73456678ec10d39c",
@@ -3821,7 +4115,8 @@
       "source": "Subida por seryi47",
       "duration_s": 184.507,
       "public": true,
-      "track": 191
+      "track": 191,
+      "gain_db": -7.9
     },
     {
       "id": "S0553089c4ae3302f",
@@ -3834,7 +4129,8 @@
       "source": "Subida por seryi47",
       "duration_s": 162.645,
       "public": true,
-      "track": 162
+      "track": 162,
+      "gain_db": -7.3
     },
     {
       "id": "Sa1367b83f6688d3f",
@@ -3847,7 +4143,8 @@
       "source": "Subida por seryi47",
       "duration_s": 186.46,
       "public": true,
-      "track": 112
+      "track": 112,
+      "gain_db": -7.8
     },
     {
       "id": "Saa35aa234cfbe3c7",
@@ -3860,7 +4157,8 @@
       "source": "Subida por seryi47",
       "duration_s": 166.076,
       "public": true,
-      "track": 113
+      "track": 113,
+      "gain_db": -8.1
     },
     {
       "id": "S532d6ae3982bfda3",
@@ -3873,7 +4171,8 @@
       "source": "Subida por seryi47",
       "duration_s": 192.0,
       "public": true,
-      "track": 173
+      "track": 173,
+      "gain_db": -5.9
     },
     {
       "id": "S2ef6447b79058248",
@@ -3886,7 +4185,8 @@
       "source": "Subida por seryi47",
       "duration_s": 194.648,
       "public": true,
-      "track": 114
+      "track": 114,
+      "gain_db": -7.1
     },
     {
       "id": "S2789c1f67c23b171",
@@ -3899,7 +4199,8 @@
       "source": "Subida por seryi47",
       "duration_s": 323.542,
       "public": true,
-      "track": 54
+      "track": 54,
+      "gain_db": -8.6
     },
     {
       "id": "Sec1376bc6000dc05",
@@ -3912,7 +4213,8 @@
       "source": "Subida por seryi47",
       "duration_s": 289.379,
       "public": true,
-      "track": 80
+      "track": 80,
+      "gain_db": -8.4
     },
     {
       "id": "S68fb3ad0955656c1",
@@ -3925,7 +4227,8 @@
       "source": "Subida por seryi47",
       "duration_s": 300.209,
       "public": true,
-      "track": 55
+      "track": 55,
+      "gain_db": -8.5
     },
     {
       "id": "S48668adfa12c655c",
@@ -3938,7 +4241,8 @@
       "source": "Subida por seryi47",
       "duration_s": 203.767,
       "public": true,
-      "track": 115
+      "track": 115,
+      "gain_db": -8.7
     },
     {
       "id": "S1a4be3e81188cacc",
@@ -3951,7 +4255,8 @@
       "source": "Subida por seryi47",
       "duration_s": 265.822,
       "public": true,
-      "track": 75
+      "track": 75,
+      "gain_db": -7.6
     },
     {
       "id": "Sc50f66eebe73b5a1",
@@ -3964,7 +4269,8 @@
       "source": "Subida por seryi47",
       "duration_s": 265.817,
       "public": true,
-      "track": 56
+      "track": 56,
+      "gain_db": -7.5
     },
     {
       "id": "Sba5ac0914ee809d7",
@@ -3977,7 +4283,8 @@
       "source": "Subida por seryi47",
       "duration_s": 218.065,
       "public": true,
-      "track": 116
+      "track": 116,
+      "gain_db": -8.7
     },
     {
       "id": "S9b891847da790397",
@@ -3990,7 +4297,8 @@
       "source": "Subida por seryi47",
       "duration_s": 304.902,
       "public": true,
-      "track": 57
+      "track": 57,
+      "gain_db": -6.9
     },
     {
       "id": "S8246ba1023dee20b",
@@ -4003,7 +4311,8 @@
       "source": "Subida por seryi47",
       "duration_s": 123.143,
       "public": true,
-      "track": 15
+      "track": 15,
+      "gain_db": -7.5
     },
     {
       "id": "S852c44ce10052a9d",
@@ -4016,7 +4325,8 @@
       "source": "Subida por seryi47",
       "duration_s": 313.592,
       "public": true,
-      "track": 16
+      "track": 16,
+      "gain_db": -0.5
     },
     {
       "id": "Seec56252c8b8f203",
@@ -4029,7 +4339,8 @@
       "source": "Subida por seryi47",
       "duration_s": 119.38,
       "public": true,
-      "track": 17
+      "track": 17,
+      "gain_db": 3.5
     },
     {
       "id": "S535d4704d28571ba",
@@ -4041,7 +4352,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 96.718,
-      "public": true
+      "public": true,
+      "gain_db": -8.8
     },
     {
       "id": "S490883d1932f20a2",
@@ -4054,7 +4366,8 @@
       "source": "Subida por seryi47",
       "duration_s": 254.056,
       "public": true,
-      "track": 118
+      "track": 118,
+      "gain_db": -8.3
     },
     {
       "id": "S736cc0ee2b467bd4",
@@ -4067,7 +4380,8 @@
       "source": "Subida por seryi47",
       "duration_s": 295.179,
       "public": true,
-      "track": 119
+      "track": 119,
+      "gain_db": -9.2
     },
     {
       "id": "S93e5cffcb019081a",
@@ -4080,7 +4394,8 @@
       "source": "Subida por seryi47",
       "duration_s": 220.399,
       "public": true,
-      "track": 120
+      "track": 120,
+      "gain_db": -9.6
     },
     {
       "id": "Sd2e4a81d434b61fc",
@@ -4093,7 +4408,8 @@
       "source": "Subida por seryi47",
       "duration_s": 208.51,
       "public": true,
-      "track": 58
+      "track": 58,
+      "gain_db": -9.1
     },
     {
       "id": "S2574e545f47818dd",
@@ -4106,7 +4422,8 @@
       "source": "Subida por seryi47",
       "duration_s": 212.33,
       "public": true,
-      "track": 121
+      "track": 121,
+      "gain_db": -8.6
     },
     {
       "id": "S0f89158199393605",
@@ -4119,7 +4436,8 @@
       "source": "Subida por seryi47",
       "duration_s": 155.633,
       "public": true,
-      "track": 122
+      "track": 122,
+      "gain_db": -6.4
     },
     {
       "id": "Sab3599dd15bd69d4",
@@ -4132,7 +4450,8 @@
       "source": "Subida por seryi47",
       "duration_s": 154.933,
       "public": true,
-      "track": 171
+      "track": 171,
+      "gain_db": -6.4
     },
     {
       "id": "S4f65a2b5e12b0db3",
@@ -4145,7 +4464,8 @@
       "source": "Subida por seryi47",
       "duration_s": 337.711,
       "public": true,
-      "track": 24
+      "track": 24,
+      "gain_db": -0.1
     },
     {
       "id": "Se869910dca935a93",
@@ -4158,7 +4478,8 @@
       "source": "Subida por seryi47",
       "duration_s": 171.861,
       "public": true,
-      "track": 30
+      "track": 30,
+      "gain_db": -2.7
     },
     {
       "id": "Sb1a1a78286702444",
@@ -4171,7 +4492,8 @@
       "source": "Subida por seryi47",
       "duration_s": 230.035,
       "public": true,
-      "track": 123
+      "track": 123,
+      "gain_db": -8.2
     },
     {
       "id": "S6e0517319a27fb51",
@@ -4184,7 +4506,8 @@
       "source": "Subida por seryi47",
       "duration_s": 160.84,
       "public": true,
-      "track": 124
+      "track": 124,
+      "gain_db": -9.7
     },
     {
       "id": "Sc2784a1b0117f566",
@@ -4197,7 +4520,8 @@
       "source": "Subida por seryi47",
       "duration_s": 155.825,
       "public": true,
-      "track": 179
+      "track": 179,
+      "gain_db": -9.8
     },
     {
       "id": "S419d9595268a1496",
@@ -4210,7 +4534,8 @@
       "source": "Subida por seryi47",
       "duration_s": 203.053,
       "public": true,
-      "track": 59
+      "track": 59,
+      "gain_db": -7.5
     },
     {
       "id": "S9235d3c11665641d",
@@ -4223,7 +4548,8 @@
       "source": "Subida por seryi47",
       "duration_s": 185.934,
       "public": true,
-      "track": 77
+      "track": 77,
+      "gain_db": -7.5
     },
     {
       "id": "S9ada718f5eb4a133",
@@ -4236,7 +4562,8 @@
       "source": "Subida por seryi47",
       "duration_s": 151.742,
       "public": true,
-      "track": 4
+      "track": 4,
+      "gain_db": -9.8
     },
     {
       "id": "S4a9b31361c345af3",
@@ -4249,7 +4576,8 @@
       "source": "Subida por seryi47",
       "duration_s": 133.312,
       "public": true,
-      "track": 18
+      "track": 18,
+      "gain_db": -1.0
     },
     {
       "id": "S216c4bfc505361f7",
@@ -4262,7 +4590,8 @@
       "source": "Subida por seryi47",
       "duration_s": 269.553,
       "public": true,
-      "track": 126
+      "track": 126,
+      "gain_db": -6.6
     },
     {
       "id": "S873e99e2b52c7215",
@@ -4275,7 +4604,8 @@
       "source": "Subida por seryi47",
       "duration_s": 268.437,
       "public": true,
-      "track": 166
+      "track": 166,
+      "gain_db": -6.7
     },
     {
       "id": "See7bf6937af1d032",
@@ -4288,7 +4618,8 @@
       "source": "Subida por seryi47",
       "duration_s": 208.292,
       "public": true,
-      "track": 204
+      "track": 204,
+      "gain_db": -9.2
     },
     {
       "id": "Sa5a67cb6b2c009b8",
@@ -4301,7 +4632,8 @@
       "source": "Subida por seryi47",
       "duration_s": 190.996,
       "public": true,
-      "track": 82
+      "track": 82,
+      "gain_db": -8.0
     },
     {
       "id": "S51f5ebe601da2dcf",
@@ -4314,7 +4646,8 @@
       "source": "Subida por seryi47",
       "duration_s": 230.012,
       "public": true,
-      "track": 127
+      "track": 127,
+      "gain_db": -7.2
     },
     {
       "id": "S4df3cc0c461f3582",
@@ -4327,7 +4660,8 @@
       "source": "Subida por seryi47",
       "duration_s": 221.072,
       "public": true,
-      "track": 117
+      "track": 117,
+      "gain_db": -6.6
     },
     {
       "id": "S97667e5351d09d3f",
@@ -4340,7 +4674,8 @@
       "source": "Subida por seryi47",
       "duration_s": 171.138,
       "public": true,
-      "track": 221
+      "track": 221,
+      "gain_db": -5.5
     },
     {
       "id": "Sf9354dc306a130e4",
@@ -4353,7 +4688,8 @@
       "source": "Subida por seryi47",
       "duration_s": 250.527,
       "public": true,
-      "track": 128
+      "track": 128,
+      "gain_db": -7.5
     },
     {
       "id": "S0bdac43e99481592",
@@ -4366,7 +4702,8 @@
       "source": "Subida por seryi47",
       "duration_s": 126.567,
       "public": true,
-      "track": 129
+      "track": 129,
+      "gain_db": -9.0
     },
     {
       "id": "Saa1e16ee2a05c2db",
@@ -4379,7 +4716,8 @@
       "source": "Subida por seryi47",
       "duration_s": 226.935,
       "public": true,
-      "track": 130
+      "track": 130,
+      "gain_db": -8.6
     },
     {
       "id": "S9c5696a962907910",
@@ -4392,7 +4730,8 @@
       "source": "Subida por seryi47",
       "duration_s": 279.819,
       "public": true,
-      "track": 60
+      "track": 60,
+      "gain_db": -8.4
     },
     {
       "id": "S04af5e83e9fbb398",
@@ -4405,7 +4744,8 @@
       "source": "Subida por seryi47",
       "duration_s": 235.91,
       "public": true,
-      "track": 61
+      "track": 61,
+      "gain_db": -6.7
     },
     {
       "id": "S63b5e134914b15ae",
@@ -4418,7 +4758,8 @@
       "source": "Subida por seryi47",
       "duration_s": 4.245,
       "public": true,
-      "track": 30
+      "track": 30,
+      "gain_db": -7.6
     },
     {
       "id": "S92d9ccab2b79e854",
@@ -4431,7 +4772,8 @@
       "source": "Subida por seryi47",
       "duration_s": 177.443,
       "public": true,
-      "track": 185
+      "track": 185,
+      "gain_db": -8.7
     },
     {
       "id": "S52de8a2edf03ead5",
@@ -4444,7 +4786,8 @@
       "source": "Subida por seryi47",
       "duration_s": 183.293,
       "public": true,
-      "track": 131
+      "track": 131,
+      "gain_db": -8.7
     },
     {
       "id": "S6e61247551537851",
@@ -4457,7 +4800,8 @@
       "source": "Subida por seryi47",
       "duration_s": 311.758,
       "public": true,
-      "track": 62
+      "track": 62,
+      "gain_db": -8.3
     },
     {
       "id": "S67393e57adf4d7fa",
@@ -4470,7 +4814,8 @@
       "source": "Subida por seryi47",
       "duration_s": 252.373,
       "public": true,
-      "track": 63
+      "track": 63,
+      "gain_db": -7.4
     },
     {
       "id": "Sde48dacb12fc391f",
@@ -4483,7 +4828,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.012,
       "public": true,
-      "track": 133
+      "track": 133,
+      "gain_db": -3.6
     },
     {
       "id": "S15b95d9ede3ebd99",
@@ -4496,7 +4842,8 @@
       "source": "Subida por seryi47",
       "duration_s": 208.62,
       "public": true,
-      "track": 57
+      "track": 57,
+      "gain_db": -7.5
     },
     {
       "id": "S9716a1978c7f998c",
@@ -4509,7 +4856,8 @@
       "source": "Subida por seryi47",
       "duration_s": 140.255,
       "public": true,
-      "track": 134
+      "track": 134,
+      "gain_db": -8.5
     },
     {
       "id": "Sfa2396328903d8ae",
@@ -4522,7 +4870,8 @@
       "source": "Subida por seryi47",
       "duration_s": 213.107,
       "public": true,
-      "track": 228
+      "track": 228,
+      "gain_db": -7.9
     },
     {
       "id": "S992fa9336d482e42",
@@ -4535,7 +4884,8 @@
       "source": "Subida por seryi47",
       "duration_s": 305.558,
       "public": true,
-      "track": 135
+      "track": 135,
+      "gain_db": -9.1
     },
     {
       "id": "Sebf72062976f1d87",
@@ -4548,7 +4898,8 @@
       "source": "Subida por seryi47",
       "duration_s": 255.484,
       "public": true,
-      "track": 7
+      "track": 7,
+      "gain_db": -6.8
     },
     {
       "id": "Sdeeadb8ea3c28967",
@@ -4561,7 +4912,8 @@
       "source": "Subida por seryi47",
       "duration_s": 186.41,
       "public": true,
-      "track": 169
+      "track": 169,
+      "gain_db": -7.1
     },
     {
       "id": "S355cdfdb04bb8eea",
@@ -4574,7 +4926,8 @@
       "source": "Subida por seryi47",
       "duration_s": 173.653,
       "public": true,
-      "track": 172
+      "track": 172,
+      "gain_db": -8.0
     },
     {
       "id": "Sf7fa5f0046a34f16",
@@ -4587,7 +4940,8 @@
       "source": "Subida por seryi47",
       "duration_s": 215.732,
       "public": true,
-      "track": 136
+      "track": 136,
+      "gain_db": -9.7
     },
     {
       "id": "Saa33f247a3335866",
@@ -4600,7 +4954,8 @@
       "source": "Subida por seryi47",
       "duration_s": 130.009,
       "public": true,
-      "track": 203
+      "track": 203,
+      "gain_db": -8.3
     },
     {
       "id": "S4da790660796d86a",
@@ -4613,7 +4968,8 @@
       "source": "Subida por seryi47",
       "duration_s": 74.389,
       "public": true,
-      "track": 7
+      "track": 7,
+      "gain_db": -9.0
     },
     {
       "id": "Sbc975908234e86d7",
@@ -4626,7 +4982,8 @@
       "source": "Subida por seryi47",
       "duration_s": 128.726,
       "public": true,
-      "track": 2
+      "track": 2,
+      "gain_db": -9.5
     },
     {
       "id": "S760e448946508609",
@@ -4639,7 +4996,8 @@
       "source": "Subida por seryi47",
       "duration_s": 179.057,
       "public": true,
-      "track": 64
+      "track": 64,
+      "gain_db": -8.2
     },
     {
       "id": "S225904ac02823b4f",
@@ -4652,7 +5010,8 @@
       "source": "Subida por seryi47",
       "duration_s": 232.269,
       "public": true,
-      "track": 18
+      "track": 18,
+      "gain_db": -7.6
     },
     {
       "id": "Sd4e852db84113b42",
@@ -4665,7 +5024,8 @@
       "source": "Subida por seryi47",
       "duration_s": 318.433,
       "public": true,
-      "track": 65
+      "track": 65,
+      "gain_db": 1.1
     },
     {
       "id": "Sf944519f0a312276",
@@ -4678,7 +5038,8 @@
       "source": "Subida por seryi47",
       "duration_s": 156.96,
       "public": true,
-      "track": 32
+      "track": 32,
+      "gain_db": -7.3
     },
     {
       "id": "Sa20f7ee35917a38e",
@@ -4691,7 +5052,8 @@
       "source": "Subida por seryi47",
       "duration_s": 318.221,
       "public": true,
-      "track": 2
+      "track": 2,
+      "gain_db": -4.0
     },
     {
       "id": "S7cd4d9edd584873c",
@@ -4704,7 +5066,8 @@
       "source": "Subida por seryi47",
       "duration_s": 161.029,
       "public": true,
-      "track": 42
+      "track": 42,
+      "gain_db": -4.6
     },
     {
       "id": "Sc76cc8821b85fd77",
@@ -4717,7 +5080,8 @@
       "source": "Subida por seryi47",
       "duration_s": 156.846,
       "public": true,
-      "track": 19
+      "track": 19,
+      "gain_db": -4.5
     },
     {
       "id": "S6f86452a10a7e7e0",
@@ -4730,7 +5094,8 @@
       "source": "Subida por seryi47",
       "duration_s": 50.638,
       "public": true,
-      "track": 3
+      "track": 3,
+      "gain_db": -10.5
     },
     {
       "id": "S799c9029166caf07",
@@ -4743,7 +5108,8 @@
       "source": "Subida por seryi47",
       "duration_s": 214.585,
       "public": true,
-      "track": 66
+      "track": 66,
+      "gain_db": -8.9
     },
     {
       "id": "S8539faa8d767ff70",
@@ -4756,7 +5122,8 @@
       "source": "Subida por seryi47",
       "duration_s": 315.562,
       "public": true,
-      "track": 196
+      "track": 196,
+      "gain_db": -6.7
     },
     {
       "id": "Sde0595502eb7511c",
@@ -4769,7 +5136,8 @@
       "source": "Subida por seryi47",
       "duration_s": 243.793,
       "public": true,
-      "track": 137
+      "track": 137,
+      "gain_db": -6.0
     },
     {
       "id": "S28e675c914164a1b",
@@ -4782,7 +5150,8 @@
       "source": "Subida por seryi47",
       "duration_s": 293.611,
       "public": true,
-      "track": 66
+      "track": 66,
+      "gain_db": -7.2
     },
     {
       "id": "S12d6b208f1069add",
@@ -4795,7 +5164,8 @@
       "source": "Subida por seryi47",
       "duration_s": 211.471,
       "public": true,
-      "track": 138
+      "track": 138,
+      "gain_db": -7.8
     },
     {
       "id": "S0ce6b6d7abba8e78",
@@ -4808,7 +5178,8 @@
       "source": "Subida por seryi47",
       "duration_s": 242.822,
       "public": true,
-      "track": 67
+      "track": 67,
+      "gain_db": -5.9
     },
     {
       "id": "S470f7db2dbbb9283",
@@ -4821,7 +5192,8 @@
       "source": "Subida por seryi47",
       "duration_s": 184.025,
       "public": true,
-      "track": 139
+      "track": 139,
+      "gain_db": -5.8
     },
     {
       "id": "S804ec3408d605cec",
@@ -4834,7 +5206,8 @@
       "source": "Subida por seryi47",
       "duration_s": 181.772,
       "public": true,
-      "track": 140
+      "track": 140,
+      "gain_db": -8.1
     },
     {
       "id": "Sfd29b307dde0f866",
@@ -4847,7 +5220,8 @@
       "source": "Subida por seryi47",
       "duration_s": 82.858,
       "public": true,
-      "track": 63
+      "track": 63,
+      "gain_db": -7.6
     },
     {
       "id": "S4993cbc50190fc9b",
@@ -4860,7 +5234,8 @@
       "source": "Subida por seryi47",
       "duration_s": 195.031,
       "public": true,
-      "track": 141
+      "track": 141,
+      "gain_db": -6.1
     },
     {
       "id": "S5fe8088455b19624",
@@ -4873,7 +5248,8 @@
       "source": "Subida por seryi47",
       "duration_s": 211.645,
       "public": true,
-      "track": 68
+      "track": 68,
+      "gain_db": -3.4
     },
     {
       "id": "S9c9cc99e8b851ec9",
@@ -4886,7 +5262,8 @@
       "source": "Subida por seryi47",
       "duration_s": 171.429,
       "public": true,
-      "track": 26
+      "track": 26,
+      "gain_db": -7.1
     },
     {
       "id": "S6b742e8a9f6bc9ff",
@@ -4899,7 +5276,8 @@
       "source": "Subida por seryi47",
       "duration_s": 159.808,
       "public": true,
-      "track": 211
+      "track": 211,
+      "gain_db": -8.1
     },
     {
       "id": "Sf8e6d3ba5b7ab11b",
@@ -4912,7 +5290,8 @@
       "source": "Subida por seryi47",
       "duration_s": 224.95,
       "public": true,
-      "track": 142
+      "track": 142,
+      "gain_db": -8.1
     },
     {
       "id": "S43230a06fc932e63",
@@ -4925,7 +5304,8 @@
       "source": "Subida por seryi47",
       "duration_s": 180.53,
       "public": true,
-      "track": 143
+      "track": 143,
+      "gain_db": -7.7
     },
     {
       "id": "S0a9854199dadaa76",
@@ -4938,7 +5318,8 @@
       "source": "Subida por seryi47",
       "duration_s": 149.334,
       "public": true,
-      "track": 144
+      "track": 144,
+      "gain_db": -6.8
     },
     {
       "id": "S102896e47217dc8d",
@@ -4951,7 +5332,8 @@
       "source": "Subida por seryi47",
       "duration_s": 143.179,
       "public": true,
-      "track": 158
+      "track": 158,
+      "gain_db": -6.8
     },
     {
       "id": "S98a1c79e3ac22dfe",
@@ -4964,7 +5346,8 @@
       "source": "Subida por seryi47",
       "duration_s": 170.035,
       "public": true,
-      "track": 42
+      "track": 42,
+      "gain_db": -9.0
     },
     {
       "id": "S76d53d1100c305d4",
@@ -4977,7 +5360,8 @@
       "source": "Subida por seryi47",
       "duration_s": 235.016,
       "public": true,
-      "track": 145
+      "track": 145,
+      "gain_db": -5.0
     },
     {
       "id": "Sb39c872adf03a3c5",
@@ -4989,7 +5373,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 276.208,
-      "public": true
+      "public": true,
+      "gain_db": -7.7
     },
     {
       "id": "S4b27924e612f0972",
@@ -5002,7 +5387,8 @@
       "source": "Subida por seryi47",
       "duration_s": 147.013,
       "public": true,
-      "track": 174
+      "track": 174,
+      "gain_db": -4.9
     },
     {
       "id": "Sa436ff4a50a12de0",
@@ -5015,7 +5401,8 @@
       "source": "Subida por seryi47",
       "duration_s": 144.539,
       "public": true,
-      "track": 146
+      "track": 146,
+      "gain_db": -4.9
     },
     {
       "id": "S81ede4bc2111827a",
@@ -5027,7 +5414,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 221.225,
-      "public": true
+      "public": true,
+      "gain_db": -8.6
     },
     {
       "id": "S5499ae6ec6703e06",
@@ -5040,7 +5428,8 @@
       "source": "Subida por seryi47",
       "duration_s": 193.636,
       "public": true,
-      "track": 11
+      "track": 11,
+      "gain_db": -9.5
     },
     {
       "id": "Sd3134a6620b20bf9",
@@ -5053,7 +5442,8 @@
       "source": "Subida por seryi47",
       "duration_s": 223.729,
       "public": true,
-      "track": 69
+      "track": 69,
+      "gain_db": -6.5
     },
     {
       "id": "Sdf06c3c4bf526812",
@@ -5066,7 +5456,8 @@
       "source": "Subida por seryi47",
       "duration_s": 242.631,
       "public": true,
-      "track": 45
+      "track": 45,
+      "gain_db": 2.3
     },
     {
       "id": "Sf6370d58447e9f55",
@@ -5079,7 +5470,8 @@
       "source": "Subida por seryi47",
       "duration_s": 238.754,
       "public": true,
-      "track": 147
+      "track": 147,
+      "gain_db": -7.2
     },
     {
       "id": "S2e63ac5656aa20ad",
@@ -5092,7 +5484,8 @@
       "source": "Subida por seryi47",
       "duration_s": 190.085,
       "public": true,
-      "track": 148
+      "track": 148,
+      "gain_db": -6.2
     },
     {
       "id": "S6d37bddfeb04fb73",
@@ -5105,7 +5498,8 @@
       "source": "Subida por seryi47",
       "duration_s": 188.854,
       "public": true,
-      "track": 56
+      "track": 56,
+      "gain_db": -1.5
     },
     {
       "id": "S0dcdbdb49a5d254e",
@@ -5118,7 +5512,8 @@
       "source": "Subida por seryi47",
       "duration_s": 142.674,
       "public": true,
-      "track": 42
+      "track": 42,
+      "gain_db": -9.2
     },
     {
       "id": "S2b61908ec8cb8bba",
@@ -5131,7 +5526,8 @@
       "source": "Subida por seryi47",
       "duration_s": 140.957,
       "public": true,
-      "track": 43
+      "track": 43,
+      "gain_db": -9.5
     },
     {
       "id": "S1b3ac3afdf049cf0",
@@ -5144,7 +5540,8 @@
       "source": "Subida por seryi47",
       "duration_s": 214.303,
       "public": true,
-      "track": 70
+      "track": 70,
+      "gain_db": -7.7
     },
     {
       "id": "S1caa3b3300fea8e4",
@@ -5157,7 +5554,8 @@
       "source": "Subida por seryi47",
       "duration_s": 195.686,
       "public": true,
-      "track": 100
+      "track": 100,
+      "gain_db": -2.3
     },
     {
       "id": "S48454c7cb16e1103",
@@ -5170,7 +5568,8 @@
       "source": "Subida por seryi47",
       "duration_s": 190.0,
       "public": true,
-      "track": 167
+      "track": 167,
+      "gain_db": -7.8
     },
     {
       "id": "Se6c61d7991195766",
@@ -5183,7 +5582,8 @@
       "source": "Subida por seryi47",
       "duration_s": 206.108,
       "public": true,
-      "track": 149
+      "track": 149,
+      "gain_db": -6.7
     },
     {
       "id": "Sccef1ffcf9285546",
@@ -5196,7 +5596,8 @@
       "source": "Subida por seryi47",
       "duration_s": 187.577,
       "public": true,
-      "track": 150
+      "track": 150,
+      "gain_db": -6.4
     },
     {
       "id": "S4f4a1e3cd694b426",
@@ -5209,7 +5610,8 @@
       "source": "Subida por seryi47",
       "duration_s": 182.051,
       "public": true,
-      "track": 151
+      "track": 151,
+      "gain_db": -8.3
     },
     {
       "id": "Sa0d847cd6d6e547c",
@@ -5222,7 +5624,8 @@
       "source": "Subida por seryi47",
       "duration_s": 273.34,
       "public": true,
-      "track": 152
+      "track": 152,
+      "gain_db": -8.1
     },
     {
       "id": "S001792b807b17c3d",
@@ -5235,7 +5638,8 @@
       "source": "Subida por seryi47",
       "duration_s": 273.474,
       "public": true,
-      "track": 160
+      "track": 160,
+      "gain_db": -8.2
     },
     {
       "id": "S280db01002ae3cf4",
@@ -5248,7 +5652,8 @@
       "source": "Subida por seryi47",
       "duration_s": 73.974,
       "public": true,
-      "track": 20
+      "track": 20,
+      "gain_db": -7.2
     },
     {
       "id": "Sde0a5b797207c308",
@@ -5261,7 +5666,8 @@
       "source": "Subida por seryi47",
       "duration_s": 427.416,
       "public": true,
-      "track": 71
+      "track": 71,
+      "gain_db": -1.8
     },
     {
       "id": "S0951194da7739feb",
@@ -5274,7 +5680,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.605,
       "public": true,
-      "track": 72
+      "track": 72,
+      "gain_db": -7.2
     },
     {
       "id": "Sb8dfb34535c46cca",
@@ -5287,7 +5694,8 @@
       "source": "Subida por seryi47",
       "duration_s": 80.341,
       "public": true,
-      "track": 190
+      "track": 190,
+      "gain_db": -8.2
     },
     {
       "id": "S2386f99bdbcfbecc",
@@ -5299,7 +5707,8 @@
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 175.526,
-      "public": true
+      "public": true,
+      "gain_db": -0.8
     },
     {
       "id": "S278426c0597d1e24",
@@ -5312,7 +5721,8 @@
       "source": "Subida por seryi47",
       "duration_s": 208.0,
       "public": true,
-      "track": 37
+      "track": 37,
+      "gain_db": -8.0
     },
     {
       "id": "Sa101b9820ffa5a3e",
@@ -5325,7 +5735,8 @@
       "source": "Subida por seryi47",
       "duration_s": 307.741,
       "public": true,
-      "track": 21
+      "track": 21,
+      "gain_db": 2.1
     },
     {
       "id": "Sa6c73fb29e822046",
@@ -5338,7 +5749,8 @@
       "source": "Subida por seryi47",
       "duration_s": 124.436,
       "public": true,
-      "track": 19
+      "track": 19,
+      "gain_db": -9.1
     },
     {
       "id": "Sc8ff28bbf9db637e",
@@ -5351,7 +5763,8 @@
       "source": "Subida por seryi47",
       "duration_s": 188.571,
       "public": true,
-      "track": 56
+      "track": 56,
+      "gain_db": -8.0
     },
     {
       "id": "Scf9cf7ebe6ba4af3",
@@ -5364,7 +5777,8 @@
       "source": "Subida por seryi47",
       "duration_s": 214.793,
       "public": true,
-      "track": 22
+      "track": 22,
+      "gain_db": -6.0
     },
     {
       "id": "Sf749859f9e2e7ec1",
@@ -5376,7 +5790,8 @@
       "license": "Dominio público según Internet Archive (item Free_20s_Jazz_Collection; Public Domain Mark / CC0 declarada por el depositante)",
       "source": "internet-archive:Free_20s_Jazz_Collection",
       "duration_s": 197.509,
-      "public": true
+      "public": true,
+      "gain_db": -1.0
     },
     {
       "id": "S2b5161564fb4cead",
@@ -5389,7 +5804,8 @@
       "source": "Subida por seryi47",
       "duration_s": 217.536,
       "public": true,
-      "track": 41
+      "track": 41,
+      "gain_db": -3.7
     },
     {
       "id": "S64630c1e3016b031",
@@ -5402,7 +5818,8 @@
       "source": "Subida por seryi47",
       "duration_s": 222.999,
       "public": true,
-      "track": 4
+      "track": 4,
+      "gain_db": -3.3
     },
     {
       "id": "Sd50613a8b909069d",
@@ -5415,7 +5832,8 @@
       "source": "Subida por seryi47",
       "duration_s": 124.608,
       "public": true,
-      "track": 21
+      "track": 21,
+      "gain_db": -7.6
     },
     {
       "id": "Sec26d5ce83488bcd",
@@ -5428,7 +5846,8 @@
       "source": "Subida por seryi47",
       "duration_s": 192.918,
       "public": true,
-      "track": 153
+      "track": 153,
+      "gain_db": -8.1
     },
     {
       "id": "S1f40f6f4fcb7964b",
@@ -5441,7 +5860,8 @@
       "source": "Subida por seryi47",
       "duration_s": 194.4,
       "public": true,
-      "track": 237
+      "track": 237,
+      "gain_db": -8.5
     },
     {
       "id": "Se8bcf19eba6efead",
@@ -5454,7 +5874,8 @@
       "source": "Subida por seryi47",
       "duration_s": 188.216,
       "public": true,
-      "track": 154
+      "track": 154,
+      "gain_db": -7.3
     },
     {
       "id": "S3669769317fc4166",
@@ -5467,7 +5888,8 @@
       "source": "Subida por seryi47",
       "duration_s": 172.127,
       "public": true,
-      "track": 227
+      "track": 227,
+      "gain_db": -8.9
     },
     {
       "id": "S20a8fe89ab5415a2",
@@ -5480,7 +5902,8 @@
       "source": "Subida por seryi47",
       "duration_s": 200.43,
       "public": true,
-      "track": 155
+      "track": 155,
+      "gain_db": -8.8
     },
     {
       "id": "S1a5311cb2b52030a",
@@ -5493,7 +5916,8 @@
       "source": "Subida por seryi47",
       "duration_s": 122.922,
       "public": true,
-      "track": 208
+      "track": 208,
+      "gain_db": -6.3
     },
     {
       "id": "Se3c157c7cad630ae",
@@ -5506,7 +5930,8 @@
       "source": "Subida por seryi47",
       "duration_s": 211.011,
       "public": true,
-      "track": 193
+      "track": 193,
+      "gain_db": -4.0
     },
     {
       "id": "S8c88131ae99c075a",
@@ -5519,7 +5944,8 @@
       "source": "Subida por seryi47",
       "duration_s": 140.067,
       "public": true,
-      "track": 3
+      "track": 3,
+      "gain_db": -9.4
     },
     {
       "id": "S16446d02bc795690",
@@ -5532,7 +5958,8 @@
       "source": "Subida por seryi47",
       "duration_s": 192.21,
       "public": true,
-      "track": 23
+      "track": 23,
+      "gain_db": -0.1
     },
     {
       "id": "S1d98081a066327f9",
@@ -5545,7 +5972,8 @@
       "source": "Subida por seryi47",
       "duration_s": 188.677,
       "public": true,
-      "track": 36
+      "track": 36,
+      "gain_db": -7.4
     },
     {
       "id": "S0b59b5e8433714b7",
@@ -5558,7 +5986,8 @@
       "source": "Subida por seryi47",
       "duration_s": 150.064,
       "public": true,
-      "track": 26
+      "track": 26,
+      "gain_db": -1.7
     },
     {
       "id": "S05cb876cf4e75196",
@@ -5571,7 +6000,8 @@
       "source": "Subida por seryi47",
       "duration_s": 150.158,
       "public": true,
-      "track": 5
+      "track": 5,
+      "gain_db": 8.3
     },
     {
       "id": "Sc7050b52ca11d8fa",
@@ -5584,7 +6014,8 @@
       "source": "Subida por seryi47",
       "duration_s": 171.823,
       "public": true,
-      "track": 156
+      "track": 156,
+      "gain_db": -9.0
     },
     {
       "id": "Sfe3bdf2e3119f25f",
@@ -5597,7 +6028,8 @@
       "source": "Subida por seryi47",
       "duration_s": 294.983,
       "public": true,
-      "track": 73
+      "track": 73,
+      "gain_db": -7.5
     },
     {
       "id": "Sb798bee63502967b",
@@ -5610,7 +6042,8 @@
       "source": "Subida por seryi47",
       "duration_s": 198.932,
       "public": true,
-      "track": 34
+      "track": 34,
+      "gain_db": -8.6
     },
     {
       "id": "S1111cf3e8462b5ad",
@@ -5623,7 +6056,8 @@
       "source": "Subida por seryi47",
       "duration_s": 196.849,
       "public": true,
-      "track": 157
+      "track": 157,
+      "gain_db": -6.2
     }
   ],
   "folders": [
