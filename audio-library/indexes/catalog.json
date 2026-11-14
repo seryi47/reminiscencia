@@ -10103,10 +10103,10 @@
     {
       "id": "S27a450fde9deb05b",
       "title": "Guide Me",
-      "artist": "",
+      "artist": "ATHR",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "Fcaa6f9307e648e48",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "27a450fde9deb05bc0d9d47d641a4de13db79eb31205a9429f6f709c587fdd03",
@@ -10114,7 +10114,8 @@
       "codec": "opus",
       "size_bytes": 1462508,
       "added_at": "2026-11-14T15:54:56+00:00",
-      "public": true
+      "public": true,
+      "track": 68
     },
     {
       "id": "S96a0311f11bb2f2e",
