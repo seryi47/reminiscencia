@@ -10292,11 +10292,11 @@
     },
     {
       "id": "Sf77b82344bc3f427",
-      "title": "Vox Dei",
-      "artist": "",
+      "title": "VOX DEI",
+      "artist": "Hazbin Hotel",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "Ff2c2b94dc312cef6",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "f77b82344bc3f427591c66f70356eaadd10f79c3fd0ca725a5b925e6902e6cdb",
@@ -10304,7 +10304,8 @@
       "codec": "opus",
       "size_bytes": 423765,
       "added_at": "2026-11-14T15:54:56+00:00",
-      "public": true
+      "public": true,
+      "track": 43
     },
     {
       "id": "Sb1294347b7da90e4",
