@@ -10323,10 +10323,10 @@
     {
       "id": "Sb1294347b7da90e4",
       "title": "Wao",
-      "artist": "",
+      "artist": "Sech",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F417639bc3d88755f",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "b1294347b7da90e449522b2d6cc9ba73fbb07d0d98299daef404331cfb6cd8f2",
@@ -10334,7 +10334,8 @@
       "codec": "opus",
       "size_bytes": 1161093,
       "added_at": "2026-11-14T15:54:56+00:00",
-      "public": true
+      "public": true,
+      "track": 286
     }
   ]
 }
