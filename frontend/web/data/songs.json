@@ -2447,13 +2447,14 @@
   {
     "id": "Sf90efba15a16d71b",
     "title": "Hold Me Higher",
-    "artist": "",
+    "artist": "Blaze U",
     "year": null,
     "tags": [],
-    "folder_id": null,
+    "folder_id": "Fcaa6f9307e648e48",
     "duration_s": 209.067,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
-    "audio": "audio/Sf90efba15a16d71b.opus"
+    "audio": "audio/Sf90efba15a16d71b.opus",
+    "track": 71
   },
   {
     "id": "Sea2ff1ce9e4e447d",

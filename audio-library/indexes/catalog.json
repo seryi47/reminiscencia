@@ -10154,10 +10154,10 @@
     {
       "id": "Sf90efba15a16d71b",
       "title": "Hold Me Higher",
-      "artist": "",
+      "artist": "Blaze U",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "Fcaa6f9307e648e48",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "f90efba15a16d71b5bc8ab3b38c3335a03810dd73572f98d5973fa9a90b28eba",
@@ -10165,7 +10165,8 @@
       "codec": "opus",
       "size_bytes": 1244386,
       "added_at": "2026-11-14T15:54:56+00:00",
-      "public": true
+      "public": true,
+      "track": 71
     },
     {
       "id": "S3dbcfc7bb1aeb6b4",
