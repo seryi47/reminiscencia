@@ -10086,10 +10086,10 @@
     {
       "id": "Se1dd5dd3a4ab4bdf",
       "title": "Ella No Sigue Modas",
-      "artist": "",
+      "artist": "Juan Magán",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F417639bc3d88755f",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "e1dd5dd3a4ab4bdfe0868473951b29dc018062d2e0ce19c30f4d755eb75d60a3",
@@ -10097,7 +10097,8 @@
       "codec": "opus",
       "size_bytes": 1121009,
       "added_at": "2026-11-14T15:54:56+00:00",
-      "public": true
+      "public": true,
+      "track": 283
     },
     {
       "id": "S27a450fde9deb05b",

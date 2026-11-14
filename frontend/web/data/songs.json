@@ -1670,13 +1670,14 @@
   {
     "id": "Se1dd5dd3a4ab4bdf",
     "title": "Ella No Sigue Modas",
-    "artist": "",
+    "artist": "Juan Magán",
     "year": null,
     "tags": [],
-    "folder_id": null,
+    "folder_id": "F417639bc3d88755f",
     "duration_s": 189.243,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
-    "audio": "audio/Se1dd5dd3a4ab4bdf.opus"
+    "audio": "audio/Se1dd5dd3a4ab4bdf.opus",
+    "track": 283
   },
   {
     "id": "Scf00e8c85dda5c22",
