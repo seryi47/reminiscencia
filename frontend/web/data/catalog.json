@@ -3207,14 +3207,15 @@
     {
       "id": "S0042105c80f09930",
       "title": "Las Nenas (feat. La Duraca)",
-      "artist": "",
+      "artist": "NATTI NATASHA",
       "year": null,
       "tags": [],
-      "folder_id": null,
+      "folder_id": "F417639bc3d88755f",
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 224.469,
-      "public": true
+      "public": true,
+      "track": 284
     },
     {
       "id": "S7ac8d5f8f4badd2d",
