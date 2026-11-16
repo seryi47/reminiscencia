@@ -760,3 +760,48 @@ describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover
     assert.ok(privateBucket.objects.size > 0);
   });
 });
+
+describe('rate limit de la API (ADR-0046)', () => {
+  // Limitador simulado con la forma del binding de Cloudflare: { limit: async ({key}) => ({success}) }.
+  const fakeLimiter = (success) => {
+    const keys = [];
+    return { keys, limit: async ({ key }) => { keys.push(key); return { success }; } };
+  };
+
+  test('sin binding (fail-open) una petición de API no se bloquea', async () => {
+    const { call } = setup(); // fullEnv no trae API_RATE_LIMITER
+    const response = await call('/api/salud', { headers: { Origin: WEB_ORIGIN } });
+    assert.equal(response.status, 200);
+  });
+
+  test('cuando el limitador dice que no, /api/* responde 429 antes de enrutar', async () => {
+    const limiter = fakeLimiter(false);
+    const { call } = setup({ env: { API_RATE_LIMITER: limiter } });
+    const response = await call('/api/portadas', { headers: { Origin: WEB_ORIGIN } });
+    assert.equal(response.status, 429);
+    assert.equal(limiter.keys.length, 1, 'se consultó el limitador una vez');
+  });
+
+  test('la comprobación de salud NO está limitada (ni aunque el limitador niegue)', async () => {
+    const limiter = fakeLimiter(false);
+    const { call } = setup({ env: { API_RATE_LIMITER: limiter } });
+    const response = await call('/api/salud', { headers: { Origin: WEB_ORIGIN } });
+    assert.equal(response.status, 200);
+    assert.equal(limiter.keys.length, 0, '/api/salud no consulta el limitador');
+  });
+
+  test('el audio NO está limitado (reproducción con rangos)', async () => {
+    const limiter = fakeLimiter(false);
+    const { call } = setup({ env: { API_RATE_LIMITER: limiter } });
+    const response = await call('/audio/S0000000000000004.opus');
+    assert.notEqual(response.status, 429);
+    assert.equal(limiter.keys.length, 0, '/audio/ no consulta el limitador');
+  });
+
+  test('cuando el limitador permite, la API sigue su curso', async () => {
+    const limiter = fakeLimiter(true);
+    const { call } = setup({ env: { API_RATE_LIMITER: limiter } });
+    const response = await call('/api/salud', { headers: { Origin: WEB_ORIGIN } });
+    assert.equal(response.status, 200);
+  });
+});

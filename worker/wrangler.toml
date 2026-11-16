@@ -40,6 +40,18 @@ directory = "../frontend/web"
 binding = "ASSETS"
 run_worker_first = ["/api/*", "/audio/*"]
 
+# Rate limit antiinundación por IP para /api/* (ADR-0046): 900 peticiones por minuto en un centro de datos. Es un tope
+# MUY generoso —una subida normal es ~1 petición por canción por el Worker (trozos de 32 MB)—, así que el uso real no lo
+# roza; solo frena inundaciones (abuso/coste de los endpoints abiertos). El código es fail-open: si este binding no está,
+# no se limita nada. No se aplica al audio (/audio/) ni a /api/salud. `period` solo admite 10 o 60 (requiere wrangler ≥4.36).
+[[ratelimits]]
+name = "API_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 900
+  period = 60
+
 [vars]
 # ALLOW_LOCALHOST no va aquí NUNCA: en producción el Worker no admite localhost (incidente del 2026-11-06). Para
 # desarrollar en local: «npx --yes wrangler@4.151.3 dev --var ALLOW_LOCALHOST:1».

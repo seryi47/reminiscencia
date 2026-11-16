@@ -246,6 +246,23 @@ async function handleSpotify(name, request, env, fetchImpl) {
 }
 
 /** Atiende una petición (también en las pruebas: tests/web-unit/worker.test.mjs, con bindings simulados). */
+/** ¿Supera esta IP el rate limit de la API? Fail-open: si el binding no está (pruebas, o sin configurar en Cloudflare) o
+ * el limitador falla, NUNCA se bloquea (la disponibilidad manda sobre el antiabuso). El limitador de Cloudflare cuenta
+ * por IP y por centro de datos; es un tope aproximado para frenar inundaciones, no una cuota estricta. */
+export async function isRateLimited(request, env) {
+  const limiter = env && env.API_RATE_LIMITER;
+  if (!limiter || typeof limiter.limit !== 'function') return false;
+  const ip = request.headers.get('CF-Connecting-IP')
+    || request.headers.get('x-forwarded-for')
+    || 'desconocida';
+  try {
+    const { success } = await limiter.limit({ key: ip });
+    return success === false;
+  } catch (_) {
+    return false;
+  }
+}
+
 export async function handleRequest(request, env = {}, { fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
   const origin = request.headers.get('origin');
   const path = new URL(request.url).pathname;
@@ -263,6 +280,12 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
         'Access-Control-Max-Age': '86400',
       },
     }), origin);
+  }
+  // Rate limit por IP para los endpoints de API (ADR-0046): red de seguridad antiinundación (abuso/coste de los endpoints
+  // abiertos). Tope MUY generoso (ver wrangler.toml): una subida normal es ~1 petición por canción por el Worker, así que
+  // el uso real no lo roza. NO se aplica al audio (/audio/, reproducción con rangos) ni a la comprobación de salud.
+  if (path.startsWith('/api/') && path !== '/api/salud' && await isRateLimited(request, env)) {
+    return finish(jsonResponse(429, { ok: false, error: 'Demasiadas peticiones; espera un momento.' }), origin);
   }
   if (path.startsWith(YOUTUBE_PREFIX)) {
     const name = path.slice(YOUTUBE_PREFIX.length);
