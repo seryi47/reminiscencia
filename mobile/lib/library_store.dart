@@ -388,11 +388,11 @@ class LibraryStore implements LibrarySource {
             uri: uri,
           );
         }
-        // Sin Content-Length no se puede comparar byte a byte, así que se usa un SUELO por duración (ADR-0046): un Opus ocupa
-        // de sobra 2 KB/s (≈16 kbps, muy por debajo de los 48 kbps reales). Si el cuerpo es muchísimo más corto de lo que la
-        // canción debería durar, es una descarga cortada y NO se guarda: si no, el reproductor la tomaría como completa y
-        // saltaría sola a la siguiente. Margen amplio para no rechazar un fichero íntegro.
-        const minOpusBytesPerSecond = 2000;
+        // Sin Content-Length no se puede comparar byte a byte, así que se usa un SUELO por duración (ADR-0046): un Opus
+        // estéreo ronda 48 kbps (~6 KB/s) y el mono 32 kbps (~4 KB/s). El suelo de 3 KB/s queda por debajo del mono
+        // (no rechaza ficheros íntegros) pero atrapa descargas cortadas a la mitad, que antes se colaban (suelo de 2 KB/s)
+        // y hacían que el reproductor tomara el fichero como completo y saltara sola a la siguiente.
+        const minOpusBytesPerSecond = 3000;
         if ((expected == null || expected < 0) && song.durationS > 1) {
           final floor = (song.durationS * minOpusBytesPerSecond).round();
           if (received < floor) {

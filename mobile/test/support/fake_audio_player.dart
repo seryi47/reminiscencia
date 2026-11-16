@@ -6,11 +6,12 @@ import 'package:just_audio/just_audio.dart';
 
 /// Una carga de fuentes que pidió el handler: qué fuentes, desde qué canción y en qué punto.
 class LoadCall {
-  LoadCall(this.sources, this.initialIndex, this.initialPosition);
+  LoadCall(this.sources, this.initialIndex, this.initialPosition, [this.shuffleOrder]);
 
   final List<AudioSource> sources;
   final int? initialIndex;
   final Duration? initialPosition;
+  final ShuffleOrder? shuffleOrder;
 
   /// Dirección de la fuente [index]: `file://…` si suena desde el fichero, la de la red si se transmite.
   Uri uriAt(int index) => switch (sources[index]) {
@@ -36,6 +37,10 @@ class FakeAudioPlayer implements AudioPlayer {
   /// Índices cuya carga falla (la canción no se puede preparar): setAudioSources lanza y se avisa por errorStream.
   /// Buscar uno de ellos, como en just_audio, no acaba nunca: falla y el Future de seek se queda esperando.
   final Set<int> failingIndexes = {};
+
+  /// Índices cuya carga falla SOLO desde el fichero local (el streaming de ese índice sí funciona): simula un fichero
+  /// descargado corrupto que, al re-transmitirlo, suena bien.
+  final Set<int> failingFileIndexes = {};
 
   ProcessingState _state = ProcessingState.idle;
   bool _isPlaying = false;
@@ -79,14 +84,41 @@ class FakeAudioPlayer implements AudioPlayer {
   @override
   Duration get bufferedPosition => _position;
 
+  Duration? _duration = const Duration(minutes: 3);
+  final _durationCtrl = StreamController<Duration?>.broadcast(sync: true);
+
   @override
-  Duration? get duration => const Duration(minutes: 3);
+  Duration? get duration => _duration;
+
+  @override
+  Stream<Duration?> get durationStream => _durationCtrl.stream;
+
+  /// Simula la duración real del fichero (para probar la detección de descarga truncada).
+  void setDuration(Duration? value) {
+    _duration = value;
+    _durationCtrl.add(value);
+  }
 
   @override
   double get speed => 1.0;
 
+  /// Aleatorio simulado: la prueba lo activa y fija el orden; el handler conserva ese orden entre recargas.
+  bool shuffleEnabled = false;
+  List<int> shuffleIndicesValue = const [];
+
   @override
-  bool get shuffleModeEnabled => false;
+  bool get shuffleModeEnabled => shuffleEnabled;
+
+  @override
+  List<int> get shuffleIndices => shuffleIndicesValue;
+
+  @override
+  Future<void> setShuffleModeEnabled(bool enabled) async {
+    shuffleEnabled = enabled;
+  }
+
+  @override
+  Future<void> shuffle() async {}
 
   @override
   LoopMode get loopMode => LoopMode.off;
@@ -131,16 +163,22 @@ class FakeAudioPlayer implements AudioPlayer {
     Duration? initialPosition,
     ShuffleOrder? shuffleOrder,
   }) async {
-    loads.add(LoadCall(audioSources, initialIndex, initialPosition));
+    loads.add(LoadCall(audioSources, initialIndex, initialPosition, shuffleOrder));
     _currentIndex = initialIndex ?? 0;
     _position = initialPosition ?? Duration.zero;
     _index.add(_currentIndex);
-    if (failingIndexes.contains(_currentIndex)) {
-      fail(_currentIndex!);
-      throw PlayerException(0, 'Source error', _currentIndex);
+    final idx = _currentIndex!;
+    final isFileSource = idx < audioSources.length && audioSources[idx] is! LockCachingAudioSource;
+    // failingFileIndexes: falla SOLO cuando la fuente de ese índice es el fichero local (para probar que, tras borrar
+    // un fichero corrupto, el re-streaming SÍ suena).
+    if (failingIndexes.contains(idx) ||
+        (failingFileIndexes.contains(idx) && isFileSource)) {
+      fail(idx);
+      throw PlayerException(0, 'Source error', idx);
     }
     setState(ProcessingState.ready);
-    return const Duration(minutes: 3);
+    _durationCtrl.add(_duration); // como just_audio: al preparar, publica la duración real del fichero
+    return _duration;
   }
 
   /// Si está activo, un cambio de índice por `seek` NO se emite por `currentIndexStream` hasta llamar a [emitHeldIndex]. Sirve

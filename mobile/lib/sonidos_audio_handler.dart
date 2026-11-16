@@ -118,6 +118,9 @@ class SonidosAudioHandler extends BaseAudioHandler
     _player.playbackEventStream.listen((_) => _broadcastState());
     // just_audio 0.10 da los errores por errorStream (ya no por el onError de playbackEventStream).
     _player.errorStream.listen(_onPlayerError);
+    // Duración real del fichero: detecta una canción DESCARGADA truncada (acaba mucho antes de lo que dice el catálogo)
+    // para re-descargarla en vez de que suene a medias y auto-avance (ADR-0046).
+    _player.durationStream.listen(_onDuration);
     _player.playingStream.listen((_) => _broadcastState());
     // Aleatorio, repetir y saltos de posición (por ejemplo, al repetir una canción) cambian lo que se ve.
     _player.shuffleModeEnabledStream.listen((_) => _broadcastState());
@@ -132,8 +135,11 @@ class SonidosAudioHandler extends BaseAudioHandler
       if (_active && index != null && index >= 0 && index < _queueSongs.length) {
         _applyGain(_queueSongs[index]); // normalización de volumen de la canción que suena (ADR-0046)
       }
-      // Otra canción: el reintento por parón vuelve a estar disponible.
-      if (index != _lastIndex) _stallRetried = false;
+      // Otra canción: los reintentos por parón y por fichero vuelven a estar disponibles.
+      if (index != _lastIndex) {
+        _stallRetried = false;
+        _fileRetried = false;
+      }
       _lastIndex = index;
       _publish();
     });
@@ -200,6 +206,12 @@ class SonidosAudioHandler extends BaseAudioHandler
   Timer? _stall;
   Duration _stallFrom = Duration.zero;
   bool _stallRetried = false;
+
+  /// Reintento del fichero local de la canción actual antes de descartarlo (análogo a [_stallRetried], ADR-0046).
+  bool _fileRetried = false;
+
+  /// Canciones cacheadas ya detectadas como truncadas y re-transmitidas (una vez cada una, para no entrar en bucle).
+  final Set<String> _truncatedHandled = <String>{};
 
   /// Comprobación de conexión y escucha de cambios de conectividad (ADR-0036/0046): cuando una canción transmitida se
   /// para por falta de cobertura, en vez de saltar a la siguiente se ESPERA y se reanuda sola al volver la red.
@@ -321,15 +333,20 @@ class SonidosAudioHandler extends BaseAudioHandler
     _queueSongs = songs;
     _queueIds = [for (final song in songs) song.id];
     _queueFiles = files;
+    // Se recalcula en _setSources; se fija aquí con la longitud correcta para no dejar una ventana en la que
+    // _fromFile tenga distinta longitud que _queueSongs (evita un RangeError).
+    _fromFile = List<bool>.filled(songs.length, false);
     _streamUris.clear();
     _streamSources.clear();
     _sourcesTried.clear();
+    _truncatedHandled.clear();
     _active = true;
     queue.add(items);
     mediaItem.add(items[initialIndex]);
     _fillArtwork(initialIndex);
     _publish();
-    return _setSources(initialIndex, Duration.zero);
+    // Cola nueva: se baraja de nuevo (si el aleatorio está activo); las recargas posteriores conservan el orden.
+    return _setSources(initialIndex, Duration.zero, freshShuffle: true);
   }
 
   /// Fuente de la canción [index] de la cola: su fichero si ya está en el teléfono (aunque se descargara después de
@@ -367,7 +384,11 @@ class SonidosAudioHandler extends BaseAudioHandler
   /// [position]. Es también la forma de recuperarse de un error: tras un error just_audio queda parado y solo una
   /// carga nueva lo vuelve a preparar. Devuelve false si la canción [index] no se pudo preparar (ya se está
   /// atendiendo el error).
-  Future<bool> _setSources(int index, Duration position) async {
+  Future<bool> _setSources(
+    int index,
+    Duration position, {
+    bool freshShuffle = false,
+  }) async {
     final sources = <AudioSource>[];
     final fromFile = <bool>[];
     for (var i = 0; i < _queueSongs.length; i++) {
@@ -377,12 +398,23 @@ class SonidosAudioHandler extends BaseAudioHandler
     }
     _fromFile = fromFile;
     _stallRetried = false;
+    // Conservar el orden aleatorio entre recargas (reintento, parón, reconexión): si no, just_audio lo RE-BARAJA en
+    // cada setAudioSources y las canciones ya escuchadas vuelven a salir enseguida (ADR-0046). Solo se baraja de nuevo
+    // al empezar una cola nueva (freshShuffle, desde _loadQueue) o cuando el usuario activa el aleatorio (setShuffle).
+    ShuffleOrder? order;
+    if (!freshShuffle && _player.shuffleModeEnabled) {
+      final current = _player.shuffleIndices;
+      if (current.length == sources.length) {
+        order = _StableShuffleOrder(List<int>.of(current));
+      }
+    }
     final seq = ++_loadSeq;
     try {
       await _player.setAudioSources(
         sources,
         initialIndex: index,
         initialPosition: position,
+        shuffleOrder: order,
       );
       return true;
     } on PlayerInterruptedException catch (error) {
@@ -445,6 +477,42 @@ class SonidosAudioHandler extends BaseAudioHandler
     unawaited(_exclusive(() => _recover(index, seq, error)));
   }
 
+  /// Una canción DESCARGADA (de la web) cuyo fichero dura mucho menos de lo que dice el catálogo está truncada/corrupta:
+  /// sonaría a medias y auto-avanzaría (parece un «salto»). Se borra y se re-transmite una vez (no entra en bucle). No
+  /// toca las subidas propias (`song.local`), que no se pueden re-descargar.
+  void _onDuration(Duration? duration) {
+    if (duration == null || !_active) return;
+    final index = _player.currentIndex;
+    if (index == null ||
+        index < 0 ||
+        index >= _queueSongs.length ||
+        index >= _fromFile.length ||
+        !_fromFile[index]) {
+      return;
+    }
+    final song = _queueSongs[index];
+    if (song.local || song.durationS <= 0) return;
+    final real = duration.inMilliseconds / 1000.0;
+    // Margen amplio para no borrar un fichero bueno por redondeos: <80% y al menos 10 s por debajo.
+    if (real >= song.durationS * 0.80 || real + 10 >= song.durationS) return;
+    if (!_truncatedHandled.add(song.id)) return;
+    debugPrint(
+      'reproductor: «${song.title}» descargada truncada (${real.round()}s < ${song.durationS.round()}s); borro y re-transmito',
+    );
+    final seq = _loadSeq;
+    final position = _player.position;
+    unawaited(
+      _exclusive(() async {
+        if (!_active || seq != _loadSeq || _player.currentIndex != index) return;
+        await _guardQuiet(() => _store.deleteCachedAudio(song.id));
+        _sourcesTried.remove(song.id);
+        _streamUris.remove(song.id);
+        _streamSources.remove(song.id);
+        if (await _setSources(index, position)) _startPlayback();
+      }),
+    );
+  }
+
   /// Error (o parón sin salida) de la canción [index]. Por orden: si ya está guardada y no sonaba desde el fichero,
   /// se recarga desde el fichero en el mismo punto; si se transmitía, se prueba la siguiente dirección de su audio
   /// (Worker, r2.dev y la web; ADR-0031) en el mismo punto; si no, se salta a la siguiente que pueda sonar sin red. Si
@@ -466,7 +534,34 @@ class SonidosAudioHandler extends BaseAudioHandler
       return;
     }
     final file = _queueFiles[index];
-    if (!_fromFile[index] && file != null && await file.exists()) {
+    // Fichero LOCAL/cacheado que falla al decodificar: NO saltar de inmediato. Se reintenta el fichero una vez; si
+    // sigue fallando y es una canción de la WEB (no subida propia), se borra el fichero corrupto y se re-transmite/
+    // re-descarga; solo se salta si es una canción propia local o no hay forma de recuperarla (ADR-0046).
+    if (_fromFile[index]) {
+      if (!_fileRetried) {
+        _fileRetried = true;
+        debugPrint('reproductor: «${song.title}» (fichero) falló; reintento el fichero');
+        if (await _setSources(index, position)) {
+          _startPlayback();
+          return;
+        }
+      }
+      if (!song.local) {
+        debugPrint('reproductor: «${song.title}» cacheada corrupta; la borro y re-transmito');
+        await _guardQuiet(() => _store.deleteCachedAudio(song.id));
+        _sourcesTried.remove(song.id);
+        _streamUris.remove(song.id);
+        _streamSources.remove(song.id);
+        if (await _setSources(index, position)) {
+          _startPlayback();
+          return;
+        }
+      }
+      await _skipUnavailable(index);
+      return;
+    }
+    // Transmitida: si ya se guardó mientras sonaba, sigue desde el fichero.
+    if (file != null && await file.exists()) {
       debugPrint(
         'reproductor: «${song.title}» ya está guardada; sigue desde el fichero',
       );
@@ -475,14 +570,12 @@ class SonidosAudioHandler extends BaseAudioHandler
       }
       return;
     }
-    final next = _fromFile[index]
-        ? null
-        : nextFallbackUri(
-            song: song,
-            cached: false,
-            sources: _store.audioUris(song),
-            tried: _sourcesTried[song.id] ?? const <Uri>{},
-          );
+    final next = nextFallbackUri(
+      song: song,
+      cached: false,
+      sources: _store.audioUris(song),
+      tried: _sourcesTried[song.id] ?? const <Uri>{},
+    );
     if (next != null) {
       debugPrint('reproductor: «${song.title}»: reintento desde ${next.host}');
       _streamUris[song.id] = next;
@@ -545,6 +638,7 @@ class SonidosAudioHandler extends BaseAudioHandler
         !_fromFile[index];
     final waiting =
         streamed &&
+        !_waitingForNetwork && // sin cobertura ya esperamos por la escucha de conectividad; no re-armar (batería)
         _player.playing &&
         (state == ProcessingState.buffering ||
             state == ProcessingState.loading);
@@ -632,6 +726,9 @@ class SonidosAudioHandler extends BaseAudioHandler
           }
         }),
       );
+      // Reanudado: se cancela la escucha (se vuelve a crear con ??= si hace falta otra vez). No deja trabajo en segundo plano.
+      _connectivitySub?.cancel();
+      _connectivitySub = null;
     });
   }
 
@@ -862,6 +959,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     _streamUris.clear();
     _streamSources.clear();
     _sourcesTried.clear();
+    _truncatedHandled.clear();
     _youtubeUri = null;
     _youtubeHeaders = null;
     _suspended = false;
@@ -1053,4 +1151,40 @@ String describePlayerError(Object error) {
     return 'la orden se interrumpió; vuelve a intentarlo';
   }
   return 'error inesperado ($error)';
+}
+
+/// Orden aleatorio ESTABLE: conserva el barajado entre recargas del reproductor (ADR-0046). just_audio llama a
+/// `shuffle()` en cada `load()`; aquí es un no-op para NO re-aleatorizar y que, tras un reintento/parón/reconexión,
+/// no se repitan canciones ya escuchadas. El barajado nuevo solo ocurre en `setShuffle(true)` y al cargar una cola nueva.
+class _StableShuffleOrder extends ShuffleOrder {
+  _StableShuffleOrder(this._indices);
+
+  final List<int> _indices;
+
+  @override
+  List<int> get indices => _indices;
+
+  @override
+  void shuffle({int? initialIndex}) {}
+
+  @override
+  void insert(int index, int count) {
+    for (var i = 0; i < _indices.length; i++) {
+      if (_indices[i] >= index) _indices[i] += count;
+    }
+    for (var i = 0; i < count; i++) {
+      _indices.add(index + i);
+    }
+  }
+
+  @override
+  void removeRange(int start, int end) {
+    _indices.removeWhere((i) => i >= start && i < end);
+    for (var i = 0; i < _indices.length; i++) {
+      if (_indices[i] >= end) _indices[i] -= end - start;
+    }
+  }
+
+  @override
+  void clear() => _indices.clear();
 }

@@ -80,6 +80,16 @@ Tres incidencias reportadas en la APK + una mejora del autobuscador, todas con p
 
 APK **1.3.0+14**. Suite mobile verde (631) y web-unit verde (1027).
 
+## Auditoría 2026-11-16 (bis): salto en DESCARGADAS, aleatorio que repite, batería
+
+El usuario aclara que el auto-salto ocurre SIEMPRE en canciones ya **descargadas** (no en streaming), y que en aleatorio **se repiten canciones muy seguidas**. Auditoría a fondo (agente, verificada contra el código y la fuente de just_audio 0.10.6). APK **1.3.1+15**, suite mobile verde (635):
+
+- **Salto en descargadas — causa 1 (error de fichero local).** `_recover`, ante CUALQUIER `PlayerException` de un fichero local (`_fromFile[index]`), ponía `next=null` y llamaba `_skipUnavailable` → **saltaba** sin reintentar. Fix: reintentar el MISMO fichero una vez (`_fileRetried`, se resetea al cambiar de canción); si sigue fallando y es una canción de la WEB (`!song.local`), **borrar el fichero cacheado** (`_store.deleteCachedAudio`) + limpiar `_streamUris/_streamSources/_sourcesTried` y **re-transmitir/re-descargar**; solo saltar si es una subida propia local irrecuperable.
+- **Salto en descargadas — causa 2 (fichero truncado que "completa").** Un fichero descargado más corto de lo real no da error: just_audio lo marca `completed` → auto-avanza (parece salto). Fix: (a) nuevo `_onDuration` (escucha `durationStream`): si un fichero cacheado de la web dura <80% y ≥10 s menos que `song.durationS`, se trata como truncado → borrar + re-transmitir una vez (`_truncatedHandled` evita bucle). (b) `library_store._downloadOne`: el suelo sin `Content-Length` sube de 2000 a **3000 B/s** (por debajo del mono 32 kbps real, atrapa cortes a la mitad que antes se colaban).
+- **Aleatorio que repite — causa: se re-barajaba en cada recarga.** `_setSources` llamaba `setAudioSources(...)` sin `shuffleOrder` → just_audio **regenera** el orden aleatorio en cada `load()`, y `_setSources` se invoca en muchos eventos (reintento, parón, reconexión), perdiendo el historial y repitiendo lo ya escuchado. Fix: `_setSources(..., {freshShuffle})` conserva el orden vigente (`_player.shuffleIndices`) pasándolo como un `_StableShuffleOrder` (subclase de `ShuffleOrder` cuyo `shuffle()` es un no-op, para que `load()` no lo re-aleatorice). Solo se baraja de nuevo al cargar una **cola nueva** (`_loadQueue` → `freshShuffle:true`) o cuando el usuario activa el aleatorio (`setShuffle`).
+- **Batería.** (a) Mientras se espera red sin cobertura (`_waitingForNetwork`), `_updateStallWatch` ya **no re-arma** el vigilante cada 15 s (lo que despertaba la app con la pantalla apagada); la reanudación la lleva solo la escucha de conectividad. (b) `_connectivitySub` se **cancela al reanudar** con éxito (se recrea con `??=` si hace falta). El resto (timer de posición acotado a primer plano, wakelock atado a reproducción, cache-first) se confirmó correcto.
+- **Robustez.** `_loadQueue` fija `_fromFile` con la longitud correcta a la vez que `_queueSongs` (elimina una ventana de `RangeError`). Pruebas nuevas en `audio_handler_test.dart` (descargada que falla no salta: reintento + re-transmisión; truncada → re-transmite; aleatorio conserva el orden en una recarga) y ampliación del fake (`durationStream`, `setDuration`, shuffle, `failingFileIndexes`).
+
 ## Consecuencias
 
 - **Pruebas nuevas/ampliadas:**

@@ -579,6 +579,93 @@ void main() {
     );
   });
 
+  group('canciones descargadas que fallan o truncadas (no saltar)', () {
+    test(
+      'una descargada que falla al decodificar se REINTENTA (no salta de inmediato)',
+      () async {
+        await download(songs[0]); // cacheada de la web
+        await handler.playAt(songs, 0);
+        expect(player.loads.last.uriAt(0).scheme, 'file', reason: 'suena desde el fichero');
+        player.fail(0); // el fichero local falla
+        await drain(const Duration(milliseconds: 60));
+        expect(
+          handler.nowPlaying.value.songId,
+          's0',
+          reason: 'no salta una descargada que falla',
+        );
+        final s0 = player.loads.where((l) => l.initialIndex == 0).toList();
+        expect(s0.length, greaterThan(1), reason: 'reintenta antes de descartar');
+        expect(s0.last.uriAt(0).scheme, 'file', reason: 'reintenta desde el mismo fichero');
+      },
+    );
+
+    test(
+      'si el fichero descargado está corrupto, se borra y se RE-TRANSMITE (no se salta)',
+      () async {
+        await download(songs[0]);
+        player.failingFileIndexes.add(0); // el fichero local falla siempre; el streaming funciona
+        await handler.playAt(songs, 0);
+        await drain(const Duration(milliseconds: 100));
+        expect(
+          handler.nowPlaying.value.songId,
+          's0',
+          reason: 'se recupera re-transmitiendo, no salta',
+        );
+        final s0 = player.loads.where((l) => l.initialIndex == 0).toList();
+        expect(
+          s0.last.uriAt(0).scheme,
+          isNot('file'),
+          reason: 're-transmite tras borrar el fichero corrupto',
+        );
+        expect(
+          await (await store.audioFile(songs[0])).exists(),
+          isFalse,
+          reason: 'borró el fichero corrupto',
+        );
+      },
+    );
+
+    test(
+      'una descargada TRUNCADA (dura mucho menos que el catálogo) se borra y re-transmite',
+      () async {
+        await download(songs[0]);
+        player.setDuration(const Duration(seconds: 30)); // real 30s vs catálogo 185s
+        await handler.playAt(songs, 0);
+        await drain(const Duration(milliseconds: 100));
+        expect(handler.nowPlaying.value.songId, 's0', reason: 'no auto-avanza por truncada');
+        final s0 = player.loads.where((l) => l.initialIndex == 0).toList();
+        expect(
+          s0.last.uriAt(0).scheme,
+          isNot('file'),
+          reason: 'tras detectar el truncado, re-transmite',
+        );
+        expect(await (await store.audioFile(songs[0])).exists(), isFalse);
+      },
+    );
+  });
+
+  group('aleatorio: conserva el orden entre recargas', () {
+    test('una recarga NO re-baraja: pasa un orden estable', () async {
+      player.shuffleEnabled = true;
+      player.shuffleIndicesValue = [2, 0, 3, 1];
+      await handler.playAt(songs, 0); // cola nueva (freshShuffle): orden por defecto
+      expect(
+        player.loads.last.shuffleOrder,
+        isNull,
+        reason: 'cola nueva: baraja de nuevo (orden por defecto de just_audio)',
+      );
+      player.fail(0); // s0 (transmitida) falla -> _recover recarga la MISMA cola
+      await drain(const Duration(milliseconds: 60));
+      final reload = player.loads.last;
+      expect(reload.shuffleOrder, isNotNull, reason: 'en la recarga se pasa un orden estable');
+      expect(
+        reload.shuffleOrder!.indices,
+        [2, 0, 3, 1],
+        reason: 'conserva el orden, no re-baraja (no se repiten canciones)',
+      );
+    });
+  });
+
   group('cierre por inactividad', () {
     setUp(() {
       handler = build(idleStopAfter: const Duration(milliseconds: 40));
