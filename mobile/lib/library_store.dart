@@ -142,6 +142,32 @@ class LibraryStore implements LibrarySource {
     }
   }
 
+  /// Copia guardada en el teléfono, sin tocar la red, para mostrarla AL INSTANTE al abrir la app (arranque cache-first,
+  /// ADR-0036/0046): así no se "piensa" unos segundos esperando a la red. Devuelve null si aún no hay nada guardado
+  /// (primera vez). Luego [load] refresca desde la web en segundo plano.
+  Future<LibraryData?> loadSaved() async {
+    try {
+      final dir = await _dir();
+      final songsFile = File('${dir.path}/songs.json');
+      if (!await songsFile.exists()) return null;
+      final foldersFile = File('${dir.path}/folders.json');
+      final indexFile = File('${dir.path}/portadas.json');
+      final foldersBody =
+          await foldersFile.exists() ? await foldersFile.readAsString() : '[]';
+      final indexBody =
+          await indexFile.exists() ? await indexFile.readAsString() : null;
+      return _parse(
+        await songsFile.readAsString(),
+        foldersBody,
+        indexBody,
+        fromNetwork: false,
+      );
+    } catch (error) {
+      debugPrint('biblioteca: no se pudo leer la copia guardada: $error');
+      return null;
+    }
+  }
+
   LibraryData _parse(
     String songsBody,
     String foldersBody,

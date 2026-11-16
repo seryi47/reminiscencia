@@ -10,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import 'app_error.dart';
 import 'covers.dart';
 import 'library_store.dart';
+import 'network.dart';
 import 'playback.dart';
 import 'playback_plan.dart';
 import 'song.dart';
@@ -99,8 +100,12 @@ class SonidosAudioHandler extends BaseAudioHandler
     this.idleStopAfter = kIdleStopAfter,
     this.stallTimeout = kStallTimeout,
     this.seekWait = kSeekWait,
+    Future<bool> Function()? isOnline,
+    Stream<bool> Function()? connectivityChanges,
     // ignore: prefer_initializing_formals
-  }) : _covers = covers {
+  })  : _covers = covers,
+        _isOnline = isOnline ?? hasAnyConnection,
+        _connectivityChanges = connectivityChanges ?? connectionChanges {
     // Normalización de volumen (ADR-0046): el realzador de Android SUBE los temas flojos (setTargetGain en dB, >1.0 real);
     // los fuertes se BAJAN con setVolume. Las interrupciones las atiende el handler (ver la clase), no just_audio.
     _loudness = AndroidLoudnessEnhancer();
@@ -195,6 +200,13 @@ class SonidosAudioHandler extends BaseAudioHandler
   Timer? _stall;
   Duration _stallFrom = Duration.zero;
   bool _stallRetried = false;
+
+  /// Comprobación de conexión y escucha de cambios de conectividad (ADR-0036/0046): cuando una canción transmitida se
+  /// para por falta de cobertura, en vez de saltar a la siguiente se ESPERA y se reanuda sola al volver la red.
+  final Future<bool> Function() _isOnline;
+  final Stream<bool> Function() _connectivityChanges;
+  bool _waitingForNetwork = false;
+  StreamSubscription<bool>? _connectivitySub;
 
   Future<void> _serial = Future<void>.value();
 
@@ -569,27 +581,58 @@ class SonidosAudioHandler extends BaseAudioHandler
       return;
     }
     final seq = _loadSeq;
-    if (!_stallRetried) {
-      debugPrint(
-        'reproductor: «${_titleAt(index)}» parada; reintento desde el mismo punto',
-      );
-      final position = _player.position;
-      unawaited(
-        _exclusive(() async {
-          if (!_active || seq != _loadSeq) return;
+    final position = _player.position;
+    unawaited(
+      _exclusive(() async {
+        if (!_active || seq != _loadSeq) return;
+        // Cobertura caída: NO saltar. Se espera y se reanuda sola cuando vuelve la red (ADR-0036/0046).
+        if (!await _isOnline()) {
+          _waitingForNetwork = true;
+          _ensureConnectivityWatch();
+          debugPrint(
+            'reproductor: sin conexión; espero a reanudar «${_titleAt(index)}» (no salto)',
+          );
+          return;
+        }
+        // Con conexión pero la fuente no responde: un reintento desde el mismo punto.
+        if (!_stallRetried) {
+          debugPrint(
+            'reproductor: «${_titleAt(index)}» parada; reintento desde el mismo punto',
+          );
           if (await _setSources(index, position)) {
             _stallRetried = true;
             _startPlayback();
           }
+          return;
+        }
+        // Reintento ya agotado y hay conexión: la fuente está caída; recuperar o, si no, saltar.
+        await _recover(index, seq, const AppException('la red no responde'));
+      }),
+    );
+  }
+
+  /// Escucha los cambios de conectividad una sola vez. Cuando vuelve la red y había una canción transmitida esperando,
+  /// la reanuda desde donde se quedó en vez de saltarla.
+  void _ensureConnectivityWatch() {
+    _connectivitySub ??= _connectivityChanges().listen((online) {
+      if (!online || !_waitingForNetwork || !_active) return;
+      _waitingForNetwork = false;
+      final seq = _loadSeq;
+      unawaited(
+        _exclusive(() async {
+          if (!_active || seq != _loadSeq) return;
+          final index = _player.currentIndex;
+          if (index == null || index < 0 || index >= _queueSongs.length) return;
+          if (_fromFile[index]) return; // ya suena desde el fichero local
+          debugPrint(
+            'reproductor: vuelve la conexión; reanudo «${_titleAt(index)}»',
+          );
+          if (await _setSources(index, _player.position)) {
+            _startPlayback();
+          }
         }),
       );
-      return;
-    }
-    unawaited(
-      _exclusive(
-        () => _recover(index, seq, const AppException('la red no responde')),
-      ),
-    );
+    });
   }
 
   /// Cierre por inactividad: corre mientras hay cola y no suena nada; si llega a [idleStopAfter], para todo.
@@ -800,6 +843,9 @@ class SonidosAudioHandler extends BaseAudioHandler
   Future<void> stop() async {
     _active = false;
     _suspended = false;
+    _waitingForNetwork = false;
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
     _loadSeq += 1;
     _cancelTimers();
     await _guardQuiet(_player.stop);

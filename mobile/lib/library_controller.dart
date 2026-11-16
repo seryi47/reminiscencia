@@ -334,6 +334,20 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
     _localSongs = await _readLocalSongs();
     _offlineWanted = await offline?.read() ?? false;
+    // Arranque cache-first (ADR-0036/0046): si es la primera carga y hay copia guardada, se muestra AL INSTANTE
+    // y se deja de "pensar"; la red refresca justo después en segundo plano. Solo la fuente real (LibraryStore)
+    // guarda copia local; en pruebas con fuentes falsas esto no se ejecuta y el comportamiento es el de antes.
+    if (!_catalogKnown && source is LibraryStore) {
+      final saved = await (source as LibraryStore).loadSaved();
+      if (saved != null && !_catalogKnown) {
+        _catalogKnown = true;
+        _catalog = saved.songs;
+        _catalogFolders = saved.folders;
+        _rebuildSongs();
+        _loading = false;
+        notifyListeners();
+      }
+    }
     LibraryData data;
     try {
       data = await source.load();

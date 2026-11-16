@@ -138,20 +138,20 @@ describe('normalizeSingleTrack / youtubeQueryFor', () => {
     assert.equal(result.tracks.length, 1);
     assert.equal(result.tracks[0].title, 'The Scientist');
   });
-  test('la consulta de YouTube es «artista título» sin la cola de feat', () => {
-    assert.equal(youtubeQueryFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown'] }), 'Chris Brown Loyal');
-    assert.equal(youtubeQueryFor({ title: 'The Scientist', artists: ['Coldplay'] }), 'Coldplay The Scientist');
+  test('la consulta de YouTube es «artista título [lyrics]» sin la cola de feat', () => {
+    assert.equal(youtubeQueryFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown'] }), 'Chris Brown Loyal lyrics');
+    assert.equal(youtubeQueryFor({ title: 'The Scientist', artists: ['Coldplay'] }), 'Coldplay The Scientist lyrics');
   });
 
   test('youtubeQueriesFor da variantes de la más precisa a la más amplia, sin duplicados', () => {
-    // Un solo artista: primaria + «solo título» (la de feat coincide con la primaria y no se duplica).
+    // Primero la variante con «lyrics» (sesga al vídeo de la canción real), luego primaria + «solo título».
     assert.deepEqual(youtubeQueriesFor({ title: 'The Scientist', artists: ['Coldplay'] }),
-      ['Coldplay The Scientist', 'The Scientist']);
-    // Colaboración: se añade la variante con TODOS los artistas, entre la primaria y la amplia.
+      ['Coldplay The Scientist lyrics', 'Coldplay The Scientist', 'The Scientist']);
+    // Colaboración: «lyrics» + primaria + TODOS los artistas + la amplia.
     assert.deepEqual(youtubeQueriesFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown', 'Lil Wayne', 'Tyga'] }),
-      ['Chris Brown Loyal', 'Chris Brown Lil Wayne Tyga Loyal', 'Loyal']);
-    // Sin artista: queda solo el título.
-    assert.deepEqual(youtubeQueriesFor({ title: 'Clocks', artists: [] }), ['Clocks']);
+      ['Chris Brown Loyal lyrics', 'Chris Brown Loyal', 'Chris Brown Lil Wayne Tyga Loyal', 'Loyal']);
+    // Sin artista: «título lyrics» y el título solo.
+    assert.deepEqual(youtubeQueriesFor({ title: 'Clocks', artists: [] }), ['Clocks lyrics', 'Clocks']);
   });
 
   test('youtubeQueryFor es la primera variante de youtubeQueriesFor', () => {
@@ -161,17 +161,17 @@ describe('normalizeSingleTrack / youtubeQueryFor', () => {
 
   test('con guion o tilde añade una variante PLEGADA (sin guion/acento) para que YouTube la encuentre', () => {
     const hyphen = youtubeQueriesFor({ title: 'Peli-Culeo', artists: ['Cazzu', 'De La Ghetto'] });
-    assert.equal(hyphen[0], 'Cazzu Peli-Culeo');
+    assert.equal(hyphen[0], 'Cazzu Peli-Culeo lyrics');
     assert.ok(hyphen.includes('cazzu peli culeo'), `falta la variante plegada: ${JSON.stringify(hyphen)}`);
 
     const accent = youtubeQueriesFor({ title: 'AMANECIÓ', artists: ['Quevedo'] });
-    assert.equal(accent[0], 'Quevedo AMANECIÓ');
+    assert.equal(accent[0], 'Quevedo AMANECIÓ lyrics');
     assert.ok(accent.includes('quevedo amanecio'), `falta la variante plegada: ${JSON.stringify(accent)}`);
   });
 
   test('sin guion ni tilde NO añade variantes redundantes solo por mayúsculas/minúsculas', () => {
     // «Coldplay The Scientist» y su plegado «coldplay the scientist» son lo mismo para YouTube → una sola.
     assert.deepEqual(youtubeQueriesFor({ title: 'The Scientist', artists: ['Coldplay'] }),
-      ['Coldplay The Scientist', 'The Scientist']);
+      ['Coldplay The Scientist lyrics', 'Coldplay The Scientist', 'The Scientist']);
   });
 });

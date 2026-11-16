@@ -140,6 +140,10 @@ export function youtubeQueriesFor(internalTrack) {
     const key = q.toLowerCase();
     if (q && !seen.has(key)) { seen.add(key); out.push(q); }
   };
+  // Primero la variante con «lyrics»: sesga hacia el vídeo de la canción real (lyric/estudio) y evita directos,
+  // actuaciones o popurrís (p. ej. una actuación de los GRAMMYs de 9 min en vez de la canción); YouTube la indexa
+  // también para canciones en español. Si no hay lyric video, las variantes de debajo lo rescatan (ADR-0046).
+  add([a0, titleCore, 'lyrics']);
   // Exacta y, justo detrás, la PLEGADA (sin tildes ni guiones): «Cazzu Peli-Culeo» → «cazzu peli culeo», «Quevedo AMANECIÓ»
   // → «quevedo amanecio». Es la que rescata los títulos con guion o acento que YouTube no encontraba tal cual (ADR-0046).
   add([a0, titleCore]);

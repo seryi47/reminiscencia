@@ -79,7 +79,7 @@ describe('resolveCollection', () => {
     const result = await resolveCollection(col, { searchYoutube: search });
     assert.notEqual(result.results[0].tier, 'baja');
     assert.equal(result.results[0].best.candidate.id, 'good');
-    assert.deepEqual(calls, ['Luis Fonsi Despacito', 'Despacito'], 'prueba la segunda variante al no bastar la primera');
+    assert.deepEqual(calls, ['Luis Fonsi Despacito lyrics', 'Luis Fonsi Despacito', 'Despacito'], 'prueba más variantes (lyrics, exacta, título) al no bastar la primera');
   });
 
   test('para en cuanto hay una coincidencia ALTA (no gasta consultas de más)', async () => {
@@ -91,15 +91,16 @@ describe('resolveCollection', () => {
     };
     const result = await resolveCollection(col, { searchYoutube: search });
     assert.equal(result.results[0].tier, 'alta');
-    assert.deepEqual(calls, ['Coldplay The Scientist'], 'con una coincidencia alta no se prueba la segunda variante');
+    assert.deepEqual(calls, ['Coldplay The Scientist lyrics'], 'con una coincidencia alta (en la variante lyrics) no se prueban más variantes');
   });
 
   test('acumula candidatos de varias variantes para ofrecer alternativas', async () => {
     // Ninguna variante da «alta», pero juntando ambas hay alternativas para el salto anti-truncado de la APK.
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Tema', 'Grupo', 200000)] };
-    const search = async (query) => (query === 'Tema'
-      ? [cand('v2', 'Tema (Audio)', 'Grupo', 232)]
-      : [cand('v1', 'Tema', 'Grupo', 231)]);
+    // Dos variantes (lyrics y la exacta) aportan candidatos distintos que se acumulan como alternativas.
+    const search = async (query) => (/\blyrics\b/.test(query)
+      ? [cand('v1', 'Tema', 'Grupo', 231)]
+      : [cand('v2', 'Tema (Audio)', 'Grupo', 232)]);
     const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
     const ids = [result.results[0].best?.candidate.id, ...result.results[0].alternatives.map((a) => a.candidate.id)];
     assert.ok(ids.includes('v1') && ids.includes('v2'), 'las dos variantes aportan candidatos');

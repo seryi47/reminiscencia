@@ -309,6 +309,34 @@ void main() {
       expect(seen['/data/folders.json'], 'no-cache');
     });
 
+    test('loadSaved: copia guardada sin red (arranque cache-first), o null si aún no hay', () async {
+      final root = Directory('${tmp.path}/bib-cachefirst');
+      // Antes de cualquier carga no hay copia guardada.
+      final empty = LibraryStore(
+        root: () async => root,
+        client: MockClient((_) async => http.Response('[]', 200)),
+      );
+      expect(await empty.loadSaved(), isNull);
+      // Una carga con red guarda la copia local.
+      final s = LibraryStore(
+        root: () async => root,
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('songs.json')) {
+            return http.Response(jsonEncode([FakeWeb._json('Ssaved00000000001')]), 200);
+          }
+          return http.Response('[]', 200);
+        }),
+      );
+      final online = await s.load();
+      expect(online.fromNetwork, isTrue);
+      expect(online.songs.map((x) => x.id), ['Ssaved00000000001']);
+      // Ahora loadSaved devuelve lo guardado SIN red (fromNetwork=false): es lo que se muestra al instante al abrir.
+      final saved = await s.loadSaved();
+      expect(saved, isNotNull);
+      expect(saved!.fromNetwork, isFalse);
+      expect(saved.songs.map((x) => x.id), ['Ssaved00000000001']);
+    });
+
     test(
       'la descarga reintenta, no deja ficheros a medias y una canción rota no frena a las demás',
       () async {

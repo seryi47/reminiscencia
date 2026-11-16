@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
@@ -31,6 +32,8 @@ void main() {
     Duration idleStopAfter = kIdleStopAfter,
     Duration stallTimeout = kStallTimeout,
     Duration seekWait = kSeekWait,
+    Future<bool> Function()? isOnline,
+    Stream<bool> Function()? connectivityChanges,
   }) => SonidosAudioHandler(
     store,
     player: player,
@@ -38,6 +41,9 @@ void main() {
     idleStopAfter: idleStopAfter,
     stallTimeout: stallTimeout,
     seekWait: seekWait,
+    // Por defecto, en pruebas, con conexión y sin cambios de conectividad (deterministas; sin plugin real).
+    isOnline: isOnline ?? (() async => true),
+    connectivityChanges: connectivityChanges ?? (() => const Stream<bool>.empty()),
   );
 
   setUp(() async {
@@ -529,6 +535,48 @@ void main() {
       await drain(const Duration(milliseconds: 80));
       expect(player.loads.length, loads);
     });
+
+    test(
+      'sin conexión (cobertura caída): NO salta, espera y reanuda al volver la red',
+      () async {
+        final net = StreamController<bool>.broadcast();
+        addTearDown(net.close);
+        handler = build(
+          stallTimeout: const Duration(milliseconds: 40),
+          isOnline: () async => false,
+          connectivityChanges: () => net.stream,
+        );
+        await handler.playAt(songs, 0); // se transmite (no guardada)
+        final loads = player.loads.length;
+        player.setState(
+          ProcessingState.buffering,
+          position: const Duration(seconds: 10),
+        );
+        await drain(const Duration(milliseconds: 120));
+        // Sin conexión no reintenta otra dirección ni salta: se queda esperando en la misma canción.
+        expect(
+          player.loads.length,
+          loads,
+          reason: 'sin conexión no recarga ni salta, espera',
+        );
+        expect(handler.nowPlaying.value.songId, 's0');
+
+        // Vuelve la red: reanuda la MISMA canción desde donde se quedó.
+        net.add(true);
+        await drain(const Duration(milliseconds: 80));
+        expect(
+          player.loads.length,
+          greaterThan(loads),
+          reason: 'al volver la red recarga la misma canción',
+        );
+        expect(handler.nowPlaying.value.songId, 's0');
+        expect(
+          player.loads.last.initialPosition,
+          const Duration(seconds: 10),
+          reason: 'reanuda desde donde se quedó, no desde el principio',
+        );
+      },
+    );
   });
 
   group('cierre por inactividad', () {
