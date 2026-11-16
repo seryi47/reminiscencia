@@ -768,12 +768,11 @@
       "artist": "EpicBebe",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 290.07,
       "public": true,
-      "track": 1,
       "gain_db": 3.0
     },
     {
@@ -5502,12 +5501,11 @@
       "artist": "Leslie Odom Jr., Lin-Manuel Miranda, Daveed Diggs y Okieriete Onaodowan",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 318.221,
       "public": true,
-      "track": 2,
       "gain_db": -4.0
     },
     {
@@ -5558,12 +5556,11 @@
       "artist": "Cast of EPIC: The Musical, Jorge Rivera-Herrans, Luke Holt y Anna Lea",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 253.794,
-      "public": true,
-      "track": 6
+      "public": true
     },
     {
       "id": "S799c9029166caf07",
@@ -6316,12 +6313,11 @@
       "artist": "Ziksua",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 222.999,
       "public": true,
-      "track": 4,
       "gain_db": -3.3
     },
     {
@@ -6511,12 +6507,11 @@
       "artist": "Asaki Takaya",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 150.158,
       "public": true,
-      "track": 5,
       "gain_db": 8.3
     },
     {
@@ -6586,11 +6581,6 @@
     {
       "id": "F417639bc3d88755f",
       "name": "Fiesta",
-      "parent_id": null
-    },
-    {
-      "id": "F57b6ba796b6d57a9",
-      "name": "Funciones",
       "parent_id": null
     },
     {

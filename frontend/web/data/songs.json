@@ -712,11 +712,10 @@
     "artist": "EpicBebe",
     "year": null,
     "tags": [],
-    "folder_id": "F57b6ba796b6d57a9",
+    "folder_id": null,
     "duration_s": 290.07,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S5ab42d928f96fa4b.opus",
-    "track": 1,
     "gain_db": 3.0
   },
   {
@@ -5103,11 +5102,10 @@
     "artist": "Leslie Odom Jr., Lin-Manuel Miranda, Daveed Diggs y Okieriete Onaodowan",
     "year": null,
     "tags": [],
-    "folder_id": "F57b6ba796b6d57a9",
+    "folder_id": null,
     "duration_s": 318.221,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/Sa20f7ee35917a38e.opus",
-    "track": 2,
     "gain_db": -4.0
   },
   {
@@ -5155,11 +5153,10 @@
     "artist": "Cast of EPIC: The Musical, Jorge Rivera-Herrans, Luke Holt y Anna Lea",
     "year": null,
     "tags": [],
-    "folder_id": "F57b6ba796b6d57a9",
+    "folder_id": null,
     "duration_s": 253.794,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
-    "audio": "audio/Sbe39f741c0f17f27.opus",
-    "track": 6
+    "audio": "audio/Sbe39f741c0f17f27.opus"
   },
   {
     "id": "S799c9029166caf07",
@@ -5858,11 +5855,10 @@
     "artist": "Ziksua",
     "year": null,
     "tags": [],
-    "folder_id": "F57b6ba796b6d57a9",
+    "folder_id": null,
     "duration_s": 222.999,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S64630c1e3016b031.opus",
-    "track": 4,
     "gain_db": -3.3
   },
   {
@@ -6039,11 +6035,10 @@
     "artist": "Asaki Takaya",
     "year": null,
     "tags": [],
-    "folder_id": "F57b6ba796b6d57a9",
+    "folder_id": null,
     "duration_s": 150.158,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S05cb876cf4e75196.opus",
-    "track": 5,
     "gain_db": 8.3
   },
   {

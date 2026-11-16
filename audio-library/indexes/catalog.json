@@ -15,12 +15,6 @@
       "youtube_playlist_id": "PLN_xqb8Gm0xY"
     },
     {
-      "id": "F57b6ba796b6d57a9",
-      "name": "Funciones",
-      "parent_id": null,
-      "youtube_playlist_id": "PLe6fGGFDczoc"
-    },
-    {
       "id": "Fcaa6f9307e648e48",
       "name": "Car Music",
       "parent_id": null,
@@ -3384,7 +3378,7 @@
       "artist": "EpicBebe",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "5ab42d928f96fa4be267d929beb3f5a5fa1ad3f0b05e10357f16d4613f152e86",
@@ -3393,7 +3387,6 @@
       "size_bytes": 1772357,
       "added_at": "2026-11-05T09:16:59+00:00",
       "public": true,
-      "track": 1,
       "gain_db": 3.0
     },
     {
@@ -3509,7 +3502,7 @@
       "artist": "Leslie Odom Jr., Lin-Manuel Miranda, Daveed Diggs y Okieriete Onaodowan",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "a20f7ee35917a38e1ad358b482baaab4429e97b55983d1406ef51bbacc4315dd",
@@ -3518,7 +3511,6 @@
       "size_bytes": 1954373,
       "added_at": "2026-11-05T09:17:08+00:00",
       "public": true,
-      "track": 2,
       "gain_db": -4.0
     },
     {
@@ -3527,7 +3519,7 @@
       "artist": "Cast of EPIC: The Musical, Jorge Rivera-Herrans, Luke Holt y Anna Lea",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "6f86452a10a7e7e0b4c8e1d230decdbfc97cb9f6f4c3a4b27f7a0edea5f26fcf",
@@ -3536,7 +3528,6 @@
       "size_bytes": 310645,
       "added_at": "2026-11-05T09:17:10+00:00",
       "public": false,
-      "track": 3,
       "gain_db": -10.5
     },
     {
@@ -3545,7 +3536,7 @@
       "artist": "Ziksua",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "64630c1e3016b03148416f14b06e18fd1e44674c1118072d3f78cec1afa72af8",
@@ -3554,7 +3545,6 @@
       "size_bytes": 1368519,
       "added_at": "2026-11-05T09:17:10+00:00",
       "public": true,
-      "track": 4,
       "gain_db": -3.3
     },
     {
@@ -3581,7 +3571,7 @@
       "artist": "Asaki Takaya",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "05cb876cf4e75196ce0c3977ad688b4dfd1a4f92e7b7ac15b61075195056ea9f",
@@ -3590,7 +3580,6 @@
       "size_bytes": 921284,
       "added_at": "2026-11-05T09:17:13+00:00",
       "public": true,
-      "track": 5,
       "gain_db": 8.3
     },
     {
@@ -10275,7 +10264,7 @@
       "artist": "Cast of EPIC: The Musical, Jorge Rivera-Herrans, Luke Holt y Anna Lea",
       "year": null,
       "tags": [],
-      "folder_id": "F57b6ba796b6d57a9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "be39f741c0f17f277c698e36ea026e9ff48124abba3a2810c85b48f35e29cc15",
@@ -10283,8 +10272,7 @@
       "codec": "opus",
       "size_bytes": 1486165,
       "added_at": "2026-11-14T15:54:56+00:00",
-      "public": true,
-      "track": 6
+      "public": true
     },
     {
       "id": "Sf338722f53024012",
