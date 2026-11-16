@@ -340,6 +340,10 @@ class SonidosAudioHandler extends BaseAudioHandler
     _streamSources.clear();
     _sourcesTried.clear();
     _truncatedHandled.clear();
+    // Otra cola: deja de esperar red de la canción anterior (si no, al volver la red recargaría la nueva sin querer).
+    _waitingForNetwork = false;
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
     _active = true;
     queue.add(items);
     mediaItem.add(items[initialIndex]);
@@ -708,27 +712,38 @@ class SonidosAudioHandler extends BaseAudioHandler
   /// Escucha los cambios de conectividad una sola vez. Cuando vuelve la red y había una canción transmitida esperando,
   /// la reanuda desde donde se quedó en vez de saltarla.
   void _ensureConnectivityWatch() {
-    _connectivitySub ??= _connectivityChanges().listen((online) {
-      if (!online || !_waitingForNetwork || !_active) return;
-      _waitingForNetwork = false;
-      final seq = _loadSeq;
-      unawaited(
-        _exclusive(() async {
-          if (!_active || seq != _loadSeq) return;
-          final index = _player.currentIndex;
-          if (index == null || index < 0 || index >= _queueSongs.length) return;
-          if (_fromFile[index]) return; // ya suena desde el fichero local
-          debugPrint(
-            'reproductor: vuelve la conexión; reanudo «${_titleAt(index)}»',
-          );
-          if (await _setSources(index, _player.position)) {
-            _startPlayback();
-          }
-        }),
-      );
-      // Reanudado: se cancela la escucha (se vuelve a crear con ??= si hace falta otra vez). No deja trabajo en segundo plano.
-      _connectivitySub?.cancel();
-      _connectivitySub = null;
+    _connectivitySub ??= _connectivityChanges().listen(
+      (_) => unawaited(_tryResumeOnReconnect()),
+    );
+    // La red pudo volver ENTRE la comprobación offline y esta suscripción (connectivity_plus no emite el estado actual
+    // al suscribirse): se re-comprueba una vez para no quedarse esperando un cambio que ya pasó.
+    unawaited(_tryResumeOnReconnect());
+  }
+
+  /// Si se estaba esperando red y ya la hay, reanuda la canción desde donde se quedó. Solo deja de esperar (y cancela
+  /// la escucha) si la reanudación FUNCIONÓ; si falla (red inestable, servidor aún caído), se sigue esperando y otro
+  /// cambio de red lo reintenta, para no dejar al usuario en pausa sin recuperación (ADR-0046).
+  Future<void> _tryResumeOnReconnect() async {
+    if (!_waitingForNetwork || !_active) return;
+    if (!await _isOnline()) return;
+    final seq = _loadSeq;
+    await _exclusive(() async {
+      if (!_active || seq != _loadSeq || !_waitingForNetwork) return;
+      final index = _player.currentIndex;
+      if (index == null || index < 0 || index >= _queueSongs.length) return;
+      if (_fromFile[index]) {
+        _waitingForNetwork = false;
+        _connectivitySub?.cancel();
+        _connectivitySub = null;
+        return; // ya suena desde el fichero local
+      }
+      debugPrint('reproductor: vuelve la conexión; reanudo «${_titleAt(index)}»');
+      if (await _setSources(index, _player.position)) {
+        _startPlayback();
+        _waitingForNetwork = false;
+        _connectivitySub?.cancel();
+        _connectivitySub = null;
+      }
     });
   }
 
@@ -960,6 +975,9 @@ class SonidosAudioHandler extends BaseAudioHandler
     _streamSources.clear();
     _sourcesTried.clear();
     _truncatedHandled.clear();
+    _waitingForNetwork = false;
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
     _youtubeUri = null;
     _youtubeHeaders = null;
     _suspended = false;
@@ -1157,15 +1175,23 @@ String describePlayerError(Object error) {
 /// `shuffle()` en cada `load()`; aquí es un no-op para NO re-aleatorizar y que, tras un reintento/parón/reconexión,
 /// no se repitan canciones ya escuchadas. El barajado nuevo solo ocurre en `setShuffle(true)` y al cargar una cola nueva.
 class _StableShuffleOrder extends ShuffleOrder {
-  _StableShuffleOrder(this._indices);
+  _StableShuffleOrder(List<int> desired) : _desired = List<int>.of(desired);
 
-  final List<int> _indices;
+  // El orden que se quiere CONSERVAR. just_audio, al cargar, hace clear()+insert(0,n) sobre este objeto (lo deja en
+  // identidad) y DESPUÉS llama shuffle(); por eso la permutación deseada se guarda aparte y se restaura en shuffle(),
+  // no en el constructor (si no, clear() la borraría antes de usarla). ADR-0046.
+  final List<int> _desired;
+  final List<int> _indices = [];
 
   @override
   List<int> get indices => _indices;
 
   @override
-  void shuffle({int? initialIndex}) {}
+  void shuffle({int? initialIndex}) {
+    _indices
+      ..clear()
+      ..addAll(_desired);
+  }
 
   @override
   void insert(int index, int count) {

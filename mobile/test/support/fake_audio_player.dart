@@ -163,6 +163,13 @@ class FakeAudioPlayer implements AudioPlayer {
     Duration? initialPosition,
     ShuffleOrder? shuffleOrder,
   }) async {
+    // Replica lo que just_audio hace con el ShuffleOrder al cargar (just_audio.dart _init + _load): lo reinicia a
+    // identidad y luego llama shuffle(). Sin esto el test no probaría el comportamiento REAL del orden aleatorio.
+    if (shuffleOrder != null) {
+      shuffleOrder.clear();
+      shuffleOrder.insert(0, audioSources.length);
+      shuffleOrder.shuffle();
+    }
     loads.add(LoadCall(audioSources, initialIndex, initialPosition, shuffleOrder));
     _currentIndex = initialIndex ?? 0;
     _position = initialPosition ?? Duration.zero;

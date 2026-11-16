@@ -541,9 +541,10 @@ void main() {
       () async {
         final net = StreamController<bool>.broadcast();
         addTearDown(net.close);
+        var online = false; // la red está caída; al volver se pone true (como en la realidad)
         handler = build(
           stallTimeout: const Duration(milliseconds: 40),
-          isOnline: () async => false,
+          isOnline: () async => online,
           connectivityChanges: () => net.stream,
         );
         await handler.playAt(songs, 0); // se transmite (no guardada)
@@ -561,7 +562,8 @@ void main() {
         );
         expect(handler.nowPlaying.value.songId, 's0');
 
-        // Vuelve la red: reanuda la MISMA canción desde donde se quedó.
+        // Vuelve la red (isOnline pasa a true y llega el evento de conectividad): reanuda desde donde se quedó.
+        online = true;
         net.add(true);
         await drain(const Duration(milliseconds: 80));
         expect(
@@ -575,6 +577,42 @@ void main() {
           const Duration(seconds: 10),
           reason: 'reanuda desde donde se quedó, no desde el principio',
         );
+      },
+    );
+
+    test(
+      'si la reanudación falla (red inestable), NO se da por vencido: reanuda al siguiente cambio de red',
+      () async {
+        final net = StreamController<bool>.broadcast();
+        addTearDown(net.close);
+        var online = false;
+        handler = build(
+          stallTimeout: const Duration(milliseconds: 40),
+          isOnline: () async => online,
+          connectivityChanges: () => net.stream,
+        );
+        await handler.playAt(songs, 0);
+        player.setState(
+          ProcessingState.buffering,
+          position: const Duration(seconds: 5),
+        );
+        await drain(const Duration(milliseconds: 120));
+        // Vuelve la red pero la fuente AÚN falla: la reanudación no cuaja.
+        online = true;
+        player.failingIndexes.add(0);
+        net.add(true);
+        await drain(const Duration(milliseconds: 80));
+        expect(
+          handler.nowPlaying.value.songId,
+          's0',
+          reason: 'no salta a otra ni se da por vencido',
+        );
+        // La fuente se recupera y llega otro cambio de red: ahora SÍ reanuda y suena.
+        player.failingIndexes.remove(0);
+        net.add(true);
+        await drain(const Duration(milliseconds: 80));
+        expect(handler.nowPlaying.value.songId, 's0');
+        expect(player.playing, isTrue, reason: 'reanuda en el segundo intento');
       },
     );
   });
