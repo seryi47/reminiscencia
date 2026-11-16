@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
-  parseSpotifyRef, normalizeTrack, normalizeAlbum, normalizePlaylist, normalizeSingleTrack, youtubeQueryFor,
-  youtubeQueriesFor,
+  parseSpotifyRef, normalizeSpotifyRef, normalizeTrack, normalizeAlbum, normalizePlaylist, normalizeSingleTrack,
+  youtubeQueryFor, youtubeQueriesFor,
 } from '../../frontend/web/server/spotify-core.js';
 
 const TRACK_ID = '3n3Ppam7vgaVa1iaRUc9Lp'; // 22 base62
@@ -28,6 +28,24 @@ describe('parseSpotifyRef', () => {
     assert.equal(parseSpotifyRef('spotify:artist:' + TRACK_ID), null); // artista no se soporta
     assert.equal(parseSpotifyRef('texto suelto'), null);
     assert.equal(parseSpotifyRef(''), null);
+  });
+});
+
+describe('normalizeSpotifyRef (saneado del ref del cliente)', () => {
+  test('acepta tipos conocidos con id base62 de 22 y «liked» sin id', () => {
+    assert.deepEqual(normalizeSpotifyRef({ type: 'album', id: TRACK_ID }), { type: 'album', id: TRACK_ID });
+    assert.deepEqual(normalizeSpotifyRef({ type: 'TRACK', id: TRACK_ID }), { type: 'track', id: TRACK_ID });
+    assert.deepEqual(normalizeSpotifyRef({ type: 'liked' }), { type: 'liked' });
+    assert.deepEqual(normalizeSpotifyRef({ type: 'liked', id: 'ignorado' }), { type: 'liked' });
+  });
+  test('rechaza ids que inyectarían en la ruta de la API y tipos desconocidos', () => {
+    assert.equal(normalizeSpotifyRef({ type: 'album', id: `${TRACK_ID}/../me/tracks` }), null);
+    assert.equal(normalizeSpotifyRef({ type: 'album', id: `${TRACK_ID}?limit=1` }), null);
+    assert.equal(normalizeSpotifyRef({ type: 'album', id: 'corto' }), null);
+    assert.equal(normalizeSpotifyRef({ type: 'artist', id: TRACK_ID }), null);
+    assert.equal(normalizeSpotifyRef({ type: 'track' }), null); // sin id
+    assert.equal(normalizeSpotifyRef(null), null);
+    assert.equal(normalizeSpotifyRef('texto'), null);
   });
 });
 

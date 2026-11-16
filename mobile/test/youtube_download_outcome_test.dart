@@ -30,4 +30,10 @@ void main() {
     );
     expect(download.state, YoutubeDownloadState.queued);
   });
+
+  test('un lote vacío (todas las pistas fallaron antes de subir) es error, no «En cola»', () {
+    final download = downloadAfterUpload(SharedUploadResult(const []));
+    expect(download.state, YoutubeDownloadState.error);
+    expect(download.message, contains('No se pudo'));
+  });
 }

@@ -105,4 +105,84 @@ void main() {
     expect(downloads.of(_result.id).state, YoutubeDownloadState.error);
     expect(await store.read(), isEmpty);
   });
+
+  Future<void> _waitState(YoutubeDownloads d, YoutubeDownloadState want) async {
+    for (var i = 0; i < 300 && d.of(_result.id).state != want; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
+  // La playlist se cuelga en una «compuerta» que el test controla (MockClient ignora el abort HTTP, así que la descarga
+  // se queda «en curso» hasta que se libera). Al liberarla DESPUÉS de cancelar/pausar, el flujo llega al siguiente
+  // throwIfCancelled y termina de forma determinista. La compuerta se puede renovar para la reanudación.
+  test('suspend (segundo plano) pausa la descarga en curso y la conserva para reanudarla', () async {
+    var gate = Completer<http.Response>();
+    final importer = YoutubeImporter(client: MockClient((request) {
+      if (request.url.path == '/api/youtube/playlist') return gate.future;
+      return Future.value(http.Response('{}', 500));
+    }));
+    final services = buildTestServices(youtube: importer).services;
+    final downloads = YoutubeDownloads(store: store);
+
+    unawaited(downloads.start(services, _result));
+    await _waitState(downloads, YoutubeDownloadState.running);
+    expect(downloads.of(_result.id).state, YoutubeDownloadState.running);
+
+    downloads.suspend();
+    gate.complete(http.Response('{"error":"fin"}', 500)); // libera el GET colgado para que llegue al throwIfCancelled
+    await _waitState(downloads, YoutubeDownloadState.idle);
+
+    expect(downloads.of(_result.id).state, YoutubeDownloadState.idle,
+        reason: 'pausada, no error ni cancelación del usuario');
+    expect((await store.read()).map((e) => e.id), [_result.id],
+        reason: 'una pausa por segundo plano se conserva en disco para reanudarse');
+    await _tick();
+  });
+
+  test('resume vuelve a lanzar una descarga pausada por segundo plano', () async {
+    var gate = Completer<http.Response>();
+    final importer = YoutubeImporter(client: MockClient((request) {
+      if (request.url.path == '/api/youtube/playlist') return gate.future;
+      return Future.value(http.Response('{}', 500));
+    }));
+    final services = buildTestServices(youtube: importer).services;
+    final downloads = YoutubeDownloads(store: store);
+
+    unawaited(downloads.start(services, _result));
+    await _waitState(downloads, YoutubeDownloadState.running);
+    downloads.suspend();
+    gate.complete(http.Response('{"error":"fin"}', 500));
+    await _waitState(downloads, YoutubeDownloadState.idle);
+
+    gate = Completer<http.Response>(); // compuerta nueva: el segundo intento vuelve a quedarse «en curso»
+    downloads.resume(services);
+    await _waitState(downloads, YoutubeDownloadState.running);
+    expect(downloads.of(_result.id).state, YoutubeDownloadState.running,
+        reason: 'al volver a primer plano la importación pendiente se reanuda');
+
+    if (!gate.isCompleted) gate.complete(http.Response('{"error":"fin"}', 500));
+    await _tick();
+  });
+
+  test('cancel detiene la descarga a propósito: idle y fuera de pendientes (no se reanuda)', () async {
+    var gate = Completer<http.Response>();
+    final importer = YoutubeImporter(client: MockClient((request) {
+      if (request.url.path == '/api/youtube/playlist') return gate.future;
+      return Future.value(http.Response('{}', 500));
+    }));
+    final services = buildTestServices(youtube: importer).services;
+    final downloads = YoutubeDownloads(store: store);
+
+    unawaited(downloads.start(services, _result));
+    await _waitState(downloads, YoutubeDownloadState.running);
+
+    downloads.cancel(_result.id);
+    gate.complete(http.Response('{"error":"fin"}', 500));
+    await _waitState(downloads, YoutubeDownloadState.idle);
+
+    expect(downloads.of(_result.id).state, YoutubeDownloadState.idle);
+    expect(await store.read(), isEmpty,
+        reason: 'cancelada por el usuario: no queda pendiente ni se reanuda');
+    await _tick();
+  });
 }

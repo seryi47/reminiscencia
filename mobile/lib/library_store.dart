@@ -243,6 +243,27 @@ class LibraryStore implements LibrarySource {
     return ids;
   }
 
+  /// Borra los `.part` que quedaron a medias si el sistema cerró la app durante una descarga offline (en un fallo normal
+  /// ya se borran solos). Se llama al empezar [downloadAll]: así no se acumulan en la carpeta de audio. Best-effort.
+  Future<void> _sweepOrphanParts() async {
+    try {
+      final dir = await _dir();
+      final audioDir = Directory('${dir.path}/audio');
+      if (!await audioDir.exists()) return;
+      await for (final entity in audioDir.list()) {
+        if (entity is File && entity.path.endsWith('.part')) {
+          try {
+            await entity.delete();
+          } catch (_) {
+            // Si está en uso o no se puede borrar, se deja: no debe frenar la descarga.
+          }
+        }
+      }
+    } catch (_) {
+      // Un fallo del barrido nunca impide descargar.
+    }
+  }
+
   @override
   Future<void> deleteCachedAudio(String id) async {
     // Las canciones locales viven en otra carpeta; esta guarda evita borrar nada que no sea de la web.
@@ -259,6 +280,8 @@ class LibraryStore implements LibrarySource {
     void Function(OfflineProgress progress)? onDetail,
     OfflineCancel? cancel,
   }) async {
+    // Limpia primero los «.part» huérfanos de un cierre anterior para que no se acumulen (BAJO, auditoría ADR-0046).
+    await _sweepOrphanParts();
     // Una lectura de la carpeta en lugar de comprobar canción a canción, y sin repetir ids.
     final cached = await cachedAudioIds();
     final targets = <String, Song>{

@@ -359,7 +359,11 @@ class YoutubeImporter {
         for (var i = 0; i < min(kYoutubeConcurrency, tracks.length); i += 1)
           worker(),
       ]);
-      return output.whereType<YoutubeImportedAudio>().toList();
+      final imported = output.whereType<YoutubeImportedAudio>().toList();
+      // Si ninguna pista llegó a descargarse (lote entero fallido), no se deja el directorio temporal vacío: `cleanup`
+      // no lo borraría porque no recibe ninguna ruta.
+      if (imported.isEmpty) await _deleteQuietly(importDir);
+      return imported;
     } catch (_) {
       await _deleteQuietly(importDir);
       rethrow;

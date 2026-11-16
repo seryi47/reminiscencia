@@ -610,6 +610,9 @@ def _catalogar(data: dict, result: dict, *, target: Path, archivo: str, title: s
             info = probe(target)
         except ProbeError:
             motivo = "no es audio (ffprobe no encuentra una pista de audio)"
+        except OSError as error:
+            # Blindaje: un fallo al leer el fichero (permisos, I/O) se anota como rechazo y nunca tira el lote entero.
+            motivo = f"no se pudo leer el archivo ({error})"
         else:
             if not info.duration_s > 0:
                 motivo = "el audio no tiene duración"

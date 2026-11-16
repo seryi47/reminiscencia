@@ -266,6 +266,10 @@ class SpotifyTransfer {
   final DateTime Function() _clock;
   final int _pageLimit;
 
+  // Techo de pistas al paginar /resolve: por encima del máximo real de una playlist de Spotify (~10 000). Acota el peor
+  // caso si el servidor devolviera hasMore sin fin.
+  static const int _maxResolveTracks = 12000;
+
   Future<bool> isConnected() async => (await _store.read())?.hasTokens ?? false;
   Future<void> disconnect() => _store.clear();
 
@@ -386,11 +390,15 @@ class SpotifyTransfer {
       final albumJson = page['album'];
       if (albumJson is Map) album = TransferAlbum.fromJson(albumJson.cast<String, dynamic>());
       total = (page['total'] as num?)?.toInt() ?? results.length;
+      final before = results.length;
       for (final entry in (page['results'] as List? ?? const [])) {
         results.add(TransferMatch.fromJson((entry as Map).cast<String, dynamic>()));
       }
       onPage?.call(results.length, total);
       if (page['hasMore'] != true) break;
+      // Topes de seguridad: si una página no añade nada (servidor atascado o que miente con hasMore) o se supera el
+      // máximo real de una colección de Spotify (~10 000 pistas), se corta para no quedarse en un bucle sin fin.
+      if (results.length == before || results.length >= _maxResolveTracks) break;
       offset += _pageLimit;
     }
     return TransferResolution(results: results, album: album, total: total);

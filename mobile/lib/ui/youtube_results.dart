@@ -23,12 +23,13 @@ class YoutubeDownload {
 
 /// Estado de la tarjeta tras enviar la canción: «En cola» solo si algo llegó a la web; si no, el motivo real.
 YoutubeDownload downloadAfterUpload(SharedUploadResult sent) {
-  if (sent.uploaded == 0 && sent.items.isNotEmpty) {
-    final failed = sent.items.first;
-    return YoutubeDownload(
-      YoutubeDownloadState.error,
-      'No se pudo subir la canción: ${failed.message}',
-    );
+  if (sent.uploaded == 0) {
+    // Nada llegó a subirse: el motivo del primer fallo, o un mensaje genérico si ni siquiera hubo nada que subir (todas
+    // las pistas del lote fallaron antes de la cola). Nunca «En cola», que haría creer que se está publicando.
+    final message = sent.items.isNotEmpty
+        ? 'No se pudo subir la canción: ${sent.items.first.message}'
+        : 'No se pudo descargar la canción.';
+    return YoutubeDownload(YoutubeDownloadState.error, message);
   }
   return YoutubeDownload(
     YoutubeDownloadState.queued,
@@ -47,14 +48,71 @@ class YoutubeDownloads extends ChangeNotifier {
   final Map<String, YoutubeDownload> _byId = {};
   // Importaciones en curso (aún no entregadas a la cola de subidas): lo que se persiste para poder reanudarlo.
   final Map<String, PendingYoutubeImport> _pending = {};
+  // Token de cancelación por descarga activa: permite cortar el sondeo/descarga (cancelación del usuario o pausa en
+  // segundo plano). Sin esto, una importación lanzada desde el buscador no se podía detener y seguía gastando batería
+  // y datos con la pantalla apagada.
+  final Map<String, YoutubeImportCancellation> _cancellations = {};
+  // Ids pausados por pasar la app a segundo plano: se conservan en _pending y se reanudan al volver a primer plano.
+  final Set<String> _suspended = {};
+  // Ids que el usuario canceló a propósito: terminan en «idle», sin aviso de error y sin reanudarse.
+  final Set<String> _userCancelled = {};
   bool _restored = false;
+
+  // Tope del historial en memoria del singleton: las tarjetas terminadas (en cola, error, idle) más antiguas se
+  // descartan cuando se superan, para que el mapa no crezca sin límite en una sesión larga con muchas descargas.
+  static const int _maxHistory = 200;
 
   YoutubeDownload of(String id) =>
       _byId[id] ?? const YoutubeDownload(YoutubeDownloadState.idle);
 
   void _set(String id, YoutubeDownload value) {
     _byId[id] = value;
+    _pruneHistory();
     notifyListeners();
+  }
+
+  /// Evita el crecimiento sin fin de [_byId]: si pasa de [_maxHistory], descarta las entradas más antiguas que ya están
+  /// en un estado terminal (nunca una en curso ni una pendiente de reanudar). Dart conserva el orden de inserción.
+  void _pruneHistory() {
+    if (_byId.length <= _maxHistory) return;
+    for (final id in _byId.keys.toList(growable: false)) {
+      if (_byId.length <= _maxHistory) break;
+      final state = _byId[id]!.state;
+      final terminal = state == YoutubeDownloadState.queued ||
+          state == YoutubeDownloadState.error ||
+          state == YoutubeDownloadState.idle;
+      if (terminal && !_pending.containsKey(id)) _byId.remove(id);
+    }
+  }
+
+  /// Cancela una descarga en curso a petición del usuario: deja de sondear y descargar, la quita de pendientes y la
+  /// marca como terminada (sin aviso de error). No hace nada si no está activa.
+  void cancel(String id) {
+    final token = _cancellations[id];
+    if (token == null) return;
+    _userCancelled.add(id);
+    token.cancel();
+  }
+
+  /// La app pasa a segundo plano: se cortan las descargas activas para no gastar batería ni datos con la pantalla
+  /// apagada. Se conservan en _pending (y en disco) para reanudarlas enteras al volver a primer plano.
+  void suspend() {
+    for (final entry in _cancellations.entries) {
+      _suspended.add(entry.key);
+      entry.value.cancel();
+    }
+  }
+
+  /// La app vuelve a primer plano: reanuda las importaciones que seguían pendientes (las pausó [suspend] o un cierre).
+  void resume(AppServices services) {
+    for (final pending in _pending.values.toList(growable: false)) {
+      final state = of(pending.id).state;
+      if (state == YoutubeDownloadState.running ||
+          state == YoutubeDownloadState.queued) {
+        continue;
+      }
+      unawaited(start(services, pending.toResult()));
+    }
   }
 
   /// Guarda en disco las importaciones en curso. Es «best-effort»: si falla (p. ej. sin `path_provider` en pruebas),
@@ -118,6 +176,11 @@ class YoutubeDownloads extends ChangeNotifier {
     // Sin bloquear el inicio de la importación (la escritura es de milisegundos y la cola serial del store ordena los cambios).
     _pending[result.id] = PendingYoutubeImport.fromResult(result);
     unawaited(_savePending());
+    // Token propio para poder cancelar/pausar esta descarga (cancelación del usuario o paso a segundo plano).
+    final cancellation = YoutubeImportCancellation();
+    _cancellations[result.id] = cancellation;
+    _userCancelled.remove(result.id);
+    _suspended.remove(result.id);
     List<YoutubeImportedAudio>? imported;
     try {
       if (!await services.library.canUpload()) {
@@ -127,6 +190,7 @@ class YoutubeDownloads extends ChangeNotifier {
       imported = await importer.importPlaylist(
         result.url,
         expectedDurationS: result.durationS > 0 ? result.durationS.toDouble() : null,
+        cancellation: cancellation,
         onProgress: (progress) {
           if (of(result.id).state == YoutubeDownloadState.running) {
             _set(
@@ -153,18 +217,31 @@ class YoutubeDownloads extends ChangeNotifier {
       unawaited(_savePending());
       _set(result.id, downloadAfterUpload(sent));
     } catch (error) {
-      _pending.remove(result.id);
-      unawaited(_savePending());
-      _set(
-        result.id,
-        YoutubeDownload(
-          YoutubeDownloadState.error,
-          error is AppException
-              ? error.message
-              : 'No se pudo descargar la canción: ${describeError(error)}',
-        ),
-      );
+      if (_suspended.remove(result.id)) {
+        // Pausada por segundo plano: se CONSERVA en _pending (y en disco) para reanudarla entera al volver a primer
+        // plano. No es un error ni una cancelación del usuario.
+        _set(result.id, const YoutubeDownload(
+          YoutubeDownloadState.idle, 'En pausa (segundo plano).'));
+      } else if (_userCancelled.remove(result.id)) {
+        // Cancelación a propósito: termina en idle, sin aviso de error, y no se reanuda.
+        _pending.remove(result.id);
+        unawaited(_savePending());
+        _set(result.id, const YoutubeDownload(YoutubeDownloadState.idle));
+      } else {
+        _pending.remove(result.id);
+        unawaited(_savePending());
+        _set(
+          result.id,
+          YoutubeDownload(
+            YoutubeDownloadState.error,
+            error is AppException
+                ? error.message
+                : 'No se pudo descargar la canción: ${describeError(error)}',
+          ),
+        );
+      }
     } finally {
+      _cancellations.remove(result.id);
       if (imported != null) await importer.cleanup(imported);
     }
   }
@@ -194,6 +271,8 @@ class YoutubeSearchSection extends StatefulWidget {
 
 class _YoutubeSearchSectionState extends State<YoutubeSearchSection> {
   static final Map<String, List<YoutubeSearchResult>> _cache = {};
+  // Tope de la caché de búsquedas (compartida por toda la app): sin él, cada texto distinto deja una entrada para siempre.
+  static const int _maxCacheEntries = 50;
 
   Timer? _timer;
   YoutubeImportCancellation? _cancellation;
@@ -261,7 +340,11 @@ class _YoutubeSearchSectionState extends State<YoutubeSearchSection> {
     });
     try {
       final found = await importer.search(text, cancellation: cancellation);
+      _cache.remove(text); // reinserta al final para que la más usada no sea la primera en caer
       _cache[text] = found;
+      while (_cache.length > _maxCacheEntries) {
+        _cache.remove(_cache.keys.first); // descarta la entrada más antigua
+      }
       if (!mounted || cancellation.isCancelled) return;
       setState(() {
         _results = found;

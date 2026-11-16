@@ -69,8 +69,14 @@ class _HomeShellState extends State<HomeShell> {
       onResume: () {
         library.resumeUploads();
         library.syncIfStale();
+        // Reanuda las descargas de YouTube que se pausaron al ir a segundo plano (ADR-0046).
+        youtubeDownloads.resume(widget.services);
       },
-      onPause: () => library.pauseImport(),
+      onPause: () {
+        library.pauseImport();
+        // Corta las descargas de YouTube en curso: no gastan batería ni datos con la pantalla apagada; se reanudan al volver.
+        youtubeDownloads.suspend();
+      },
     );
     _nowPlaying = widget.services.playback.nowPlaying;
     _nowPlaying.addListener(_closeEmbedWhenMusicPlays);

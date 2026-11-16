@@ -8,7 +8,7 @@
 // el cliente lo manda en cada /resolve.
 
 import { startLogin, exchangeCode, refreshAccess } from './spotify-auth.js';
-import { parseSpotifyRef } from './spotify-core.js';
+import { parseSpotifyRef, normalizeSpotifyRef } from './spotify-core.js';
 import { fetchCollection, listMine, SpotifyApiError } from './spotify-fetch.js';
 import { resolveCollection, albumOf } from './spotify-resolve.js';
 import { spotifyClientId, SPOTIFY_REDIRECT_URI } from './spotify-config.js';
@@ -91,7 +91,10 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   // SIN resolver YouTube. Es rápido (una lectura de Spotify) y permite enseñar el recuento al abrir un álbum sin transferir.
   const compareOnly = body.compareOnly === true;
   if (!compareOnly && typeof search !== 'function') return json(500, { error: 'búsqueda de YouTube no disponible' });
-  const ref = body.ref ?? (body.source === 'liked' ? { type: 'liked' } : parseSpotifyRef(body.url));
+  // El id de `ref` se interpola en la ruta de la API de Spotify (spotify-fetch.js): se valida siempre, tanto el `ref`
+  // que manda el cliente como el que sale de la URL, a tipo conocido + id base62 de 22 (evita inyección de ruta).
+  const rawRef = body.ref ?? (body.source === 'liked' ? { type: 'liked' } : parseSpotifyRef(body.url));
+  const ref = normalizeSpotifyRef(rawRef);
   if (!ref) return json(400, { error: 'enlace de Spotify no válido' });
   if (!isText(body.accessToken)) return json(401, { error: 'falta el token de Spotify', needsAuth: true });
 
@@ -153,7 +156,13 @@ const CALLBACK_HTML = `<!doctype html>
   const p = new URLSearchParams(location.search);
   const code = p.get('code'); const state = p.get('state') || ''; const err = p.get('error');
   const msg = document.getElementById('msg');
-  const fail = (text) => { msg.innerHTML = text + '<br><a href="/#transferir">Volver</a>'; };
+  const fail = (text) => {
+    msg.textContent = text;
+    msg.appendChild(document.createElement('br'));
+    const a = document.createElement('a');
+    a.href = '/#transferir'; a.textContent = 'Volver';
+    msg.appendChild(a);
+  };
   // APK: devuelve el código a la app por el esquema; la app valida el state y cambia el código.
   if (state.endsWith('.apk')) {
     location.replace(${JSON.stringify(CALLBACK_SCHEME)} + '?' + new URLSearchParams({ code: code || '', state, error: err || '' }));

@@ -22,6 +22,23 @@ export function parseSpotifyRef(input) {
   return null;
 }
 
+const ID_EXACT = new RegExp(`^${ID}$`);
+
+/**
+ * Normaliza y VALIDA una referencia que llega del cliente (body.ref de /resolve). El id se interpola luego en la ruta
+ * de la API de Spotify (spotify-fetch.js), así que solo se admiten los tipos conocidos y un id base62 de 22; «liked»
+ * no lleva id. Devuelve { type, id } saneado o null si no es válido (evita inyección de ruta/consulta en api.spotify.com).
+ */
+export function normalizeSpotifyRef(ref) {
+  if (!ref || typeof ref !== 'object') return null;
+  const type = typeof ref.type === 'string' ? ref.type.toLowerCase() : '';
+  if (type === 'liked') return { type: 'liked' };
+  if (type !== 'track' && type !== 'album' && type !== 'playlist') return null;
+  const id = typeof ref.id === 'string' ? ref.id : '';
+  if (!ID_EXACT.test(id)) return null;
+  return { type, id };
+}
+
 const yearOf = (releaseDate) => {
   const match = /^(\d{4})/.exec(String(releaseDate ?? ''));
   return match ? Number(match[1]) : null;

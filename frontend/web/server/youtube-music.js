@@ -100,7 +100,8 @@ export async function searchYoutubeMusic(query, { fetchImpl = globalThis.fetch }
     const creds = await innertubeCreds(fetchImpl);
     if (!creds) return [];
     const { apiKey, clientVersion } = creds;
-    const response = await fetchWithTimeout(fetchImpl, `${MUSIC_SEARCH}?key=${apiKey}&prettyPrint=false`, {
+    // apiKey viene raspado del HTML de music.youtube.com (dato externo): se encodea al meterlo en la query.
+    const response = await fetchWithTimeout(fetchImpl, `${MUSIC_SEARCH}?key=${encodeURIComponent(apiKey)}&prettyPrint=false`, {
       method: 'POST',
       headers: {
         Accept: 'application/json', 'Content-Type': 'application/json',
