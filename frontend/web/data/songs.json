@@ -1094,11 +1094,10 @@
     "artist": "Bad Gyal",
     "year": null,
     "tags": [],
-    "folder_id": "F8b4910e7e6018cb9",
+    "folder_id": null,
     "duration_s": 144.168,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S5da780494e13770a.opus",
-    "track": 1,
     "gain_db": -7.5
   },
   {
@@ -3730,11 +3729,10 @@
     "artist": "Bad Bunny",
     "year": null,
     "tags": [],
-    "folder_id": "F8b4910e7e6018cb9",
+    "folder_id": null,
     "duration_s": 185.151,
     "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
     "audio": "audio/S3553302be7b118c6.opus",
-    "track": 2,
     "gain_db": -6.3
   },
   {

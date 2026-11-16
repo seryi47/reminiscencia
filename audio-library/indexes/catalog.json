@@ -21,12 +21,6 @@
       "youtube_playlist_id": "PLZ6pvnTY6HLY"
     },
     {
-      "id": "F8b4910e7e6018cb9",
-      "name": "Mi lista n.º 2",
-      "parent_id": null,
-      "youtube_playlist_id": "PLMdhfJmb-Hho"
-    },
-    {
       "id": "F055ccbef8d7de2ca",
       "name": "Buga",
       "parent_id": null,
@@ -3810,7 +3804,7 @@
       "artist": "Bad Gyal",
       "year": null,
       "tags": [],
-      "folder_id": "F8b4910e7e6018cb9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "5da780494e13770aeec3c3e878502ebef2cf2448d659e0300235419ca969b01b",
@@ -3819,7 +3813,6 @@
       "size_bytes": 885198,
       "added_at": "2026-11-05T17:53:45+00:00",
       "public": true,
-      "track": 1,
       "gain_db": -7.5
     },
     {
@@ -3828,7 +3821,7 @@
       "artist": "Bad Bunny",
       "year": null,
       "tags": [],
-      "folder_id": "F8b4910e7e6018cb9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "sha256": "3553302be7b118c62f5eaff7fd8a0893ec58522df348d9d7d3a70afcb3df4460",
@@ -3837,7 +3830,6 @@
       "size_bytes": 1126334,
       "added_at": "2026-11-05T17:53:47+00:00",
       "public": true,
-      "track": 2,
       "gain_db": -6.3
     },
     {

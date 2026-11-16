@@ -1180,12 +1180,11 @@
       "artist": "Bad Gyal",
       "year": null,
       "tags": [],
-      "folder_id": "F8b4910e7e6018cb9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 144.168,
       "public": true,
-      "track": 1,
       "gain_db": -7.5
     },
     {
@@ -4009,12 +4008,11 @@
       "artist": "Bad Bunny",
       "year": null,
       "tags": [],
-      "folder_id": "F8b4910e7e6018cb9",
+      "folder_id": null,
       "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
       "source": "Subida por seryi47",
       "duration_s": 185.151,
       "public": true,
-      "track": 2,
       "gain_db": -6.3
     },
     {
@@ -6586,11 +6584,6 @@
     {
       "id": "Fcaa6f9307e648e48",
       "name": "Car Music",
-      "parent_id": null
-    },
-    {
-      "id": "F8b4910e7e6018cb9",
-      "name": "Mi lista n.º 2",
       "parent_id": null
     },
     {
