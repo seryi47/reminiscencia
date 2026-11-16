@@ -8,9 +8,16 @@ bool playableOffline({required Song song, required bool cached}) =>
 
 /// Índice de la siguiente canción que puede sonar después de [from], o null si no queda ninguna.
 /// [playable] dice por posición si la canción puede sonar sin red (local o ya guardada).
-int? nextAvailableIndex(List<bool> playable, int from) {
+int? nextAvailableIndex(List<bool> playable, int from, {bool wrap = false}) {
   for (var index = from + 1; index < playable.length; index += 1) {
     if (playable[index]) return index;
+  }
+  // Con repetir-todo (wrap) también se mira desde el principio hasta [from], para no reportar «no quedan canciones»
+  // cuando hay descargadas ANTES de la que falló.
+  if (wrap) {
+    for (var index = 0; index < from; index += 1) {
+      if (playable[index]) return index;
+    }
   }
   return null;
 }

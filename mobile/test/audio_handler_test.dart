@@ -682,6 +682,46 @@ void main() {
     );
   });
 
+  group('descargadas SIN red: nunca se borran (principio: no depender de la red)', () {
+    test(
+      'un fichero descargado que falla SIN conexión NO se borra: se preserva y pasa a otra descargada',
+      () async {
+        handler = build(isOnline: () async => false);
+        await download(songs[0]);
+        await download(songs[1]);
+        player.failingFileIndexes.add(0); // el fichero de s0 falla al decodificar
+        await handler.playAt(songs, 0);
+        await drain(const Duration(milliseconds: 120));
+        expect(
+          await (await store.audioFile(songs[0])).exists(),
+          isTrue,
+          reason: 'sin red no se puede re-descargar: NUNCA se borra el fichero',
+        );
+        expect(
+          handler.nowPlaying.value.songId,
+          's1',
+          reason: 'pasa a otra descargada, sin tocar la red',
+        );
+      },
+    );
+
+    test(
+      'una descargada que parece TRUNCADA pero SIN red tampoco se borra',
+      () async {
+        handler = build(isOnline: () async => false);
+        await download(songs[0]);
+        player.setDuration(const Duration(seconds: 20)); // parece truncada (catálogo 185s)
+        await handler.playAt(songs, 0);
+        await drain(const Duration(milliseconds: 100));
+        expect(
+          await (await store.audioFile(songs[0])).exists(),
+          isTrue,
+          reason: 'offline no borra; se re-descargará cuando haya red',
+        );
+      },
+    );
+  });
+
   group('aleatorio: conserva el orden entre recargas', () {
     test('una recarga NO re-baraja: pasa un orden estable', () async {
       player.shuffleEnabled = true;

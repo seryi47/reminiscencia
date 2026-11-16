@@ -213,6 +213,10 @@ class SonidosAudioHandler extends BaseAudioHandler
   /// Canciones cacheadas ya detectadas como truncadas y re-transmitidas (una vez cada una, para no entrar en bucle).
   final Set<String> _truncatedHandled = <String>{};
 
+  /// Canciones cacheadas ya borradas+re-transmitidas por fichero corrupto (una vez cada una; evita el bucle del hallazgo
+  /// MEDIO-4 si el borrado no quita el fichero o el re-stream vuelve a cachear algo defectuoso).
+  final Set<String> _corruptHandled = <String>{};
+
   /// Comprobación de conexión y escucha de cambios de conectividad (ADR-0036/0046): cuando una canción transmitida se
   /// para por falta de cobertura, en vez de saltar a la siguiente se ESPERA y se reanuda sola al volver la red.
   final Future<bool> Function() _isOnline;
@@ -340,6 +344,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     _streamSources.clear();
     _sourcesTried.clear();
     _truncatedHandled.clear();
+    _corruptHandled.clear();
     // Otra cola: deja de esperar red de la canción anterior (si no, al volver la red recargaría la nueva sin querer).
     _waitingForNetwork = false;
     _connectivitySub?.cancel();
@@ -499,15 +504,20 @@ class SonidosAudioHandler extends BaseAudioHandler
     final real = duration.inMilliseconds / 1000.0;
     // Margen amplio para no borrar un fichero bueno por redondeos: <80% y al menos 10 s por debajo.
     if (real >= song.durationS * 0.80 || real + 10 >= song.durationS) return;
-    if (!_truncatedHandled.add(song.id)) return;
-    debugPrint(
-      'reproductor: «${song.title}» descargada truncada (${real.round()}s < ${song.durationS.round()}s); borro y re-transmito',
-    );
+    if (_truncatedHandled.contains(song.id)) return;
     final seq = _loadSeq;
     final position = _player.position;
     unawaited(
       _exclusive(() async {
         if (!_active || seq != _loadSeq || _player.currentIndex != index) return;
+        if (_truncatedHandled.contains(song.id)) return;
+        // SIN red NO se borra el fichero descargado (no se podría re-descargar): se preserva y sonará lo que haya;
+        // cuando haya conexión, se detecta de nuevo y se re-descarga. No se marca como tratada si estamos offline.
+        if (!await _isOnline()) return;
+        _truncatedHandled.add(song.id);
+        debugPrint(
+          'reproductor: «${song.title}» descargada truncada (${real.round()}s < ${song.durationS.round()}s) y hay red; borro y re-transmito',
+        );
         await _guardQuiet(() => _store.deleteCachedAudio(song.id));
         _sourcesTried.remove(song.id);
         _streamUris.remove(song.id);
@@ -538,9 +548,10 @@ class SonidosAudioHandler extends BaseAudioHandler
       return;
     }
     final file = _queueFiles[index];
-    // Fichero LOCAL/cacheado que falla al decodificar: NO saltar de inmediato. Se reintenta el fichero una vez; si
-    // sigue fallando y es una canción de la WEB (no subida propia), se borra el fichero corrupto y se re-transmite/
-    // re-descarga; solo se salta si es una canción propia local o no hay forma de recuperarla (ADR-0046).
+    // Fichero LOCAL/cacheado que falla al decodificar: NO saltar de inmediato. Se reintenta el fichero una vez (un
+    // error de MediaCodec suele ser pasajero). Si sigue fallando: SOLO con conexión y si es canción de la web se borra
+    // y re-descarga (una vez, `_corruptHandled`, para no entrar en bucle). SIN red NUNCA se borra un fichero descargado
+    // (no se podría recuperar) ni se toca la red: se preserva el fichero y se pasa a otra que pueda sonar sin red.
     if (_fromFile[index]) {
       if (!_fileRetried) {
         _fileRetried = true;
@@ -550,8 +561,11 @@ class SonidosAudioHandler extends BaseAudioHandler
           return;
         }
       }
-      if (!song.local) {
-        debugPrint('reproductor: «${song.title}» cacheada corrupta; la borro y re-transmito');
+      if (!song.local &&
+          !_corruptHandled.contains(song.id) &&
+          await _isOnline()) {
+        _corruptHandled.add(song.id);
+        debugPrint('reproductor: «${song.title}» cacheada corrupta y hay red; la borro y re-transmito');
         await _guardQuiet(() => _store.deleteCachedAudio(song.id));
         _sourcesTried.remove(song.id);
         _streamUris.remove(song.id);
@@ -561,6 +575,7 @@ class SonidosAudioHandler extends BaseAudioHandler
           return;
         }
       }
+      // Sin red (o ya intentado, o subida propia): preservar el fichero y saltar a otra reproducible sin conexión.
       await _skipUnavailable(index);
       return;
     }
@@ -602,8 +617,12 @@ class SonidosAudioHandler extends BaseAudioHandler
           cached: _queueFiles[i] != null && await _queueFiles[i]!.exists(),
         ),
     ];
-    // La que acaba de fallar no se vuelve a intentar en este salto.
-    final next = nextAvailableIndex(playable, index);
+    // La que acaba de fallar no se vuelve a intentar en este salto. Con repetir-todo se envuelve (hallazgo BAJO-6).
+    final next = nextAvailableIndex(
+      playable,
+      index,
+      wrap: _player.loopMode == LoopMode.all,
+    );
     if (next != null) {
       if (await _setSources(next, Duration.zero)) {
         _startPlayback();
@@ -749,10 +768,14 @@ class SonidosAudioHandler extends BaseAudioHandler
 
   /// Cierre por inactividad: corre mientras hay cola y no suena nada; si llega a [idleStopAfter], para todo.
   void _updateIdleStop() {
-    final audible = isAudiblyPlaying(
-      playing: _player.playing,
-      state: _player.processingState,
-    );
+    // Esperando cobertura NO cuenta como «sonando»: así el cierre por inactividad se arma y, si la red no vuelve en
+    // [idleStopAfter], se suelta el servicio en primer plano y el bloqueo de CPU en vez de esperar sin fin (batería).
+    final audible =
+        !_waitingForNetwork &&
+        isAudiblyPlaying(
+          playing: _player.playing,
+          state: _player.processingState,
+        );
     if (!_active || audible) {
       _idleStop?.cancel();
       _idleStop = null;
@@ -790,6 +813,10 @@ class SonidosAudioHandler extends BaseAudioHandler
     if (index < 0 || index >= songs.length) {
       throw const AppException('Esa canción ya no está disponible.');
     }
+    // El usuario elige una canción: cualquier espera de red de la anterior queda sin efecto (que no recargue sola luego).
+    _waitingForNetwork = false;
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
     bool ready;
     try {
       // Siempre se carga (nunca se busca): una carga acaba siempre, lista o con error, y vuelve a mirar lo guardado.
@@ -944,6 +971,10 @@ class SonidosAudioHandler extends BaseAudioHandler
   Future<void> pause() async {
     final wasSuspended = _suspended;
     _suspended = false;
+    // Si el usuario pausa mientras se esperaba cobertura, se deja de esperar: al volver la red NO debe arrancar sola.
+    _waitingForNetwork = false;
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
     await _guard(_player.pause);
     // Si ya estaba parada por una interrupción, pausar no cambia el reproductor: hay que publicarlo.
     if (wasSuspended) _broadcastState();
@@ -975,6 +1006,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     _streamSources.clear();
     _sourcesTried.clear();
     _truncatedHandled.clear();
+    _corruptHandled.clear();
     _waitingForNetwork = false;
     _connectivitySub?.cancel();
     _connectivitySub = null;

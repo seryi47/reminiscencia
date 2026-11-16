@@ -101,6 +101,18 @@ Una segunda auditoría, crítica y verificada contra la fuente de just_audio 0.1
 - **#3 (BAJA, conocido) — falso positivo de truncado** si el `durationS` del catálogo es erróneo: re-descarga innecesaria (una vez por sesión, sin bucle). Causa raíz = corregir el `durationS` del catálogo. Se deja documentado.
 - **Descartados como falsos positivos** (verificados): carrera `_onDuration`/`_recover` (serializadas por `_exclusive`+`_loadSeq`), bucle de re-descarga (acotado por `_truncatedHandled`+`!_fromFile`), `RangeError` de longitudes, pérdida de posición al re-transmitir (se captura y se pasa), reset espurio de `_fileRetried`/`_stallRetried`.
 
+## Auditoría 2026-11-16 (quáter): descargada = CERO dependencia de red (nunca borrar un fichero descargado sin conexión)
+
+Tercera auditoría adversarial con un **requisito del usuario como criterio**: «una canción descargada no debe depender NUNCA de la red ni perderse por un fallo transitorio». APK **1.3.3+17**, suite mobile verde (638):
+
+- **CRÍTICO — se perdían ficheros descargados offline.** Ante un error de decodificación (a menudo un hiccup transitorio de MediaCodec sobre un fichero BUENO) o un falso «truncado», `_recover` y `_onDuration` **borraban** el fichero cacheado e intentaban re-transmitir; **sin red** eso borraba un fichero descargado que no se podía re-descargar → **pérdida permanente**, y encima tocaba la red para una descargada. Fix: **el borrado+re-descarga se gatea por `await _isOnline()` en los DOS sitios** (`_recover` y `_onDuration`). SIN red: nunca se borra, se **preserva** el fichero y, en `_recover`, se pasa a otra que pueda sonar sin conexión; la truncada no se marca como tratada offline, así que **se re-descarga sola cuando vuelve la red**. Guarda anti-bucle `_corruptHandled` (una vez por canción, hallazgo MEDIO-4).
+- **Pausar durante la espera de red** ya no se ignora: `pause()` limpia `_waitingForNetwork` y cancela la escucha, así al reconectar **no arranca sola** contra la voluntad del usuario (hallazgo MEDIO-3).
+- **`playAt`** (también en la misma cola) resetea la espera de red, para no recargar la canción actual sin querer al cambiar la conectividad (hallazgo BAJO-5).
+- **`_skipUnavailable` envuelve con repetir-todo** (`nextAvailableIndex(..., wrap: loopMode==all)`): ya no reporta «no quedan canciones» cuando hay descargadas ANTES de la que falló (hallazgo BAJO-6).
+- **Batería (BAJO-7):** esperar cobertura ya NO cuenta como «sonando» para el cierre por inactividad; si la red no vuelve en 15 min, se suelta el servicio en primer plano y el bloqueo de CPU en vez de esperar sin fin.
+- **Confirmado correcto** (la auditoría lo verificó): el audio de una descargada suena con `AudioSource.file` puro (cero red); `LockCachingAudioSource` escribe a `.part` y solo renombra al completar (nunca sirve medio fichero); `_StableShuffleOrder` ahora SÍ conserva el orden contra el ciclo real de just_audio. Único punto de red evitable que queda en la ruta de una descargada: `_fillArtwork`→`covers.ensure` (la PORTADA de la notificación si no está cacheada; no afecta al audio; se baja con «Guardar sin conexión»).
+- Pruebas nuevas: descargada que falla SIN red no se borra y pasa a otra; truncada SIN red no se borra; `nextAvailableIndex` con wrap.
+
 ## Consecuencias
 
 - **Pruebas nuevas/ampliadas:**

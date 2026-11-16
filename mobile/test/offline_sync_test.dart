@@ -91,6 +91,10 @@ void main() {
         expect(nextAvailableIndex([true, false, true], 0), 2);
         expect(nextAvailableIndex([true, false, true], 2), isNull);
         expect(nextAvailableIndex([false, false], -1), isNull);
+        // Con repetir-todo (wrap) también busca ANTES de la que falló, para no dejar varadas las descargadas anteriores.
+        expect(nextAvailableIndex([true, false, false], 2, wrap: true), 0);
+        expect(nextAvailableIndex([true, false, true], 2, wrap: true), 0);
+        expect(nextAvailableIndex([false, true, false], 1, wrap: true), isNull);
       },
     );
 
