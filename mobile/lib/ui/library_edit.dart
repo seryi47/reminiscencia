@@ -231,6 +231,28 @@ Future<void> deleteSongFlow(
   );
 }
 
+/// «Eliminar álbum» (delete_folder): pide confirmación y borra la carpeta. Las canciones NO se borran: quedan sueltas
+/// en la biblioteca (suben al nivel superior). Desaparece al instante como edición pendiente (ADR-0027).
+Future<void> deleteAlbumFlow(
+  BuildContext context,
+  AppServices services,
+  Folder folder,
+) async {
+  final confirmed = await showConfirmDialog(
+    context,
+    title: 'Eliminar álbum',
+    message:
+        '¿Eliminar el álbum «${folder.name}»? Sus canciones NO se borran: quedarán sueltas en la biblioteca.',
+    confirmLabel: 'Eliminar',
+  );
+  if (!confirmed || !context.mounted) return;
+  await openLibraryRequest(
+    context,
+    services,
+    LibraryRequest.deleteAlbum(folderId: folder.id),
+  );
+}
+
 Future<void> removeSongFromAlbumFlow(
   BuildContext context,
   AppServices services,
@@ -958,6 +980,15 @@ Future<void> showAlbumMenu(
                     orderAlbumFlow(context, services, folder);
                   },
                 ),
+              ListTile(
+                key: const ValueKey('album-menu-delete'),
+                leading: const Icon(Icons.delete_outline_rounded),
+                title: const Text('Eliminar álbum'),
+                onTap: () {
+                  close();
+                  deleteAlbumFlow(context, services, folder);
+                },
+              ),
             ],
           ),
         ),

@@ -74,6 +74,12 @@ jobs:
             echo "::error::La etiqueta $REF_NOMBRE no coincide con la versión $nombre de mobile/pubspec.yaml."
             exit 1
           fi
+          # El chequeo de actualización (ADR-0047) usa kAppVersionName: debe ir sincronizado con pubspec.
+          constante="$(sed -n "s/^const String kAppVersionName = '\([0-9.]*\)';.*/\1/p" mobile/lib/app_version.dart)"
+          if [ "$constante" != "$nombre" ]; then
+            echo "::error::mobile/lib/app_version.dart (kAppVersionName='$constante') no coincide con la versión de pubspec ('$nombre')."
+            exit 1
+          fi
           {
             echo "version=$version"
             echo "nombre=$nombre"

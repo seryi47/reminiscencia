@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../app_version.dart';
 import '../layout.dart';
 import '../pending_edits.dart';
 import '../services.dart';
 import '../theme.dart';
 import '../playback.dart';
+import '../update_check.dart';
 import '../upload_tracker.dart';
 import '../youtube_embed.dart';
 import 'youtube_results.dart';
@@ -49,6 +53,61 @@ class _HomeShellState extends State<HomeShell> {
     if (_nowPlaying.value.playing) youtubeEmbed.close();
   }
 
+  static const _dismissedUpdateKey = 'dismissed_update_version';
+
+  /// Al arrancar: si hay una APK más nueva publicada (ADR-0047), lo ofrece una vez. Silencioso si no hay red o no hay
+  /// actualización; no vuelve a preguntar por una versión que el usuario ya decidió saltarse.
+  Future<void> _checkForUpdate() async {
+    if (!updateCheckEnabled) return;
+    final info = await checkForUpdate();
+    if (info == null || !mounted) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getString(_dismissedUpdateKey) == info.version) return;
+    } catch (_) {
+      // Sin preferencias disponibles: se muestra igual.
+    }
+    if (!mounted) return;
+    final update = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hay una actualización'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Versión ${info.version} disponible. Tienes la $kAppVersionName.'),
+            if (info.notes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(info.notes, style: Theme.of(dialogContext).textTheme.bodySmall),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Ahora no'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Actualizar'),
+          ),
+        ],
+      ),
+    );
+    if (update == true) {
+      await launchUrl(Uri.parse(info.url), mode: LaunchMode.externalApplication);
+    } else {
+      // «Ahora no»: se recuerda esta versión para no insistir hasta que haya otra más nueva.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_dismissedUpdateKey, info.version);
+      } catch (_) {
+        // Sin preferencias, simplemente volverá a preguntar en el siguiente arranque.
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +117,8 @@ class _HomeShellState extends State<HomeShell> {
       library.ensureLoaded();
       // Reanuda las descargas de YouTube que quedaron a medias si el sistema cerró la app (ADR-0039).
       youtubeDownloads.restore(widget.services);
+      // Mira si hay una APK más nueva publicada y, si la hay, lo ofrece (ADR-0047). No bloquea ni fuerza nada.
+      unawaited(_checkForUpdate());
     });
     // La biblioteca se sincroniza al volver a primer plano (si pasó un tiempo). Al salir de la app se para la
     // conversión y la comprobación de lo que se está publicando; al volver, se comprueba enseguida.

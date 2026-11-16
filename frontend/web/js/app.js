@@ -741,6 +741,21 @@ async function deleteSong(song) {
   return true;
 }
 
+/** Elimina un álbum (carpeta) de la biblioteca común (delete_folder), tras confirmarlo. Las canciones NO se borran:
+ *  suben al nivel superior. Desaparece al instante como edición pendiente; el Worker lo manda a GitHub con su token. */
+async function deleteAlbum(folder) {
+  const ok = await confirmDialog({
+    title: 'Eliminar álbum',
+    message: `¿Eliminar el álbum «${folder.name}»? Sus canciones NO se borran: quedarán sueltas en la biblioteca.`,
+    confirmLabel: 'Eliminar',
+    danger: true,
+  });
+  if (!ok) return false;
+  edits.submit({ op: 'delete_folder', folder_id: folder.id });
+  toast(`Se eliminará el álbum «${folder.name}».`);
+  return true;
+}
+
 /** Descargar, cancelar la descarga en marcha o quitar la descarga de una colección (ADR-0033). */
 async function toggleDownload(contextId, songs, done) {
   if (downloads.isRunning(contextId)) {
@@ -1104,6 +1119,7 @@ const ctx = {
   addManyToQueue,
   deleteLocalSong,
   deleteSong,
+  deleteAlbum,
   toggleDownload,
   downloadProgress: (contextId) => downloads?.progress(contextId) ?? null,
   downloadStatusText,

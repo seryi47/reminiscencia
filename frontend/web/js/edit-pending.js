@@ -203,6 +203,24 @@ export function applyPendingEdits(songs, folders, edits) {
         folderIds.add(folder.id);
         break;
       }
+      case 'delete_folder': {
+        const index = folderIndex(payload.folder_id);
+        if (index < 0) break;
+        // Las canciones del álbum NO se borran: suben al nivel superior (el padre del álbum; null si no tiene).
+        const parent = folderList[index]?.parent_id ?? null;
+        for (let i = 0; i < songList.length; i++) {
+          const song = songList[i];
+          if (song?.folder_id === payload.folder_id) {
+            replaceSong(i, moveSong(songList, song, parent));
+            songIds.add(song.id);
+          }
+        }
+        // Las subcarpetas también suben de nivel, y el álbum desaparece.
+        folderList = folderList
+          .map((item) => (item?.parent_id === payload.folder_id ? { ...item, parent_id: parent } : item))
+          .filter((item) => item?.id !== payload.folder_id);
+        break;
+      }
       default:
         break;
     }
@@ -244,6 +262,9 @@ export function isEditReflected(edit, songs, folders) {
     case 'unpublish_song':
       // Reflejada cuando la canción ya no está en el catálogo público (se despublicó).
       return !songById(payload.song_id);
+    case 'delete_folder':
+      // Reflejada cuando el álbum ya no existe en el catálogo.
+      return !folderById(payload.folder_id);
     case 'move_songs':
       return (payload.song_ids ?? []).every((id) => {
         const song = songById(id);
@@ -326,6 +347,8 @@ export function describeEdit(payload, songs, folders) {
     case 'edit_folder':
     case 'rename_folder':
       return { label: 'name' in payload ? cleanEditText(payload.name) : folderName(payload.folder_id), action: 'Detalles del álbum' };
+    case 'delete_folder':
+      return { label: folderName(payload.folder_id), action: 'Eliminar álbum' };
     case 'create_folder':
       return { label: cleanEditText(payload.name), action: 'Álbum nuevo' };
     default:

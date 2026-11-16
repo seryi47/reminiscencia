@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:reminiscencia/api_config.dart';
+import 'package:reminiscencia/update_check.dart';
 
 /// Lo ejecuta flutter test antes de cada fichero de pruebas. Las pruebas nunca hablan con el Worker real (ADR-0029):
 /// usan rutas sin Worker, aunque kWorkerApiBase tenga la dirección de producción. Las que prueban el Worker pasan sus
@@ -11,6 +12,7 @@ import 'package:reminiscencia/api_config.dart';
 /// workers.dev, r2.dev o GitHub) va a un proxy que no existe y falla sin salir del equipo.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   apiRoutes = ApiRoutes(base: '');
+  updateCheckEnabled = false; // las pruebas no chequean actualizaciones (no tocan GitHub ni dejan timers)
   HttpOverrides.global = _NoProductionHttp();
   await testMain();
 }

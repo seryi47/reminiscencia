@@ -324,11 +324,12 @@ Folder _folderWith(
   String? name,
   String? artist,
   Object? cover = _keep,
+  Object? parentId = _keep,
   bool? pendingEdit,
 }) => Folder(
   id: folder.id,
   name: name ?? folder.name,
-  parentId: folder.parentId,
+  parentId: identical(parentId, _keep) ? folder.parentId : parentId as String?,
   artist: artist ?? folder.artist,
   cover: identical(cover, _keep) ? folder.cover : cover as String?,
   pendingEdit: pendingEdit ?? folder.pendingEdit,
@@ -365,6 +366,8 @@ PendingView applyPendingEdits(
   // Canciones eliminadas (despublicadas, ADR-0041): se quitan al final, para no mover los índices mientras se aplican
   // las demás ediciones.
   final removedSongs = <String>{};
+  // Álbumes eliminados (delete_folder): se quitan al final, igual que las canciones.
+  final removedFolders = <String>{};
 
   void moveInto(int index, String? target) {
     final song = songList[index];
@@ -468,10 +471,32 @@ PendingView applyPendingEdits(
               : null,
         );
         markedFolders.add(folder.id);
+      case 'delete_folder':
+        final id = payload['folder_id'];
+        if (id is! String) break;
+        final fIndex = folderIndex[id];
+        // Las canciones NO se borran: suben al nivel superior (el padre del álbum; null si no tiene).
+        final parent = fIndex == null ? null : folderList[fIndex].parentId;
+        for (var i = 0; i < songList.length; i++) {
+          if (songList[i].folderId == id) {
+            moveInto(i, parent);
+            markedSongs.add(songList[i].id);
+          }
+        }
+        // Las subcarpetas también suben de nivel.
+        for (var i = 0; i < folderList.length; i++) {
+          if (folderList[i].parentId == id) {
+            folderList[i] = _folderWith(folderList[i], parentId: parent);
+          }
+        }
+        removedFolders.add(id);
     }
   }
   if (removedSongs.isNotEmpty) {
     songList.removeWhere((song) => removedSongs.contains(song.id));
+  }
+  if (removedFolders.isNotEmpty) {
+    folderList.removeWhere((folder) => removedFolders.contains(folder.id));
   }
   for (var i = 0; i < songList.length; i++) {
     if (markedSongs.contains(songList[i].id)) {
@@ -548,6 +573,9 @@ bool isEditReflected(PendingEdit edit, List<Song> songs, List<Folder> folders) {
     case 'unpublish_song':
       // Reflejada cuando la canción ya no está en el catálogo público (se despublicó).
       return song(payload['song_id']) == null;
+    case 'delete_folder':
+      // Reflejada cuando el álbum ya no existe en el catálogo.
+      return folder(payload['folder_id']) == null;
     case 'move_songs':
       for (final id in (payload['song_ids'] as List? ?? const [])) {
         final current = song(id);
@@ -693,6 +721,8 @@ enum EditOutcome { pending, confirmed, failed }
             : folderName(payload['folder_id']),
         action: 'Detalles del álbum',
       );
+    case 'delete_folder':
+      return (label: folderName(payload['folder_id']), action: 'Eliminar álbum');
     case 'create_folder':
       return (label: cleanEditText(payload['name']), action: 'Álbum nuevo');
   }

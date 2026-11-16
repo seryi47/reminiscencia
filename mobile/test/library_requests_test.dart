@@ -95,6 +95,18 @@ void main() {
       }
     });
 
+    test('Eliminar álbum: delete_folder con el id', () {
+      for (final id in [albumId, oldAlbumId]) {
+        final request = LibraryRequest.deleteAlbum(folderId: id);
+        expect(request.title, 'Borrar el álbum $id');
+        expect(payloadOf(request.body), {'op': 'delete_folder', 'folder_id': id});
+      }
+    });
+
+    test('Eliminar álbum: rechaza un id de carpeta no válido', () {
+      expect(() => LibraryRequest.deleteAlbum(folderId: 'S0000000000000001'), throwsA(isA<AppException>()));
+    });
+
     test('los acentos y las comillas van en el JSON sin romper la línea', () {
       final request = LibraryRequest.createAlbum(
         name: 'Canción "de" cuna',

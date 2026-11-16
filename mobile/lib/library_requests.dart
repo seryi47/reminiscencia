@@ -329,6 +329,15 @@ class LibraryRequest {
     });
   }
 
+  /// «Eliminar álbum»: borra la carpeta (delete_folder). Sus canciones NO se borran: suben al nivel superior.
+  factory LibraryRequest.deleteAlbum({required String folderId}) {
+    _checkFolder(folderId);
+    return LibraryRequest._('Borrar el álbum $folderId', {
+      'op': 'delete_folder',
+      'folder_id': folderId,
+    });
+  }
+
   /// La misma operación que ya se envió una vez y quedó guardada como pendiente (ADR-0027, «Reintentar»). La
   /// validación la repite el servidor.
   factory LibraryRequest.resend(Map<String, Object?> payload) =>

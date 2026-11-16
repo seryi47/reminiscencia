@@ -205,6 +205,10 @@ function collectionMenuItems(ctx, context, editDetails) {
   if (context.kind === 'album' && isCoverFolderId(context.folder.id)) {
     items.push({ label: 'Cambiar portada', icon: 'image', testid: 'menu-album-cover', action: viaDialog(() => ctx.changeCover({ kind: 'album', id: context.folder.id, name: context.title })) });
   }
+  // Eliminar el álbum (delete_folder): solo los editables. Sus canciones NO se borran, quedan sueltas (ADR-0027).
+  if (context.kind === 'album' && editDetails) {
+    items.push({ label: 'Eliminar álbum', icon: 'trash', testid: 'menu-delete-album', action: viaDialog(() => ctx.deleteAlbum(context.folder)) });
+  }
   if (context.kind === 'playlist') {
     items.push({ label: 'Borrar la lista', icon: 'trash', testid: 'menu-delete-playlist', action: viaDialog(() => ctx.deletePlaylist(context.playlist.id)) });
   }

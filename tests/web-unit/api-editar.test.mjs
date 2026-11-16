@@ -57,11 +57,12 @@ describe('organizar', () => {
     assert.ok(!JSON.stringify(reply).includes(TOKEN));
   });
 
-  test('admite crear, editar y renombrar álbumes', async () => {
+  test('admite crear, editar, renombrar y borrar álbumes', async () => {
     for (const payload of [
       { op: 'create_folder', name: 'Valses' },
       { op: 'edit_folder', folder_id: FOLDER, name: 'Otro', artist: 'Alguien' },
       { op: 'rename_folder', folder_id: FOLDER, name: 'Otro' },
+      { op: 'delete_folder', folder_id: FOLDER },
       { op: 'edit_song', song_id: SONG, folder_id: FOLDER },
     ]) {
       const gh = fakeGitHub();
@@ -70,9 +71,8 @@ describe('organizar', () => {
     }
   });
 
-  test('rechaza borrar álbumes, publicar, importar y peticiones mal formadas sin llamar a GitHub', async () => {
+  test('rechaza publicar, importar y peticiones mal formadas sin llamar a GitHub', async () => {
     const casos = [
-      { action: 'organize', payload: { op: 'delete_folder', folder_id: FOLDER } },
       { action: 'organize', payload: { op: 'edit_song', song_id: SONG, public: true } },
       { action: 'import', url: 'https://archive.org/details/x' },
       { action: 'organize', payload: { op: 'edit_song', song_id: 'nope', title: 'x' } },
@@ -90,7 +90,7 @@ describe('organizar', () => {
   });
 
   test('admite move_songs (varias canciones a un álbum en una sola incidencia)', async () => {
-    assert.deepEqual([...ALLOWED_OPS], ['create_folder', 'edit_folder', 'rename_folder', 'edit_song', 'unpublish_song', 'move_songs', 'order_album', 'clean_titles']);
+    assert.deepEqual([...ALLOWED_OPS], ['create_folder', 'edit_folder', 'rename_folder', 'delete_folder', 'edit_song', 'unpublish_song', 'move_songs', 'order_album', 'clean_titles']);
     const gh = fakeGitHub();
     const payload = { op: 'move_songs', song_ids: [SONG, 'S0000000000000005'], folder_id: FOLDER };
     const response = await handleEdit(jsonRequest({ action: 'organize', payload }), { env: ENV, fetchImpl: gh.fetchImpl });
@@ -170,7 +170,7 @@ describe('organizar', () => {
 
   test('organizeProblem', () => {
     assert.equal(organizeProblem({ action: 'organize', payload: { op: 'create_folder', name: 'A' } }), null);
-    assert.match(organizeProblem({ action: 'organize', payload: { op: 'delete_folder', folder_id: FOLDER } }), /GitHub/);
+    assert.equal(organizeProblem({ action: 'organize', payload: { op: 'delete_folder', folder_id: FOLDER } }), null);
   });
 });
 

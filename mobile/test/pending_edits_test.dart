@@ -194,6 +194,35 @@ void main() {
           reason: 'ya no está → reflejada');
     });
 
+    test('delete_folder: quita el álbum y sube sus canciones al nivel superior (no las borra)', () {
+      final catalog = catalogFrom(contract);
+      const f1 = 'F0000000000000001';
+      final edit = editFromContract({
+        'kind': 'organize',
+        'payload': {'op': 'delete_folder', 'folder_id': f1},
+      });
+      final enF1 =
+          catalog.songs.where((s) => s.folderId == f1).map((s) => s.id).toList();
+      expect(enF1, isNotEmpty, reason: 'precondición: el álbum tiene canciones');
+      final view = applyPendingEdits(catalog.songs, catalog.folders, [edit]);
+      expect(view.folders.any((f) => f.id == f1), isFalse,
+          reason: 'el álbum desaparece');
+      expect(view.songs.length, catalog.songs.length,
+          reason: 'ninguna canción se borra');
+      for (final id in enF1) {
+        final moved = view.songs.firstWhere((s) => s.id == id);
+        expect(moved.folderId, isNull, reason: 'sus canciones quedan sueltas');
+        expect(moved.track, isNull, reason: 'sin número de pista fuera del álbum');
+        expect(view.songIds.contains(id), isTrue,
+            reason: 'las movidas se marcan pendientes');
+      }
+      expect(isEditReflected(edit, catalog.songs, catalog.folders), isFalse,
+          reason: 'sigue el álbum → no reflejada');
+      final sinF1 = catalog.folders.where((f) => f.id != f1).toList();
+      expect(isEditReflected(edit, catalog.songs, sinF1), isTrue,
+          reason: 'álbum fuera → reflejada');
+    });
+
     for (final raw in contract['duplicado'] as List) {
       final kase = raw as Map<String, dynamic>;
       test('duplicado: ${kase['nombre']}', () {
@@ -299,6 +328,10 @@ void main() {
       expect(
         describe({'op': 'rename_folder', 'folder_id': f2, 'name': 'C'}),
         'C | Detalles del álbum',
+      );
+      expect(
+        describe({'op': 'delete_folder', 'folder_id': f2}),
+        'Álbum B | Eliminar álbum',
       );
       expect(
         describe({'op': 'create_folder', 'name': 'Valses'}),

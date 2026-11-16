@@ -91,6 +91,25 @@ describe('contrato común (tests/contrato/ediciones-pendientes.json)', () => {
     assert.equal(isEditReflected(edit, songs.filter((s) => s.id !== 'S0000000000000001'), []), true, 'ya no está → reflejada');
   });
 
+  test('delete_folder: quita el álbum al instante y sube sus canciones al nivel superior (no las borra)', () => {
+    const songs = [
+      { id: 'S0000000000000001', title: 'Uno', folder_id: 'F0000000000000001', track: 1 },
+      { id: 'S0000000000000002', title: 'Dos', folder_id: 'F0000000000000001', track: 2 },
+      { id: 'S0000000000000003', title: 'Fuera', folder_id: null },
+    ];
+    const folders = [{ id: 'F0000000000000001', name: 'Álbum A', parent_id: null }];
+    const edit = { kind: 'organize', payload: { op: 'delete_folder', folder_id: 'F0000000000000001' }, state: 'pendiente' };
+    const view = applyPendingEdits(songs, folders, [edit]);
+    assert.equal(view.folders.length, 0, 'el álbum desaparece');
+    const uno = view.songs.find((s) => s.id === 'S0000000000000001');
+    assert.equal(uno.folder_id, null, 'sus canciones quedan sueltas');
+    assert.equal('track' in uno, false, 'sin número de pista fuera del álbum');
+    assert.ok(view.songIds.has('S0000000000000001') && view.songIds.has('S0000000000000002'), 'las movidas se marcan pendientes');
+    assert.ok(view.songs.some((s) => s.id === 'S0000000000000003'), 'la que ya estaba suelta sigue');
+    assert.equal(isEditReflected(edit, songs, folders), false, 'sigue el álbum → no reflejada');
+    assert.equal(isEditReflected(edit, songs, []), true, 'álbum fuera → reflejada');
+  });
+
   for (const caso of contrato.duplicado) {
     test(`duplicado: ${caso.nombre}`, () => {
       assert.equal(isDuplicateEdit(caso.a, caso.b), caso.igual);
@@ -141,6 +160,7 @@ describe('textos y espera', () => {
     assert.deepEqual(describeEdit({ op: 'move_songs', song_ids: [S1], folder_id: null }, songs, folders), { label: 'Uno', action: 'Quitar del álbum' });
     assert.deepEqual(describeEdit({ op: 'order_album', folder_id: F1, song_ids: [S1] }, songs, folders), { label: 'Álbum A', action: 'Orden de las canciones' });
     assert.deepEqual(describeEdit({ op: 'edit_folder', folder_id: F1, artist: 'X' }, songs, folders), { label: 'Álbum A', action: 'Detalles del álbum' });
+    assert.deepEqual(describeEdit({ op: 'delete_folder', folder_id: F1 }, songs, folders), { label: 'Álbum A', action: 'Eliminar álbum' });
     assert.deepEqual(describeEdit({ op: 'create_folder', name: 'Valses' }, songs, folders), { label: 'Valses', action: 'Álbum nuevo' });
   });
 

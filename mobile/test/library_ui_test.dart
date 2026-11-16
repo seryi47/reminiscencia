@@ -377,6 +377,41 @@ void main() {
       },
     );
 
+    testWidgets(
+      'el menú del álbum ofrece «Eliminar álbum» y envía delete_folder tras confirmar',
+      (tester) async {
+        setWindow(tester, const Size(400, 1000));
+        final t = buildTestServices(songs: songs, folders: folders);
+        await pumpApp(tester, t.services);
+        await tester.tap(find.text('Jazz de los años 20').last);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byTooltip('Más opciones de «Jazz de los años 20»'),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Eliminar álbum'), findsOneWidget);
+        await tester.tap(find.text('Eliminar álbum'));
+        await tester.pumpAndSettle();
+        // Diálogo de confirmación: al cancelar no envía nada.
+        await tester.tap(find.text('Cancelar'));
+        await tester.pumpAndSettle();
+        expect(t.submitted, isEmpty, reason: 'cancelar no borra nada');
+        // Repite y confirma.
+        await tester.tap(
+          find.byTooltip('Más opciones de «Jazz de los años 20»'),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Eliminar álbum'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+        await tester.pumpAndSettle();
+        expect(t.submitted.single.payload, {
+          'op': 'delete_folder',
+          'folder_id': albumId,
+        });
+      },
+    );
+
     Future<void> openAddSongsSheet(WidgetTester tester) async {
       await tester.tap(find.text('Jazz de los años 20').last);
       await tester.pumpAndSettle();
