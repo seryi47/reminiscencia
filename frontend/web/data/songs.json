@@ -1442,6 +1442,18 @@
     "gain_db": -4.7
   },
   {
+    "id": "S058e10e21652c381",
+    "title": "Donde Estan las Gatas",
+    "artist": "Alex Gargolas",
+    "year": null,
+    "tags": [],
+    "folder_id": "F417639bc3d88755f",
+    "duration_s": 175.009,
+    "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+    "audio": "audio/S058e10e21652c381.opus",
+    "track": 309
+  },
+  {
     "id": "S0984aaf3eb1ec7ff",
     "title": "Dracukeo",
     "artist": "Kidd Keo",
@@ -2159,6 +2171,18 @@
     "audio": "audio/Sb5cc9432ffa50503.opus",
     "cover": "covers/Sb5cc9432ffa50503.jpg",
     "gain_db": -3.8
+  },
+  {
+    "id": "S3ee4bce6da753616",
+    "title": "Fruto",
+    "artist": "Bizarrap",
+    "year": null,
+    "tags": [],
+    "folder_id": "F417639bc3d88755f",
+    "duration_s": 132.295,
+    "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+    "audio": "audio/S3ee4bce6da753616.opus",
+    "track": 308
   },
   {
     "id": "S2109ec3247de06d6",
@@ -3128,6 +3152,18 @@
     "gain_db": -8.7
   },
   {
+    "id": "Saf2a0827c01d21c0",
+    "title": "Lo Que Pasó, Pasó",
+    "artist": "Daddy Yankee",
+    "year": null,
+    "tags": [],
+    "folder_id": "F417639bc3d88755f",
+    "duration_s": 210.933,
+    "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+    "audio": "audio/Saf2a0827c01d21c0.opus",
+    "track": 310
+  },
+  {
     "id": "S79b6a85ae796e942",
     "title": "Lokenecesitas",
     "artist": "SAIKO",
@@ -3712,6 +3748,18 @@
     "audio": "audio/S5391e8d9e6b97ac8.opus",
     "track": 201,
     "gain_db": -9.4
+  },
+  {
+    "id": "S3aaeaecc8393315e",
+    "title": "No Pienso Llamar",
+    "artist": "Soge Culebra",
+    "year": null,
+    "tags": [],
+    "folder_id": "F417639bc3d88755f",
+    "duration_s": 198.353,
+    "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+    "audio": "audio/S3aaeaecc8393315e.opus",
+    "track": 311
   },
   {
     "id": "S501a198a01b4e93d",
