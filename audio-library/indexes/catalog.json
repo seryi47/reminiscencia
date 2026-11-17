@@ -10741,6 +10741,57 @@
       "added_at": "2026-11-17T12:16:23+00:00",
       "public": true,
       "track": 311
+    },
+    {
+      "id": "S040a48b4b1fe3bfe",
+      "title": "Perro Negro",
+      "artist": "Bad Bunny",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "040a48b4b1fe3bfe9d70a2a1e08b60e42f886552c9b7e404a9e7bfada2438c44",
+      "duration_s": 162.768,
+      "codec": "opus",
+      "size_bytes": 1000432,
+      "added_at": "2026-11-17T12:21:36+00:00",
+      "public": true,
+      "track": 312
+    },
+    {
+      "id": "Sac767260d51d3a90",
+      "title": "Prendio - Remix",
+      "artist": "Rvfv",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "ac767260d51d3a905430553ce092ff34a40d2662cdeddf4a93714165dff5b8b8",
+      "duration_s": 191.185,
+      "codec": "opus",
+      "size_bytes": 1174080,
+      "added_at": "2026-11-17T12:21:36+00:00",
+      "public": true,
+      "track": 313
+    },
+    {
+      "id": "Sb0ca1ec99ef331b7",
+      "title": "PACTO (feat. Bryant Myers & Dei V) - Remix",
+      "artist": "Jay Wheeler",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "b0ca1ec99ef331b7f3526c99d74fda1fac8e1d1640e53114a1ae5d6a76768b8e",
+      "duration_s": 346.0,
+      "codec": "opus",
+      "size_bytes": 2124864,
+      "added_at": "2026-11-17T12:21:36+00:00",
+      "public": true,
+      "track": 314
     }
   ]
 }
