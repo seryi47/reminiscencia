@@ -498,7 +498,6 @@ function transferPanel(ctx) {
     setSection(progress, el('div', { class: 'transferir-actions' }, stop));
     let addedTotal = 0;
     let lastFailed = 0;
-    let hitDailyLimit = false;
     try {
       let cycle = 0;
       while (!abort.signal.aborted) {
@@ -518,19 +517,17 @@ function transferPanel(ctx) {
           });
           addedCycle += result.files.length;
           failedCycle += result.errors.length;
-          if (result.dailyLimit) hitDailyLimit = true;
           base += collection.tracks.length;
         }
         addedTotal += addedCycle;
         lastFailed = failedCycle;
         if (abort.signal.aborted) break;
-        if (hitDailyLimit) break; // tope DIARIO del conversor: no sirve reintentar hoy
         if (failedCycle === 0) break; // completado: ya no falla nada
         if (cycle >= AUTO_RESUME_MAX_CYCLES) break;
         try { await countdownWait(progress, Date.now() + AUTO_RESUME_GAP_MS, failedCycle, abort.signal); }
         catch { break; } // parado durante la espera
       }
-      const done = lastFailed === 0 && !abort.signal.aborted && !hitDailyLimit;
+      const done = lastFailed === 0 && !abort.signal.aborted;
       const stopped = abort.signal.aborted;
       // Actualización EN VIVO (ADR-0046): si se transfirió todo sin fallos, esas canciones ya las tienes (aunque tarden un
       // poco en publicarse). Se guardan sus claves y se vacía la caché de recuentos para que el navegador recompute «faltan».
@@ -546,14 +543,11 @@ function transferPanel(ctx) {
         el('p', { class: 'transferir-summary', 'data-testid': 'transferir-done' },
           done
             ? `¡Listo! Añadidas ${addedTotal}. Verás el progreso de publicación en «Tu biblioteca».`
-            : `Añadidas ${addedTotal}${lastFailed ? ` · quedan ~${lastFailed}` : ''}. ${hitDailyLimit ? 'Se alcanzó el límite DIARIO del conversor.' : (stopped ? 'Reintento automático detenido.' : 'Se alcanzó el límite de reintentos.')}`),
+            : `Añadidas ${addedTotal}${lastFailed ? ` · quedan ~${lastFailed}` : ''}. ${stopped ? 'Reintento automático detenido.' : 'Se alcanzó el límite de reintentos.'}`),
         done
           ? el('div')
           : el('p', { class: 'transferir-intro' },
-            hitDailyLimit
-              ? 'El conversor gratuito (yttowav) solo permite 40 canciones al día. Vuelve mañana y dale a «Transferir» con la '
-                + 'misma lista: saltará lo que ya tengas y seguirá con lo que falte. (Para no tener este tope haría falta un conversor propio.)'
-              : 'El tope es de YouTube, no un fallo. Vuelve a darle a «Transferir» más tarde: saltará lo que ya tienes y seguirá con lo que falta.'),
+            'El tope es de YouTube, no un fallo. Vuelve a darle a «Transferir» más tarde: saltará lo que ya tienes y seguirá con lo que falta.'),
         el('button', { type: 'button', class: 'homeostasia-submit', on: { click: () => { state.sources.clear(); state.collections = []; paintLibrary('¿Transferir algo más?'); } } }, 'Transferir más'),
       );
     } catch (error) {

@@ -137,13 +137,9 @@ class YoutubeTruncatedException extends AppException {
   const YoutubeTruncatedException(super.message);
 }
 
-bool _isDailyLimit(Object error) {
-  final message = error is AppException ? error.message : error.toString();
-  return RegExp(
-    r'daily conversion limit|per day|come back tomorrow|l[ií]mite diario',
-    caseSensitive: false,
-  ).hasMatch(message);
-}
+/// El conversor no tiene tope diario de verdad (ADR-0044): aunque el mensaje de error diga «daily conversion limit»,
+/// reintentar funciona. Se conserva la función para los tests y llamadas antiguas, pero siempre devuelve false.
+bool _isDailyLimit(Object error) { return false; } // ignore: unused_element
 
 class YoutubeImportCancellation {
   final Completer<void> _cancelled = Completer<void>();

@@ -192,18 +192,21 @@ describe('tolerancia de duración realista (el patrón «Mala Mujer»)', () => {
   });
 });
 
-describe('puerta de artista (no autoaceptar otro artista)', () => {
-  test('título y duración exactos pero OTRO artista (no oficial) → baja, nada autoseleccionado', () => {
+describe('puerta de artista (no autoaceptar otro artista, pero preseleccionar para revisar)', () => {
+  test('título y duración exactos pero OTRO artista (no oficial) → media con el candidato preseleccionado', () => {
+    // Antes mandaba la pista a «baja» sin candidato, obligando al usuario a buscarla a mano por cada desajuste de
+    // nombre (p. ej. tildes/apostrofes/localizaciones). Ahora se preseleccionala mejor y queda como «media» para que
+    // el usuario confirme con un clic. Seguimos SIN autoaceptar (no es «alta»).
     const song = track('Perfect', ['Ed Sheeran'], 263000);
     const result = classifyMatch(song, [cand('x', 'Perfect', 'Random Covers Channel', 263, 'search')]);
-    assert.equal(result.tier, 'baja');
-    assert.equal(result.best, null);
+    assert.equal(result.tier, 'media');
+    assert.equal(result.best.candidate.id, 'x');
   });
-  test('el mismo caso con fuente oficial (Topic) sí se acepta', () => {
+  test('el mismo caso con fuente oficial (Topic) sí se autoacepta', () => {
     const song = track('Perfect', ['Ed Sheeran'], 263000);
     const result = classifyMatch(song, [cand('ok', 'Perfect', 'Ed Sheeran', 263, 'topic')]);
     assert.equal(result.best.candidate.id, 'ok');
-    assert.notEqual(result.tier, 'baja');
+    assert.equal(result.tier, 'alta');
   });
 });
 

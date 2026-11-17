@@ -217,19 +217,20 @@ export function rankCandidates(track, candidates) {
 export function classifyMatch(track, candidates, { maxAlternatives = 5 } = {}) {
   const ranked = rankCandidates(track, candidates);
   const best = ranked[0];
-  // Puerta de artista (precisión): no se autoacepta un candidato cuyo artista NO coincide, salvo que sea fuente oficial
-  // (Topic/VEVO) o tenga ISRC exacto. Así un título+duración que cuadran pero de OTRO artista no se cuela como «media».
+  // Puerta de artista para AUTOACEPTAR: solo se considera «alta» si el artista cuadra, o el candidato es de una fuente
+  // oficial (Topic/VEVO) o tiene ISRC exacto. Que el artista no coincida ya no manda la pista a manual: se baja a
+  // «media» con el mejor candidato preseleccionado, para que un clic confirme en vez de obligar a rebuscar.
   const artistOk = !best || best.signals.artistMatch !== false
     || best.signals.source === 'topic' || best.signals.source === 'official' || best.signals.isrcExact;
-  if (!best || best.score < THRESHOLDS.mediumFloor || !artistOk) {
+  if (!best || best.score < THRESHOLDS.mediumFloor) {
     return { tier: 'baja', best: null, alternatives: ranked.slice(0, maxAlternatives), ranked };
   }
   // Duración «de la misma grabación»: dentro de ±8 s. Spotify y YouTube difieren varios segundos de forma rutinaria
   // (intros, silencios finales, conteos), así que exigir ±2 s mandaba a «revisar» coincidencias correctísimas.
   const durationOk = best.signals.durDiff != null && best.signals.durDiff <= THRESHOLDS.autoDurationS;
   const versionOk = best.signals.extra.length === 0 && best.signals.missing.length === 0;
-  const clear = best.signals.isrcExact
-    || (best.score >= THRESHOLDS.autoScore && durationOk && versionOk);
+  const clear = artistOk && (best.signals.isrcExact
+    || (best.score >= THRESHOLDS.autoScore && durationOk && versionOk));
   if (clear) {
     return { tier: 'alta', best, alternatives: ranked.slice(1, maxAlternatives), ranked };
   }

@@ -565,18 +565,22 @@ void main() {
   );
 
   test(
-    'el tope diario del conversor (429) corta la tanda y avisa',
+    'un 429 con mensaje de «daily conversion limit» ya no corta la tanda: se reintenta como cualquier 429',
     () async {
+      // ADR-0044: yttowav NO tiene un tope diario de verdad; su mensaje «daily conversion limit» era un rechazo
+      // temporal y lo tratábamos como un corte definitivo, dejando sin importar lo que faltara. Ahora se reintenta.
       var dailyLimitAvisos = 0;
+      var convertCalls = 0;
       final importer = YoutubeImporter(
         client: MockClient((request) async {
           if (request.url.path == '/api/convert') {
+            convertCalls++;
             return http.Response(
               jsonEncode({'error': "You've reached the daily conversion limit (40 per day). Please come back tomorrow!"}),
               429,
             );
           }
-          fail('No debería llamar a ${request.url} tras el tope diario');
+          fail('No debería llegar a descargar porque la conversión siempre devuelve 429');
         }),
         base: Uri.parse('https://example.test/'),
         converterBase: Uri.parse('https://example.test/'),
@@ -592,8 +596,9 @@ void main() {
         onDailyLimit: () => dailyLimitAvisos++,
       );
 
-      expect(audios, isEmpty, reason: 'con el tope diario no se convierte nada');
-      expect(dailyLimitAvisos, greaterThanOrEqualTo(1), reason: 'se avisa del tope diario');
+      expect(audios, isEmpty, reason: 'si el conversor sigue devolviendo 429 para todas, no se importa ninguna');
+      expect(dailyLimitAvisos, 0, reason: 'ya no se avisa de un tope diario falso');
+      expect(convertCalls, greaterThanOrEqualTo(kYoutubeConvertCreateAttempts), reason: 'se reintenta varias veces por pista');
     },
   );
 

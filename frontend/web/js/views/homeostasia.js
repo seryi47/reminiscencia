@@ -125,10 +125,11 @@ function sleep(ms, signal) {
   });
 }
 
-/** ¿El error es el tope DIARIO del conversor (yttowav: «daily conversion limit (40 per day)»)? No se arregla hoy. */
-function isDailyLimit(error) {
-  return /daily conversion limit|per day|come back tomorrow|l[ií]mite diario/i.test(String(error?.message ?? ''));
-}
+/** El conversor no tiene tope diario de verdad (ADR-0044): aunque el mensaje de error diga «daily conversion limit»,
+ *  reintentando funciona. Se mantiene la función para quienes la importan, pero siempre devuelve false para que no
+ *  corte la tanda ni abra el circuito. Si de verdad el conversor se cayera por completo, el `circuitBreak` general
+ *  (N fallos seguidos) sigue parando la tanda. */
+function isDailyLimit(_error) { return false; }
 
 async function esperarTurnoCreacion(signal, deadline) {
   const now = Date.now();
@@ -314,9 +315,8 @@ async function crearJob(url, title, signal, deadline, onRetry, traceId, onCreate
       );
       break;
     } catch (error) {
-      // Tope DIARIO del conversor (yttowav gratuito: 40/día): no tiene arreglo reintentando hoy, así que no se reintenta
-      // ni se sigue con la lista; se corta con un mensaje claro (lo detecta convertirPlaylist/importYoutubeTracks).
-      if (isDailyLimit(error)) throw error;
+      // (Antes se cortaba si el mensaje mencionaba un «tope diario»; ADR-0044 aclara que no existe tal tope, así que se
+      // trata como un 429 normal y se reintenta con espera exponencial.)
       const retryable = error?.name !== 'AbortError' && (
         error.status === undefined ||
         [408, 425, 429, 503, 504].includes(error.status)
@@ -615,7 +615,9 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
   // error (pendiente) para un reintento posterior, que al ir por caché salta lo ya hecho.
   let consecutiveFails = 0;
   let circuitOpen = false;
-  let dailyLimit = false; // tope diario del conversor alcanzado: corta y avisa (no se arregla hoy)
+  // El tope «diario» del conversor no existe en realidad (ADR-0044); el aggregate lo expone como false para que las vistas
+  // viejas que aún miran dailyLimit no corten la tanda.
+  const dailyLimit = false;
 
   const total = items.length;
 
@@ -685,8 +687,7 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
         } else if (!result.skipped) {
           errors.push(result);
           consecutiveFails++;
-          if (isDailyLimit(result.error)) { circuitOpen = true; dailyLimit = true; }
-          else if (consecutiveFails >= CONFIG.circuitBreak) circuitOpen = true;
+          if (consecutiveFails >= CONFIG.circuitBreak) circuitOpen = true;
         }
 
         onProgress({
