@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rutas accesibles por el FileProvider que entrega el APK recién descargado al instalador del sistema (ADR-0047).
+     Solo se expone el directorio de caché interno; no hay acceso a la biblioteca ni a documentos del usuario. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="updates" path="updates/"/>
+</paths>

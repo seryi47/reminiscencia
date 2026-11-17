@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- connectivity_plus: saber si hay Wi-Fi para descargar solo sin datos móviles. No envía nada. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Auto-actualización (ADR-0047): se descarga el APK nuevo al almacenamiento interno y se abre el instalador del
+         sistema para que el usuario lo apruebe. No se instala sin su confirmación. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:label="Reminiscencia"
@@ -58,6 +61,18 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- FileProvider para abrir el APK descargado desde el instalador del sistema (ADR-0047). Desde Android N no se
+             permite pasar file:// a otras apps: hay que servirlo como content://. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths"/>
+        </provider>
     </application>
     <queries>
         <intent>
@@ -68,6 +83,11 @@
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
+        </intent>
+        <!-- Para abrir el instalador de paquetes (auto-actualización, ADR-0047). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/vnd.android.package-archive"/>
         </intent>
     </queries>
 </manifest>

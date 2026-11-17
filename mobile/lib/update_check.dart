@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 import 'app_version.dart';
 
@@ -101,6 +103,57 @@ Future<UpdateInfo?> checkForUpdate({
     final notes = body is String ? body.trim() : '';
     return UpdateInfo(version: version, url: url, notes: notes.length > 400 ? '${notes.substring(0, 400)}…' : notes);
   } catch (_) {
+    return null;
+  } finally {
+    if (client == null) own.close();
+  }
+}
+
+/// Descarga el APK de [info] a la caché interna de la app para instalarlo con el instalador del sistema (ADR-0047).
+/// `onProgress(recibidos, total)` informa del avance (`total` puede ser -1 si el servidor no manda `Content-Length`).
+/// Devuelve la ruta del fichero descargado, o null si falla. Nunca lanza.
+///
+/// La ruta queda bajo `getApplicationCacheDirectory()/updates/`, que es lo que publica el FileProvider del AndroidManifest:
+/// es el único sitio desde el que podemos entregar el fichero al instalador vía `content://`.
+Future<String?> downloadApk(
+  UpdateInfo info, {
+  http.Client? client,
+  void Function(int received, int total)? onProgress,
+}) async {
+  if (!info.url.endsWith('.apk')) return null; // la URL llevaba a la página de la release, no al APK directo
+  final own = client ?? http.Client();
+  File? partial;
+  try {
+    final cacheDir = await getApplicationCacheDirectory();
+    final updatesDir = Directory('${cacheDir.path}/updates');
+    if (!await updatesDir.exists()) await updatesDir.create(recursive: true);
+    // Limpia APKs viejos de otras versiones para no llenar la caché (si no queda espacio, Android limpia por su cuenta).
+    for (final entry in updatesDir.listSync(followLinks: false)) {
+      if (entry is File && entry.path.endsWith('.apk')) {
+        try { await entry.delete(); } catch (_) {}
+      }
+    }
+    final target = File('${updatesDir.path}/reminiscencia-${info.version}.apk');
+    partial = File('${target.path}.part');
+    final request = http.Request('GET', Uri.parse(info.url))..followRedirects = true;
+    final response = await own.send(request).timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) return null;
+    final total = response.contentLength ?? -1;
+    var received = 0;
+    final sink = partial.openWrite();
+    try {
+      await for (final chunk in response.stream) {
+        sink.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received, total);
+      }
+    } finally {
+      await sink.close();
+    }
+    await partial.rename(target.path);
+    return target.path;
+  } catch (_) {
+    try { if (partial != null && await partial.exists()) await partial.delete(); } catch (_) {}
     return null;
   } finally {
     if (client == null) own.close();

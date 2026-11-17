@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../apk_installer.dart';
 import '../app_version.dart';
 import '../layout.dart';
 import '../pending_edits.dart';
@@ -96,15 +97,100 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
     if (update == true) {
-      await launchUrl(Uri.parse(info.url), mode: LaunchMode.externalApplication);
-    } else {
-      // «Ahora no»: se recuerda esta versión para no insistir hasta que haya otra más nueva.
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_dismissedUpdateKey, info.version);
-      } catch (_) {
-        // Sin preferencias, simplemente volverá a preguntar en el siguiente arranque.
+      await _downloadAndInstall(info);
+      return;
+    }
+    // «Ahora no»: se recuerda esta versión para no insistir hasta que haya otra más nueva.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_dismissedUpdateKey, info.version);
+    } catch (_) {
+      // Sin preferencias, simplemente volverá a preguntar en el siguiente arranque.
+    }
+  }
+
+  /// Descarga el APK a la caché y lanza el instalador del sistema (ADR-0047). Muestra un diálogo de progreso cancelable;
+  /// si no tiene permiso para instalar fuentes desconocidas, ofrece ir a Ajustes. Ante cualquier fallo, cae a abrir la
+  /// página de la release en el navegador, como antes.
+  Future<void> _downloadAndInstall(UpdateInfo info) async {
+    // Permiso de «instalar desde fuentes desconocidas» (Android 8+): si falta, ofrecemos ir a Ajustes antes de bajar nada.
+    bool canInstall = true;
+    try { canInstall = await ApkInstaller.canRequestInstall(); } catch (_) { canInstall = true; }
+    if (!canInstall) {
+      if (!mounted) return;
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (dc) => AlertDialog(
+          title: const Text('Permiso para instalar'),
+          content: const Text(
+            'Android pide permiso para instalar la actualización. Ábrelo en Ajustes, activa «Permitir desde esta fuente» '
+            'y vuelve a la app para seguir.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dc).pop(false), child: const Text('Ahora no')),
+            FilledButton(onPressed: () => Navigator.of(dc).pop(true), child: const Text('Ir a Ajustes')),
+          ],
+        ),
+      );
+      if (go == true) {
+        try { await ApkInstaller.openInstallPermissionSettings(); } catch (_) {}
       }
+      return;
+    }
+
+    // Diálogo de progreso. `progress` manda un 0..1 (o null si el servidor no manda `Content-Length`).
+    final progress = ValueNotifier<double?>(0);
+    bool cancelled = false;
+    if (!mounted) return;
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dc) => AlertDialog(
+        title: const Text('Descargando actualización…'),
+        content: ValueListenableBuilder<double?>(
+          valueListenable: progress,
+          builder: (_, value, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LinearProgressIndicator(value: value),
+              const SizedBox(height: 12),
+              Text(value == null
+                  ? 'Bajando…'
+                  : 'Bajando ${(value * 100).clamp(0, 100).toStringAsFixed(0)} %'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () { cancelled = true; Navigator.of(dc).pop(); },
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    ));
+
+    final path = await downloadApk(info, onProgress: (received, total) {
+      if (cancelled) return;
+      progress.value = total > 0 ? received / total : null;
+    });
+    if (cancelled) return;
+    if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop(); // cierra el progreso
+    }
+
+    if (path == null) {
+      // No pudimos bajar el APK directo: caemos al navegador abriendo la página de la release.
+      await launchUrl(Uri.parse(info.url), mode: LaunchMode.externalApplication);
+      return;
+    }
+    try {
+      await ApkInstaller.install(path);
+      // El instalador toma el control; cuando el usuario apruebe, Android relanza la app ya actualizada.
+    } catch (_) {
+      // Si el intent de instalación falla por algo raro, abrimos la página de la release en el navegador para que el
+      // usuario no se quede sin salida.
+      await launchUrl(Uri.parse(info.url), mode: LaunchMode.externalApplication);
     }
   }
 
