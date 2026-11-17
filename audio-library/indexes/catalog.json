@@ -10928,6 +10928,57 @@
       "added_at": "2026-11-17T12:28:20+00:00",
       "public": true,
       "track": 322
+    },
+    {
+      "id": "Sd2d95f617070c2c7",
+      "title": "Qlona",
+      "artist": "KAROL G",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "d2d95f617070c2c7dbe7abffe6839bff15ca0337b9b4d95ca270f361493933bc",
+      "duration_s": 172.798,
+      "codec": "opus",
+      "size_bytes": 1061192,
+      "added_at": "2026-11-17T12:31:33+00:00",
+      "public": true,
+      "track": 323
+    },
+    {
+      "id": "S9a17860b02308429",
+      "title": "Diluvio",
+      "artist": "Rauw Alejandro",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "9a17860b02308429d10fcf8223277b65e7803cc4f826ff43de14353211797b6f",
+      "duration_s": 197.053,
+      "codec": "opus",
+      "size_bytes": 1209986,
+      "added_at": "2026-11-17T12:31:33+00:00",
+      "public": true,
+      "track": 324
+    },
+    {
+      "id": "S3fc574ade7b60203",
+      "title": "Gatúbela",
+      "artist": "KAROL G",
+      "year": null,
+      "tags": [],
+      "folder_id": "F417639bc3d88755f",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "3fc574ade7b60203cb56998f42434ac05554efa1d01a7e12f4d9339361605ce0",
+      "duration_s": 208.013,
+      "codec": "opus",
+      "size_bytes": 1276486,
+      "added_at": "2026-11-17T12:31:33+00:00",
+      "public": true,
+      "track": 325
     }
   ]
 }
