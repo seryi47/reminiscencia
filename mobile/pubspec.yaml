@@ -50,8 +50,10 @@ dependencies:
   youtube_explode_dart: ^3.1.0
   webview_flutter: ^4.14.1
   webview_flutter_android: ^4.14.1
-  # Reconocimiento musical tipo Shazam (ADR-0048): capturar 8 s de micrófono y enviarlos a AudD.
-  record: ^5.2.0
+  # Reconocimiento musical propio tipo Shazam (ADR-0048): capturar 8 s de micrófono y huellarlos localmente.
+  record: 5.1.2
+  record_platform_interface: 1.2.0
+  record_linux: 0.7.1
   permission_handler: ^11.3.1
 
 dev_dependencies:
