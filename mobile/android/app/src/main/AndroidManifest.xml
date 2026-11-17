@@ -12,6 +12,9 @@
     <!-- Auto-actualización (ADR-0047): se descarga el APK nuevo al almacenamiento interno y se abre el instalador del
          sistema para que el usuario lo apruebe. No se instala sin su confirmación. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- Reconocimiento musical tipo Shazam (ADR-0048): solo se activa al pulsar «Reconocer» y se para en cuanto termina o
+         el usuario cancela. No hay grabación persistente. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <application
         android:label="Reminiscencia"

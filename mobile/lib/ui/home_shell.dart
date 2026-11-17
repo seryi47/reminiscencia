@@ -21,6 +21,7 @@ import 'home_page.dart';
 import 'library_page.dart';
 import 'pending_edits_panel.dart';
 import 'player.dart';
+import 'recognize_sheet.dart';
 import 'search_page.dart';
 import 'youtube_embed_dock.dart';
 
@@ -365,6 +366,13 @@ class _HomeShellState extends State<HomeShell> {
         return Scaffold(
           backgroundColor: palette.background,
           body: tabs,
+          floatingActionButton: FloatingActionButton(
+            heroTag: 'reconocer-fab',
+            tooltip: 'Reconocer canción',
+            onPressed: () => openRecognizeSheet(context, widget.services),
+            child: const Icon(Icons.mic_rounded),
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           bottomNavigationBar: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
