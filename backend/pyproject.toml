@@ -10,7 +10,9 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+# ADR-0049: `pytest-xdist` paraleliza la suite entre los núcleos del runner (CI y local). Con 1445 tests baja de
+# ~60-120 s a ~20-40 s. `backend.yml` ya pasa `-n auto`.
+dev = ["pytest>=8", "pytest-xdist>=3"]
 
 [tool.setuptools.packages.find]
 include = ["sonidos*"]

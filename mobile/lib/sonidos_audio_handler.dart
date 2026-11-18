@@ -835,9 +835,20 @@ class SonidosAudioHandler extends BaseAudioHandler
       // Siempre se carga (nunca se busca): una carga acaba siempre, lista o con error, y vuelve a mirar lo guardado.
       // Buscar no sirve: tras un error just_audio queda parado y no se prepara, y si la fuente de destino falla, la
       // búsqueda no acaba nunca y bloquearía la cola de órdenes (y con ella la recuperación del error).
-      ready = _sameQueue(songs)
-          ? await _setSources(index, Duration.zero)
-          : await _loadQueue(songs, index);
+      if (_sameQueue(songs)) {
+        // ADR-0049: si la cola es idéntica y just_audio ya la tiene cargada, basta un seek al índice: no reconstruyen
+        // ni recargan las sources (antes `_setSources` las reconstruía enteras → hasta 50-100 ms extra y un
+        // cortocircuito del buffer en curso). `shuffleModeEnabled` y `shuffleIndices` quedan tal cual, porque la cola
+        // no ha cambiado. Si just_audio no está en estado válido (idle o error) caemos al camino de recarga.
+        try {
+          await _player.seek(Duration.zero, index: index);
+          ready = true;
+        } catch (_) {
+          ready = await _setSources(index, Duration.zero);
+        }
+      } else {
+        ready = await _loadQueue(songs, index);
+      }
     } on AppException {
       rethrow;
     } catch (error) {

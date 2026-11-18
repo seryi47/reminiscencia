@@ -16,6 +16,10 @@ const int kYoutubeMaxWavBytes = 256 * 1024 * 1024;
 const int kYoutubeMaxTitleRunes = 120;
 const int kYoutubeConcurrency = 4;
 const int kYoutubeConvertCreateAttempts = 6;
+/// ADR-0049: tope de TIMEOUTS consecutivos del conversor en la misma tanda. Antes podía gastar hasta ~18 min en una
+/// sola pista (6 intentos × 3 min de timeout). Con este circuito, tras 2 timeouts seguidos salta a la siguiente pista
+/// y la marca como fallida para el reintento posterior.
+const int kYoutubeMaxConsecutiveTimeouts = 2;
 const int kYoutubeStatusErrorRetries = 5;
 const Duration kYoutubeConvertCreateGap = Duration(seconds: 2);
 const Duration kYoutubePollInterval = Duration(seconds: 3);
@@ -1097,6 +1101,7 @@ class YoutubeImporter {
     var lastHave = -1;
     int? expected;
     final prefix = <int>[];
+    var consecutiveTimeouts = 0;
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
       cancellation?.throwIfCancelled();
       final reqHeaders = <String, String>{'Accept': 'audio/wav', ...headers};
@@ -1115,8 +1120,11 @@ class YoutubeImporter {
                 ..headers.addAll(reqHeaders),
             )
             .timeout(kYoutubeDownloadTimeout);
+        consecutiveTimeouts = 0; // request completó sin timeout
       } on TimeoutException {
-        if (attempt == maxAttempts - 1) {
+        consecutiveTimeouts++;
+        // Circuito: 2 timeouts seguidos (= 6 min) y cortamos sin agotar los 6 intentos (= 18 min). ADR-0049.
+        if (consecutiveTimeouts >= kYoutubeMaxConsecutiveTimeouts || attempt == maxAttempts - 1) {
           throw const AppException('La descarga del WAV tardó demasiado.');
         }
         await _waitCancellable(kYoutubePollInterval, cancellation);

@@ -123,7 +123,9 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         songs.append(entry)
     songs.sort(key=lambda item: item["title"].lower())
 
-    (web_data / "songs.json").write_text(json.dumps(songs, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # ADR-0049: `indent=None` + separadores compactos. Antes `indent=2` añadía ~30 % bytes (~55 KB extra en 189 KB).
+    # Post-brotli el ahorro real es ~10 KB por descarga. No altera la semántica del JSON.
+    (web_data / "songs.json").write_text(json.dumps(songs, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     folders = []
     for folder in data["folders"]:
         entry = {"id": folder["id"], "name": folder["name"], "parent_id": folder["parent_id"]}
@@ -133,7 +135,7 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         if folder_covers[folder["id"]]:
             entry["cover"] = folder_covers[folder["id"]]
         folders.append(entry)
-    (web_data / "folders.json").write_text(json.dumps(folders, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (web_data / "folders.json").write_text(json.dumps(folders, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
 
     catalog_songs = []
     for song in public:
@@ -148,7 +150,7 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         catalog_songs.append(entry)
     catalog_songs.sort(key=lambda item: ((item["title"] or "").lower(), item["id"]))
     catalog_view = {"songs": catalog_songs, "folders": folders}
-    (web_data / "catalog.json").write_text(json.dumps(catalog_view, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (web_data / "catalog.json").write_text(json.dumps(catalog_view, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
 
     return {"public": len(songs), "catalog_songs": len(catalog_songs), "folders": len(folders),
             "covers": len(cover_names)}
