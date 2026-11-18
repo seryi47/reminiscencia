@@ -7,7 +7,9 @@
 // ruido puede dar un transcrito limpio (pop con voz clara) o un galimatías (rap acelerado o bar ruidoso). Cuando no
 // hay confianza en el transcrito, devolvemos `matched: false` con razón «no_lyrics_captured» o «no_lyrics_match».
 
-const WHISPER_MODEL = '@cf/openai/whisper';
+// `whisper-large-v3-turbo` acepta base64, autodetecta el idioma (clave para música en español) y rinde mejor en voces
+// cantadas que el `whisper` básico. Workers AI incluye cuota generosa para esto.
+const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 const LRCLIB_SEARCH = 'https://lrclib.net/api/search';
 // Longitud mínima del transcrito para que merezca la pena buscar letra. Si el micro capta ruido, Whisper devuelve 1-2
 // palabras y la búsqueda es ruido también.
@@ -42,11 +44,16 @@ export async function handleRecognizeLyricsRequest(request, { env } = {}) {
     return jsonResponse(413, { ok: false, matched: false, error: 'Audio demasiado grande (>10 MB).' });
   }
 
-  // 1) Transcripción Whisper. Pedimos `vtt=false` para recibir el texto plano.
+  // 1) Transcripción con whisper-large-v3-turbo. Pasamos el audio como base64 (es lo que acepta este modelo) y le
+  //    decimos `task: 'transcribe'` para que escriba la letra TAL CUAL se canta (si fuera 'translate' lo traduciría a
+  //    inglés). El idioma lo detecta solo, así que vale para español, inglés, etc.
   let transcript = '';
+  let detectedLanguage = '';
   try {
-    const out = await ai.run(WHISPER_MODEL, { audio: Array.from(audioBytes) });
+    const audioB64 = toBase64(audioBytes);
+    const out = await ai.run(WHISPER_MODEL, { audio: audioB64, task: 'transcribe' });
     transcript = (out?.text ?? '').trim();
+    detectedLanguage = (out?.language ?? '').toString();
   } catch (error) {
     return jsonResponse(200, { ok: true, matched: false, reason: 'whisper_failed', detail: String(error?.message ?? error) });
   }
@@ -78,7 +85,18 @@ export async function handleRecognizeLyricsRequest(request, { env } = {}) {
     album: top.albumName ?? '',
     confidence: Math.min(1, top.score / 8),
     transcript,
+    language: detectedLanguage,
   });
+}
+
+/** Codifica un Uint8Array a base64 ASCII sin Buffer (compatible con Workers runtime). */
+function toBase64(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 /** Normaliza para comparar: baja, quita signos, colapsa espacios. */

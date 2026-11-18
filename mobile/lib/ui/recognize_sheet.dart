@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../local_audio.dart';
 import '../music_recognition.dart';
 import '../services.dart';
+import '../youtube_importer.dart';
 
 /// Hoja «Reconocer canción» (ADR-0048): botón central grande, animación de escucha y resultado con portada/título. No
 /// bloquea: el micrófono solo se activa al pulsar y se cierra en cuanto termina o el usuario cancela.
@@ -90,7 +92,13 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
               style: theme.textTheme.bodyLarge,
             ),
             const SizedBox(height: 24),
-            if (status == RecognitionStatus.matched) _MatchResult(progress: _progress, onOpen: () => _openSong()),
+            if (status == RecognitionStatus.matched)
+              _MatchResult(
+                progress: _progress,
+                services: widget.services,
+                onOpen: _openSong,
+                onImport: _importFromYoutube,
+              ),
             if (status == RecognitionStatus.notMatched) _NotFoundHint(onRetry: _start),
             if (status == RecognitionStatus.error)
               Padding(
@@ -107,8 +115,72 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
     final id = _progress.songId;
     if (id == null) return;
     Navigator.of(context).pop();
-    // La integración con el reproductor (abrir la pista) la hace la pantalla que esté detrás de la hoja. Un snack rápido:
     final msg = _progress.title != null ? 'Abriendo «${_progress.title}»…' : 'Abriendo canción…';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// Vía 2 (letras): la canción no está en la biblioteca, pero sabemos título y artista. Busca en YouTube, descarga y la
+  /// mete en la biblioteca por el mismo camino que «Transferir música»/«Homeostasia». Progreso en el propio diálogo.
+  Future<void> _importFromYoutube() async {
+    final title = _progress.title ?? '';
+    final artist = _progress.artist ?? '';
+    if (title.isEmpty) return;
+    final importer = widget.services.youtube;
+    if (importer == null) {
+      _toast('La conexión con YouTube no está disponible.');
+      return;
+    }
+    setState(() => _progress = const RecognitionProgress(
+      RecognitionStatus.querying, message: 'Buscando en YouTube…',
+    ));
+    try {
+      final query = artist.isNotEmpty ? '$title $artist' : title;
+      final candidates = await importer.search(query);
+      if (candidates.isEmpty) {
+        setState(() => _progress = RecognitionProgress(
+          RecognitionStatus.error,
+          message: 'No se encontró «$title» en YouTube.',
+          title: title, artist: artist,
+        ));
+        return;
+      }
+      final top = candidates.first;
+      setState(() => _progress = RecognitionProgress(
+        RecognitionStatus.querying,
+        message: 'Descargando «${top.title}»…',
+        title: title, artist: artist,
+      ));
+      final imported = await importer.importTracks([
+        YoutubeTrack(url: top.url, title: top.title, artist: artist),
+      ]);
+      if (imported.isEmpty) {
+        setState(() => _progress = RecognitionProgress(
+          RecognitionStatus.error,
+          message: 'No se pudo descargar la canción.',
+          title: title, artist: artist,
+        ));
+        return;
+      }
+      await widget.services.library.uploadShared([
+        for (final a in imported)
+          PickedAudioFile(name: a.name, path: a.path, artist: a.track.artist),
+      ]);
+      await importer.cleanup(imported);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      _toast('«$title» añadida a tu biblioteca. Se publicará en un momento.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _progress = RecognitionProgress(
+        RecognitionStatus.error,
+        message: 'Fallo al importar: $error',
+        title: title, artist: artist,
+      ));
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 }
@@ -190,11 +262,20 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
 }
 
 class _MatchResult extends StatelessWidget {
-  const _MatchResult({required this.progress, required this.onOpen});
+  const _MatchResult({
+    required this.progress,
+    required this.services,
+    required this.onOpen,
+    required this.onImport,
+  });
   final RecognitionProgress progress;
+  final AppServices services;
   final VoidCallback onOpen;
+  final VoidCallback onImport;
   @override
   Widget build(BuildContext context) {
+    // La vía biblioteca trae `songId`; la vía letras no. Según eso cambiamos el CTA.
+    final inLibrary = progress.songId != null;
     return Column(
       children: [
         Text(progress.title ?? '', style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),
@@ -202,8 +283,27 @@ class _MatchResult extends StatelessWidget {
           const SizedBox(height: 4),
           Text(progress.artist!, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
         ],
+        if (!inLibrary) ...[
+          const SizedBox(height: 8),
+          Text(
+            'No está en tu biblioteca. Puedes buscarla en YouTube e importarla ya.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
         const SizedBox(height: 16),
-        FilledButton.icon(onPressed: onOpen, icon: const Icon(Icons.play_arrow_rounded), label: const Text('Abrir en Reminiscencia')),
+        if (inLibrary)
+          FilledButton.icon(
+            onPressed: onOpen,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('Abrir en Reminiscencia'),
+          )
+        else
+          FilledButton.icon(
+            onPressed: onImport,
+            icon: const Icon(Icons.library_add_rounded),
+            label: const Text('Añadir a mi biblioteca'),
+          ),
       ],
     );
   }
