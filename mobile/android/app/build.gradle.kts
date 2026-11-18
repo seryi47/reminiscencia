@@ -22,9 +22,15 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // Nota: NO ponemos `ndk.abiFilters` aquí porque choca con `--split-per-abi` de Flutter. Para el universal, al
-        // compilar pasamos `--target-platform=android-arm64,android-x64` explícitamente (ADR-0049). Resultado: universal
-        // sin armeabi-v7a pesa 111 MB (de 142). Los splits generan los 3 como antes, por si alguien necesita el de 32-bit.
+        // Nota: NO ponemos `ndk.abiFilters` aquí porque choca con `--split-per-abi` de Flutter.
+        //
+        // CUIDADO (1.4.13): si se construye la universal con `--target-platform=android-arm64,android-x64`, Flutter
+        // omite `libflutter.so` y `libapp.so` para armeabi-v7a, PERO ffmpeg_kit siempre empaqueta las suyas
+        // (libavcodec, libavformat, ...) para todas las ABIs. Android ve algunas `.so` de armeabi-v7a y asume que la
+        // app es compatible 32-bit. Cuando el dispositivo arranca el proceso en 32-bit (algunos Samsung One UI lo
+        // hacen por defecto aunque la CPU sea arm64), intenta cargar `libflutter.so` para armeabi-v7a, no la
+        // encuentra, y la app crashea antes de mostrar el logo. Para la universal usa `flutter build apk --release`
+        // SIN `--target-platform`, o bien excluye la carpeta `lib/armeabi-v7a/` entera en `packaging.jniLibs`.
     }
 
     // Firma de publicación: android/key.properties (ignorado por Git). Si falta, se usa la de depuración.
