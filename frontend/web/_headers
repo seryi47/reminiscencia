@@ -3,3 +3,11 @@
 # llevan las suyas. tests/web-unit/cabeceras.test.mjs comprueba que las dos copias son iguales.
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; media-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://reminiscencia.cometia.es; connect-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://*.workers.dev https://reminiscencia.cometia.es; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'
+
+# ADR-0049: cache del catálogo (songs.json, folders.json, catalog.json) con `stale-while-revalidate`. Por defecto
+# devolvemos `max-age=0 must-revalidate` lo que hace al cliente lanzar un `If-None-Match` a CF en cada apertura
+# (~50 ms). Con `stale-while-revalidate=600` el cliente usa la copia cacheada 60 s y luego, mientras la revalida en
+# background, sigue respondiendo con la versión vieja (hasta 10 min). Resultado: reaperturas instantáneas; cuando
+# `publicar` del backend regenera el catálogo, el usuario la ve en &lt;10 min sin intervenir. No afecta a /audio ni a /covers.
+/data/*.json
+  Cache-Control: public, max-age=60, stale-while-revalidate=600

@@ -191,10 +191,12 @@ class LibraryStore implements LibrarySource {
   }
 
   Future<String> _get(String path) async {
-    // Sin caché, como el sondeo de publicación (HttpPublishedSongs): si no, al sincronizar tras publicar una canción se
-    // recibía un songs.json cacheado y el total y «Añadidas recientemente» no se actualizaban (solo las provisionales).
+    // ADR-0049: quitado el `Cache-Control: no-cache` forzado. La cabecera del servidor (stale-while-revalidate,
+    // añadida en `frontend/web/_headers`) controla la frescura. El sondeo post-publish (HttpPublishedSongs) sigue
+    // haciendo revalidación explícita cuando hace falta ver una canción recién publicada; aquí no la necesitamos y
+    // ahorra 189 KB + ~50 ms de revalidación por apertura en frío.
     final response = await _client
-        .get(Uri.parse('$kLibraryBase$path'), headers: const {'Cache-Control': 'no-cache'})
+        .get(Uri.parse('$kLibraryBase$path'))
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) {
       throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(path));

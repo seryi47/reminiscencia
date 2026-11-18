@@ -36,9 +36,39 @@ self.addEventListener('activate', (event) => {
           .filter((name) => name.startsWith(SHELL_CACHE_PREFIX) && name !== SHELL_CACHE)
           .map((name) => caches.delete(name)),
       );
+      // ADR-0049: purga LRU de las cachés de portadas y audio para que no crezcan sin tope. El navegador puede
+      // acabar guardando 500+ portadas y 100 canciones; con el tiempo son cientos de MB. Se programa como fire-and-
+      // forget para no retrasar la activación: si se interrumpe, la siguiente activación lo intentará de nuevo.
+      self.registration?.active?.postMessage?.({ type: 'prune-caches' });
       await self.clients.claim();
     })(),
   );
+});
+
+// Topes para las cachés que crecen con el uso (portadas vistas, audio descargado). Al superar el tope se purgan las
+// entradas más antiguas (FIFO; las Cache API no exponen last-accessed, solo orden de inserción). ADR-0049.
+const COVER_CACHE_MAX_ENTRIES = 300;
+const AUDIO_CACHE_MAX_ENTRIES = 100;
+
+async function pruneCache(name, maxEntries) {
+  try {
+    const cache = await caches.open(name);
+    const keys = await cache.keys();
+    if (keys.length <= maxEntries) return;
+    // Borra las más antiguas (las primeras del array).
+    for (let i = 0; i < keys.length - maxEntries; i++) {
+      await cache.delete(keys[i]);
+    }
+  } catch (_) { /* nada: al próximo tick lo reintenta */ }
+}
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'prune-caches') {
+    event.waitUntil?.(Promise.all([
+      pruneCache(COVER_CACHE, COVER_CACHE_MAX_ENTRIES),
+      pruneCache(AUDIO_CACHE, AUDIO_CACHE_MAX_ENTRIES),
+    ]));
+  }
 });
 
 self.addEventListener('fetch', (event) => {

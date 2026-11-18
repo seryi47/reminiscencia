@@ -398,13 +398,14 @@ class SonidosAudioHandler extends BaseAudioHandler
     Duration position, {
     bool freshShuffle = false,
   }) async {
-    final sources = <AudioSource>[];
-    final fromFile = <bool>[];
-    for (var i = 0; i < _queueSongs.length; i++) {
-      final (source, file) = await _sourceFor(i);
-      sources.add(source);
-      fromFile.add(file);
-    }
+    // Antes el bucle hacía `await` SECUENCIAL de `_sourceFor(i)` sobre 500 canciones (cada una hacía un `stat()` de
+    // disco) → 200-500 ms antes de sonar al abrir un álbum. Con `Future.wait` se lanzan en paralelo (el disk I/O es
+    // concurrent-friendly) y baja a ~50-100 ms (ADR-0049).
+    final pairs = await Future.wait(
+      List.generate(_queueSongs.length, (i) => _sourceFor(i)),
+    );
+    final sources = <AudioSource>[for (final (s, _) in pairs) s];
+    final fromFile = <bool>[for (final (_, f) in pairs) f];
     _fromFile = fromFile;
     _stallRetried = false;
     // Conservar el orden aleatorio entre recargas (reintento, parón, reconexión): si no, just_audio lo RE-BARAJA en

@@ -98,10 +98,19 @@ describe("_headers: la misma CSP en Cloudflare (ADR-0034)", () => {
 
   it("aplica a todas las rutas la misma política que vercel.json", () => {
     const rules = parseHeadersFile(read("_headers"));
-    assert.deepEqual(rules.map((rule) => rule.path), ["/*"]);
+    const universal = rules.find((rule) => rule.path === "/*");
+    assert.ok(universal, "_headers debe tener una regla universal '/*'");
     const config = JSON.parse(read("vercel.json"));
     const vercel = config.headers.find((item) => item.source === "/(.*)").headers.find((item) => item.key === "Content-Security-Policy");
-    assert.equal(rules[0].headers["Content-Security-Policy"], vercel.value);
+    assert.equal(universal.headers["Content-Security-Policy"], vercel.value);
+  });
+
+  it("el catálogo (/data/*.json) tiene Cache-Control con stale-while-revalidate (ADR-0049)", () => {
+    const rules = parseHeadersFile(read("_headers"));
+    const data = rules.find((rule) => rule.path === "/data/*.json");
+    assert.ok(data, "falta la regla /data/*.json");
+    const cc = data.headers["Cache-Control"];
+    assert.ok(cc && /stale-while-revalidate/i.test(cc), `Cache-Control sin stale-while-revalidate: ${cc}`);
   });
 
   it("en el dominio propio, el API y el audio son el propio origen", () => {

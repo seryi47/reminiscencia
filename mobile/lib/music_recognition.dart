@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:http/http.dart' as http;
 
 import 'dart:typed_data';
@@ -94,7 +95,10 @@ class MusicRecognizer {
       final capture = await _mic.record(seconds: kRecognitionSeconds, cancel: cancel);
 
       onProgress?.call(const RecognitionProgress(RecognitionStatus.analyzing, message: 'Analizando…'));
-      final hashes = fingerprint(capture.samples);
+      // ADR-0049: `fingerprint` hace 125 ventanas × FFT 4096 = 80-150 ms de CPU bloqueante. Lo movemos a un isolate con
+      // `compute` para que la animación de pulso del botón siga fluida. El resultado (unas miles de entradas) viaja
+      // por el isolate port, coste marginal.
+      final hashes = await compute(_fingerprintInIsolate, capture.samples);
       if (hashes.isEmpty) {
         onProgress?.call(const RecognitionProgress(RecognitionStatus.notMatched, message: 'No se pudo analizar el audio.'));
         return const RecognitionResult(matched: false);
@@ -222,6 +226,9 @@ class MusicRecognizer {
     _client.close();
   }
 }
+
+/// Función top-level requerida por `compute` para calcular la huella en un isolate separado.
+List<FingerprintHash> _fingerprintInIsolate(Float32List samples) => fingerprint(samples);
 
 /// Helper que decodifica los bytes de respuesta como UTF-8 JSON Map. Separado para mantener `_queryLyrics` legible.
 /// Usa `utf8.decode` (no `String.fromCharCodes`, que trata los bytes como UCS-2 y mojibakea las tildes y la ñ).
