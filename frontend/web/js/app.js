@@ -83,6 +83,7 @@ import { libraryPanel, renderLibraryPage, renderSection } from './views/library.
 import { mountPlayerUi } from './views/player-ui.js';
 import { askDuplicate, openUploadSheet } from './views/upload.js';
 import { openHomeostasiaSheet } from './views/homeostasia.js';
+import { openRecognizeSheet } from './views/recognize.js';
 import { openTransferirSheet } from './views/transferir.js';
 
 const DATA_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
@@ -1156,6 +1157,7 @@ const ctx = {
   openUpload: () => openUploadSheet(ctx),
   openHomeostasia: () => openHomeostasiaSheet(ctx),
   openTransferir: () => openTransferirSheet(ctx),
+  openRecognize: () => openRecognizeSheet(ctx),
   // Canciones publicadas de la biblioteca, para el dedup de «Transferir música» (ADR-0044).
   librarySongs: () => state.catalog?.songs ?? [],
   // Álbumes (carpetas) publicados, para recolocar en su álbum lo que ya tienes al transferir (ADR-0044).

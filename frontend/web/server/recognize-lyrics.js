@@ -1,7 +1,9 @@
 // Segunda vía del reconocimiento (ADR-0048): letras. El móvil manda el audio grabado y el Worker lo transcribe con
-// `@cf/openai/whisper` (Workers AI) y busca el texto en LRClib (base pública de letras, sin token). Si hay una letra
-// que contiene varias frases seguidas del transcrito, devolvemos esa canción como candidata; la app la pasa al flujo de
-// importación de YouTube.
+// `@cf/openai/whisper-large-v3-turbo` (Workers AI) y busca el texto en:
+//   1. Lyrics.ovh (gratis, sin token, PERMITE buscar por contenido de letra: una frase del verso devuelve la canción).
+//   2. LRClib (gratis, sin token, pero su /api/search solo busca por título/artista, no por letra): la usamos como
+//      fallback cuando Whisper devuelve algo que parece título.
+// Combinamos candidatos y rankeamos por coincidencia de la letra real contra el transcrito.
 
 // Nota de precisión HONESTA: Whisper está entrenado con habla, no con vocales cantadas sobre música; en un bar con
 // ruido puede dar un transcrito limpio (pop con voz clara) o un galimatías (rap acelerado o bar ruidoso). Cuando no
@@ -11,14 +13,29 @@
 // cantadas que el `whisper` básico. Workers AI incluye cuota generosa para esto.
 const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 const LRCLIB_SEARCH = 'https://lrclib.net/api/search';
+const LRCLIB_GET = 'https://lrclib.net/api/get';
+const LYRICSOVH_SUGGEST = 'https://api.lyrics.ovh/suggest';
+const LYRICSOVH_GET = 'https://api.lyrics.ovh/v1'; // /v1/{artist}/{title} → {lyrics}
 // Longitud mínima del transcrito para que merezca la pena buscar letra. Si el micro capta ruido, Whisper devuelve 1-2
 // palabras y la búsqueda es ruido también.
 const MIN_TRANSCRIPT_WORDS = 4;
 
-const MIN_PHRASE_WORDS = 3;    // mínimo de palabras en una ventana del transcrito para considerar un «frase»
-const MAX_PHRASE_WORDS = 8;    // máximo
+// Palabras «raras» (que no aparecen en una lista larga de muletillas) se usan para desambiguar: una canción con
+// «callin'» y «verte» en la misma letra tiene mucho más peso que una con «baby» y «girl».
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'our',
+  'baby', 'girl', 'boy', 'yeah', 'oh', 'woh', 'woah', 'uh', 'honey', 'love', 'no', 'si', 'yes',
+  'el', 'la', 'los', 'las', 'un', 'una', 'y', 'o', 'pero', 'en', 'de', 'del', 'con', 'que',
+  'yo', 'tu', 'ella', 'nosotros', 'ellos', 'ellas', 'mi', 'su',
+  'mama', 'papa', 'bebe', 'morning', 'in', 'to', 'at',
+]);
 
-const MAX_CANDIDATES_LRCLIB = 40;
+const MIN_PHRASE_WORDS = 2;    // ventanas de 2 a 6 palabras consecutivas (antes 3 a 8 era demasiado estricto)
+const MAX_PHRASE_WORDS = 6;
+
+const MAX_CANDIDATES_LRCLIB = 50;
+const MAX_LRCLIB_QUERIES = 6; // tope de llamadas a LRClib por petición: no spameamos su API
 
 const LRCLIB_USER_AGENT = 'reminiscencia-recognizer (https://reminiscencia.cometia.es)';
 
@@ -62,28 +79,40 @@ export async function handleRecognizeLyricsRequest(request, { env } = {}) {
     return jsonResponse(200, { ok: true, matched: false, reason: 'no_lyrics_captured', transcript });
   }
 
-  // 2) Búsqueda en LRClib. Hacemos primero una búsqueda con las 2–4 primeras palabras significativas, luego con las
-  //    2–4 de en medio. Las que más se parezcan a la letra ganan.
-  const candidates = await searchLrclib(transcript, { env });
+  // 2) Reunir candidatos. Lyrics.ovh DEVUELVE canción buscando por fragmento de letra (lo que nos interesa); LRClib
+  //    /api/search solo busca por título/artista pero vale como red cuando Whisper devuelve algo parecido al título.
+  const candidates = await gatherCandidates(transcript, { env });
   if (candidates.length === 0) {
     return jsonResponse(200, { ok: true, matched: false, reason: 'no_lyrics_match', transcript });
   }
 
-  // 3) Elegimos la canción cuyas letras contengan más frases consecutivas del transcrito.
-  const scored = candidates.map((c) => ({ ...c, score: scoreCandidate(transcript, c.plainLyrics ?? '') }));
+  // 3) Para cada candidato traemos la letra completa (si no la tiene ya) y puntuamos por coincidencia contra el transcrito.
+  const scored = await Promise.all(candidates.map(async (c) => ({
+    ...c,
+    score: scoreCandidate(transcript, await loadLyrics(c, { env })),
+  })));
   scored.sort((a, b) => b.score - a.score);
   const top = scored[0];
-  if (!top || top.score < 2) {
-    return jsonResponse(200, { ok: true, matched: false, reason: 'low_lyrics_confidence', transcript });
+  // Umbral adaptativo: con transcrito muy corto exigimos menos. Si no llega, devolvemos el candidato con mejor score
+  // como «low_lyrics_confidence» pero incluimos su título/artista por si el usuario quiere confirmar.
+  const minScore = words.length < 8 ? 2 : 3;
+  if (!top || top.score < minScore) {
+    return jsonResponse(200, {
+      ok: true,
+      matched: false,
+      reason: 'low_lyrics_confidence',
+      transcript,
+      language: detectedLanguage,
+      bestGuess: top ? { title: top.trackName ?? '', artist: top.artistName ?? '', score: top.score } : null,
+    });
   }
   return jsonResponse(200, {
     ok: true,
     matched: true,
     source: 'lyrics',
-    title: top.trackName ?? top.name ?? '',
+    title: top.trackName ?? '',
     artist: top.artistName ?? '',
-    album: top.albumName ?? '',
-    confidence: Math.min(1, top.score / 8),
+    confidence: Math.min(1, top.score / 10),
     transcript,
     language: detectedLanguage,
   });
@@ -108,52 +137,140 @@ function normalize(text) {
     .trim();
 }
 
-/** Puntúa un candidato por el número de ventanas del transcrito que están, tal cual, dentro de la letra. */
-function scoreCandidate(transcript, lyrics) {
+/** Puntúa un candidato combinando: 1) ventanas consecutivas del transcrito presentes en la letra y 2) palabras «raras»
+ *  del transcrito (fuera de la lista de muletillas) que también aparecen en la letra. Las palabras raras pesan más. */
+export function scoreCandidate(transcript, lyrics) {
   const t = normalize(transcript);
   const l = normalize(lyrics);
   if (!t || !l) return 0;
   const words = t.split(' ');
   let score = 0;
+  // Palabras raras presentes en la letra (muy discriminativas).
+  const rareWordsInTranscript = words.filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+  const uniqueRare = [...new Set(rareWordsInTranscript)];
+  for (const w of uniqueRare) {
+    // Coincidencia como palabra entera, no subcadena, para no inflar con «oh» en «oh-oh».
+    const re = new RegExp(`\\b${escapeRegExp(w)}\\b`);
+    if (re.test(l)) score += 2;
+  }
+  // Ventanas consecutivas de 2-6 palabras en la letra (frases exactas).
   for (let n = MIN_PHRASE_WORDS; n <= Math.min(MAX_PHRASE_WORDS, words.length); n++) {
     for (let i = 0; i + n <= words.length; i++) {
-      const phrase = words.slice(i, i + n).join(' ');
-      if (l.includes(phrase)) score += n - MIN_PHRASE_WORDS + 1;
+      const slice = words.slice(i, i + n);
+      // Si todas las palabras de la ventana son stopwords, no cuenta.
+      if (slice.every((w) => STOPWORDS.has(w))) continue;
+      const phrase = slice.join(' ');
+      if (l.includes(phrase)) score += n - MIN_PHRASE_WORDS + 2;
     }
   }
   return score;
 }
 
-/** Busca en LRClib con varias consultas sacadas del transcrito; deduplica por (trackName, artistName). */
-async function searchLrclib(transcript, { env } = {}) {
+function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/** Reúne candidatos de Lyrics.ovh (por contenido de letra) y de LRClib (por título). Dedup por (title, artist). */
+export async function gatherCandidates(transcript, { env, fetchImpl } = {}) {
   const t = normalize(transcript);
   const words = t.split(' ');
   if (words.length === 0) return [];
-  const queries = new Set();
-  // Primeras 3–4 palabras y de en medio (bar típico: pierdes el primer verso y el final).
-  queries.add(words.slice(0, 4).join(' '));
-  if (words.length >= 6) queries.add(words.slice(2, 6).join(' '));
-  if (words.length >= 8) queries.add(words.slice(Math.floor(words.length / 2), Math.floor(words.length / 2) + 4).join(' '));
+  const rare = words.filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+  const fetcher = fetchImpl ?? env?.fetch ?? globalThis.fetch;
   const seen = new Map();
-  const headers = { 'User-Agent': LRCLIB_USER_AGENT, Accept: 'application/json' };
-  const fetchImpl = env?.fetch ?? globalThis.fetch;
-  for (const q of queries) {
+
+  // Helper: añade un candidato normalizado al mapa.
+  const add = (title, artist, extra = {}) => {
+    const trackName = String(title ?? '').trim();
+    const artistName = String(artist ?? '').trim();
+    if (!trackName || !artistName) return;
+    const key = `${trackName}|${artistName}`.toLowerCase();
+    if (!seen.has(key)) seen.set(key, { trackName, artistName, ...extra });
+  };
+
+  // 1) Lyrics.ovh — BUSCAR POR LETRA. Lo que funciona con su API son **ventanas consecutivas** de 3-5 palabras del
+  //    transcrito (incluidas las muletillas que sirven de pegamento). No vale juntar las palabras raras sueltas: perdemos
+  //    la frase y Lyrics.ovh no la reconoce. Para cada palabra rara, enviamos una ventana centrada en ella.
+  const lyricsQueries = new Set();
+  for (let i = 0; i < words.length && lyricsQueries.size < 5; i++) {
+    const w = words[i];
+    if (w.length < 3 || STOPWORDS.has(w)) continue;
+    const start = Math.max(0, i - 1);
+    const end = Math.min(words.length, i + 4);
+    const phrase = words.slice(start, end).join(' ').trim();
+    if (phrase.split(' ').length >= 3) lyricsQueries.add(phrase);
+  }
+  // Como red: la primera y la última ventana del transcrito, siempre.
+  if (words.length >= 4) lyricsQueries.add(words.slice(0, 5).join(' '));
+  if (words.length >= 5) lyricsQueries.add(words.slice(Math.max(0, words.length - 5)).join(' '));
+
+  for (const q of lyricsQueries) {
     if (seen.size >= MAX_CANDIDATES_LRCLIB) break;
-    const url = `${LRCLIB_SEARCH}?q=${encodeURIComponent(q)}`;
+    if (!q.trim()) continue;
     try {
-      const res = await fetchImpl(url, { headers });
+      const res = await fetcher(`${LYRICSOVH_SUGGEST}/${encodeURIComponent(q)}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data?.data || !Array.isArray(data.data)) continue;
+      for (const item of data.data.slice(0, 15)) {
+        add(item.title_short ?? item.title, item?.artist?.name, { source: 'lyrics.ovh' });
+      }
+    } catch (_) { /* seguimos */ }
+  }
+
+  // 2) LRClib — búsqueda por título/artista, por si el transcrito contiene el título cantado. Máximo 2 queries.
+  const lrclibHeaders = { 'User-Agent': LRCLIB_USER_AGENT, Accept: 'application/json' };
+  const lrclibQueries = new Set([
+    words.slice(0, 4).join(' '),
+    rare.length >= 2 ? rare.slice(0, 3).join(' ') : null,
+  ].filter(Boolean));
+  let used = 0;
+  for (const q of lrclibQueries) {
+    if (used >= 2) break;
+    if (seen.size >= MAX_CANDIDATES_LRCLIB) break;
+    used += 1;
+    try {
+      const res = await fetcher(`${LRCLIB_SEARCH}?q=${encodeURIComponent(q)}`, { headers: lrclibHeaders });
       if (!res.ok) continue;
       const list = await res.json();
       if (!Array.isArray(list)) continue;
-      for (const item of list) {
-        if (!item || typeof item !== 'object') continue;
-        const key = `${item.trackName ?? ''}|${item.artistName ?? ''}`.toLowerCase();
-        if (!seen.has(key)) seen.set(key, item);
-        if (seen.size >= MAX_CANDIDATES_LRCLIB) break;
+      for (const item of list.slice(0, 15)) {
+        add(item.trackName, item.artistName, { source: 'lrclib', plainLyrics: item.plainLyrics });
       }
-    } catch (_) { /* seguimos con las otras queries */ }
+    } catch (_) { /* seguimos */ }
   }
   return [...seen.values()];
+}
+
+/** Devuelve la letra plano de un candidato. Si ya la trae (LRClib), la usa tal cual. Si viene de Lyrics.ovh, pide
+ *  la letra completa a `/api/v1/{artist}/{title}`. Nunca lanza; devuelve '' si no puede leerla. */
+export async function loadLyrics(candidate, { env, fetchImpl } = {}) {
+  if (typeof candidate?.plainLyrics === 'string' && candidate.plainLyrics) return candidate.plainLyrics;
+  const fetcher = fetchImpl ?? env?.fetch ?? globalThis.fetch;
+  const { trackName, artistName } = candidate;
+  if (!trackName || !artistName) return '';
+  // Preferimos LRClib /api/get (tiene timestamps y texto plano) y, si no, Lyrics.ovh.
+  try {
+    const url = `${LRCLIB_GET}?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistName)}`;
+    const res = await fetcher(url, { headers: { 'User-Agent': LRCLIB_USER_AGENT, Accept: 'application/json' } });
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data?.plainLyrics === 'string' && data.plainLyrics) {
+        candidate.plainLyrics = data.plainLyrics;
+        return data.plainLyrics;
+      }
+    }
+  } catch (_) { /* fallback */ }
+  try {
+    const url = `${LYRICSOVH_GET}/${encodeURIComponent(artistName)}/${encodeURIComponent(trackName)}`;
+    const res = await fetcher(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data?.lyrics === 'string' && data.lyrics) {
+        candidate.plainLyrics = data.lyrics;
+        return data.lyrics;
+      }
+    }
+  } catch (_) { /* nada */ }
+  return '';
 }
 
 function jsonResponse(status, data) {

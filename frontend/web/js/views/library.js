@@ -27,6 +27,7 @@ function openCreateMenu(ctx, anchor) {
     { label: 'Subir canciones', description: 'Para todos: canciones sueltas o un ZIP. También desde Internet Archive.', icon: 'upload', testid: 'menu-upload', action: viaDialog(() => ctx.openUpload()) },
     { label: 'Homeostasia', description: 'Importa música desde un vídeo o playlist de YouTube.', icon: 'note', testid: 'menu-homeostasia', action: viaDialog(() => ctx.openHomeostasia()) },
     { label: 'Transferir música', description: 'Trae tus canciones, álbumes y playlists de Spotify.', icon: 'note', testid: 'menu-transferir', action: viaDialog(() => ctx.openTransferir()) },
+    { label: 'Reconocer canción', description: 'Identifica la canción que suena (micrófono).', icon: 'note', testid: 'menu-recognize', action: viaDialog(() => ctx.openRecognize()) },
   ], { label: 'Crear' });
 }
 

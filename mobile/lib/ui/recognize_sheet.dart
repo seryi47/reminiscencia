@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'dart:math' as math;
+
 import '../local_audio.dart';
 import '../music_recognition.dart';
+import '../recognition_history.dart';
 import '../services.dart';
 import '../youtube_importer.dart';
 
@@ -29,25 +32,51 @@ class _RecognizeSheet extends StatefulWidget {
 
 class _RecognizeSheetState extends State<_RecognizeSheet> {
   final MusicRecognizer _recognizer = MusicRecognizer();
+  final RecognitionHistory _history = RecognitionHistory();
   Completer<void>? _cancel;
   RecognitionProgress _progress = const RecognitionProgress(RecognitionStatus.idle, message: 'Pulsa para reconocer la canción que suena a tu alrededor.');
+  String? _currentHistoryId;
+
+  @override
+  void initState() {
+    super.initState();
+    _history.load();
+  }
 
   @override
   void dispose() {
     _recognizer.dispose();
+    _history.dispose();
     super.dispose();
   }
 
   Future<void> _start() async {
     if (_isBusy(_progress.status)) return;
     _cancel = Completer<void>();
-    await _recognizer.recognize(
+    final result = await _recognizer.recognize(
       cancel: _cancel!.future,
       onProgress: (p) {
         if (mounted) setState(() => _progress = p);
       },
     );
     _cancel = null;
+    // Guardar en historial (solo si no fue cancelado antes del resultado).
+    final status = _progress.status;
+    if (status == RecognitionStatus.matched || status == RecognitionStatus.notMatched) {
+      _currentHistoryId = 'r${DateTime.now().microsecondsSinceEpoch}_${math.Random().nextInt(1 << 20)}';
+      await _history.add(RecognitionHistoryEntry(
+        id: _currentHistoryId!,
+        at: DateTime.now(),
+        status: result.matched
+            ? (result.songId != null ? RecognitionHistoryStatus.inLibrary : RecognitionHistoryStatus.pendingImport)
+            : RecognitionHistoryStatus.notMatched,
+        title: result.title ?? '',
+        artist: result.artist ?? '',
+        songId: result.songId,
+        source: result.source,
+        confidence: result.confidence,
+      ));
+    }
   }
 
   void _stop() {
@@ -105,10 +134,34 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
                 padding: const EdgeInsets.only(top: 8),
                 child: FilledButton(onPressed: _start, child: const Text('Volver a intentar')),
               ),
+            const SizedBox(height: 24),
+            _HistorySection(
+              history: _history,
+              onOpenLibrary: _openSongById,
+              onRetryImport: _retryImportFromHistory,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  void _openSongById(String songId, String title) {
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Abriendo «$title»…')));
+  }
+
+  Future<void> _retryImportFromHistory(RecognitionHistoryEntry entry) async {
+    if (entry.title.isEmpty) return;
+    setState(() => _progress = RecognitionProgress(
+      RecognitionStatus.querying,
+      message: 'Reintentando «${entry.title}»…',
+      title: entry.title,
+      artist: entry.artist,
+    ));
+    _currentHistoryId = entry.id;
+    await _history.updateStatus(entry.id, RecognitionHistoryStatus.pendingImport);
+    await _importFromYoutube();
   }
 
   void _openSong() {
@@ -166,10 +219,16 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
           PickedAudioFile(name: a.name, path: a.path, artist: a.track.artist),
       ]);
       await importer.cleanup(imported);
+      if (_currentHistoryId != null) {
+        await _history.updateStatus(_currentHistoryId!, RecognitionHistoryStatus.imported);
+      }
       if (!mounted) return;
       Navigator.of(context).pop();
       _toast('«$title» añadida a tu biblioteca. Se publicará en un momento.');
     } catch (error) {
+      if (_currentHistoryId != null) {
+        await _history.updateStatus(_currentHistoryId!, RecognitionHistoryStatus.importFailed);
+      }
       if (!mounted) return;
       setState(() => _progress = RecognitionProgress(
         RecognitionStatus.error,
@@ -327,6 +386,91 @@ class _NotFoundHint extends StatelessWidget {
         const SizedBox(height: 12),
         OutlinedButton(onPressed: onRetry, child: const Text('Volver a intentar')),
       ],
+    );
+  }
+}
+
+/// Lista de reconocimientos pasados; permite reintentar una importación que falló (ADR-0048).
+class _HistorySection extends StatelessWidget {
+  const _HistorySection({required this.history, required this.onOpenLibrary, required this.onRetryImport});
+  final RecognitionHistory history;
+  final void Function(String songId, String title) onOpenLibrary;
+  final void Function(RecognitionHistoryEntry entry) onRetryImport;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<RecognitionHistoryEntry>>(
+      stream: history.stream,
+      initialData: history.entries,
+      builder: (context, snapshot) {
+        final entries = (snapshot.data ?? const <RecognitionHistoryEntry>[]).take(12).toList();
+        if (entries.isEmpty) return const SizedBox.shrink();
+        final theme = Theme.of(context);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8, left: 4),
+              child: Text('Historial', style: theme.textTheme.titleSmall),
+            ),
+            for (final e in entries) _HistoryRow(entry: e, onOpenLibrary: onOpenLibrary, onRetryImport: onRetryImport),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({required this.entry, required this.onOpenLibrary, required this.onRetryImport});
+  final RecognitionHistoryEntry entry;
+  final void Function(String songId, String title) onOpenLibrary;
+  final void Function(RecognitionHistoryEntry entry) onRetryImport;
+
+  String _subtitle() {
+    switch (entry.status) {
+      case RecognitionHistoryStatus.inLibrary:
+        return 'En tu biblioteca · ${entry.artist}';
+      case RecognitionHistoryStatus.pendingImport:
+        return 'Identificada por letra · ${entry.artist}';
+      case RecognitionHistoryStatus.imported:
+        return 'Añadida a tu biblioteca · ${entry.artist}';
+      case RecognitionHistoryStatus.importFailed:
+        return 'La importación falló · ${entry.artist}';
+      case RecognitionHistoryStatus.notMatched:
+        return 'No identificada';
+    }
+  }
+
+  IconData _icon() {
+    switch (entry.status) {
+      case RecognitionHistoryStatus.inLibrary: return Icons.library_music_rounded;
+      case RecognitionHistoryStatus.pendingImport: return Icons.lyrics_rounded;
+      case RecognitionHistoryStatus.imported: return Icons.check_circle_rounded;
+      case RecognitionHistoryStatus.importFailed: return Icons.error_outline_rounded;
+      case RecognitionHistoryStatus.notMatched: return Icons.help_outline_rounded;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget? trailing;
+    VoidCallback? onTap;
+    if (entry.status == RecognitionHistoryStatus.inLibrary && entry.songId != null) {
+      trailing = const Icon(Icons.play_arrow_rounded);
+      onTap = () => onOpenLibrary(entry.songId!, entry.title);
+    } else if (entry.status == RecognitionHistoryStatus.importFailed) {
+      trailing = TextButton(onPressed: () => onRetryImport(entry), child: const Text('Reintentar'));
+    } else if (entry.status == RecognitionHistoryStatus.pendingImport) {
+      trailing = TextButton(onPressed: () => onRetryImport(entry), child: const Text('Importar'));
+    }
+    return ListTile(
+      dense: true,
+      leading: Icon(_icon()),
+      title: Text(entry.title.isEmpty ? 'Sin título' : entry.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(_subtitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: trailing,
+      onTap: onTap,
     );
   }
 }
