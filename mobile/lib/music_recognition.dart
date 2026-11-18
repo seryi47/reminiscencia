@@ -224,9 +224,10 @@ class MusicRecognizer {
 }
 
 /// Helper que decodifica los bytes de respuesta como UTF-8 JSON Map. Separado para mantener `_queryLyrics` legible.
+/// Usa `utf8.decode` (no `String.fromCharCodes`, que trata los bytes como UCS-2 y mojibakea las tildes y la ñ).
 Map<String, dynamic>? utf8DecodeMap(List<int> bytes) {
   try {
-    final decoded = jsonDecode(String.fromCharCodes(bytes));
+    final decoded = jsonDecode(utf8.decode(bytes));
     return decoded is Map<String, dynamic> ? decoded : null;
   } catch (_) { return null; }
 }

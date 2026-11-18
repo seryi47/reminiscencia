@@ -45,16 +45,16 @@ export async function handleRecognizeLyricsRequest(request, { env } = {}) {
   if (request.method !== 'POST') {
     return jsonResponse(405, { ok: false, matched: false, error: 'Solo se admite POST.' });
   }
-  // Rate limit propio de la vía letras (cuota Workers AI = coste €): 20/min por IP. Fail-open si el binding no está.
-  const limiter = env?.LYRICS_RATE_LIMITER;
-  if (limiter && typeof limiter.limit === 'function') {
-    const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'desconocida';
-    try {
-      const { success } = await limiter.limit({ key: ip });
-      if (success === false) {
-        return jsonResponse(429, { ok: false, matched: false, error: 'Demasiadas peticiones; espera un minuto.' });
-      }
-    } catch (_) { /* fail-open: la disponibilidad manda sobre el antiabuso */ }
+  // Rate limit propio de la vía letras (cuota Workers AI = coste €): 20 peticiones por minuto por IP.
+  //
+  // IMPORTANTE: el binding `LYRICS_RATE_LIMITER` de Cloudflare Workers (`[[ratelimits]]`) está en beta y nos devolvía
+  // siempre `success: true` incluso enviando 30 peticiones en 2 segundos — comportamiento verificado con una cabecera
+  // de diagnóstico. No es fiable para proteger coste de Workers AI. Implementamos nuestro propio contador usando
+  // `caches.default` (que es un cache per-colo, eventualmente consistente): clave por `ip + ventana de 60 s`, con TTL
+  // = ventana. No es perfecto (concurrencia entre colos, pequeño exceso en carreras) pero YA ENFORZA.
+  const diagLimiter = await enforceLyricsRateLimit(request);
+  if (diagLimiter === 'denied') {
+    return jsonResponse(429, { ok: false, matched: false, error: 'Demasiadas peticiones; espera un minuto.' }, { 'X-Lyrics-Limiter': diagLimiter });
   }
   const ai = env?.AI;
   if (!ai) {
@@ -68,10 +68,10 @@ export async function handleRecognizeLyricsRequest(request, { env } = {}) {
     return jsonResponse(400, { ok: false, matched: false, error: 'Cuerpo no legible como audio.' });
   }
   if (audioBytes.length < 1024) {
-    return jsonResponse(400, { ok: false, matched: false, error: 'Audio demasiado corto.' });
+    return jsonResponse(400, { ok: false, matched: false, error: 'Audio demasiado corto.' }, { 'X-Lyrics-Limiter': diagLimiter });
   }
   if (audioBytes.length > 10 * 1024 * 1024) {
-    return jsonResponse(413, { ok: false, matched: false, error: 'Audio demasiado grande (>10 MB).' });
+    return jsonResponse(413, { ok: false, matched: false, error: 'Audio demasiado grande (>10 MB).' }, { 'X-Lyrics-Limiter': diagLimiter });
   }
 
   // 1) Transcripción con whisper-large-v3-turbo. Pasamos el audio como base64 (es lo que acepta este modelo) y le
@@ -287,11 +287,41 @@ export async function loadLyrics(candidate, { env, fetchImpl } = {}) {
   return '';
 }
 
-function jsonResponse(status, data) {
+function jsonResponse(status, data, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...extraHeaders },
   });
+}
+
+/** Rate limiter propio: cuenta peticiones por IP en ventanas de 60 s usando `caches.default`. Devuelve 'allowed' o
+ *  'denied'. Si falla cualquier parte (caches no disponible, red interna lenta), devuelve 'allowed' (fail-open,
+ *  nunca bloqueamos por fallo infra). Tope = `LYRICS_RATE_LIMIT_PER_MINUTE`. */
+const LYRICS_RATE_LIMIT_PER_MINUTE = 20;
+export async function enforceLyricsRateLimit(request) {
+  try {
+    const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'desconocida';
+    const windowMinute = Math.floor(Date.now() / 60000);
+    const key = `https://rl.internal/lyrics/${encodeURIComponent(ip)}/${windowMinute}`;
+    const cached = await caches.default.match(key);
+    let count = 0;
+    if (cached) {
+      const text = await cached.text();
+      count = parseInt(text, 10) || 0;
+    }
+    if (count >= LYRICS_RATE_LIMIT_PER_MINUTE) {
+      return 'denied';
+    }
+    // Incrementamos y re-cacheamos con TTL = ventana (60 s desde ahora). No es atómico entre llamadas concurrentes
+    // en el mismo colo, pero el error es al alza (algunas cuentan menos) → el techo real es ~20±5, aceptable.
+    const next = new Response(String(count + 1), {
+      headers: { 'Cache-Control': 'max-age=60', 'Content-Type': 'text/plain' },
+    });
+    await caches.default.put(key, next);
+    return 'allowed';
+  } catch (_) {
+    return 'allowed';
+  }
 }
 
 /** Procesa `items` llamando a `fn` con como mucho `limit` en paralelo. Mantiene el orden original en la salida. */

@@ -52,6 +52,10 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
 
   @override
   void dispose() {
+    // Si el usuario cierra la hoja (drag-down del bottom sheet) mientras hay una captura en marcha, completar el
+    // Completer de cancel ANTES de dispose del recognizer evita el mensaje «recorder already stopped» de record 5.1.2
+    // (porque el mic_capture para y dispone en orden).
+    if (_cancel != null && !_cancel!.isCompleted) _cancel!.complete();
     _recognizer.dispose();
     _history.dispose();
     super.dispose();

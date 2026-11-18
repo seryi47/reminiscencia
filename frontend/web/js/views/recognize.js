@@ -269,22 +269,24 @@ function floatToWav16Mono(samples, sampleRate) {
   return new Uint8Array(buffer);
 }
 
-async function queryLibrary(hashes) {
+async function queryLibrary(hashes, signal) {
   try {
     const response = await fetch('/api/recognize', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ v: 1, hashes: hashes.map((h) => h.hash), offsets: hashes.map((h) => h.offset) }),
+      signal,
     });
     if (!response.ok) return { matched: false };
     return await response.json();
   } catch { return { matched: false }; }
 }
 
-async function queryLyrics(wavBytes) {
+async function queryLyrics(wavBytes, signal) {
   try {
     const response = await fetch('/api/recognize-lyrics', {
       method: 'POST', headers: { 'Content-Type': 'application/octet-stream' },
       body: wavBytes,
+      signal,
     });
     if (!response.ok) return { matched: false };
     return await response.json();

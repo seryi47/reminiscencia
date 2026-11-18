@@ -49,13 +49,15 @@ name = "API_RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 900, period = 60 }
 
-# Rate limit propio para /api/recognize-lyrics (ADR-0048): cada llamada quema cuota de Workers AI (coste €), así que un
-# tope mucho más agresivo que el genérico: 20 peticiones/min por IP. El que se exceda recibe un 429 y el reconocedor cae
-# a modo «solo biblioteca» en esa petición. `period` solo admite 10 o 60.
-[[ratelimits]]
-name = "LYRICS_RATE_LIMITER"
-namespace_id = "1002"
-simple = { limit = 20, period = 60 }
+# El binding `[[ratelimits]]` de Cloudflare es BETA y, en noviembre 2026, no enforza para esta cuenta: devolvía siempre
+# `success: true` con 30+ peticiones seguidas (verificado con cabecera de diagnóstico). Por eso el rate limit de la vía
+# letras lo implementa el código en `recognize-lyrics.js#enforceLyricsRateLimit` con `caches.default` (eventually
+# consistent; en producción tope ~20±5 por IP por minuto), que SÍ enforza en pruebas reales. Dejamos aquí el nombre
+# comentado por si en el futuro CF arregla el binding y se quiere volver a usar. ADR-0048.
+# [[ratelimits]]
+# name = "LYRICS_RATE_LIMITER"
+# namespace_id = "2048"
+# simple = { limit = 20, period = 60 }
 
 # Base D1 para el reconocimiento musical (ADR-0048): tabla `hashes(hash, song_id, offset)` con índice por `hash` y tabla
 # `songs(id, title, artist)` para enriquecer el match. El Worker consulta por lotes de ~50 hashes por SELECT.
