@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -25,11 +27,26 @@ import 'youtube_stream.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Antes que nada: en la versión de producción un error no capturado queda registrado en lugar de perderse.
+  ErrorLog? errorLog;
   try {
-    installErrorHandlers(await ErrorLog.open());
+    errorLog = await ErrorLog.open();
+    installErrorHandlers(errorLog);
   } catch (error) {
     debugPrint('registro: no se pudo preparar: $error');
   }
+  // 1.4.12: todo el arranque va en un try/catch global. Si CUALQUIER inicialización lanza, en lugar de un cierre
+  // silencioso se muestra StartupErrorApp con el stack trace a pantalla (y se intenta guardar en el errorlog). Así
+  // los crashes en dispositivos específicos (Samsung, One UI con permisos raros) dejan de ser una caja negra.
+  try {
+    await _bootstrap(errorLog);
+  } catch (error, stack) {
+    debugPrint('arranque: no se pudo terminar: $error\n$stack');
+    unawaited(errorLog?.record('arranque', error, stack) ?? Future<void>.value());
+    runApp(StartupErrorApp(reason: '$error', stack: '$stack'));
+  }
+}
+
+Future<void> _bootstrap(ErrorLog? errorLog) async {
   registerFontLicense();
   final libraryStore = LibraryStore();
   final covers = CoverCache(base: kLibraryBase);
@@ -47,9 +64,10 @@ Future<void> main() async {
       builder: () => SonidosAudioHandler(libraryStore, covers: covers),
       config: kAudioServiceConfig,
     );
-  } catch (error) {
+  } catch (error, stack) {
     debugPrint('reproductor: no se pudo iniciar: $error');
-    runApp(StartupErrorApp(reason: '$error'));
+    unawaited(errorLog?.record('audio_service', error, stack) ?? Future<void>.value());
+    runApp(StartupErrorApp(reason: '$error', stack: '$stack'));
     return;
   }
   final settings = SettingsController(store: SettingsStore());
@@ -93,23 +111,61 @@ Future<void> main() async {
   );
 }
 
-/// Pantalla de error si el servicio de audio no arranca: en lugar de una pantalla en blanco, se explica el motivo.
+/// Pantalla de error si cualquier parte del arranque falla: en lugar de una pantalla en blanco o un cierre
+/// silencioso, se explica el motivo y se muestra el stack trace para que se pueda copiar y enviar.
 class StartupErrorApp extends StatelessWidget {
-  const StartupErrorApp({super.key, required this.reason});
+  const StartupErrorApp({super.key, required this.reason, this.stack});
 
   final String reason;
+  final String? stack;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
-        body: Center(
-          child: Padding(
+        backgroundColor: const Color(0xFF111111),
+        body: SafeArea(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            child: Text(
-              'No se pudo iniciar el reproductor de audio. Cierra la app y vuelve a abrirla.\n\nMotivo: $reason',
-              textAlign: TextAlign.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Reminiscencia no pudo arrancar',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SelectableText(
+                  reason,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                if (stack != null) ...[
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Traza:',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    stack!,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                const Text(
+                  'Mantén pulsado el texto para copiarlo y enviarlo.',
+                  style: TextStyle(color: Colors.white60, fontSize: 12),
+                ),
+              ],
             ),
           ),
         ),
