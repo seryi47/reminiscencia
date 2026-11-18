@@ -243,8 +243,7 @@ class HomePage extends StatelessWidget {
       title: song.title,
       subtitle: details,
       icon: Icons.music_note_rounded,
-      // ADR-0050: tarjeta de estante (~140 px) → miniatura 160 cae justa; si no hay, el cover.
-      image: services.covers.imageFor(song.thumb ?? song.cover),
+      image: services.covers.imageFor(song.cover),
       semanticHint: 'reproducir',
       onTap: () => runWithNotice(
         context,

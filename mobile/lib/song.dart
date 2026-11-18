@@ -13,7 +13,6 @@ class Song {
     required this.license,
     required this.audio,
     this.cover,
-    this.thumb,
     this.local = false,
     this.uploadStatus,
     this.track,
@@ -35,10 +34,6 @@ class Song {
 
   /// Portada publicada, relativa a la web (`covers/<id>.jpg`). Null si no tiene o si la ruta no es válida.
   final String? cover;
-
-  /// Miniatura 160×160 publicada (ADR-0050), relativa a la web (`thumbs/<id>.jpg`). Null si no tiene. Se usa en
-  /// listas y filas (ahorro de ~15 KiB por portada no bajada a tamaño completo).
-  final String? thumb;
 
   /// True si la canción se subió desde este teléfono. Nunca viene del catálogo público.
   final bool local;
@@ -73,7 +68,6 @@ class Song {
       license: (json['license'] as String?) ?? '',
       audio: json['audio'] as String,
       cover: cleanCoverPath(json['cover']),
-      thumb: cleanCoverPath(json['thumb']),  // ADR-0050
       track: cleanTrack(json['track']),
       gainDb: cleanGain(json['gain_db']),
     );
@@ -110,7 +104,6 @@ class Folder {
     required this.parentId,
     this.artist = '',
     this.cover,
-    this.thumb,
     this.pendingEdit = false,
   });
 
@@ -124,9 +117,6 @@ class Folder {
   /// Portada publicada, relativa a la web (`covers/<id>.jpg`). Null si no tiene.
   final String? cover;
 
-  /// Miniatura 160×160 publicada (ADR-0050), relativa a la web (`thumbs/<id>.jpg`). Null si no tiene.
-  final String? thumb;
-
   /// True si se ve con un cambio enviado que todavía no ha llegado al catálogo (ADR-0027, «Pendiente»).
   final bool pendingEdit;
 
@@ -136,6 +126,5 @@ class Folder {
     parentId: json['parent_id'] as String?,
     artist: json['artist'] is String ? (json['artist'] as String).trim() : '',
     cover: cleanCoverPath(json['cover']),
-    thumb: cleanCoverPath(json['thumb']),  // ADR-0050
   );
 }

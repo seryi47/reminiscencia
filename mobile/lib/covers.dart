@@ -9,10 +9,9 @@ import 'package:path_provider/path_provider.dart';
 
 /// Portadas publicadas en la web: `covers/<id>.jpg` (contrato de data/songs.json y data/folders.json), o las del índice
 /// de portadas de R2 (`portadas/<id>-<hash>.jpg`, ADR-0029; lib/cover_index.dart), que se piden al bucket público.
-/// Miniaturas (ADR-0050): `thumbs/<id>.jpg`, 160×160 derivadas de la portada; usadas en listas (filas de 56 px).
 /// Solo se aceptan rutas relativas con un nombre simple: nada de direcciones ni «..».
 final RegExp _coverPath = RegExp(
-  r'^(?:covers/[A-Za-z0-9_-]{1,64}\.(?:jpg|jpeg|png|webp)|thumbs/[A-Za-z0-9_-]{1,64}\.jpg|portadas/[SF][0-9a-f]{16}-[0-9a-f]{16}\.jpg)$',
+  r'^(?:covers/[A-Za-z0-9_-]{1,64}\.(?:jpg|jpeg|png|webp)|portadas/[SF][0-9a-f]{16}-[0-9a-f]{16}\.jpg)$',
 );
 
 /// Bucket público de R2 (el mismo que kR2AudioBase de library_store.dart): de ahí salen las portadas `portadas/…`.

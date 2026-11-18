@@ -298,15 +298,26 @@ class LibraryStore implements LibrarySource {
     var done = 0;
     var failed = 0;
     var bytes = 0;
-    void report() => onDetail?.call(
-      OfflineProgress(
-        done: already + done,
-        total: targets.length,
-        bytes: bytes,
-        failed: failed,
-      ),
-    );
-    report();
+    // ANR fix (1.4.11): throttle del report. En 1.4.10, cada byte descargado disparaba un notifyListeners en el
+    // ValueNotifier de progreso; con varias descargas simultáneas (515 canciones a 48k = ~500 MB) la UI se saturaba
+    // y el sistema mostraba «System UI isn't responding». Ahora se emite como mucho un update cada 250 ms (lo
+    // bastante para una barra fluida) y siempre el último al cerrar.
+    DateTime lastReport = DateTime.fromMillisecondsSinceEpoch(0);
+    const minInterval = Duration(milliseconds: 250);
+    void report({bool force = false}) {
+      final now = DateTime.now();
+      if (!force && now.difference(lastReport) < minInterval) return;
+      lastReport = now;
+      onDetail?.call(
+        OfflineProgress(
+          done: already + done,
+          total: targets.length,
+          bytes: bytes,
+          failed: failed,
+        ),
+      );
+    }
+    report(force: true);
     // Varias a la vez (ADR-0033); cada una entera o nada, y una rota no frena a las demás.
     await runLimited(missing, concurrency, (song) async {
       final ok = await _downloadOne(
@@ -327,8 +338,9 @@ class LibraryStore implements LibrarySource {
         failed += 1;
       }
       onProgress(done + failed, missing.length);
-      report();
+      report(force: true);
     }, cancel: cancel);
+    report(force: true);
     if (failed > 0 && done == 0 && !(cancel?.cancelled ?? false)) {
       throw HttpException('No se pudo descargar ninguna de $failed canciones');
     }

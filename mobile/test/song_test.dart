@@ -45,36 +45,4 @@ void main() {
     });
     expect(folder.parentId, 'f1');
   });
-
-  test('Song y Folder leen miniaturas thumbs/<id>.jpg (ADR-0050)', () {
-    final song = Song.fromJson({
-      'id': 'S5aac103b6eb2ecf4',
-      'title': 'x',
-      'duration_s': 10,
-      'audio': 'audio/S5aac103b6eb2ecf4.opus',
-      'cover': 'covers/S5aac103b6eb2ecf4.jpg',
-      'thumb': 'thumbs/S5aac103b6eb2ecf4.jpg',
-    });
-    expect(song.thumb, 'thumbs/S5aac103b6eb2ecf4.jpg');
-
-    final folder = Folder.fromJson({
-      'id': 'F0123456789abcdef',
-      'name': 'Jazz',
-      'parent_id': null,
-      'cover': 'covers/F0123456789abcdef.jpg',
-      'thumb': 'thumbs/F0123456789abcdef.jpg',
-    });
-    expect(folder.thumb, 'thumbs/F0123456789abcdef.jpg');
-  });
-
-  test('Thumb inválida se ignora como el cover', () {
-    final song = Song.fromJson({
-      'id': 'S5aac103b6eb2ecf4',
-      'title': 'x',
-      'duration_s': 10,
-      'audio': 'audio/S5aac103b6eb2ecf4.opus',
-      'thumb': 'thumbs/../data/songs.json',
-    });
-    expect(song.thumb, isNull);
-  });
 }
