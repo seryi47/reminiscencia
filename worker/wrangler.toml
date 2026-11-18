@@ -48,6 +48,13 @@ run_worker_first = ["/api/*", "/audio/*"]
 name = "API_RATE_LIMITER"
 namespace_id = "1001"
 
+# Base D1 para el reconocimiento musical (ADR-0048): tabla `hashes(hash, song_id, offset)` con índice por `hash` y tabla
+# `songs(id, title, artist)` para enriquecer el match. El Worker consulta por lotes de ~50 hashes por SELECT.
+[[d1_databases]]
+binding = "RECOGNIZE_DB"
+database_name = "reminiscencia-recognize"
+database_id = "199b2e22-796c-47cd-8adb-a1ed06a03cee"
+
   [ratelimits.simple]
   limit = 900
   period = 60
