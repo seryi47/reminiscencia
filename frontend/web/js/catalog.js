@@ -13,10 +13,18 @@ const MAX_TEXT = 200;
 // "https://pub-….r2.dev/portadas/<id>-<hash>.jpg". Cualquier otra forma se ignora y la portada se genera con un color
 // y un icono.
 const COVER_PATH = /^covers\/[A-Za-z0-9_-]{1,64}\.jpg$/;
+// Miniatura publicada por el backend (ADR-0050): "thumbs/<id>.jpg". Solo las portadas de git tienen miniatura;
+// las de R2 (índice de portadas) caen al cover.
+const THUMB_PATH = /^thumbs\/[A-Za-z0-9_-]{1,64}\.jpg$/;
 
 /** Ruta de portada válida ("covers/<id>.jpg" o la dirección de R2 del índice de portadas) o null. */
 export function normalizeCoverPath(value) {
   return typeof value === 'string' && (COVER_PATH.test(value) || COVER_URL.test(value)) ? value : null;
+}
+
+/** Ruta de miniatura válida ("thumbs/<id>.jpg") o null. ADR-0050. */
+export function normalizeThumbPath(value) {
+  return typeof value === 'string' && THUMB_PATH.test(value) ? value : null;
 }
 
 /** Colores de portada. Todos dan un contraste de 6:1 o más con texto blanco (WCAG 1.4.3). */
@@ -55,6 +63,7 @@ export function normalizeSong(raw, index = 0) {
     durationS: finiteOrNull(raw.duration_s),
     audio,
     cover: raw.local === true ? null : normalizeCoverPath(raw.cover),
+    thumb: raw.local === true ? null : normalizeThumbPath(raw.thumb),
     local: raw.local === true,
     // Subida para todos que todavía se está publicando (su copia local suena mientras tanto).
     pending: raw.local === true && raw.pending === true,
@@ -77,6 +86,7 @@ export function normalizeFolder(raw) {
     name: cleanText(raw.name, 'Álbum sin nombre'),
     artist: cleanText(raw.artist),
     cover: normalizeCoverPath(raw.cover),
+    thumb: normalizeThumbPath(raw.thumb),
     parentId: typeof raw.parent_id === 'string' && SAFE_ID.test(raw.parent_id) && raw.parent_id !== id ? raw.parent_id : null,
   };
 }
@@ -115,6 +125,13 @@ export function songCover(catalog, song) {
   if (!song) return null;
   if (song.cover) return song.cover;
   return song.folderId ? catalog.folderById.get(song.folderId)?.cover ?? null : null;
+}
+
+/** Miniatura de una canción (ADR-0050): la suya o, si no tiene, la de su álbum. null si ninguna tiene. */
+export function songThumb(catalog, song) {
+  if (!song) return null;
+  if (song.thumb) return song.thumb;
+  return song.folderId ? catalog.folderById.get(song.folderId)?.thumb ?? null : null;
 }
 
 /** Año de un álbum: el más repetido entre sus canciones (con empate, el más antiguo), o null. */

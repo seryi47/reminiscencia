@@ -1,10 +1,25 @@
 import json
 import shutil
+import subprocess
+from pathlib import Path
 
 import pytest
 
 from sonidos import catalog
 from sonidos.publish import sync_public
+
+
+def _write_valid_cover_jpeg(path: Path, color: str = "0x5078c8") -> None:
+    """Crea un JPEG 640×640 válido con ffmpeg: la ruta de los tests que ejercen portadas no pasa por libjpeg (PIL
+    no está en el entorno). Se salta la prueba si ffmpeg no está disponible: la generación es una dependencia
+    externa, igual que en portadas.py."""
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color=c={color}:s=640x640:d=1",
+         "-frames:v", "1", "-f", "mjpeg", str(path)],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"ffmpeg no disponible en el entorno de pruebas: {result.stderr.decode('utf-8', errors='replace')[:200]}")
 
 
 def _catalog_with(tmp_path, public_flags):
@@ -131,3 +146,70 @@ def test_public_song_id_that_is_not_a_library_id_is_refused(tmp_path):
 
     with pytest.raises(ValueError, match="identificador"):
         sync_public(catalog_path=path, audio_dir=audio, web_dir=tmp_path / "web")
+
+
+def test_thumbnail_is_published_and_linked_when_cover_exists(tmp_path):
+    """ADR-0050: una canción con portada lleva el campo "thumb" y la miniatura va a frontend/web/thumbs."""
+    path, audio = _catalog_with(tmp_path, [True])
+    data = catalog.load(path)
+    song_id = data["songs"][0]["id"]
+    data["songs"][0]["cover"] = f"covers/{song_id}.jpg"
+    catalog.save(path, data)
+    covers_dir = tmp_path / "covers"
+    covers_dir.mkdir()
+    _write_valid_cover_jpeg(covers_dir / f"{song_id}.jpg")
+
+    web = tmp_path / "web"
+    result = sync_public(catalog_path=path, audio_dir=audio, web_dir=web, covers_dir=covers_dir, thumbs_dir=tmp_path / "thumbs")
+
+    assert result["covers"] == 1 and result["thumbs"] == 1
+    songs = json.loads((web / "data" / "songs.json").read_text(encoding="utf-8"))
+    assert songs[0]["cover"] == f"covers/{song_id}.jpg"
+    assert songs[0]["thumb"] == f"thumbs/{song_id}.jpg"
+    assert (web / "thumbs" / f"{song_id}.jpg").is_file()
+    # La miniatura se auto-cachea en audio-library/thumbs al publicar, aunque no viniera de buzón.
+    assert (tmp_path / "thumbs" / f"{song_id}.jpg").is_file()
+
+
+def test_thumbnail_is_not_added_when_source_cover_is_invalid(tmp_path):
+    """Si la miniatura no se puede generar (bytes raros en el cover), la canción queda publicada sin "thumb"."""
+    path, audio = _catalog_with(tmp_path, [True])
+    data = catalog.load(path)
+    song_id = data["songs"][0]["id"]
+    data["songs"][0]["cover"] = f"covers/{song_id}.jpg"
+    catalog.save(path, data)
+    covers_dir = tmp_path / "covers"
+    covers_dir.mkdir()
+    (covers_dir / f"{song_id}.jpg").write_bytes(b"not-a-real-jpeg")  # convertir_thumbnail fallará
+
+    web = tmp_path / "web"
+    result = sync_public(catalog_path=path, audio_dir=audio, web_dir=web, covers_dir=covers_dir, thumbs_dir=tmp_path / "thumbs")
+
+    assert result["covers"] == 1 and result["thumbs"] == 0
+    songs = json.loads((web / "data" / "songs.json").read_text(encoding="utf-8"))
+    assert songs[0]["cover"] == f"covers/{song_id}.jpg"
+    assert "thumb" not in songs[0]
+    assert not (web / "thumbs").exists() or not any((web / "thumbs").iterdir())
+
+
+def test_stale_thumbnail_is_removed_from_the_web(tmp_path):
+    """Al despublicar la canción, la miniatura publicada se borra junto con la portada."""
+    path, audio = _catalog_with(tmp_path, [True])
+    data = catalog.load(path)
+    song_id = data["songs"][0]["id"]
+    data["songs"][0]["cover"] = f"covers/{song_id}.jpg"
+    catalog.save(path, data)
+    covers_dir = tmp_path / "covers"
+    covers_dir.mkdir()
+    _write_valid_cover_jpeg(covers_dir / f"{song_id}.jpg", color="0xc85078")
+
+    web = tmp_path / "web"
+    sync_public(catalog_path=path, audio_dir=audio, web_dir=web, covers_dir=covers_dir, thumbs_dir=tmp_path / "thumbs")
+    assert (web / "thumbs" / f"{song_id}.jpg").is_file()
+
+    data = catalog.load(path)
+    data["songs"][0]["public"] = False
+    catalog.save(path, data)
+    sync_public(catalog_path=path, audio_dir=audio, web_dir=web, covers_dir=covers_dir, thumbs_dir=tmp_path / "thumbs")
+
+    assert not (web / "thumbs" / f"{song_id}.jpg").exists()

@@ -27,7 +27,7 @@ import shutil
 from pathlib import Path
 
 from sonidos import catalog
-from sonidos.portadas import COVER_NAME, cover_ref
+from sonidos.portadas import COVER_NAME, THUMB_NAME, convertir_thumbnail, cover_ref, thumb_ref
 
 PUBLIC_FIELDS = ("id", "title", "artist", "year", "tags", "folder_id", "duration_s", "license")
 CATALOG_SONG_FIELDS = (
@@ -52,6 +52,24 @@ def _cover_of(item: dict) -> str | None:
     return cover
 
 
+def _ensure_thumb(cover_source: Path, thumb_dest: Path) -> bool:
+    """Garantiza que la miniatura de una portada existe (ADR-0050). La regenera si falta.
+
+    Devuelve True si quedó una miniatura utilizable (nueva o la que ya había); False si no se pudo generar. Nunca
+    lanza: una miniatura ausente no detiene la publicación (los clientes caen al cover).
+    """
+    if thumb_dest.is_file():
+        return True
+    if not cover_source.is_file():
+        return False
+    try:
+        convertir_thumbnail(cover_source, thumb_dest)
+    except Exception:  # noqa: BLE001 — miniatura no crítica: cualquier error silencia el campo "thumb".
+        thumb_dest.unlink(missing_ok=True)
+        return False
+    return thumb_dest.is_file()
+
+
 def _track_of(song: dict) -> int | None:
     """El número de pista de una canción con álbum, o None (sin álbum, o un valor que no es un entero desde 1)."""
     track = song.get("track")
@@ -69,14 +87,18 @@ def _gain_of(song: dict) -> float | None:
     return gain if math.isfinite(gain) else None
 
 
-def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_dir: Path | None = None) -> dict:
+def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_dir: Path | None = None,
+                thumbs_dir: Path | None = None) -> dict:
     """covers_dir: las portadas de la biblioteca; por defecto, la carpeta covers junto a audio_dir
-    (audio-library/covers)."""
+    (audio-library/covers). thumbs_dir (ADR-0050): las miniaturas; por defecto, la carpeta thumbs junto a audio_dir.
+    Si una miniatura falta se intenta generar desde su portada; si no sale, la canción simplemente no lleva "thumb"."""
     data = catalog.load(catalog_path)
     covers_dir = audio_dir.parent / "covers" if covers_dir is None else covers_dir
+    thumbs_dir = audio_dir.parent / "thumbs" if thumbs_dir is None else thumbs_dir
     web_audio = web_dir / "audio"
     web_data = web_dir / "data"
     web_covers = web_dir / "covers"
+    web_thumbs = web_dir / "thumbs"
     web_data.mkdir(parents=True, exist_ok=True)
 
     public = [song for song in data["songs"] if song.get("public") is True]
@@ -109,6 +131,32 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
             if COVER_NAME.fullmatch(stale.name) and stale.name not in cover_names:
                 stale.unlink()
 
+    # Miniaturas (ADR-0050): se auto-regeneran al publicar si faltan, para que los covers antiguos reciban su
+    # miniatura sin un paso aparte. El conjunto de nombres con miniatura puede ser menor que el de portadas.
+    thumbs_published: set[str] = set()
+    for name in cover_names:
+        source_cover = covers_dir / name
+        source_thumb = thumbs_dir / name
+        if _ensure_thumb(source_cover, source_thumb):
+            target = web_thumbs / name
+            web_thumbs.mkdir(parents=True, exist_ok=True)
+            if target.is_symlink():
+                raise ValueError(f"enlace simbólico en las miniaturas publicadas: {name}")
+            if not target.exists() or not filecmp.cmp(source_thumb, target, shallow=False):
+                shutil.copyfile(source_thumb, target)
+            thumbs_published.add(name)
+    if web_thumbs.is_dir():
+        for stale in web_thumbs.iterdir():
+            if THUMB_NAME.fullmatch(stale.name) and stale.name not in thumbs_published:
+                stale.unlink()
+
+    def _thumb_for(item_id: str, cover_value: str | None) -> str | None:
+        """La miniatura (ADR-0050) de un elemento, o None si su portada no tuvo miniatura publicada."""
+        if not cover_value:
+            return None
+        name = cover_value.split("/", 1)[1]
+        return thumb_ref(item_id) if name in thumbs_published else None
+
     songs = []
     for song in public:
         entry = {key: song.get(key) for key in PUBLIC_FIELDS}
@@ -116,6 +164,9 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         entry["audio"] = f"audio/{song['id']}.opus"
         if song_covers[song["id"]]:
             entry["cover"] = song_covers[song["id"]]
+        thumb_value = _thumb_for(song["id"], song_covers[song["id"]])
+        if thumb_value:
+            entry["thumb"] = thumb_value
         if _track_of(song) is not None:
             entry["track"] = _track_of(song)
         if _gain_of(song) is not None:
@@ -134,6 +185,9 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
             entry["artist"] = artist.strip()
         if folder_covers[folder["id"]]:
             entry["cover"] = folder_covers[folder["id"]]
+        thumb_value = _thumb_for(folder["id"], folder_covers[folder["id"]])
+        if thumb_value:
+            entry["thumb"] = thumb_value
         folders.append(entry)
     (web_data / "folders.json").write_text(json.dumps(folders, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
 
@@ -143,6 +197,9 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
         entry["tags"] = list(song.get("tags") or [])
         if song_covers[song["id"]]:
             entry["cover"] = song_covers[song["id"]]
+        thumb_value = _thumb_for(song["id"], song_covers[song["id"]])
+        if thumb_value:
+            entry["thumb"] = thumb_value
         if _track_of(song) is not None:
             entry["track"] = _track_of(song)
         if _gain_of(song) is not None:
@@ -153,4 +210,4 @@ def sync_public(*, catalog_path: Path, audio_dir: Path, web_dir: Path, covers_di
     (web_data / "catalog.json").write_text(json.dumps(catalog_view, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
 
     return {"public": len(songs), "catalog_songs": len(catalog_songs), "folders": len(folders),
-            "covers": len(cover_names)}
+            "covers": len(cover_names), "thumbs": len(thumbs_published)}

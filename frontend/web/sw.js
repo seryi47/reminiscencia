@@ -9,6 +9,7 @@ import {
   isCoverRequest,
   isDataRequest,
   isShellRequest,
+  isThumbRequest,
   localAudioId,
   parseRange,
   remoteAudioUrls,
@@ -79,7 +80,9 @@ self.addEventListener('fetch', (event) => {
 
   if (isAudioRequest(url.pathname)) {
     event.respondWith(audioResponse(request));
-  } else if (isCoverRequest(url.pathname)) {
+  } else if (isCoverRequest(url.pathname) || isThumbRequest(url.pathname)) {
+    // ADR-0050: miniaturas (/thumbs/) y portadas (/covers/) comparten caché — son derivadas del mismo contenido
+    // inmutable, no justifica una caché separada ni un contador de LRU aparte.
     event.respondWith(staleWhileRevalidate(event, COVER_CACHE));
   } else if (isDataRequest(url.pathname)) {
     event.respondWith(networkFirst(event));

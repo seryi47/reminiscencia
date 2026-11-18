@@ -138,7 +138,7 @@ describe("Cloudflare: solo se publica la web estática (ADR-0034)", () => {
       assert.ok(ignored.includes(entry), `falta ${entry} en .assetsignore`);
     }
     // Nada de lo que la web necesita queda fuera.
-    for (const entry of ["index.html", "sw.js", "manifest.webmanifest", "js", "css", "fonts", "icons", "data", "covers", "_headers"]) {
+    for (const entry of ["index.html", "sw.js", "manifest.webmanifest", "js", "css", "fonts", "icons", "data", "covers", "thumbs", "_headers"]) {
       assert.ok(!ignored.includes(entry), `${entry} no debe estar en .assetsignore`);
     }
   });

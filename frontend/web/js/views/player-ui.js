@@ -158,7 +158,7 @@ export function mountPlayerUi(ctx, { bar, mini, nowPanel }) {
 
   function queueRow(track, key, nowPlaying = false, testid = 'queue-item') {
     const content = [
-      songCoverNode(ctx, track, 'track-cover'),
+      songCoverNode(ctx, track, 'track-cover', { small: true }),
       el('span', { class: 'track-text' },
         el('span', { class: `add-title${nowPlaying ? ' is-playing' : ''}` }, track.title),
         el('span', { class: 'track-artist' }, artistOf(track))),
@@ -342,13 +342,13 @@ export function mountPlayerUi(ctx, { bar, mini, nowPanel }) {
       const focusedLike = [barLikeSlot, miniLikeSlot].find((slot) => slot.contains(document.activeElement));
       lastTrackKey = state.key;
       lastLiked = liked;
-      barCover.replaceChildren(track ? songCoverNode(ctx, track, 'player-cover') : el('span', { class: 'cover player-cover cover-empty', 'aria-hidden': 'true' }));
+      barCover.replaceChildren(track ? songCoverNode(ctx, track, 'player-cover', { small: true }) : el('span', { class: 'cover player-cover cover-empty', 'aria-hidden': 'true' }));
       barTitle.replaceChildren(track
         ? (track.folderId ? el('a', { class: 'player-title-link', href: `#/album/${encodeURIComponent(track.folderId)}`, 'data-key': 'player-title-link' }, track.title) : track.title)
         : 'Elige algo para escuchar');
       barArtist.textContent = track ? artistOf(track) : '';
       barLikeSlot.replaceChildren(track ? ctx.likeButtonFor(track, 'player-like', 16) : '');
-      miniCover.replaceChildren(track ? songCoverNode(ctx, track, 'mini-cover') : '');
+      miniCover.replaceChildren(track ? songCoverNode(ctx, track, 'mini-cover', { small: true }) : '');
       miniTitle.textContent = track ? track.title : '';
       miniArtist.textContent = track ? artistOf(track) : '';
       miniOpen.setAttribute('aria-label', track ? `Abrir el reproductor: ${track.title}` : 'Abrir el reproductor');

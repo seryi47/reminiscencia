@@ -128,7 +128,7 @@ function topResult(ctx, top) {
   let action;
   if (top.kind === 'song') {
     const song = top.item;
-    descriptor = { title: song.title, typeLabel: 'Canción', detail: ctx.artistOf(song), coverNode: songCoverNode(ctx, song, 'top-cover') };
+    descriptor = { title: song.title, typeLabel: 'Canción', detail: ctx.artistOf(song), coverNode: songCoverNode(ctx, song, 'top-cover', { small: true }) };
     action = el('button', {
       type: 'button',
       class: 'play-button play-button-card',
@@ -143,7 +143,7 @@ function topResult(ctx, top) {
       title: context.title,
       typeLabel: top.kind === 'folder' ? 'Álbum' : 'Lista',
       detail: context.owner ?? songCountText(ctx.getContext(context.contextId)?.songs.length ?? 0),
-      coverNode: contextCover(context, 'top-cover'),
+      coverNode: contextCover(context, 'top-cover', { small: true }),
       href: context.href,
     };
     action = playButton(ctx, context.contextId, context.title, { size: 'card', testid: 'top-result-play' });
@@ -169,5 +169,5 @@ function browseAll(ctx) {
       tiles.map((item) => el('li', {},
         el('a', { class: 'browse-tile', href: item.href, style: { '--cover-color': ctx.colorOf(item) }, 'data-testid': 'browse-tile', 'data-key': `browse:${item.contextId}` },
           el('span', { class: 'browse-title' }, item.title),
-          contextCover(item, 'browse-cover'))))));
+          contextCover(item, 'browse-cover', { small: true }))))));
 }

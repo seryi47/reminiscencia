@@ -21,6 +21,7 @@ import {
   formatBytes,
   isAudioRequest,
   isCoverRequest,
+  isThumbRequest,
   isDataRequest,
   isShellRequest,
   listAudioUrls,
@@ -340,6 +341,24 @@ describe('portadas (covers/<id>.jpg)', () => {
   test('tienen su propia caché, que no se borra al cambiar de shell', () => {
     assert.equal(coverCacheName(), 'reminiscencia-portadas-v1');
     assert.equal(coverCacheName().startsWith('reminiscencia-shell-'), false);
+  });
+});
+
+describe('miniaturas (thumbs/<id>.jpg) (ADR-0050)', () => {
+  test('reconoce solo /thumbs/<id seguro>.jpg', () => {
+    assert.equal(isThumbRequest('/thumbs/S0000000000000001.jpg'), true);
+    assert.equal(isThumbRequest(`${ORIGIN}thumbs/F0123456789abcdef.jpg?v=2`), true);
+    for (const url of ['/thumbs/x.png', '/thumbs/a/b.jpg', '/thumbs/../js/app.js', '/thumbs/.jpg', '/thumb/x.jpg', '/covers/x.jpg']) {
+      assert.equal(isThumbRequest(url), false, url);
+    }
+    assert.equal(isShellRequest('/thumbs/S0000000000000001.jpg'), false, 'las miniaturas no van en la caché del shell');
+  });
+
+  test('miniaturas y portadas son rutas distintas, no se confunden', () => {
+    const pathCover = '/covers/S0000000000000001.jpg';
+    const pathThumb = '/thumbs/S0000000000000001.jpg';
+    assert.equal(isCoverRequest(pathCover) && !isThumbRequest(pathCover), true);
+    assert.equal(isThumbRequest(pathThumb) && !isCoverRequest(pathThumb), true);
   });
 });
 

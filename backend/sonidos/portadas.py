@@ -13,6 +13,12 @@ la extensión ni por lo que ffmpeg adivine, y la imagen entra por la entrada est
 (jpeg_pipe, png_pipe o webp_pipe). Así ffmpeg no puede tratarla como una lista de reproducción, una secuencia de
 ficheros ni una URL. Antes de convertir, ffprobe comprueba el códec y las dimensiones (como máximo 16384 px por lado
 y 100 megapíxeles, para no descomprimir una bomba). Después, ffprobe comprueba que la salida es un JPEG de 640×640.
+
+Miniaturas (160×160) [ADR-0050]: para las listas (46-56 px de alto) la web descarga una miniatura derivada de la
+portada, no los 640×640 completos. Ahorro medido: ~35 KiB por fila visible. El fichero vive en
+audio-library/thumbs/<ID>.jpg y el catálogo lleva "thumb": "thumbs/<ID>.jpg" al lado del "cover". Se genera por
+la misma vía (convertir_thumbnail) y es determinista (misma portada ⇒ mismos bytes). Los clientes sin soporte
+(APK antigua) ignoran el campo y siguen usando el cover: el cambio es retro-compatible.
 """
 
 from __future__ import annotations
@@ -25,6 +31,9 @@ from pathlib import Path
 COVERS_DIRECTORY = "audio-library/covers"
 WEB_COVERS_DIRECTORY = "frontend/web/covers"
 COVER_SIZE = 640
+THUMBS_DIRECTORY = "audio-library/thumbs"
+WEB_THUMBS_DIRECTORY = "frontend/web/thumbs"
+THUMB_SIZE = 160  # ADR-0050: miniatura para listas (46-56 px de alto); el navegador la escala a su tamaño real
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MiB
 MAX_SOURCE_SIDE = 16384
 MAX_SOURCE_PIXELS = 100_000_000
@@ -33,12 +42,17 @@ MAX_SOURCE_PIXELS = 100_000_000
 # (ver ADR-0016). Es una equivalencia aproximada, no exacta.
 CONTRACT_QUALITY = 85
 FFMPEG_QSCALE = "2"
+# Miniatura: calidad algo menor para compensar el tamaño pequeño; en 160×160 la diferencia visual con q=2 es imperceptible
+# y el fichero cae de ~8 KiB a ~4 KiB.
+FFMPEG_QSCALE_THUMB = "4"
 TIMEOUT_S = 120
 
 # Id que puede tener portada: canción (S) o carpeta (F), con 16 hexadecimales en minúscula.
 COVER_ID = re.compile(r"[SF][0-9a-f]{16}")
 # Nombre de una portada guardada o publicada.
 COVER_NAME = re.compile(r"[SF][0-9a-f]{16}\.jpg")
+# La miniatura comparte nombre con la portada (vive en thumbs/<ID>.jpg): el id está en la ruta, no en el fichero.
+THUMB_NAME = COVER_NAME
 # Nombre de una portada subida al buzón: el id exacto y una extensión de imagen (sin distinguir mayúsculas).
 UPLOAD_NAME = re.compile(r"([SF][0-9a-f]{16})\.(?i:jpg|jpeg|png|webp)")
 
@@ -59,6 +73,13 @@ def cover_ref(item_id: str) -> str:
     if not isinstance(item_id, str) or not COVER_ID.fullmatch(item_id):
         raise ValueError(f"identificador sin portada posible: {item_id!r}")
     return f"covers/{item_id}.jpg"
+
+
+def thumb_ref(item_id: str) -> str:
+    """Valor del campo "thumb" del catálogo para un id (ADR-0050)."""
+    if not isinstance(item_id, str) or not COVER_ID.fullmatch(item_id):
+        raise ValueError(f"identificador sin miniatura posible: {item_id!r}")
+    return f"thumbs/{item_id}.jpg"
 
 
 def formato_por_firma(head: bytes) -> tuple[str, str] | None:
@@ -138,4 +159,42 @@ def convertir_portada(source: Path, destination: Path) -> Path:
     if out.get("codec_name") != "mjpeg" or out.get("width") != COVER_SIZE or out.get("height") != COVER_SIZE:
         destination.unlink(missing_ok=True)
         raise PortadaError("la conversión no ha dado un JPEG de 640×640")
+    return destination
+
+
+def convertir_thumbnail(cover_source: Path, destination: Path) -> Path:
+    """Genera una miniatura 160×160 (ADR-0050) a partir de la portada ya convertida (JPEG 640×640).
+
+    La portada es la fuente: así la miniatura hereda la validación y el recorte centrado, y la operación es
+    determinista (misma portada ⇒ mismos bytes). Lanza PortadaError si la portada no es un JPEG válido de la
+    dimensión esperada.
+    """
+    info = _probe(cover_source, "jpeg_pipe")
+    width, height = info.get("width"), info.get("height")
+    if info.get("codec_name") != "mjpeg" or width != COVER_SIZE or height != COVER_SIZE:
+        raise PortadaError("la portada origen no es un JPEG de 640×640")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    size = str(THUMB_SIZE)
+    result = _run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "jpeg_pipe", "-i", "pipe:0",
+            "-frames:v", "1",
+            "-vf", f"scale={size}:{size}:flags=lanczos",
+            "-pix_fmt", "yuvj420p",
+            "-map_metadata", "-1",
+            "-fflags", "+bitexact", "-flags:v", "+bitexact",
+            "-c:v", "mjpeg", "-q:v", FFMPEG_QSCALE_THUMB,
+            "-f", "mjpeg", str(destination),
+        ],
+        cover_source,
+    )
+    if result.returncode != 0 or not destination.is_file():
+        destination.unlink(missing_ok=True)
+        raise PortadaError("ffmpeg no puede generar la miniatura")
+    out = _probe(destination, "jpeg_pipe")
+    if out.get("codec_name") != "mjpeg" or out.get("width") != THUMB_SIZE or out.get("height") != THUMB_SIZE:
+        destination.unlink(missing_ok=True)
+        raise PortadaError("la miniatura no ha salido en 160×160")
     return destination

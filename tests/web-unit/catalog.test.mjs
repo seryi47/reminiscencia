@@ -19,10 +19,12 @@ import {
   normalizeFolder,
   normalizeSong,
   normalizeText,
+  normalizeThumbPath,
   recentSongs,
   searchCatalog,
   songCountText,
   songCover,
+  songThumb,
   songsInFolder,
   songsToAddToAlbum,
   titleSize,
@@ -60,6 +62,7 @@ describe('lectura del catálogo', () => {
       durationS: 101,
       audio: 'audio/S0000000000000001.opus',
       cover: null,
+      thumb: null,
       local: false,
       pending: false,
       addedAt: null,
@@ -248,11 +251,17 @@ describe('álbumes y portadas publicadas (contrato con el backend)', () => {
     assert.equal(normalizeSong(song(1, { cover: 'data:image/png;base64,AAAA' })).cover, null);
   });
 
-  test('un álbum lee artist y cover opcionales; sin ellos, artista vacío y sin portada', () => {
-    assert.deepEqual(normalizeFolder({ id: 'F0123456789abcdef', name: ' Valses ', artist: ' Orquesta \n de prueba ', cover: 'covers/F0123456789abcdef.jpg' }), {
-      id: 'F0123456789abcdef', name: 'Valses', artist: 'Orquesta de prueba', cover: 'covers/F0123456789abcdef.jpg', parentId: null,
+  test('un álbum lee artist, cover y thumb opcionales; sin ellos, artista vacío y sin portada', () => {
+    assert.deepEqual(normalizeFolder({
+      id: 'F0123456789abcdef', name: ' Valses ', artist: ' Orquesta \n de prueba ',
+      cover: 'covers/F0123456789abcdef.jpg', thumb: 'thumbs/F0123456789abcdef.jpg',
+    }), {
+      id: 'F0123456789abcdef', name: 'Valses', artist: 'Orquesta de prueba',
+      cover: 'covers/F0123456789abcdef.jpg', thumb: 'thumbs/F0123456789abcdef.jpg', parentId: null,
     });
-    assert.deepEqual(normalizeFolder({ id: 'aaaaaaaaaa', name: 'Años veinte' }), { id: 'aaaaaaaaaa', name: 'Años veinte', artist: '', cover: null, parentId: null });
+    assert.deepEqual(normalizeFolder({ id: 'aaaaaaaaaa', name: 'Años veinte' }), {
+      id: 'aaaaaaaaaa', name: 'Años veinte', artist: '', cover: null, thumb: null, parentId: null,
+    });
     assert.equal(normalizeFolder({ id: 'aaaaaaaaaa' }).name, 'Álbum sin nombre');
   });
 
@@ -265,6 +274,34 @@ describe('álbumes y portadas publicadas (contrato con el backend)', () => {
     assert.equal(songCover(catalog, one), 'covers/F0123456789abcdef.jpg');
     assert.equal(songCover(catalog, two), 'covers/S0000000000000002.jpg');
     assert.equal(songCover(catalog, three), null);
+  });
+
+  test('normalizeThumbPath acepta solo "thumbs/<id seguro>.jpg" (ADR-0050)', () => {
+    assert.equal(normalizeThumbPath('thumbs/S0000000000000001.jpg'), 'thumbs/S0000000000000001.jpg');
+    assert.equal(normalizeThumbPath('thumbs/F0123456789abcdef.jpg'), 'thumbs/F0123456789abcdef.jpg');
+    for (const bad of ['thumb/x.jpg', '/thumbs/x.jpg', 'thumbs/x.png', 'thumbs/../x.jpg', 'thumbs/a/b.jpg', 'thumbs/.jpg', 42, null, undefined]) {
+      assert.equal(normalizeThumbPath(bad), null, String(bad));
+    }
+  });
+
+  test('songThumb usa la miniatura de la canción o, si no tiene, la del álbum; null si ninguna lo lleva', () => {
+    const catalog = buildCatalog(
+      [
+        song(1, { folder_id: 'F0123456789abcdef' }),
+        song(2, { folder_id: 'F0123456789abcdef', cover: 'covers/S0000000000000002.jpg', thumb: 'thumbs/S0000000000000002.jpg' }),
+        song(3),
+      ],
+      [{ id: 'F0123456789abcdef', name: 'Con portada', cover: 'covers/F0123456789abcdef.jpg', thumb: 'thumbs/F0123456789abcdef.jpg' }],
+    );
+    const [one, two, three] = catalog.songs;
+    assert.equal(songThumb(catalog, one), 'thumbs/F0123456789abcdef.jpg');  // la hereda del álbum
+    assert.equal(songThumb(catalog, two), 'thumbs/S0000000000000002.jpg');  // la suya
+    assert.equal(songThumb(catalog, three), null);  // ni suya ni de álbum
+  });
+
+  test('una canción sube ignora un "thumb" subido por el navegador (local=true) por seguridad', () => {
+    const value = normalizeSong(song(9, { local: true, thumb: 'thumbs/S0000000000000009.jpg' }));
+    assert.equal(value.thumb, null);
   });
 
   test('albumYear da el año más repetido (con empate, el más antiguo) o null', () => {

@@ -8,7 +8,7 @@ import { normalizeApiBase, WORKER_API_BASE } from './api-config.js';
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 49;
+export const SHELL_VERSION = 50;
 
 /** Origen público del bucket de audio en Cloudflare R2 por r2.dev (ADR-0020): las portadas y, desde ADR-0031, el
  *  respaldo del audio. Debe coincidir con media-src, connect-src e img-src de vercel.json y _headers. */
@@ -71,6 +71,8 @@ const DATA_PATTERN = /^\/data\/[^/]+\.json$/;
 const AUDIO_PATTERN = /^\/audio\/[^/]+\.opus$/;
 const LOCAL_AUDIO_PATTERN = /^\/audio\/(L[0-9a-f]{16})\.opus$/;
 const COVER_PATTERN = /^\/covers\/[A-Za-z0-9_-]{1,64}\.jpg$/;
+// ADR-0050: miniaturas 160×160 de las portadas, para listas y filas (compiladas por el backend junto a covers/).
+const THUMB_PATTERN = /^\/thumbs\/[A-Za-z0-9_-]{1,64}\.jpg$/;
 
 /** Rutas desde la raíz del sitio que el service worker precarga al instalarse. Las que
  *  no existen (por ejemplo, ficheros de otras ramas) se omiten sin error. Al añadir una hoja,
@@ -152,6 +154,13 @@ export function coverCacheName() {
 export function isCoverRequest(url) {
   const path = pathOf(url);
   return path !== null && COVER_PATTERN.test(path);
+}
+
+/** ¿Es una miniatura publicada (/thumbs/<id>.jpg)? ADR-0050. Se cachea junto a las portadas (son derivadas del
+ *  mismo contenido inmutable; no vale la pena una caché aparte). */
+export function isThumbRequest(url) {
+  const path = pathOf(url);
+  return path !== null && THUMB_PATTERN.test(path);
 }
 
 /** Nombre de la caché de audio guardado para escuchar sin conexión. */

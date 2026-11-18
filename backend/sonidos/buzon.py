@@ -79,7 +79,8 @@ from sonidos.hashing import sha256_file
 from sonidos.limits import GIT_BLOCK_FILE_BYTES
 from sonidos.pipeline import PLAYBACK_PROFILE
 from sonidos.portadas import (
-    COVERS_DIRECTORY, MAX_UPLOAD_BYTES as MAX_COVER_BYTES, UPLOAD_NAME, PortadaError, convertir_portada, cover_ref,
+    COVERS_DIRECTORY, MAX_UPLOAD_BYTES as MAX_COVER_BYTES, THUMBS_DIRECTORY, UPLOAD_NAME, PortadaError,
+    convertir_portada, convertir_thumbnail, cover_ref,
 )
 from sonidos.probe import ProbeError, probe
 from sonidos.publish import sync_public
@@ -290,6 +291,7 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
     catalog_path = repo / "audio-library" / "indexes" / "catalog.json"
     audio_dir = repo / "audio-library" / "audio"
     covers_dir = repo / COVERS_DIRECTORY
+    thumbs_dir = repo / THUMBS_DIRECTORY
     staging = staging_dir or repo / "audio-library" / "staging"
     for folder in (catalog_path.parent, audio_dir, covers_dir, buzon / PORTADAS_SUBDIRECTORY):
         if folder.is_symlink():
@@ -368,7 +370,7 @@ def procesar_buzon(*, repo: Path, event: Mapping, actor: str, staging_dir: Path 
         for path in sorted(portadas):
             cover_changed = _procesar_portada(
                 data, result, path=path, name=path[len(portadas_prefix):], directory=buzon / PORTADAS_SUBDIRECTORY,
-                covers_dir=covers_dir, staging=staging,
+                covers_dir=covers_dir, thumbs_dir=thumbs_dir, staging=staging,
             )
             changed = changed or cover_changed
     finally:
@@ -535,7 +537,7 @@ def _unir_partes(buzon: Path, result: dict, del_evento: Mapping[str, str], *,
 
 
 def _procesar_portada(data: dict, result: dict, *, path: str, name: str, directory: Path, covers_dir: Path,
-                      staging: Path) -> bool:
+                      thumbs_dir: Path, staging: Path) -> bool:
     """Una portada del buzón (ver el docstring del módulo). Anota el resultado y devuelve si cambió la biblioteca."""
     shown = f"{PORTADAS_SUBDIRECTORY}/{name}"
     if "/" in name:
@@ -590,6 +592,19 @@ def _procesar_portada(data: dict, result: dict, *, path: str, name: str, directo
         shutil.move(str(produced), destination)
     else:
         produced.unlink()
+    # Miniatura derivada (ADR-0050): se regenera siempre que la portada haya cambiado. El catálogo no guarda el campo
+    # de miniatura: lo pone sync_public cuando el fichero existe. Si la generación falla, la portada queda sin
+    # miniatura (los clientes caerán al cover); no interrumpe la subida.
+    if file_changed or not (thumbs_dir / f"{item_id}.jpg").is_file():
+        try:
+            thumbs_dir.mkdir(parents=True, exist_ok=True)
+            thumb_dest = thumbs_dir / f"{item_id}.jpg"
+            if thumb_dest.is_symlink():
+                raise BuzonError(f"enlace simbólico en la biblioteca: {THUMBS_DIRECTORY}/{item_id}.jpg")
+            convertir_thumbnail(destination, thumb_dest)
+        except PortadaError:
+            # Deja la miniatura vieja (si la había) o ninguna. La portada ya está publicada.
+            pass
     catalog_changed = catalog.set_cover(data, item_id, cover_ref(item_id))
     target.unlink()
     result["portadas"].append({

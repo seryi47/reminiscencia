@@ -277,7 +277,7 @@ function selectionPanel(ctx, context, editable) {
       return el('li', {},
         el('label', { class: 'add-row pick-row', for: boxId, 'data-testid': 'album-select-option', 'data-song-id': song.id },
           box,
-          songCoverNode(ctx, song, 'track-cover'),
+          songCoverNode(ctx, song, 'track-cover', { small: true }),
           el('span', { class: 'track-text' },
             el('span', { class: 'add-title' }, song.title),
             el('span', { class: 'track-artist' }, ctx.artistOf(song)))));

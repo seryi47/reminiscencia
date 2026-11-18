@@ -36,14 +36,19 @@ export function cover({ color, iconName = 'note', src = null, mosaic = null, cla
   return node;
 }
 
-/** Portada de una colección (descriptor de app.js: color, iconName, cover y mosaic). */
-export function contextCover(item, className) {
-  return cover({ color: item.color, iconName: item.iconName, src: item.cover, mosaic: item.mosaic, className });
+/** Portada de una colección (descriptor de app.js: color, iconName, cover, thumb, mosaic y mosaicThumb). Con
+ *  `small: true` (ADR-0050) se usa la miniatura 160×160 en lugar de la portada 640×640, para listas y filas
+ *  (ahorro de ~35 KiB por elemento visible). Si no hay miniatura publicada, cae al cover; igual con el mosaico. */
+export function contextCover(item, className, { small = false } = {}) {
+  const src = small && item.thumb ? item.thumb : item.cover;
+  const mosaic = small && Array.isArray(item.mosaicThumb) ? item.mosaicThumb : item.mosaic;
+  return cover({ color: item.color, iconName: item.iconName, src, mosaic, className });
 }
 
-/** Portada de una canción o de una pista del reproductor. */
-export function songCoverNode(ctx, song, className) {
-  return cover({ color: ctx.songColor(song), iconName: 'note', src: ctx.songCoverSrc(song), className });
+/** Portada de una canción o de una pista del reproductor. Con `small: true` (ADR-0050) usa la miniatura. */
+export function songCoverNode(ctx, song, className, { small = false } = {}) {
+  const src = small ? (ctx.songThumbSrc(song) ?? ctx.songCoverSrc(song)) : ctx.songCoverSrc(song);
+  return cover({ color: ctx.songColor(song), iconName: 'note', src, className });
 }
 
 /**
@@ -111,7 +116,7 @@ export function songCard(ctx, song, { onPlay, testid = 'song-card' }) {
 /** Acceso rápido de Inicio: tarjeta horizontal (48 px en escritorio) con la portada a la izquierda. */
 export function quickTile(ctx, item) {
   return el('div', { class: 'tile', 'data-testid': 'quick-tile', 'data-context': item.contextId },
-    contextCover(item, 'tile-cover'),
+    contextCover(item, 'tile-cover', { small: true }),
     el('a', { class: 'tile-title card-link', href: item.href, 'data-key': `tile:${item.contextId}` }, item.title),
     el('span', { class: 'tile-eq', 'aria-hidden': 'true' }, el('i'), el('i'), el('i')),
     playButton(ctx, item.contextId, item.title, { size: 'tile', testid: 'tile-play' }));
@@ -128,7 +133,7 @@ export function libraryItem({ href, title, subtitle, contextId, active = false, 
       'data-context': contextId,
       'data-key': `library:${testid}:${contextId}`,
     },
-    contextCover({ ...item, contextId }, 'library-cover'),
+    contextCover({ ...item, contextId }, 'library-cover', { small: true }),
     el('span', { class: 'library-text' },
       el('span', { class: 'library-title' }, title),
       el('span', { class: 'library-subtitle' }, subtitle)),
@@ -273,7 +278,7 @@ export function trackTable(ctx, songs, {
       el('span', { class: 'num-playing', 'aria-hidden': 'true' }, el('i'), el('i'), el('i'))),
     el('td', { class: 'col-title' },
       el('div', { class: 'track-main' },
-        showCover ? songCoverNode(ctx, song, 'track-cover') : null,
+        showCover ? songCoverNode(ctx, song, 'track-cover', { small: true }) : null,
         // Título y artista van dentro del botón: en el teléfono es un objetivo de 44 px o más.
         el('button', {
           type: 'button',

@@ -34,6 +34,7 @@ from sonidos.publish import sync_public  # noqa: E402
 CATALOG = ROOT / "audio-library" / "indexes" / "catalog.json"
 AUDIO = ROOT / "audio-library" / "audio"
 COVERS = ROOT / "audio-library" / "covers"
+THUMBS = ROOT / "audio-library" / "thumbs"
 STAGING = ROOT / "audio-library" / "staging"
 WEB = ROOT / "frontend" / "web"
 
@@ -100,7 +101,10 @@ def organize(data: dict, payload: dict) -> dict:
 
 
 def _remove_cover(folder_id: str) -> None:
-    """La portada de una carpeta borrada ya no la usa nadie. Solo ids con portada posible (F + 16 hexadecimales)."""
+    """La portada de una carpeta borrada ya no la usa nadie. Solo ids con portada posible (F + 16 hexadecimales).
+
+    También quita la miniatura (ADR-0050) si existe, para que sync_public no la vuelva a publicar.
+    """
     if not COVER_ID.fullmatch(folder_id):
         return
     if COVERS.is_symlink():
@@ -109,6 +113,12 @@ def _remove_cover(folder_id: str) -> None:
     if cover.is_symlink():
         raise catalog.CatalogError(f"enlace simbólico en la portada {folder_id}.jpg")
     cover.unlink(missing_ok=True)
+    if THUMBS.is_symlink():
+        raise catalog.CatalogError("enlace simbólico en audio-library/thumbs")
+    thumb = THUMBS / f"{folder_id}.jpg"
+    if thumb.is_symlink():
+        raise catalog.CatalogError(f"enlace simbólico en la miniatura {folder_id}.jpg")
+    thumb.unlink(missing_ok=True)
 
 
 def run(env: Mapping[str, str]) -> dict:
@@ -127,7 +137,7 @@ def run(env: Mapping[str, str]) -> dict:
         catalog.save(CATALOG, data)
         if request["payload"]["op"] == "delete_folder":
             _remove_cover(request["payload"]["folder_id"])
-    result["web"] = sync_public(catalog_path=CATALOG, audio_dir=AUDIO, web_dir=WEB, covers_dir=COVERS)
+    result["web"] = sync_public(catalog_path=CATALOG, audio_dir=AUDIO, web_dir=WEB, covers_dir=COVERS, thumbs_dir=THUMBS)
     return result
 
 

@@ -21,6 +21,7 @@ import {
   pendingSongsOf,
   songCountText,
   songCover,
+  songThumb,
   songsInFolder,
 } from './catalog.js';
 import { cachedDominantColor } from './cover-color.js';
@@ -237,6 +238,9 @@ function songColor(song) {
 }
 
 const songCoverSrc = (song) => (song?.local ? null : songCover(state.catalog, song));
+/** Miniatura 160×160 de una canción (ADR-0050). null para listas propias, para locales o para las canciones cuyo
+ *  catálogo aún no trae el campo (compatibilidad con APK antigua o portadas de R2 sin miniatura). */
+const songThumbSrc = (song) => (song?.local ? null : songThumb(state.catalog, song));
 /** Etiqueta de una subida que se está publicando: «Publicándose…» o, si ha fallado, «No se ha podido subir». */
 function uploadLabel(song) {
   return uploads?.byLocalId(song.id)?.state === UPLOAD_STATES.ERROR ? 'No se ha podido subir' : 'Publicándose…';
@@ -267,6 +271,7 @@ function albumContext(folder) {
     color: coverColor(folder.id),
     iconName: 'album',
     cover: folder.cover,
+    thumb: folder.thumb ?? null,  // ADR-0050: miniatura 160×160 para listas y filas.
     mosaic: null,
     year: albumYear(songs),
   };
@@ -276,12 +281,22 @@ function playlistSongs(list) {
   return list.songIds.map((id) => state.catalog.songById.get(id)).filter(Boolean);
 }
 
-/** Portada de una lista: la propia; si no, un mosaico de cuatro portadas distintas o la primera que haya. */
+/** Portada de una lista: la propia; si no, un mosaico de cuatro portadas distintas o la primera que haya.
+ *  Devuelve también `thumb` paralelo (ADR-0050): la miniatura de la lista o el mosaico 4× miniatura, para las
+ *  variantes pequeñas (contextCover(..., {small:true})). */
 function playlistArt(list, songs) {
-  if (list.cover) return { cover: list.cover, mosaic: null };
-  const covers = [...new Set(songs.map(songCoverSrc).filter(Boolean))];
-  if (covers.length >= 4) return { cover: null, mosaic: covers.slice(0, 4) };
-  return { cover: covers[0] ?? null, mosaic: null };
+  if (list.cover) return { cover: list.cover, thumb: list.thumb ?? null, mosaic: null };
+  const pairs = songs
+    .map((s) => ({ cover: songCoverSrc(s), thumb: songThumbSrc(s) ?? songCoverSrc(s) }))
+    .filter((pair) => pair.cover);
+  const seen = new Set();
+  const unique = pairs.filter((pair) => (seen.has(pair.cover) ? false : (seen.add(pair.cover), true)));
+  if (unique.length >= 4) {
+    const first4 = unique.slice(0, 4);
+    return { cover: null, thumb: null, mosaic: first4.map((p) => p.cover), mosaicThumb: first4.map((p) => p.thumb) };
+  }
+  const first = unique[0] ?? null;
+  return { cover: first?.cover ?? null, thumb: first?.thumb ?? null, mosaic: null };
 }
 
 function playlistContext(list) {
@@ -1105,6 +1120,7 @@ const ctx = {
   },
   songColor,
   songCoverSrc,
+  songThumbSrc,
   artistOf,
   uploadLabel,
   colorOf,

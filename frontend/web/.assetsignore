@@ -1,5 +1,6 @@
 # Lo que NO se publica como web estática en Cloudflare (ADR-0034; worker/wrangler.toml, [assets]). Solo van los
-# ficheros de la web: index.html, sw.js, manifest.webmanifest, _headers, css/, js/, fonts/, icons/, data/ y covers/.
+# ficheros de la web: index.html, sw.js, manifest.webmanifest, _headers, css/, js/, fonts/, icons/, data/, covers/
+# y thumbs/ (ADR-0050).
 # Funciones de Vercel y su código de servidor (las de YouTube siguen en Vercel; las demás las sirve el Worker).
 api
 server
