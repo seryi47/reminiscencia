@@ -146,13 +146,14 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (_progress.message.contains('Ajustes'))
+                    if (_progress.reason == 'mic_permanently_denied') ...[
                       OutlinedButton.icon(
-                        onPressed: () => MicCapture().openSettings(),
+                        onPressed: () => openMicSettings(),
                         icon: const Icon(Icons.settings),
                         label: const Text('Abrir Ajustes'),
                       ),
-                    if (_progress.message.contains('Ajustes')) const SizedBox(width: 12),
+                      const SizedBox(width: 12),
+                    ],
                     FilledButton(onPressed: _start, child: const Text('Volver a intentar')),
                   ],
                 ),
@@ -193,11 +194,17 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
     await _playSongById(id, _progress.title ?? '');
   }
 
-  /// Busca la canción por id en la biblioteca y la reproduce de verdad (antes solo enseñaba un snackbar).
+  /// Busca la canción por id en la biblioteca y la reproduce de verdad. Si la biblioteca aún no está cargada, la pide
+  /// (`ensureLoaded`) antes de buscar, para no decir «no disponible» cuando de verdad SÍ lo está.
   Future<void> _playSongById(String songId, String title) async {
     final library = widget.services.library;
     try {
-      final song = library.songs.firstWhere((s) => s.id == songId);
+      if (library.songs.isEmpty) await library.ensureLoaded();
+      final song = library.songs.firstWhere(
+        (s) => s.id == songId,
+        orElse: () => throw StateError('no_song'),
+      );
+      if (!mounted) return;
       Navigator.of(context).pop();
       await library.playSong(song);
     } catch (_) {
@@ -212,6 +219,10 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
   Future<void> _importFromYoutube() async {
     final title = _progress.title ?? '';
     final artist = _progress.artist ?? '';
+    // SNAPSHOT local de la id del historial: si el usuario pulsa «Reconocer» otra vez a mitad de descarga, _start
+    // nulifica `_currentHistoryId`; sin este snapshot el update de estado (imported/importFailed) caería en null y
+    // la fila del historial de ESTA importación se quedaría eternamente como `pendingImport`.
+    final historyId = _currentHistoryId;
     if (title.isEmpty) return;
     final importer = widget.services.youtube;
     if (importer == null) {
@@ -254,15 +265,15 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
           PickedAudioFile(name: a.name, path: a.path, artist: a.track.artist),
       ]);
       await importer.cleanup(imported);
-      if (_currentHistoryId != null) {
-        await _history.updateStatus(_currentHistoryId!, RecognitionHistoryStatus.imported);
+      if (historyId != null) {
+        await _history.updateStatus(historyId, RecognitionHistoryStatus.imported);
       }
       if (!mounted) return;
       Navigator.of(context).pop();
       _toast('«$title» añadida a tu biblioteca. Se publicará en un momento.');
     } catch (error) {
-      if (_currentHistoryId != null) {
-        await _history.updateStatus(_currentHistoryId!, RecognitionHistoryStatus.importFailed);
+      if (historyId != null) {
+        await _history.updateStatus(historyId, RecognitionHistoryStatus.importFailed);
       }
       if (!mounted) return;
       setState(() => _progress = RecognitionProgress(

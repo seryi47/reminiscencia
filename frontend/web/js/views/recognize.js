@@ -10,21 +10,26 @@ const RECOGNITION_SECONDS = 8;
 export function openRecognizeSheet(ctx) {
   // El estado de captura se gestiona fuera del render para poder abortarlo tanto desde el botón «Cancelar» como desde
   // el cierre del diálogo (dialog#close): cerrar la hoja a mitad de grabación DEBE parar el micrófono sin dejarlo
-  // encendido en segundo plano (bug confirmado por auditoría).
+  // encendido en segundo plano.
   const abort = new AbortController();
   return openDialog({
     title: 'Reconocer canción',
     className: 'dialog-recognize',
     testid: 'recognize-sheet',
     render: (body, close, dialog) => {
-      const node = recognizePanel(ctx, close, abort.signal);
+      const node = recognizePanel(ctx, close, abort);
       body.replaceChildren(node);
       dialog?.addEventListener('close', () => abort.abort(), { once: true });
     },
   });
 }
 
-function recognizePanel(ctx, close, abortSignal) {
+function recognizePanel(ctx, close, dialogAbort) {
+  // Dos niveles de cancelación:
+  //   - dialogAbort: se dispara al cerrar la hoja. Aborta siempre lo que esté en marcha.
+  //   - runAbort: controller NUEVO por cada pulsación del botón «Reconocer». Permite cancelar la ejecución actual
+  //     sin tener que cerrar la hoja (y volver a empezar sin recrear nada).
+  let runAbort = null;
   const state = {
     status: 'idle',
     title: '', artist: '', songId: null, source: '',
@@ -48,12 +53,12 @@ function recognizePanel(ctx, close, abortSignal) {
     resultBox,
   );
 
-  // Si el diálogo se cierra (X, Esc o botón «Volver»), aborta todo: para la captura y libera el micrófono.
-  abortSignal.addEventListener('abort', () => stopAll());
+  // Si el diálogo se cierra (X, Esc o botón «Volver»), aborta la ejecución actual: para la captura y libera el micrófono.
+  dialogAbort.signal.addEventListener('abort', () => { if (runAbort) runAbort.abort(); });
 
   function onToggle() {
     const busy = state.status === 'listening' || state.status === 'analyzing' || state.status === 'querying';
-    if (busy) stopAll();
+    if (busy && runAbort) runAbort.abort();
     else start();
   }
 
@@ -87,6 +92,12 @@ function recognizePanel(ctx, close, abortSignal) {
   }
 
   async function start() {
+    // Nuevo controller por ejecución. Si el diálogo ya estaba abortado, respetamos ese estado.
+    runAbort = new AbortController();
+    const signal = runAbort.signal;
+    if (dialogAbort.signal.aborted) return;
+    runAbort.signal.addEventListener('abort', () => stopAll());
+
     setStatus('listening', 'Pidiendo permiso del micrófono…');
     renderResult();
     let stream;
@@ -98,13 +109,13 @@ function recognizePanel(ctx, close, abortSignal) {
       setStatus('error', `Sin permiso del micrófono: ${error?.message ?? error}`);
       return;
     }
-    if (abortSignal.aborted) { stopStream(stream); return; }
+    if (signal.aborted) { stopStream(stream); return; }
 
     try {
       setStatus('listening', `Escuchando ${RECOGNITION_SECONDS} s…`);
-      const captured = await recordAndCollect(stream, RECOGNITION_SECONDS, abortSignal, (fn) => { state.disposer = fn; });
+      const captured = await recordAndCollect(stream, RECOGNITION_SECONDS, signal, (fn) => { state.disposer = fn; });
       state.disposer = null;
-      if (abortSignal.aborted) return;
+      if (signal.aborted) return;
 
       setStatus('analyzing', 'Analizando huella…');
       const samples16 = downsampleTo16kHz(captured.samples, captured.sampleRate);
@@ -115,8 +126,8 @@ function recognizePanel(ctx, close, abortSignal) {
       const wavBytes = floatToWav16Mono(samples16, SAMPLE_RATE);
 
       setStatus('querying', 'Consultando tu biblioteca…');
-      const libResult = await queryLibrary(hashes);
-      if (abortSignal.aborted) return;
+      const libResult = await queryLibrary(hashes, signal);
+      if (signal.aborted) return;
       if (libResult.matched) {
         state.title = libResult.title ?? '';
         state.artist = libResult.artist ?? '';
@@ -127,8 +138,8 @@ function recognizePanel(ctx, close, abortSignal) {
         return;
       }
       setStatus('querying', 'No está en tu biblioteca. Probando a entender la letra…');
-      const lyricsResult = await queryLyrics(wavBytes);
-      if (abortSignal.aborted) return;
+      const lyricsResult = await queryLyrics(wavBytes, signal);
+      if (signal.aborted) return;
       if (lyricsResult.matched) {
         state.title = lyricsResult.title ?? '';
         state.artist = lyricsResult.artist ?? '';
@@ -142,7 +153,8 @@ function recognizePanel(ctx, close, abortSignal) {
         ? 'La base de huellas aún no está cargada en el servidor.'
         : 'No he podido identificar la canción.');
     } catch (error) {
-      if (!abortSignal.aborted) setStatus('error', `Fallo: ${error?.message ?? error}`);
+      // No mostramos «Fallo: cancelado» si el abort vino de nosotros.
+      if (!signal.aborted) setStatus('error', `Fallo: ${error?.message ?? error}`);
     } finally {
       stopStream(stream);
     }

@@ -24,7 +24,7 @@ enum RecognitionStatus {
 }
 
 class RecognitionProgress {
-  const RecognitionProgress(this.status, {this.message = '', this.elapsedSeconds, this.songId, this.title, this.artist, this.confidence});
+  const RecognitionProgress(this.status, {this.message = '', this.elapsedSeconds, this.songId, this.title, this.artist, this.confidence, this.reason = ''});
   final RecognitionStatus status;
   final String message;
   final int? elapsedSeconds;
@@ -32,6 +32,9 @@ class RecognitionProgress {
   final String? title;
   final String? artist;
   final double? confidence;
+  /// Motivo máquina-legible asociado al progreso (`mic_permanently_denied`, `db_not_ready`, ...). La UI decide qué
+  /// acción ofrecer basándose en esto, nunca en el texto del mensaje.
+  final String reason;
 }
 
 class RecognitionResult {
@@ -79,11 +82,12 @@ class MusicRecognizer {
       try {
         await _mic.ensurePermission();
       } on MicPermissionDenied catch (e) {
+        final reason = e.permanent ? 'mic_permanently_denied' : 'mic_denied';
         final msg = e.permanent
             ? 'El permiso del micrófono está desactivado. Ábrelo en Ajustes → Permisos → Micrófono.'
             : 'Sin permiso del micrófono.';
-        onProgress?.call(RecognitionProgress(RecognitionStatus.error, message: msg));
-        return RecognitionResult(matched: false, reason: e.permanent ? 'mic_permanently_denied' : 'mic_denied');
+        onProgress?.call(RecognitionProgress(RecognitionStatus.error, message: msg, reason: reason));
+        return RecognitionResult(matched: false, reason: reason);
       }
 
       onProgress?.call(const RecognitionProgress(RecognitionStatus.listening, message: 'Escuchando…'));
@@ -135,10 +139,16 @@ class MusicRecognizer {
         return lyricsResult;
       }
 
-      final msg = libraryResult.reason == 'db_not_ready'
-          ? 'La base de huellas aún no está cargada en el servidor.'
-          : 'No he podido identificar la canción.';
-      onProgress?.call(RecognitionProgress(RecognitionStatus.notMatched, message: msg));
+      final String msg;
+      switch (libraryResult.reason) {
+        case 'db_not_ready':
+          msg = 'La base de huellas aún no está cargada en el servidor.'; break;
+        case 'db_query_failed':
+          msg = 'Fallo transitorio al consultar la biblioteca; vuelve a intentarlo en un momento.'; break;
+        default:
+          msg = 'No he podido identificar la canción.';
+      }
+      onProgress?.call(RecognitionProgress(RecognitionStatus.notMatched, message: msg, reason: libraryResult.reason));
       return lyricsResult.matched ? lyricsResult : libraryResult;
     } on MicCaptureAborted {
       onProgress?.call(const RecognitionProgress(RecognitionStatus.idle, message: 'Cancelado.'));

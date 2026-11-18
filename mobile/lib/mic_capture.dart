@@ -52,10 +52,6 @@ class MicCapture {
     throw MicPermissionDenied(permanent: status.isPermanentlyDenied);
   }
 
-  /// Abre la pantalla de Ajustes de la app para que el usuario pueda habilitar el permiso manualmente. Devuelve true si
-  /// el intent se lanzó. Útil cuando `ensurePermission` lanzó con `permanent: true`.
-  Future<bool> openSettings() async { return openAppSettings(); }
-
   /// Graba [seconds] segundos del micrófono y devuelve muestras Float32 + bytes WAV.
   /// Si se completa [cancel] antes de terminar, aborta y lanza [MicCaptureAborted]. Nunca deja el micrófono abierto.
   Future<MicCaptureResult> record({
@@ -102,6 +98,11 @@ class MicCapture {
     try { if (_lastFile != null && await _lastFile!.exists()) await _lastFile!.delete(); } catch (_) {}
   }
 }
+
+/// Abre la pantalla de Ajustes de la app para que el usuario pueda habilitar el permiso manualmente. Es TOP-LEVEL a
+/// propósito: la UI la llama sin tener que instanciar un [MicCapture] (que crearía un `AudioRecorder` nativo que luego
+/// habría que `dispose()`). Devuelve true si el intent se lanzó.
+Future<bool> openMicSettings() async { return openAppSettings(); }
 
 /// Lee los datos PCM 16-LE de un WAV mono @ 16 kHz y devuelve Float32 [-1, 1]. No valida la cabecera a fondo; busca el
 /// chunk `data` y descarga el resto como PCM. Si no encuentra el chunk, usa todo tras los 44 bytes típicos.

@@ -11,7 +11,7 @@
 import { matchFingerprint, enrichMatch } from './recognize-core.js';
 
 const MAX_HASHES_PER_QUERY = 50000; // tope defensivo
-const DB_LOOKUP_BATCH = 90;         // SQLite tiene un límite de 999 parámetros; 90 va sobrado y suma pocas rondas
+const DB_LOOKUP_BATCH = 90;         // D1 (Cloudflare) tiene un tope de 100 parámetros por prepared statement; 90 va sobrado
 
 /** Para pruebas: inyecta un `db` simulado con la misma interfaz (`prepare().bind().all()`). */
 let injectedDb = null;
