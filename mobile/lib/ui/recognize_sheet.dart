@@ -143,7 +143,7 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
                 onOpen: _openSong,
                 onImport: _importFromYoutube,
               ),
-            if (status == RecognitionStatus.notMatched) _NotFoundHint(onRetry: _start),
+            if (status == RecognitionStatus.notMatched) _NotFoundHint(onRetry: _start, reason: _progress.reason),
             if (status == RecognitionStatus.error)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -419,8 +419,23 @@ class _MatchResult extends StatelessWidget {
 }
 
 class _NotFoundHint extends StatelessWidget {
-  const _NotFoundHint({required this.onRetry});
+  const _NotFoundHint({required this.onRetry, this.reason});
   final VoidCallback onRetry;
+  final String? reason;
+
+  String _hintFor(String? reason) {
+    switch (reason) {
+      case 'db_not_ready':
+        return 'La base de huellas aún no está lista en el servidor. Prueba otra vez en unos minutos.';
+      case 'db_query_failed':
+      case 'db_rate_limited':
+        // El servidor se quedó sin cuota de consultas (plan gratuito de Cloudflare D1); se reinicia a medianoche UTC.
+        return 'Ahora mismo no puedo consultar la biblioteca (demasiadas consultas hoy). Vuelve a intentarlo en un rato.';
+      default:
+        return 'No la tenemos en tu biblioteca. Si sabes el nombre y el artista, impórtala desde «Transferir música» o «Homeostasia».';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -428,7 +443,7 @@ class _NotFoundHint extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            'No la tenemos en tu biblioteca. Si sabes el nombre y el artista, impórtala desde «Transferir música» o «Homeostasia».',
+            _hintFor(reason),
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
