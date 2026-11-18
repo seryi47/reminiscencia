@@ -44,41 +44,36 @@ export async function handleRecognizeRequest(request, { env } = {}) {
   }
 
   try {
-    // Preparamos TODOS los lotes de 90 hashes y los ejecutamos en UNA sola round-trip con `db.batch()`. Antes el bucle
-    // hacía ~65 SELECTs secuenciales (~600 ms con 5825 hashes); con batch, ~50 ms (una sola ida/vuelta Worker↔D1).
+    // Intenté `db.batch()` con JOIN y `Promise.all` con oleadas: ambos rompen el Worker (503 Cloudflare en pruebas
+    // reales con 5825 hashes → 65 lotes). El CPU time y el subrequest cap del Worker en Free tier no toleran tanta
+    // concurrencia a D1. Secuencial es más lento pero FIABLE. ADR-0049: optimización pendiente hasta probar en
+    // Workers Paid o con un índice pre-agrupado.
     const uniqueHashes = [...new Set(body.hashes)];
-    const batches = [];
+    const indexForMatch = new Map();
     for (let start = 0; start < uniqueHashes.length; start += DB_LOOKUP_BATCH) {
       const slice = uniqueHashes.slice(start, start + DB_LOOKUP_BATCH);
       const placeholders = slice.map(() => '?').join(',');
-      // Hacemos el JOIN con `songs` en el mismo SELECT para no gastar una query extra tras el match: metemos title/artist
-      // en cada fila, el matcher ignorará lo que no use. La duplicación de texto no pesa (D1 responde comprimido).
-      batches.push(db.prepare(
-        `SELECT h.hash, h.song_id, h.offset, s.title, s.artist
-         FROM hashes h JOIN songs s ON s.id = h.song_id
-         WHERE h.hash IN (${placeholders})`
-      ).bind(...slice));
-    }
-    const indexForMatch = new Map();
-    const meta = {};
-    if (batches.length > 0) {
-      const results = await db.batch(batches);
-      for (const { results: rows } of results ?? []) {
-        for (const row of rows ?? []) {
-          if (!row) continue;
-          const h = Number(row.hash);
-          const songId = String(row.song_id);
-          const list = indexForMatch.get(h) ?? [];
-          list.push({ songId, offset: Number(row.offset) });
-          indexForMatch.set(h, list);
-          if (!meta[songId]) meta[songId] = { title: row.title ?? '', artist: row.artist ?? '' };
-        }
+      const { results: rows } = await db.prepare(
+        `SELECT hash, song_id, offset FROM hashes WHERE hash IN (${placeholders})`
+      ).bind(...slice).all();
+      for (const row of rows ?? []) {
+        if (!row) continue;
+        const h = Number(row.hash);
+        const list = indexForMatch.get(h) ?? [];
+        list.push({ songId: String(row.song_id), offset: Number(row.offset) });
+        indexForMatch.set(h, list);
       }
     }
     const result = matchFingerprint({ hashes: body.hashes, offsets: body.offsets }, indexForMatch);
     if (!result.matched) {
       return jsonResponse(200, { ok: true, matched: false, totalQueryHashes: body.hashes.length });
     }
+    // Una sola query extra para la metadata del match (barata: PK lookup).
+    const meta = {};
+    try {
+      const songRow = await db.prepare('SELECT id, title, artist FROM songs WHERE id = ?').bind(result.songId).first();
+      if (songRow) meta[result.songId] = { title: songRow.title, artist: songRow.artist };
+    } catch (_) { /* si falla, devolvemos sin enriquecer */ }
     const enriched = enrichMatch(result, meta);
     return jsonResponse(200, { ok: true, ...enriched });
   } catch (error) {
