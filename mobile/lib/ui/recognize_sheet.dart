@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
 import '../local_audio.dart';
+import '../mic_capture.dart';
 import '../music_recognition.dart';
 import '../recognition_history.dart';
 import '../services.dart';
@@ -37,10 +38,16 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
   RecognitionProgress _progress = const RecognitionProgress(RecognitionStatus.idle, message: 'Pulsa para reconocer la canción que suena a tu alrededor.');
   String? _currentHistoryId;
 
+  List<RecognitionHistoryEntry> _initialHistory = const [];
+
   @override
   void initState() {
     super.initState();
-    _history.load();
+    // Carga inmediata: evitamos la carrera «StreamBuilder se suscribe DESPUÉS de que el stream ya emitió».
+    _history.load().then((entries) {
+      if (!mounted) return;
+      setState(() => _initialHistory = entries);
+    });
   }
 
   @override
@@ -53,12 +60,16 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
   Future<void> _start() async {
     if (_isBusy(_progress.status)) return;
     _cancel = Completer<void>();
+    _currentHistoryId = null; // olvidar la id del reconocimiento anterior antes de empezar otro
     final result = await _recognizer.recognize(
       cancel: _cancel!.future,
       onProgress: (p) {
         if (mounted) setState(() => _progress = p);
       },
     );
+    // El completer queda sin resolver si el camino fue feliz (no se tocó «stop»): cerrarlo ahora evita fugas de listeners
+    // que lo escucharan.
+    if (_cancel != null && !_cancel!.isCompleted) _cancel!.complete();
     _cancel = null;
     // Guardar en historial (solo si no fue cancelado antes del resultado).
     final status = _progress.status;
@@ -132,11 +143,24 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
             if (status == RecognitionStatus.error)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: FilledButton(onPressed: _start, child: const Text('Volver a intentar')),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_progress.message.contains('Ajustes'))
+                      OutlinedButton.icon(
+                        onPressed: () => MicCapture().openSettings(),
+                        icon: const Icon(Icons.settings),
+                        label: const Text('Abrir Ajustes'),
+                      ),
+                    if (_progress.message.contains('Ajustes')) const SizedBox(width: 12),
+                    FilledButton(onPressed: _start, child: const Text('Volver a intentar')),
+                  ],
+                ),
               ),
             const SizedBox(height: 24),
             _HistorySection(
               history: _history,
+              initial: _initialHistory,
               onOpenLibrary: _openSongById,
               onRetryImport: _retryImportFromHistory,
             ),
@@ -147,8 +171,7 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
   }
 
   void _openSongById(String songId, String title) {
-    Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Abriendo «$title»…')));
+    _playSongById(songId, title);
   }
 
   Future<void> _retryImportFromHistory(RecognitionHistoryEntry entry) async {
@@ -164,12 +187,24 @@ class _RecognizeSheetState extends State<_RecognizeSheet> {
     await _importFromYoutube();
   }
 
-  void _openSong() {
+  Future<void> _openSong() async {
     final id = _progress.songId;
     if (id == null) return;
-    Navigator.of(context).pop();
-    final msg = _progress.title != null ? 'Abriendo «${_progress.title}»…' : 'Abriendo canción…';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    await _playSongById(id, _progress.title ?? '');
+  }
+
+  /// Busca la canción por id en la biblioteca y la reproduce de verdad (antes solo enseñaba un snackbar).
+  Future<void> _playSongById(String songId, String title) async {
+    final library = widget.services.library;
+    try {
+      final song = library.songs.firstWhere((s) => s.id == songId);
+      Navigator.of(context).pop();
+      await library.playSong(song);
+    } catch (_) {
+      if (!mounted) return;
+      final msg = title.isNotEmpty ? 'No se pudo abrir «$title»' : 'La canción ya no está disponible.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
   }
 
   /// Vía 2 (letras): la canción no está en la biblioteca, pero sabemos título y artista. Busca en YouTube, descarga y la
@@ -392,8 +427,14 @@ class _NotFoundHint extends StatelessWidget {
 
 /// Lista de reconocimientos pasados; permite reintentar una importación que falló (ADR-0048).
 class _HistorySection extends StatelessWidget {
-  const _HistorySection({required this.history, required this.onOpenLibrary, required this.onRetryImport});
+  const _HistorySection({
+    required this.history,
+    required this.initial,
+    required this.onOpenLibrary,
+    required this.onRetryImport,
+  });
   final RecognitionHistory history;
+  final List<RecognitionHistoryEntry> initial;
   final void Function(String songId, String title) onOpenLibrary;
   final void Function(RecognitionHistoryEntry entry) onRetryImport;
 
@@ -401,7 +442,7 @@ class _HistorySection extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<List<RecognitionHistoryEntry>>(
       stream: history.stream,
-      initialData: history.entries,
+      initialData: initial,
       builder: (context, snapshot) {
         final entries = (snapshot.data ?? const <RecognitionHistoryEntry>[]).take(12).toList();
         if (entries.isEmpty) return const SizedBox.shrink();
@@ -410,8 +451,31 @@ class _HistorySection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.only(bottom: 8, left: 4),
-              child: Text('Historial', style: theme.textTheme.titleSmall),
+              padding: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
+              child: Row(
+                children: [
+                  Text('Historial', style: theme.textTheme.titleSmall),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final go = await showDialog<bool>(
+                        context: context,
+                        builder: (dc) => AlertDialog(
+                          title: const Text('¿Limpiar el historial?'),
+                          content: const Text('Se borran los reconocimientos guardados en este teléfono. No afecta a la biblioteca.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.of(dc).pop(false), child: const Text('Cancelar')),
+                            FilledButton(onPressed: () => Navigator.of(dc).pop(true), child: const Text('Limpiar')),
+                          ],
+                        ),
+                      );
+                      if (go == true) await history.clear();
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 16),
+                    label: const Text('Limpiar'),
+                  ),
+                ],
+              ),
             ),
             for (final e in entries) _HistoryRow(entry: e, onOpenLibrary: onOpenLibrary, onRetryImport: onRetryImport),
           ],

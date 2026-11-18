@@ -32,6 +32,12 @@ export async function handleRecognizeRequest(request, { env } = {}) {
   if (body.hashes.length > MAX_HASHES_PER_QUERY) {
     return jsonResponse(413, { ok: false, matched: false, error: 'Demasiados hashes.' });
   }
+  // Valida que hashes y offsets sean enteros: un null colado se convertiría a NaN en D1 `bind`.
+  for (let i = 0; i < body.hashes.length; i++) {
+    if (!Number.isInteger(body.hashes[i]) || !Number.isInteger(body.offsets[i])) {
+      return jsonResponse(400, { ok: false, matched: false, error: 'hashes/offsets no son enteros.' });
+    }
+  }
   const db = injectedDb ?? (env && env.RECOGNIZE_DB);
   if (!db) {
     return jsonResponse(200, { ok: true, matched: false, reason: 'db_not_ready', totalQueryHashes: body.hashes.length });
@@ -67,7 +73,9 @@ export async function handleRecognizeRequest(request, { env } = {}) {
     const enriched = enrichMatch(result, meta);
     return jsonResponse(200, { ok: true, ...enriched });
   } catch (error) {
-    return jsonResponse(500, { ok: false, matched: false, error: 'db_query_failed', detail: String(error?.message ?? error) });
+    // No devolvemos 500: la UI (web y APK) trata los no-200 como fallo duro y no cae a la vía letras. Con 200 + reason
+    // seguimos el contrato del endpoint y la UI puede decidir caer a letras / mostrar «fallo transitorio».
+    return jsonResponse(200, { ok: true, matched: false, reason: 'db_query_failed', detail: String(error?.message ?? error) });
   }
 }
 

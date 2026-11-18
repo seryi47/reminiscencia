@@ -402,11 +402,21 @@ class _HomeShellState extends State<HomeShell> {
         return Scaffold(
           backgroundColor: palette.background,
           body: tabs,
-          floatingActionButton: FloatingActionButton(
-            heroTag: 'reconocer-fab',
-            tooltip: 'Reconocer canción',
-            onPressed: () => openRecognizeSheet(context, widget.services),
-            child: const Icon(Icons.mic_rounded),
+          floatingActionButton: ValueListenableBuilder<NowPlaying>(
+            valueListenable: _nowPlaying,
+            builder: (_, now, _) {
+              // Cuando hay algo sonando el MiniPlayer sube +72 px; subimos el FAB para que no lo tape.
+              final playing = now.songId != null;
+              return Padding(
+                padding: EdgeInsets.only(bottom: playing ? 72 : 0),
+                child: FloatingActionButton(
+                  heroTag: 'reconocer-fab',
+                  tooltip: 'Reconocer canción',
+                  onPressed: () => openRecognizeSheet(context, widget.services),
+                  child: const Icon(Icons.mic_rounded),
+                ),
+              );
+            },
           ),
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           bottomNavigationBar: DecoratedBox(

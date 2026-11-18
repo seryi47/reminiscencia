@@ -1,40 +1,45 @@
 // Hoja «Reconocer canción» en la web (ADR-0048). Mismo flujo que la app: micrófono → huella local → consulta a D1 →
-// si no hay match, Whisper + letras. Sin dependencias externas: usa getUserMedia + AudioContext + MediaRecorder.
+// si no hay match, Whisper + letras. Sin dependencias externas: usa getUserMedia + AudioContext.
 
-import { fingerprintSamples, pcm16leToFloat32, SAMPLE_RATE } from '../../server/recognize-fingerprint.js';
-import { el, openDialog, toast } from '../ui/dom.js';
+import { fingerprintSamples, SAMPLE_RATE } from '../../server/recognize-fingerprint.js';
+import { el, openDialog } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 
 const RECOGNITION_SECONDS = 8;
 
 export function openRecognizeSheet(ctx) {
+  // El estado de captura se gestiona fuera del render para poder abortarlo tanto desde el botón «Cancelar» como desde
+  // el cierre del diálogo (dialog#close): cerrar la hoja a mitad de grabación DEBE parar el micrófono sin dejarlo
+  // encendido en segundo plano (bug confirmado por auditoría).
+  const abort = new AbortController();
   return openDialog({
     title: 'Reconocer canción',
     className: 'dialog-recognize',
     testid: 'recognize-sheet',
-    render: (body, close) => {
-      const node = recognizePanel(ctx, close);
+    render: (body, close, dialog) => {
+      const node = recognizePanel(ctx, close, abort.signal);
       body.replaceChildren(node);
+      dialog?.addEventListener('close', () => abort.abort(), { once: true });
     },
   });
 }
 
-function recognizePanel(ctx, close) {
+function recognizePanel(ctx, close, abortSignal) {
   const state = {
-    status: 'idle', // idle|listening|analyzing|querying|matched|notMatched|error
-    message: 'Pulsa para reconocer la canción que suena a tu alrededor.',
+    status: 'idle',
     title: '', artist: '', songId: null, source: '',
-    mediaStream: null, recorder: null,
+    disposer: null,       // Función que apaga limpio el micro/AudioContext cuando se llama.
   };
 
-  const statusText = el('p', { class: 'transferir-progress', style: 'text-align:center;margin:12px 0' }, state.message);
+  const statusText = el('p', { class: 'transferir-progress', style: 'text-align:center;margin:12px 0' },
+    'Pulsa para reconocer la canción que suena a tu alrededor.');
   const resultBox = el('div', { style: 'text-align:center;margin-top:16px' });
 
   const button = el('button', {
     type: 'button',
     class: 'homeostasia-submit',
     style: 'width:160px;height:160px;border-radius:50%;font-size:48px;display:flex;align-items:center;justify-content:center',
-    on: { click: () => (state.status === 'idle' || state.status === 'matched' || state.status === 'notMatched' || state.status === 'error') ? start() : stop() },
+    on: { click: onToggle },
   }, icon('note', { size: 64 }));
 
   const node = el('div', { class: 'transferir' },
@@ -43,31 +48,41 @@ function recognizePanel(ctx, close) {
     resultBox,
   );
 
+  // Si el diálogo se cierra (X, Esc o botón «Volver»), aborta todo: para la captura y libera el micrófono.
+  abortSignal.addEventListener('abort', () => stopAll());
+
+  function onToggle() {
+    const busy = state.status === 'listening' || state.status === 'analyzing' || state.status === 'querying';
+    if (busy) stopAll();
+    else start();
+  }
+
   function setStatus(s, msg) {
     state.status = s;
-    state.message = msg;
     statusText.textContent = msg;
-    const idle = s === 'idle' || s === 'matched' || s === 'notMatched' || s === 'error';
-    button.disabled = s === 'listening' || s === 'analyzing' || s === 'querying';
-    button.replaceChildren(icon(idle ? 'note' : 'close', { size: 64 }));
+    const busy = s === 'listening' || s === 'analyzing' || s === 'querying';
+    button.disabled = false;
+    button.replaceChildren(icon(busy ? 'close' : 'note', { size: 64 }));
   }
 
   function renderResult() {
     resultBox.replaceChildren();
-    if (state.status === 'matched') {
-      const subtitle = state.artist ? ` · ${state.artist}` : '';
-      resultBox.append(
-        el('h3', { style: 'margin:8px 0' }, state.title),
-        el('p', { class: 'transferir-intro' }, state.source === 'library' ? `En tu biblioteca${subtitle}` : `Identificada por letra${subtitle}`),
-      );
-      if (state.source === 'library' && state.songId) {
-        resultBox.append(el('button', {
-          type: 'button', class: 'homeostasia-submit', style: 'margin-top:12px',
-          on: { click: () => { close(); if (ctx.playSongById) ctx.playSongById(state.songId); } },
-        }, 'Abrir en Reminiscencia'));
-      } else {
-        resultBox.append(el('p', { class: 'transferir-intro' }, 'No está en tu biblioteca aún. Puedes importarla desde «Transferir música» con el título y el artista.'));
-      }
+    if (state.status !== 'matched') return;
+    const subtitle = state.artist ? ` · ${state.artist}` : '';
+    resultBox.append(
+      el('h3', { style: 'margin:8px 0' }, state.title),
+      el('p', { class: 'transferir-intro' }, state.source === 'library'
+        ? `En tu biblioteca${subtitle}`
+        : `Identificada por letra${subtitle}`),
+    );
+    if (state.source === 'library' && state.songId) {
+      resultBox.append(el('button', {
+        type: 'button', class: 'homeostasia-submit', style: 'margin-top:12px',
+        on: { click: () => { close(); if (ctx.playSongById) ctx.playSongById(state.songId); } },
+      }, 'Abrir en Reminiscencia'));
+    } else {
+      resultBox.append(el('p', { class: 'transferir-intro' },
+        'No está en tu biblioteca aún. Puedes importarla desde «Transferir música» o «Homeostasia» con el título y el artista.'));
     }
   }
 
@@ -76,22 +91,32 @@ function recognizePanel(ctx, close) {
     renderResult();
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 48000, echoCancellation: false, noiseSuppression: false } });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, sampleRate: 48000, echoCancellation: false, noiseSuppression: false },
+      });
     } catch (error) {
       setStatus('error', `Sin permiso del micrófono: ${error?.message ?? error}`);
       return;
     }
-    state.mediaStream = stream;
+    if (abortSignal.aborted) { stopStream(stream); return; }
+
     try {
       setStatus('listening', `Escuchando ${RECOGNITION_SECONDS} s…`);
-      const { samples48, wavBytes } = await recordAndCollect(stream, RECOGNITION_SECONDS);
+      const captured = await recordAndCollect(stream, RECOGNITION_SECONDS, abortSignal, (fn) => { state.disposer = fn; });
+      state.disposer = null;
+      if (abortSignal.aborted) return;
+
       setStatus('analyzing', 'Analizando huella…');
-      const samples16 = downsampleTo16kHz(samples48, 48000);
+      const samples16 = downsampleTo16kHz(captured.samples, captured.sampleRate);
       const hashes = fingerprintSamples(samples16);
       if (hashes.length === 0) { setStatus('notMatched', 'No se pudo analizar el audio.'); return; }
 
+      // Para enviar a Whisper mandamos un WAV YA en 16 kHz: lo que acepta igual y ocupa 3 veces menos.
+      const wavBytes = floatToWav16Mono(samples16, SAMPLE_RATE);
+
       setStatus('querying', 'Consultando tu biblioteca…');
       const libResult = await queryLibrary(hashes);
+      if (abortSignal.aborted) return;
       if (libResult.matched) {
         state.title = libResult.title ?? '';
         state.artist = libResult.artist ?? '';
@@ -103,6 +128,7 @@ function recognizePanel(ctx, close) {
       }
       setStatus('querying', 'No está en tu biblioteca. Probando a entender la letra…');
       const lyricsResult = await queryLyrics(wavBytes);
+      if (abortSignal.aborted) return;
       if (lyricsResult.matched) {
         state.title = lyricsResult.title ?? '';
         state.artist = lyricsResult.artist ?? '';
@@ -116,68 +142,92 @@ function recognizePanel(ctx, close) {
         ? 'La base de huellas aún no está cargada en el servidor.'
         : 'No he podido identificar la canción.');
     } catch (error) {
-      setStatus('error', `Fallo: ${error?.message ?? error}`);
+      if (!abortSignal.aborted) setStatus('error', `Fallo: ${error?.message ?? error}`);
     } finally {
-      stopStream(state.mediaStream);
-      state.mediaStream = null;
+      stopStream(stream);
     }
   }
 
-  function stop() {
-    stopStream(state.mediaStream);
-    state.mediaStream = null;
-    setStatus('idle', 'Cancelado.');
+  function stopAll() {
+    try { state.disposer?.(); } catch (_) { /* nada */ }
+    state.disposer = null;
+    if (state.status === 'listening' || state.status === 'analyzing' || state.status === 'querying') {
+      setStatus('idle', 'Cancelado.');
+    }
   }
 
   return node;
 }
 
-/** Graba [seconds] segundos del stream capturando PCM float32 por AudioWorklet alternativo (ScriptProcessor por ahora
- *  para compatibilidad amplia). Devuelve las muestras a 48 kHz Y los bytes de un WAV equivalente (para Whisper). */
-async function recordAndCollect(stream, seconds) {
+/** Graba [seconds] segundos del stream capturando Float32. Resuelve con { samples, sampleRate } o se interrumpe si
+ *  llega `abortSignal`. Pasa por `register` una función disposer para que el llamante pueda apagar en cualquier
+ *  momento (cierra el AudioContext, desconecta los nodos, y cancela el temporizador). */
+async function recordAndCollect(stream, seconds, abortSignal, register) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  const audioCtx = new AudioContextClass({ sampleRate: 48000 });
+  const audioCtx = new AudioContextClass();
+  const sampleRate = audioCtx.sampleRate;
   const source = audioCtx.createMediaStreamSource(stream);
-  // ScriptProcessor es deprecated pero el polyfill AudioWorklet son muchas más líneas. Por volumen que gestionamos
-  // (<10 s de audio) está bien.
+  // ScriptProcessor sigue siendo soportado en todos los navegadores modernos aunque esté marked as deprecated. No
+  // conectamos a destination (eco por altavoces); usamos un GainNode con ganancia 0 como «sumidero».
   const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  const sink = audioCtx.createGain();
+  sink.gain.value = 0;
   const chunks = [];
-  processor.onaudioprocess = (ev) => {
-    const input = ev.inputBuffer.getChannelData(0);
-    chunks.push(new Float32Array(input));
-  };
+  processor.onaudioprocess = (ev) => { chunks.push(new Float32Array(ev.inputBuffer.getChannelData(0))); };
   source.connect(processor);
-  processor.connect(audioCtx.destination);
-  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
-  processor.disconnect();
-  source.disconnect();
-  await audioCtx.close();
+  processor.connect(sink);
+  sink.connect(audioCtx.destination);
+
+  let stopped = false;
+  const cleanup = async () => {
+    if (stopped) return;
+    stopped = true;
+    try { processor.onaudioprocess = null; } catch (_) { /* nada */ }
+    try { processor.disconnect(); } catch (_) { /* nada */ }
+    try { source.disconnect(); } catch (_) { /* nada */ }
+    try { sink.disconnect(); } catch (_) { /* nada */ }
+    try { await audioCtx.close(); } catch (_) { /* nada */ }
+  };
+
+  const timerDone = new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+  const abortDone = new Promise((resolve) => {
+    if (abortSignal.aborted) resolve();
+    else abortSignal.addEventListener('abort', () => resolve(), { once: true });
+  });
+  register(cleanup);
+  await Promise.race([timerDone, abortDone]);
+  await cleanup();
+  if (abortSignal.aborted) throw new Error('cancelado');
 
   // Concatenar.
   const total = chunks.reduce((n, c) => n + c.length, 0);
-  const samples48 = new Float32Array(total);
+  const samples = new Float32Array(total);
   let off = 0;
-  for (const c of chunks) { samples48.set(c, off); off += c.length; }
-
-  const wavBytes = floatToWav16Mono(samples48, 48000);
-  return { samples48, wavBytes };
+  for (const c of chunks) { samples.set(c, off); off += c.length; }
+  return { samples, sampleRate };
 }
 
 function stopStream(stream) {
   if (!stream) return;
-  try { for (const track of stream.getTracks()) track.stop(); } catch (_) { /* ignorar */ }
+  try { for (const track of stream.getTracks()) track.stop(); } catch (_) { /* nada */ }
 }
 
-/** Downsampling muy simple (por saltos) de 48 kHz a 16 kHz. Suficiente para huella. */
+/** Downsample con low-pass box de 3 taps (moving average) → quita algo de aliasing sin FIR completo. Suficiente para
+ *  conservar los picos espectrales que usa la huella. */
 function downsampleTo16kHz(samples, sourceRate) {
+  if (samples.length === 0) return new Float32Array(0);
   const ratio = sourceRate / SAMPLE_RATE;
   const outLength = Math.floor(samples.length / ratio);
   const out = new Float32Array(outLength);
-  for (let i = 0; i < outLength; i++) out[i] = samples[Math.floor(i * ratio)];
+  for (let i = 0; i < outLength; i++) {
+    const center = Math.floor(i * ratio);
+    const prev = Math.max(0, center - 1);
+    const next = Math.min(samples.length - 1, center + 1);
+    out[i] = (samples[prev] + samples[center] + samples[next]) / 3;
+  }
   return out;
 }
 
-/** Codifica Float32 [-1, 1] a WAV PCM 16-bit LE mono. */
 function floatToWav16Mono(samples, sampleRate) {
   const bytesPerSample = 2;
   const dataLength = samples.length * bytesPerSample;

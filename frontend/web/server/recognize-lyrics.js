@@ -36,12 +36,25 @@ const MAX_PHRASE_WORDS = 6;
 
 const MAX_CANDIDATES_LRCLIB = 50;
 const MAX_LRCLIB_QUERIES = 6; // tope de llamadas a LRClib por petición: no spameamos su API
+const MAX_LYRICS_LOAD_CONCURRENCY = 5; // cuántas letras completas pedimos EN PARALELO: no hundir Lyrics.ovh/LRClib
+const MAX_LYRICS_LENGTH_FOR_SCORING = 10_000; // una letra >10 KB se recorta; proteger CPU del Worker
 
 const LRCLIB_USER_AGENT = 'reminiscencia-recognizer (https://reminiscencia.cometia.es)';
 
 export async function handleRecognizeLyricsRequest(request, { env } = {}) {
   if (request.method !== 'POST') {
     return jsonResponse(405, { ok: false, matched: false, error: 'Solo se admite POST.' });
+  }
+  // Rate limit propio de la vía letras (cuota Workers AI = coste €): 20/min por IP. Fail-open si el binding no está.
+  const limiter = env?.LYRICS_RATE_LIMITER;
+  if (limiter && typeof limiter.limit === 'function') {
+    const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'desconocida';
+    try {
+      const { success } = await limiter.limit({ key: ip });
+      if (success === false) {
+        return jsonResponse(429, { ok: false, matched: false, error: 'Demasiadas peticiones; espera un minuto.' });
+      }
+    } catch (_) { /* fail-open: la disponibilidad manda sobre el antiabuso */ }
   }
   const ai = env?.AI;
   if (!ai) {
@@ -86,11 +99,12 @@ export async function handleRecognizeLyricsRequest(request, { env } = {}) {
     return jsonResponse(200, { ok: true, matched: false, reason: 'no_lyrics_match', transcript });
   }
 
-  // 3) Para cada candidato traemos la letra completa (si no la tiene ya) y puntuamos por coincidencia contra el transcrito.
-  const scored = await Promise.all(candidates.map(async (c) => ({
+  // 3) Para cada candidato traemos la letra completa (si no la tiene ya) y puntuamos por coincidencia contra el
+  //    transcrito. Con cap de paralelismo para no reventar Lyrics.ovh/LRClib si tenemos 50 candidatos.
+  const scored = await mapWithLimit(candidates, MAX_LYRICS_LOAD_CONCURRENCY, async (c) => ({
     ...c,
-    score: scoreCandidate(transcript, await loadLyrics(c, { env })),
-  })));
+    score: scoreCandidate(transcript, (await loadLyrics(c, { env })).slice(0, MAX_LYRICS_LENGTH_FOR_SCORING)),
+  }));
   scored.sort((a, b) => b.score - a.score);
   const top = scored[0];
   // Umbral adaptativo: con transcrito muy corto exigimos menos. Si no llega, devolvemos el candidato con mejor score
@@ -278,4 +292,18 @@ function jsonResponse(status, data) {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
   });
+}
+
+/** Procesa `items` llamando a `fn` con como mucho `limit` en paralelo. Mantiene el orden original en la salida. */
+export async function mapWithLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return results;
 }

@@ -100,8 +100,8 @@ class RecognitionHistory {
   Stream<List<RecognitionHistoryEntry>> get stream => _controller.stream;
   List<RecognitionHistoryEntry> get entries => _entries;
 
-  Future<void> load() async {
-    if (_loaded) return;
+  Future<List<RecognitionHistoryEntry>> load() async {
+    if (_loaded) return _entries;
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_kHistoryKey);
@@ -118,6 +118,7 @@ class RecognitionHistory {
     } catch (_) { /* arrancar con lista vacía */ }
     _loaded = true;
     _controller.add(_entries);
+    return _entries;
   }
 
   Future<void> add(RecognitionHistoryEntry entry) async {

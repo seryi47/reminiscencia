@@ -47,7 +47,10 @@ export function matchFingerprint(query, index, { minVotes = 5 } = {}) {
   if (bestSong === null || bestVotes < minVotes) {
     return { matched: false, totalQueryHashes: total, confidence: 0 };
   }
-  const confidence = Math.min(1, bestVotes / Math.max(20, total * 0.1));
+  // Confianza: curva sublineal con la raíz del nº total de hashes para que el denominador no crezca tanto con samples
+  // largos como con el total*0.1 anterior (que daba confidence 0,37 pese a 214 votos sobre match perfecto). Un match
+  // «sano» de biblioteca tiene votos del orden de O(10) a O(100); con K = 3 llegamos a confianza > 0,7 fácil.
+  const confidence = Math.min(1, bestVotes / Math.max(10, 3 * Math.sqrt(total)));
   return { matched: true, songId: bestSong, votes: bestVotes, totalQueryHashes: total, confidence };
 }
 
@@ -75,5 +78,5 @@ export function parseFingerprintIndex(json) {
 export function enrichMatch(result, meta) {
   if (!result.matched || !result.songId) return { ...result };
   const m = (meta && meta[result.songId]) || {};
-  return { ...result, title: m.title ?? null, artist: m.artist ?? null };
+  return { ...result, title: m.title ?? '', artist: m.artist ?? '' };
 }

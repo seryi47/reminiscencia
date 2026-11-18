@@ -78,9 +78,12 @@ class MusicRecognizer {
       onProgress?.call(const RecognitionProgress(RecognitionStatus.requestingPermission));
       try {
         await _mic.ensurePermission();
-      } on MicPermissionDenied {
-        onProgress?.call(const RecognitionProgress(RecognitionStatus.error, message: 'Sin permiso del micrófono.'));
-        return const RecognitionResult(matched: false);
+      } on MicPermissionDenied catch (e) {
+        final msg = e.permanent
+            ? 'El permiso del micrófono está desactivado. Ábrelo en Ajustes → Permisos → Micrófono.'
+            : 'Sin permiso del micrófono.';
+        onProgress?.call(RecognitionProgress(RecognitionStatus.error, message: msg));
+        return RecognitionResult(matched: false, reason: e.permanent ? 'mic_permanently_denied' : 'mic_denied');
       }
 
       onProgress?.call(const RecognitionProgress(RecognitionStatus.listening, message: 'Escuchando…'));

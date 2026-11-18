@@ -13,9 +13,14 @@ import 'fingerprint.dart';
 /// excepción. No persiste nada: el fichero temporal se borra al leer sus bytes.
 
 class MicPermissionDenied implements Exception {
-  const MicPermissionDenied();
+  const MicPermissionDenied({this.permanent = false});
+  /// true si el usuario tocó «Denegar siempre»: la app ya no puede volver a mostrar el prompt del sistema y hay que
+  /// llevar al usuario a Ajustes para habilitarlo.
+  final bool permanent;
   @override
-  String toString() => 'Sin permiso del micrófono.';
+  String toString() => permanent
+      ? 'El permiso del micrófono está DESACTIVADO para esta app. Habilítalo en Ajustes.'
+      : 'Sin permiso del micrófono.';
 }
 
 class MicCaptureAborted implements Exception {
@@ -38,12 +43,18 @@ class MicCapture {
   final AudioRecorder _recorder;
   File? _lastFile;
 
-  /// Pide permiso si hace falta. Lanza [MicPermissionDenied] si el usuario lo niega.
+  /// Pide permiso si hace falta. Lanza [MicPermissionDenied] si el usuario lo niega; con `permanent: true` cuando el
+  /// usuario tocó «Denegar siempre» y Android ya no permite reabrir el prompt (hay que ir a Ajustes).
   Future<void> ensurePermission() async {
     if (await Permission.microphone.isGranted) return;
     final status = await Permission.microphone.request();
-    if (!status.isGranted) throw const MicPermissionDenied();
+    if (status.isGranted) return;
+    throw MicPermissionDenied(permanent: status.isPermanentlyDenied);
   }
+
+  /// Abre la pantalla de Ajustes de la app para que el usuario pueda habilitar el permiso manualmente. Devuelve true si
+  /// el intent se lanzó. Útil cuando `ensurePermission` lanzó con `permanent: true`.
+  Future<bool> openSettings() async { return openAppSettings(); }
 
   /// Graba [seconds] segundos del micrófono y devuelve muestras Float32 + bytes WAV.
   /// Si se completa [cancel] antes de terminar, aborta y lanza [MicCaptureAborted]. Nunca deja el micrófono abierto.

@@ -69,10 +69,10 @@ describe('enrichMatch', () => {
     assert.equal(r.title, 'Canción');
     assert.equal(r.artist, 'Grupo');
   });
-  test('tolera falta de meta: title/artist null', () => {
+  test('tolera falta de meta: title/artist vacíos (nunca null para no romper a los clientes)', () => {
     const r = enrichMatch({ matched: true, songId: 'S1' }, {});
-    assert.equal(r.title, null);
-    assert.equal(r.artist, null);
+    assert.equal(r.title, '');
+    assert.equal(r.artist, '');
   });
 });
 
