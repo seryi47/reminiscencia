@@ -54,6 +54,24 @@ void main() {
       }
     });
 
+    test('acepta también thumbs/<id>.jpg (ADR-0050) y rechaza rutas raras', () {
+      expect(
+        cleanCoverPath('thumbs/S5aac103b6eb2ecf4.jpg'),
+        'thumbs/S5aac103b6eb2ecf4.jpg',
+      );
+      expect(cleanCoverPath('thumbs/F0123456789abcdef.jpg'), 'thumbs/F0123456789abcdef.jpg');
+      for (final bad in [
+        'thumbs/',
+        'thumbs/a/b.jpg',
+        'thumbs/../covers/x.jpg',
+        'thumbs/x.png',  // la miniatura es siempre .jpg
+        '/thumbs/x.jpg',
+        'thumb/x.jpg',
+      ]) {
+        expect(cleanCoverPath(bad), isNull, reason: '$bad');
+      }
+    });
+
     test(
       'la canción y el álbum leen la portada y el artista (todo opcional)',
       () {

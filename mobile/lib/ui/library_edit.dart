@@ -161,7 +161,8 @@ Future<void> addSongToAlbumFlow(
                   seed: FolderRef(folder.id).key,
                   size: 40,
                   icon: Icons.album_rounded,
-                  image: services.covers.imageFor(folder.cover),
+                  // ADR-0050: selector de álbum (40 px) → miniatura.
+                  image: services.covers.imageFor(folder.thumb ?? folder.cover),
                 ),
                 title: Text(
                   folder.name,
@@ -345,7 +346,8 @@ Future<bool> moveSongsToAlbumFlow(
                   seed: FolderRef(target.id).key,
                   size: 40,
                   icon: Icons.album_rounded,
-                  image: services.covers.imageFor(target.cover),
+                  // ADR-0050: lista de álbumes destino (40 px) → miniatura.
+                  image: services.covers.imageFor(target.thumb ?? target.cover),
                 ),
                 title: Text(
                   target.name,
@@ -796,6 +798,7 @@ class _AddSongsSheetState extends State<_AddSongsSheet> {
                           secondary: CatalogCover(
                             covers: widget.services.covers,
                             cover: song.cover,
+                            thumb: song.thumb,  // ADR-0050: lista de 40 px.
                             seed: song.id,
                             size: 40,
                           ),
@@ -929,7 +932,8 @@ Future<void> showAlbumMenu(
                       seed: FolderRef(folder.id).key,
                       size: 48,
                       icon: Icons.album_rounded,
-                      image: services.covers.imageFor(folder.cover),
+                      // ADR-0050: cabecera de acción (48 px) → miniatura.
+                      image: services.covers.imageFor(folder.thumb ?? folder.cover),
                     ),
                     const SizedBox(width: 12),
                     Expanded(

@@ -174,7 +174,8 @@ class _SearchPageState extends State<SearchPage> {
               seed: FolderRef(folder.id).key,
               size: 40,
               icon: Icons.album_rounded,
-              image: services.covers.imageFor(folder.cover),
+              // ADR-0050: lista de resultados (icono 40 px) → miniatura.
+              image: services.covers.imageFor(folder.thumb ?? folder.cover),
             ),
             title: Text(folder.name),
             subtitle: Text(

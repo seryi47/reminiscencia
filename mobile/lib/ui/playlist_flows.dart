@@ -434,6 +434,7 @@ class _SongPicker extends StatelessWidget {
                       secondary: CatalogCover(
                         covers: services.covers,
                         cover: song.cover,
+                        thumb: song.thumb,  // ADR-0050: lista de 40 px.
                         seed: song.id,
                         size: 40,
                       ),

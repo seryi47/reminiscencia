@@ -73,6 +73,7 @@ class SongRow extends StatelessWidget {
                     CatalogCover(
                       covers: services.covers,
                       cover: song.cover,
+                      thumb: song.thumb,  // ADR-0050: fila de 56 px → miniatura 160×160.
                       seed: song.id,
                       size: kRowArtworkSize,
                     ),
@@ -241,6 +242,7 @@ class _SongMenu extends StatelessWidget {
                   CatalogCover(
                     covers: services.covers,
                     cover: song.cover,
+                    thumb: song.thumb,  // ADR-0050: hoja inferior (48 px).
                     seed: song.id,
                     size: 48,
                   ),

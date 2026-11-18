@@ -344,6 +344,11 @@ class CoverArt extends StatelessWidget {
 }
 
 /// Portada de la web (canción o álbum) por su ruta (`covers/<id>.jpg`). Se repinta cuando termina de bajar.
+///
+/// `thumb` (ADR-0050): la miniatura 160×160 de la portada. Si se pasa, se usa en lugar del cover: el navegador
+/// baja ~15 KiB en lugar de ~50 KiB por fila. En filas de 56 px o menos, la diferencia visual es imperceptible
+/// incluso en pantallas retina. Si falla la miniatura (todavía no publicada, portada de R2 sin thumb), cae al
+/// cover sin ruido. El reproductor a toda pantalla y las cabeceras de álbum pasan solo `cover` para nitidez.
 class CatalogCover extends StatelessWidget {
   const CatalogCover({
     super.key,
@@ -351,6 +356,7 @@ class CatalogCover extends StatelessWidget {
     required this.cover,
     required this.seed,
     required this.size,
+    this.thumb,
     this.icon = Icons.music_note_rounded,
     this.color,
     this.radius,
@@ -358,6 +364,7 @@ class CatalogCover extends StatelessWidget {
 
   final CoverImages covers;
   final String? cover;
+  final String? thumb;
   final String seed;
   final double size;
   final IconData icon;
@@ -366,7 +373,8 @@ class CatalogCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (cover == null) {
+    final preferred = thumb ?? cover;
+    if (preferred == null) {
       return CoverArt(
         seed: seed,
         size: size,
@@ -377,14 +385,18 @@ class CatalogCover extends StatelessWidget {
     }
     return ListenableBuilder(
       listenable: covers,
-      builder: (context, _) => CoverArt(
-        seed: seed,
-        size: size,
-        icon: icon,
-        color: color,
-        radius: radius,
-        image: covers.imageFor(cover),
-      ),
+      builder: (context, _) {
+        // Prioridad miniatura → portada → placeholder. Siempre se intenta la que no está todavía en caché.
+        final image = covers.imageFor(preferred) ?? (thumb != null ? covers.imageFor(cover) : null);
+        return CoverArt(
+          seed: seed,
+          size: size,
+          icon: icon,
+          color: color,
+          radius: radius,
+          image: image,
+        );
+      },
     );
   }
 }
