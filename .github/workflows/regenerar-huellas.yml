@@ -1,0 +1,98 @@
+name: regenerar-huellas
+
+# Regenera la base D1 de huellas acústicas (ADR-0048) a partir del catálogo actual. Imprescindible ejecutar cuando
+# el audio publicado en R2 cambia (p. ej. ADR-0051: bajada a Opus-48k): los picos espectrales desplazan y las
+# huellas viejas dejan de matchear. A mano desde Actions.
+#
+# Flujo:
+#   1. Descarga songs.json público.
+#   2. Baja cada .opus, lo decodifica a PCM mono 16 kHz con ffmpeg y calcula los hashes con la MISMA función que
+#      la APK (frontend/web/server/recognize-fingerprint.js).
+#   3. Escribe scripts/recognize/fingerprints.sql con DELETE FROM + INSERTs.
+#   4. Aplica el fichero a la base D1 `reminiscencia-recognize` con wrangler (--remote).
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Nº máximo de canciones a procesar (0 = todas)"
+        required: false
+        default: "0"
+        type: string
+      aplicar:
+        description: "Aplicar a D1 de verdad (sin marcar, solo genera el SQL y lo sube como artefacto)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regenerar-huellas
+  cancel-in-progress: false
+
+jobs:
+  regenerar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Obtener main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Instalar ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -n 1
+
+      - name: Generar SQL de huellas
+        env:
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          set -euo pipefail
+          if [ "$LIMIT" = "0" ]; then
+            node scripts/recognize/generate_db.mjs
+          else
+            node scripts/recognize/generate_db.mjs --limit="$LIMIT"
+          fi
+          ls -lh scripts/recognize/fingerprints.sql
+          head -n 3 scripts/recognize/fingerprints.sql
+
+      - name: Subir SQL como artefacto
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fingerprints-sql
+          path: scripts/recognize/fingerprints.sql
+          retention-days: 7
+
+      - name: Aplicar a D1
+        if: inputs.aplicar == true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "Falta CLOUDFLARE_API_TOKEN (secreto del repo)."
+            exit 1
+          fi
+          cd worker
+          # Primero aseguro el esquema por si acaso (DROP/CREATE idempotente).
+          npx --yes wrangler@4.151.3 d1 execute reminiscencia-recognize --remote --file=../scripts/recognize/schema.sql
+          # Carga de huellas; el fichero contiene DELETE FROM + INSERT por chunks.
+          npx --yes wrangler@4.151.3 d1 execute reminiscencia-recognize --remote --file=../scripts/recognize/fingerprints.sql
+          # Verificación: cuántas filas quedaron.
+          npx --yes wrangler@4.151.3 d1 execute reminiscencia-recognize --remote \
+            --command "SELECT (SELECT COUNT(*) FROM songs) AS songs, (SELECT COUNT(*) FROM hashes) AS hashes;"
