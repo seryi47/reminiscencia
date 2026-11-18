@@ -152,6 +152,9 @@ const state = {
   albumSelection: null,
   route: { name: 'inicio', id: null },
   ready: false,
+  // ADR-0049: contador que se incrementa en cada render(). Los selectores cacheados de syncPlaying lo usan para
+  // invalidar su caché solo cuando el DOM ha cambiado (en vez de hacer querySelectorAll global en cada tick del player).
+  renderGen: 0,
 };
 
 let library = null;
@@ -531,27 +534,42 @@ function isContextPlaying(contextId) {
   return Boolean(current && current.playing && current.contextId === contextId);
 }
 
-/** Marca lo que suena: botones verdes, filas, tarjetas y elementos de la biblioteca. Solo trabaja si cambia algo. */
+/** Marca lo que suena: botones verdes, filas, tarjetas y elementos de la biblioteca. Solo trabaja si cambia algo.
+ *
+ *  ADR-0049: antes hacía 4 `querySelectorAll` globales (~2000 nodos) EN CADA cambio del player (play/pause/seek) →
+ *  ~15-25 % CPU en reproducción con la biblioteca abierta. Ahora cacheamos los selectores tras cada `render()` (que
+ *  es quien crea los nodos) y reusamos los NodeList salvo que la vista cambie. El contador `_domGen` lo invalida. */
+let _playingDomGen = -1;
+let _playingDom = { playBtns: [], rows: [], items: [], toggles: [] };
 function syncPlaying(force = false) {
   const current = player.getState();
   const signature = `${current.key}|${current.playing}|${current.contextId}|${current.shuffle}|${current.track?.id}`;
   if (!force && signature === lastSync) return;
   lastSync = signature;
-  for (const button of document.querySelectorAll('[data-play-context]')) {
+  if (_playingDomGen !== state.renderGen) {
+    _playingDomGen = state.renderGen;
+    _playingDom = {
+      playBtns: document.querySelectorAll('[data-play-context]'),
+      rows: document.querySelectorAll('.track-row, .card-song'),
+      items: document.querySelectorAll('.library-item, .tile'),
+      toggles: document.querySelectorAll('[data-shuffle-toggle]'),
+    };
+  }
+  for (const button of _playingDom.playBtns) {
     setPlayButtonState(button, current.playing && current.contextId === button.dataset.playContext);
   }
   const songId = current.track?.id ?? null;
-  for (const row of document.querySelectorAll('.track-row, .card-song')) {
+  for (const row of _playingDom.rows) {
     const isCurrent = songId !== null && row.dataset.songId === songId;
     row.classList.toggle('is-current', isCurrent);
     row.classList.toggle('is-playing', isCurrent && current.playing);
   }
-  for (const item of document.querySelectorAll('.library-item, .tile')) {
+  for (const item of _playingDom.items) {
     const isCurrent = current.track && item.dataset.context === current.contextId;
     item.classList.toggle('is-current', Boolean(isCurrent));
     item.classList.toggle('is-playing', Boolean(isCurrent && current.playing));
   }
-  for (const toggle of document.querySelectorAll('[data-shuffle-toggle]')) {
+  for (const toggle of _playingDom.toggles) {
     toggle.classList.toggle('is-active', current.shuffle);
     toggle.setAttribute('aria-pressed', String(current.shuffle));
   }
@@ -937,6 +955,7 @@ function renderSidebar() {
 /** Pinta la pantalla activa y «Tu biblioteca», conservando el foco y el desplazamiento si la ruta no cambia. */
 function render({ routeChanged = false } = {}) {
   closeMenu({ restoreFocus: false });
+  state.renderGen = (state.renderGen + 1) | 0; // invalidar selectores cacheados de syncPlaying (ADR-0049)
   // El modo «Seleccionar» de un álbum no sobrevive a un cambio de página.
   if (routeChanged) state.albumSelection = null;
   const active = document.activeElement;

@@ -379,6 +379,9 @@ class SonidosAudioHandler extends BaseAudioHandler
     (_sourcesTried[song.id] ??= <Uri>{}).add(uri);
     final reused = _streamSources[song.id];
     if (reused != null && reused.uri == uri) {
+      // Refrescar posición en el LRU: volver a insertar al final del LinkedHashMap.
+      _streamSources.remove(song.id);
+      _streamSources[song.id] = reused;
       return (reused as AudioSource, false);
     }
     // LockCachingAudioSource (experimental en just_audio 0.10) transmite y guarda a la vez. Si al pedirla el
@@ -386,8 +389,17 @@ class SonidosAudioHandler extends BaseAudioHandler
     // ignore: experimental_member_use
     final source = LockCachingAudioSource(uri, cacheFile: file, tag: song.id);
     _streamSources[song.id] = source;
+    // ADR-0049: tope LRU para no acumular buffers nativos en sesiones largas. Las entradas más antiguas se eliminan
+    // tras superar 20 (empírico: suficiente para un álbum entero reproduciendo y la pre-carga de la siguiente, sin
+    // retener centenares si el usuario salta por mucha canción distinta).
+    while (_streamSources.length > _kStreamSourcesMaxLRU) {
+      final oldestKey = _streamSources.keys.first;
+      _streamSources.remove(oldestKey);
+    }
     return (source as AudioSource, false);
   }
+
+  static const int _kStreamSourcesMaxLRU = 20;
 
   /// (Re)carga todas las fuentes de la cola, comprobando de nuevo qué está guardado, y prepara [index] en
   /// [position]. Es también la forma de recuperarse de un error: tras un error just_audio queda parado y solo una

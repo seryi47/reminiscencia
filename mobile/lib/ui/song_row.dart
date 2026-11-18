@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../layout.dart';
@@ -37,10 +38,16 @@ class SongRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = paletteOf(context);
-    return ValueListenableBuilder<NowPlaying>(
-      valueListenable: services.playback.nowPlaying,
-      builder: (context, now, _) {
-        final current = now.songId == song.id;
+    // ADR-0049: antes cada fila se repintaba con CADA cambio del NowPlaying (play/pause/buffering/seek → 50 rebuilds/s
+    // en una lista de 50 filas). Ahora filtramos: solo repinta cuando este `songId` pasa o deja de ser el sonando, o
+    // cuando el estado de `playing` cambia Y es la fila actual. El resto de cambios (seek, buffering, cambios del
+    // reproductor en OTRA canción) no tocan esta fila.
+    return _NowPlayingSelector(
+      listenable: services.playback.nowPlaying,
+      songId: song.id,
+      builder: (context, isCurrent, isPlaying) {
+        final current = isCurrent;
+        final NowPlaying now = services.playback.nowPlaying.value;
         final details = songDetails(song);
         final uploadFailed = song.uploadStatus == kUploadErrorLabel;
         return Semantics(
@@ -378,6 +385,56 @@ class _SongMenu extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Widget auxiliar que escucha un `ValueListenable<NowPlaying>` y SOLO repinta al builder cuando cambian los dos
+/// valores que realmente afectan a una fila concreta: `isCurrent` (esta fila es la que suena) o `isPlaying` SI es la
+/// fila actual. Pintar la posición/buffer/duración del reproductor nunca afecta a una fila ajena.
+class _NowPlayingSelector extends StatefulWidget {
+  const _NowPlayingSelector({
+    required this.listenable,
+    required this.songId,
+    required this.builder,
+  });
+  final ValueListenable<NowPlaying> listenable;
+  final String songId;
+  final Widget Function(BuildContext, bool isCurrent, bool isPlaying) builder;
+  @override
+  State<_NowPlayingSelector> createState() => _NowPlayingSelectorState();
+}
+
+class _NowPlayingSelectorState extends State<_NowPlayingSelector> {
+  late bool _isCurrent;
+  late bool _isPlaying;
+
+  @override
+  void initState() {
+    super.initState();
+    final v = widget.listenable.value;
+    _isCurrent = v.songId == widget.songId;
+    _isPlaying = v.playing;
+    widget.listenable.addListener(_onTick);
+  }
+
+  void _onTick() {
+    final v = widget.listenable.value;
+    final isCurrent = v.songId == widget.songId;
+    // Solo nos interesa `playing` si esta fila es la actual; en otra canción no afecta.
+    final isPlaying = isCurrent ? v.playing : false;
+    if (isCurrent != _isCurrent || isPlaying != _isPlaying) {
+      setState(() { _isCurrent = isCurrent; _isPlaying = isPlaying; });
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.listenable.removeListener(_onTick);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _isCurrent, _isPlaying);
 }
 
 /// Borra una canción subida desde este teléfono tras pedir confirmación.
