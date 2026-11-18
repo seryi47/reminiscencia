@@ -10,6 +10,7 @@ backend/*.egg-info/
 # jobs de los workflows lo generan en audio-library/audio/ de su copia de trabajo y 'publicar' lo sube al bucket. El
 # audio que estuvo versionado sigue en el historial de git.
 audio-library/audio/
+audio-library/audio-pre-adr-0051/
 audio-library/**/*.m4a
 audio-library/**/*.mp3
 audio-library/**/*.wav

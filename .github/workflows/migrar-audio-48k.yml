@@ -1,0 +1,78 @@
+name: migrar-audio-48k
+
+# Migración del audio de la biblioteca a Opus-48k (ADR-0051). Descarga cada canción del bucket privado de R2,
+# la re-encoda a 48k VBR y la sube de vuelta al privado y al público. A mano, desde main. Usa las mismas
+# credenciales de R2 que r2.yml. Nunca borra nada: solo reemplaza por la versión 48k. El dispositivo del
+# usuario (APK y web) descargará la nueva versión al próximo refresco; las descargas offline se reemplazan
+# in-place al re-descargar (nada se borra sin su consentimiento).
+#
+# Umbral: por defecto toca solo las canciones por encima de 52 kbps. Las locales (web/APK ya a 48k) se saltan.
+
+on:
+  workflow_dispatch:
+    inputs:
+      aplicar:
+        description: "Migrar de verdad (sin marcar, solo simulación de cuántas habría que tocar)"
+        required: false
+        default: false
+        type: boolean
+      umbral_kbps:
+        description: "Umbral: solo re-encodar las que estén por encima de este bitrate"
+        required: false
+        default: "52"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrar-audio-48k
+  cancel-in-progress: false
+
+jobs:
+  migrar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Obtener main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Preparar Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Instalar ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -n 1
+
+      - name: Migrar audio a 48k y publicar
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ secrets.R2_PRIVATE_BUCKET }}
+          APLICAR: ${{ inputs.aplicar }}
+          UMBRAL: ${{ inputs.umbral_kbps }}
+        run: |
+          set -euo pipefail
+          if [ -z "$R2_BUCKET" ] || [ -z "$R2_PRIVATE_BUCKET" ]; then
+            echo "R2 no está configurado: no se puede migrar."
+            exit 1
+          fi
+          # Las entradas del workflow van siempre por variables de entorno (ya no hace falta parchear argumentos).
+          if [ "$APLICAR" = "true" ]; then
+            python scripts/migrar_audio_48k_r2.py --aplicar --umbral-kbps "$UMBRAL"
+          else
+            python scripts/migrar_audio_48k_r2.py --umbral-kbps "$UMBRAL"
+          fi

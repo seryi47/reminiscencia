@@ -18,7 +18,7 @@ from sonidos.hashing import sha256_file
 from sonidos.probe import probe
 from sonidos.sources import IA_TITLE_MAX_CHARS
 
-PLAYBACK_PROFILE = "opus-64k"
+PLAYBACK_PROFILE = "opus-48k"  # ADR-0051 (2026-11-18): -25 % de espacio por canción vs opus-64k.
 
 
 def import_url(
