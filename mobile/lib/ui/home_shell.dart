@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../apk_installer.dart';
 import '../app_version.dart';
@@ -181,17 +180,54 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     if (path == null) {
-      // No pudimos bajar el APK directo: caemos al navegador abriendo la página de la release.
-      await launchUrl(Uri.parse(info.url), mode: LaunchMode.externalApplication);
+      // No se pudo bajar el APK. Se lo contamos y le damos a reintentar. NO abrimos el navegador: el usuario pidió
+      // explícitamente que no se le mandase a GitHub.
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (dc) => AlertDialog(
+            title: const Text('No se pudo bajar la actualización'),
+            content: const Text('Comprueba la conexión y vuelve a intentarlo.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(dc).pop(), child: const Text('Ahora no')),
+              FilledButton(
+                onPressed: () { Navigator.of(dc).pop(); unawaited(_downloadAndInstall(info)); },
+                child: const Text('Reintentar'),
+              ),
+            ],
+          ),
+        );
+      }
       return;
     }
     try {
       await ApkInstaller.install(path);
-      // El instalador toma el control; cuando el usuario apruebe, Android relanza la app ya actualizada.
+      // El instalador del sistema toma el control. Cuando el usuario apruebe, Android relanza la app ya actualizada.
+      // Si lo rechaza o cancela, volverá a esta pantalla sin más: la UI no fuerza nada.
     } catch (_) {
-      // Si el intent de instalación falla por algo raro, abrimos la página de la release en el navegador para que el
-      // usuario no se quede sin salida.
-      await launchUrl(Uri.parse(info.url), mode: LaunchMode.externalApplication);
+      // El intent de instalación no se ha podido lanzar. Mostramos el error, sin redirigir al navegador.
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (dc) => AlertDialog(
+            title: const Text('No se pudo abrir el instalador'),
+            content: const Text(
+              'Android no ha dejado abrir el instalador. Prueba a comprobar en Ajustes → Apps → Reminiscencia que la '
+              'opción «Instalar aplicaciones desconocidas» está activada, y vuelve a intentarlo.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(dc).pop(), child: const Text('Cerrar')),
+              FilledButton(
+                onPressed: () async {
+                  Navigator.of(dc).pop();
+                  try { await ApkInstaller.openInstallPermissionSettings(); } catch (_) {}
+                },
+                child: const Text('Abrir Ajustes'),
+              ),
+            ],
+          ),
+        );
+      }
     }
   }
 

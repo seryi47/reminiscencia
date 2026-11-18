@@ -14,6 +14,7 @@ Map<String, dynamic> _release({
   List<Map<String, String>> assets = const [
     {'name': 'reminiscencia-1.3.5-arm64-v8a.apk', 'browser_download_url': 'https://x/arm64.apk'},
     {'name': 'reminiscencia-1.3.5-armeabi-v7a.apk', 'browser_download_url': 'https://x/v7a.apk'},
+    {'name': 'reminiscencia-1.3.5-universal.apk', 'browser_download_url': 'https://x/universal.apk'},
   ],
 }) => {
       'tag_name': tag,
@@ -41,23 +42,35 @@ void main() {
   });
 
   group('checkForUpdate', () {
-    test('release más nueva → UpdateInfo con el APK arm64', () async {
+    test('release más nueva → UpdateInfo con el APK UNIVERSAL (ADR-0047: nunca rompe sobre un APK universal instalado)',
+        () async {
       final info = await checkForUpdate(client: _client(_release()), currentVersion: '1.3.4');
       expect(info, isNotNull);
       expect(info!.version, '1.3.5');
-      expect(info.url, 'https://x/arm64.apk');
+      expect(info.url, 'https://x/universal.apk');
       expect(info.notes, 'Novedades');
     });
 
-    test('sin APK arm64 → cae a la página de la release', () async {
+    test('sin universal → se cae a arm64-v8a (ni al navegador ni a la página de la release)', () async {
+      final info = await checkForUpdate(
+        client: _client(_release(assets: const [
+          {'name': 'reminiscencia-1.3.5-arm64-v8a.apk', 'browser_download_url': 'https://x/arm64.apk'},
+          {'name': 'reminiscencia-1.3.5-armeabi-v7a.apk', 'browser_download_url': 'https://x/v7a.apk'},
+        ])),
+        currentVersion: '1.3.4',
+      );
+      expect(info, isNotNull);
+      expect(info!.url, 'https://x/arm64.apk');
+    });
+
+    test('sin APK aceptable (solo .txt) → null (no se baja nada ni se abre nada)', () async {
       final info = await checkForUpdate(
         client: _client(_release(assets: const [
           {'name': 'otra-cosa.txt', 'browser_download_url': 'https://x/otra.txt'},
         ])),
         currentVersion: '1.3.4',
       );
-      expect(info, isNotNull);
-      expect(info!.url, contains('/releases/tag/'));
+      expect(info, isNull);
     });
 
     test('misma versión → no hay actualización', () async {

@@ -20,9 +20,13 @@ bool updateCheckEnabled = true;
 final Uri kReleasesLatestUrl =
     Uri.parse('https://api.github.com/repos/seryi47/reminiscencia/releases/latest');
 
-/// Arquitectura preferida del APK a descargar: arm64-v8a cubre la gran mayoría de móviles (y el del usuario). Si la
-/// release no la trae, se cae a la página de la release para que elija.
-const String _preferredAbi = 'arm64-v8a';
+/// Variantes de APK aceptables para la auto-actualización, ORDEN DE PREFERENCIA (ADR-0047).
+///
+/// SIEMPRE PRIMERO el `universal`: si el usuario instaló el universal (lleva los 3 ABIs), Android rechaza como «no
+/// compatible» cualquier split de un solo ABI porque sería «perder librerías nativas» al actualizar. El universal
+/// nunca pierde nada, así que funciona pase lo que pase. Las variantes de un solo ABI quedan como fallback por si en
+/// el futuro algún cambio dejara de publicar el universal.
+const List<String> _apkPreferences = ['universal', 'arm64-v8a', 'armeabi-v7a', 'x86_64'];
 
 class UpdateInfo {
   const UpdateInfo({required this.version, required this.url, this.notes = ''});
@@ -83,18 +87,22 @@ Future<UpdateInfo?> checkForUpdate({
     final version = tag.replaceFirst(RegExp(r'^android-v', caseSensitive: false), '');
     if (!isNewerVersion(version, currentVersion)) return null;
 
-    // Enlace de descarga: el APK de la arquitectura preferida si está entre los adjuntos; si no, la página de la release.
-    String url = data['html_url'] is String ? data['html_url'] as String : '';
+    // Enlace de descarga: recorremos las preferencias (universal primero, ADR-0047) y nos quedamos con el PRIMER APK que
+    // cuadre. Si no hay ninguno, no hay actualización «instalable» desde la app: devolvemos null (no caemos al navegador).
+    String url = '';
     final assets = data['assets'];
     if (assets is List) {
-      for (final asset in assets) {
-        if (asset is! Map) continue;
-        final name = asset['name'];
-        final link = asset['browser_download_url'];
-        if (name is String && link is String && name.contains(_preferredAbi) && name.endsWith('.apk')) {
-          url = link;
-          break;
+      for (final preference in _apkPreferences) {
+        for (final asset in assets) {
+          if (asset is! Map) continue;
+          final name = asset['name'];
+          final link = asset['browser_download_url'];
+          if (name is String && link is String && name.contains(preference) && name.endsWith('.apk')) {
+            url = link;
+            break;
+          }
         }
+        if (url.isNotEmpty) break;
       }
     }
     if (url.isEmpty) return null;
