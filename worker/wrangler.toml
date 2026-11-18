@@ -55,6 +55,11 @@ binding = "RECOGNIZE_DB"
 database_name = "reminiscencia-recognize"
 database_id = "199b2e22-796c-47cd-8adb-a1ed06a03cee"
 
+# Workers AI: para la 2ª vía de reconocimiento (letras) usamos `@cf/openai/whisper` para transcribir el audio del móvil.
+# Cuota incluida en el plan gratuito; si se agota, el endpoint cae silencioso a «no he podido entender la letra».
+[ai]
+binding = "AI"
+
   [ratelimits.simple]
   limit = 900
   period = 60

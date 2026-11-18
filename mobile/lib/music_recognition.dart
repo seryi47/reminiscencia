@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'dart:typed_data';
+
 import 'api_config.dart';
 import 'fingerprint.dart';
 import 'mic_capture.dart';
@@ -33,21 +35,32 @@ class RecognitionProgress {
 }
 
 class RecognitionResult {
-  const RecognitionResult({required this.matched, this.songId, this.title, this.artist, this.confidence = 0, this.reason = ''});
+  const RecognitionResult({
+    required this.matched,
+    this.songId,
+    this.title,
+    this.artist,
+    this.confidence = 0,
+    this.reason = '',
+    this.source = '',
+  });
   final bool matched;
   final String? songId;
   final String? title;
   final String? artist;
   final double confidence;
-  /// Motivo informativo cuando `matched = false` (p. ej. `db_not_ready`). Vacío si no se conoce.
+  /// Motivo informativo cuando `matched = false` (p. ej. `db_not_ready`, `no_lyrics_match`). Vacío si no se conoce.
   final String reason;
+  /// Vía por la que llegó el match: 'library' (D1) o 'lyrics' (Whisper + LRClib).
+  final String source;
 }
 
 /// Duración de la captura. 8 s es el sweet spot: más corto = menos hashes; más largo = más batería y UX lenta.
 const int kRecognitionSeconds = 8;
 
-/// Endpoint del Worker. En pruebas se puede cambiar.
+/// Endpoints del Worker. En pruebas se pueden cambiar.
 String recognizeEndpoint = '$kWorkerApiBase/api/recognize';
+String recognizeLyricsEndpoint = '$kWorkerApiBase/api/recognize-lyrics';
 
 class MusicRecognizer {
   MusicRecognizer({MicCapture? mic, http.Client? client}) : _mic = mic ?? MicCapture(), _client = client ?? http.Client();
@@ -71,34 +84,59 @@ class MusicRecognizer {
       }
 
       onProgress?.call(const RecognitionProgress(RecognitionStatus.listening, message: 'Escuchando…'));
-      final samples = await _mic.record(seconds: kRecognitionSeconds, cancel: cancel);
+      final capture = await _mic.record(seconds: kRecognitionSeconds, cancel: cancel);
 
       onProgress?.call(const RecognitionProgress(RecognitionStatus.analyzing, message: 'Analizando…'));
-      final hashes = fingerprint(samples);
+      final hashes = fingerprint(capture.samples);
       if (hashes.isEmpty) {
         onProgress?.call(const RecognitionProgress(RecognitionStatus.notMatched, message: 'No se pudo analizar el audio.'));
         return const RecognitionResult(matched: false);
       }
 
       onProgress?.call(const RecognitionProgress(RecognitionStatus.querying, message: 'Consultando la biblioteca…'));
-      final result = await _query(hashes);
+      final libraryResult = await _query(hashes);
 
-      if (result.matched) {
+      if (libraryResult.matched) {
         onProgress?.call(RecognitionProgress(
           RecognitionStatus.matched,
-          message: 'Identificada: ${result.title}',
-          songId: result.songId,
-          title: result.title,
-          artist: result.artist,
-          confidence: result.confidence,
+          message: 'Identificada: ${libraryResult.title}',
+          songId: libraryResult.songId,
+          title: libraryResult.title,
+          artist: libraryResult.artist,
+          confidence: libraryResult.confidence,
         ));
-      } else {
-        final msg = result.reason == 'db_not_ready'
-            ? 'La base de huellas aún no está cargada en el servidor.'
-            : 'No está en tu biblioteca.';
-        onProgress?.call(RecognitionProgress(RecognitionStatus.notMatched, message: msg));
+        return RecognitionResult(
+          matched: true,
+          songId: libraryResult.songId,
+          title: libraryResult.title,
+          artist: libraryResult.artist,
+          confidence: libraryResult.confidence,
+          source: 'library',
+        );
       }
-      return result;
+
+      // Vía 2: letras con Whisper + LRClib (ADR-0048). Para canciones que no están en la biblioteca.
+      onProgress?.call(const RecognitionProgress(
+        RecognitionStatus.querying,
+        message: 'No está en tu biblioteca. Probando a entender la letra…',
+      ));
+      final lyricsResult = await _queryLyrics(capture.wavBytes);
+      if (lyricsResult.matched) {
+        onProgress?.call(RecognitionProgress(
+          RecognitionStatus.matched,
+          message: 'Identificada por letra: ${lyricsResult.title}',
+          title: lyricsResult.title,
+          artist: lyricsResult.artist,
+          confidence: lyricsResult.confidence,
+        ));
+        return lyricsResult;
+      }
+
+      final msg = libraryResult.reason == 'db_not_ready'
+          ? 'La base de huellas aún no está cargada en el servidor.'
+          : 'No he podido identificar la canción.';
+      onProgress?.call(RecognitionProgress(RecognitionStatus.notMatched, message: msg));
+      return lyricsResult.matched ? lyricsResult : libraryResult;
     } on MicCaptureAborted {
       onProgress?.call(const RecognitionProgress(RecognitionStatus.idle, message: 'Cancelado.'));
       return const RecognitionResult(matched: false);
@@ -140,8 +178,42 @@ class MusicRecognizer {
     }
   }
 
+  /// Segunda vía: manda los bytes WAV al Worker, que los pasa a Whisper y busca la letra en LRClib. Nunca lanza.
+  Future<RecognitionResult> _queryLyrics(Uint8List wavBytes) async {
+    try {
+      final response = await _client.post(
+        Uri.parse(recognizeLyricsEndpoint),
+        headers: {'Content-Type': 'application/octet-stream'},
+        body: wavBytes,
+      ).timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) return const RecognitionResult(matched: false);
+      final data = utf8DecodeMap(response.bodyBytes);
+      if (data == null) return const RecognitionResult(matched: false);
+      final matched = data['matched'] == true;
+      final reason = data['reason'] is String ? data['reason'] as String : '';
+      if (!matched) return RecognitionResult(matched: false, reason: reason);
+      return RecognitionResult(
+        matched: true,
+        title: data['title'] is String ? data['title'] as String : null,
+        artist: data['artist'] is String ? data['artist'] as String : null,
+        confidence: (data['confidence'] as num?)?.toDouble() ?? 0,
+        source: 'lyrics',
+      );
+    } catch (_) {
+      return const RecognitionResult(matched: false);
+    }
+  }
+
   Future<void> dispose() async {
     await _mic.dispose();
     _client.close();
   }
+}
+
+/// Helper que decodifica los bytes de respuesta como UTF-8 JSON Map. Separado para mantener `_queryLyrics` legible.
+Map<String, dynamic>? utf8DecodeMap(List<int> bytes) {
+  try {
+    final decoded = jsonDecode(String.fromCharCodes(bytes));
+    return decoded is Map<String, dynamic> ? decoded : null;
+  } catch (_) { return null; }
 }

@@ -39,6 +39,7 @@ import {
   handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyCallback,
 } from '../../frontend/web/server/spotify-endpoints.js';
 import { handleRecognizeRequest } from '../../frontend/web/server/recognize-endpoint.js';
+import { handleRecognizeLyricsRequest } from '../../frontend/web/server/recognize-lyrics.js';
 import { AUDIO_EXPOSE_HEADERS, handleAudioRequest } from './audio.js';
 import { readCoverIndex, saveCoverToBucket } from './portadas.js';
 import { bindingStorage } from './r2-storage.js';
@@ -328,6 +329,9 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
       break;
     case '/api/recognize':
       response = await handleRecognizeRequest(request, { env });
+      break;
+    case '/api/recognize-lyrics':
+      response = await handleRecognizeLyricsRequest(request, { env });
       break;
     default:
       response = jsonResponse(404, { ok: false, error: 'No existe.' });

@@ -24,6 +24,14 @@ class MicCaptureAborted implements Exception {
   String toString() => 'Captura cancelada.';
 }
 
+/// Lo que devuelve el micrófono tras una captura (ADR-0048): muestras ya decodificadas para la huella Shazam-style y
+/// bytes del WAV originales por si la segunda vía (letras vía Whisper) los necesita.
+class MicCaptureResult {
+  const MicCaptureResult({required this.samples, required this.wavBytes});
+  final Float32List samples;
+  final Uint8List wavBytes;
+}
+
 class MicCapture {
   MicCapture({AudioRecorder? recorder}) : _recorder = recorder ?? AudioRecorder();
 
@@ -37,9 +45,9 @@ class MicCapture {
     if (!status.isGranted) throw const MicPermissionDenied();
   }
 
-  /// Graba [seconds] segundos del micrófono y devuelve las muestras ya en Float32 [-1, 1] a [kFingerprintSampleRate] Hz.
+  /// Graba [seconds] segundos del micrófono y devuelve muestras Float32 + bytes WAV.
   /// Si se completa [cancel] antes de terminar, aborta y lanza [MicCaptureAborted]. Nunca deja el micrófono abierto.
-  Future<Float32List> record({
+  Future<MicCaptureResult> record({
     required int seconds,
     Future<void>? cancel,
   }) async {
@@ -72,7 +80,8 @@ class MicCapture {
     }
     final bytes = await _lastFile!.readAsBytes();
     try { await _lastFile!.delete(); } catch (_) {}
-    return _wavToFloat32(bytes);
+    final samples = _wavToFloat32(bytes);
+    return MicCaptureResult(samples: samples, wavBytes: bytes);
   }
 
   /// Libera recursos del grabador. Seguro llamar varias veces.
