@@ -105,18 +105,20 @@ void _fft(Float64List re, Float64List im) {
 
 /// Convierte un fotograma de muestras PCM en el pico máximo de cada banda logarítmica. Lo que devuelve es un conjunto
 /// pequeño (una por banda) con la banda y la magnitud, que luego se cribará para quedarse con los más altos.
-List<_Peak> _frameToPeaks(Float32List slice, Float64List window) {
+///
+/// `re`, `im` y `mags` se le PASAN desde fuera (buffers reusables). Antes se creaban dentro, asignando 4+4+2 = 10 KB
+/// por fotograma × 125 fotogramas = ~1,2 MB de allocs y GC pressure por cada reconocimiento. Ahora el llamante los
+/// reutiliza para todos los fotogramas y los libera al salir.
+List<_Peak> _frameToPeaks(Float32List slice, Float64List window, Float64List re, Float64List im, Float64List mags) {
   final n = slice.length;
-  final re = Float64List(n);
-  final im = Float64List(n);
   for (var i = 0; i < n; i++) {
     re[i] = slice[i] * window[i];
+    im[i] = 0;
   }
   _fft(re, im);
 
   // Magnitud por bin (solo la mitad útil del espectro).
   final half = n ~/ 2;
-  final mags = Float64List(half);
   for (var i = 0; i < half; i++) {
     mags[i] = math.sqrt(re[i] * re[i] + im[i] * im[i]);
   }
@@ -157,15 +159,28 @@ int _packHash(int anchorBand, int targetBand, int deltaFrames) {
   return (anchorBand: (hash >> 16) & 0x3F, targetBand: (hash >> 10) & 0x3F, deltaFrames: hash & 0x3FF);
 }
 
+/// Caché estática de la ventana de Hann: se calcula una sola vez por ejecución de la app (no por reconocimiento).
+Float64List? _cachedHannWindow;
+Float64List _getHannWindow() {
+  final cached = _cachedHannWindow;
+  if (cached != null && cached.length == kFingerprintWindowSize) return cached;
+  return _cachedHannWindow = _hannWindow(kFingerprintWindowSize);
+}
+
 /// Calcula la huella acústica de [samples] (PCM mono [-1.0, 1.0] a [kFingerprintSampleRate] Hz). Devuelve los hashes
 /// con el offset de fotograma del ancla desde el inicio del fragmento.
 List<FingerprintHash> fingerprint(Float32List samples) {
   if (samples.length < kFingerprintWindowSize) return const [];
-  final window = _hannWindow(kFingerprintWindowSize);
+  final window = _getHannWindow();
+  // Buffers REUSABLES para los 125 fotogramas (antes se creaban 3× por frame → ~1,2 MB de GC pressure por
+  // reconocimiento). Ahora son 24 KB fijos que viven lo que dure esta llamada.
+  final re = Float64List(kFingerprintWindowSize);
+  final im = Float64List(kFingerprintWindowSize);
+  final mags = Float64List(kFingerprintWindowSize ~/ 2);
   final frames = <List<_Peak>>[];
   for (var start = 0; start + kFingerprintWindowSize <= samples.length; start += kFingerprintHopSize) {
     final slice = Float32List.sublistView(samples, start, start + kFingerprintWindowSize);
-    frames.add(_frameToPeaks(slice, window));
+    frames.add(_frameToPeaks(slice, window, re, im, mags));
   }
   final hashes = <FingerprintHash>[];
   for (var i = 0; i < frames.length; i++) {

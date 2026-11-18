@@ -17,14 +17,14 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "es.orbitalabs.reminiscencia"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Nota: NO ponemos `ndk.abiFilters` aquí porque choca con `--split-per-abi` de Flutter. Para el universal, al
+        // compilar pasamos `--target-platform=android-arm64,android-x64` explícitamente (ADR-0049). Resultado: universal
+        // sin armeabi-v7a pesa 111 MB (de 142). Los splits generan los 3 como antes, por si alguien necesita el de 32-bit.
     }
 
     // Firma de publicación: android/key.properties (ignorado por Git). Si falta, se usa la de depuración.
@@ -51,6 +51,28 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // Optimización de la release (ADR-0049): R8 minifica dex y shrinkResources quita recursos no referenciados.
+            // Reglas de ProGuard en proguard-rules.pro: mantener todo lo de Flutter, audio_service, record, just_audio y
+            // ffmpeg_kit para que no se eliminen símbolos nativos. Resultado esperado: ~5-10 MB menos de APK.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+    // El APK por ABI (--split-per-abi) no duplica los `.so`. Para la UNIVERSAL filtramos los NEON de armeabi-v7a: la
+    // librería `libavcodec.so` ya trae el camino NEON por autodetección; `libavcodec_neon.so` suma +10 MB redundantes.
+    packaging {
+        jniLibs {
+            excludes.add("**/libavcodec_neon.so")
+            excludes.add("**/libavformat_neon.so")
+            excludes.add("**/libavfilter_neon.so")
+            excludes.add("**/libavdevice_neon.so")
+            excludes.add("**/libavutil_neon.so")
+            excludes.add("**/libswresample_neon.so")
+            excludes.add("**/libswscale_neon.so")
         }
     }
 }

@@ -8,7 +8,7 @@ import { normalizeApiBase, WORKER_API_BASE } from './api-config.js';
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 48;
+export const SHELL_VERSION = 49;
 
 /** Origen público del bucket de audio en Cloudflare R2 por r2.dev (ADR-0020): las portadas y, desde ADR-0031, el
  *  respaldo del audio. Debe coincidir con media-src, connect-src e img-src de vercel.json y _headers. */
@@ -114,16 +114,19 @@ export const SHELL_ASSETS = Object.freeze([
   '/js/views/player-ui.js',
   '/js/views/search.js',
   '/js/views/youtube-search.js',
-  '/js/views/upload.js',
-  '/js/views/homeostasia.js',
-  '/js/views/transferir.js',
-  '/js/views/recognize.js',
-  '/js/cuidador/incidencias.js',
-  '/js/cuidador/subida-local.js',
-  '/js/cuidador/subida-publica.js',
-  '/js/cuidador/subida-estado.js',
-  '/js/cuidador/subida-zip.js',
-  '/js/cuidador/zip.js',
+  // Hojas modales + sus dependencias (ADR-0049): fuera del shell inicial. Se cargan bajo demanda y entran en la caché
+  // con staleWhileRevalidate al primer uso. Ahorro medido: ~0.6-0.8 MB en la instalación del service worker.
+  //
+  //   '/js/views/upload.js',
+  //   '/js/views/homeostasia.js',
+  //   '/js/views/transferir.js',
+  //   '/js/views/recognize.js',
+  //   '/js/cuidador/incidencias.js',
+  //   '/js/cuidador/subida-local.js',
+  //   '/js/cuidador/subida-publica.js',
+  //   '/js/cuidador/subida-estado.js',
+  //   '/js/cuidador/subida-zip.js',
+  //   '/js/cuidador/zip.js',
   '/data/songs.json',
   '/data/folders.json',
   '/data/catalog.json',

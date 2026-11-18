@@ -480,7 +480,22 @@ describe('cobertura de SHELL_ASSETS', () => {
     }
   });
 
-  test('incluye todas las hojas, fuentes, módulos (también los de js/ui, js/views y js/cuidador), datos e iconos', () => {
+  // Ficheros que NO van en el shell inicial a propósito (ADR-0049): hojas modales que se cargan bajo demanda vía
+  // `import()`. El service worker las cachea con staleWhileRevalidate al primer uso.
+  const LAZY_LOADED = new Set([
+    '/js/views/upload.js',
+    '/js/views/homeostasia.js',
+    '/js/views/transferir.js',
+    '/js/views/recognize.js',
+    '/js/cuidador/incidencias.js',
+    '/js/cuidador/subida-local.js',
+    '/js/cuidador/subida-publica.js',
+    '/js/cuidador/subida-estado.js',
+    '/js/cuidador/subida-zip.js',
+    '/js/cuidador/zip.js',
+  ]);
+
+  test('incluye todas las hojas, fuentes, módulos no-lazy, datos e iconos (los lazy no van al shell)', () => {
     const files = [
       ...sitePaths('css', '.css'),
       ...sitePaths('fonts', '.woff2'),
@@ -489,7 +504,8 @@ describe('cobertura de SHELL_ASSETS', () => {
       ...sitePaths('icons', '.png'),
     ];
     assert.ok(files.includes('/js/views/home.js'), 'el recorrido debe entrar en las subcarpetas');
-    assert.deepEqual(files.filter((path) => !SHELL_ASSETS.includes(path)), []);
+    const missing = files.filter((path) => !SHELL_ASSETS.includes(path) && !LAZY_LOADED.has(path));
+    assert.deepEqual(missing, [], 'cada fichero no-lazy del sitio debe estar precacheado en SHELL_ASSETS');
   });
 
   test('incluye lo que carga la página (hojas, módulo de entrada, manifiesto e iconos)', () => {

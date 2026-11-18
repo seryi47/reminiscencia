@@ -3,32 +3,42 @@ import assert from 'node:assert/strict';
 
 import { handleRecognizeRequest } from '../../frontend/web/server/recognize-endpoint.js';
 
-/** Mock de D1 mínimo: prepare → bind → all / first, con un «dataset» inyectado en el constructor. */
+/** Mock de D1 mínimo: prepare → bind → all / first + batch(). Soporta la unión con songs como el endpoint real. */
 function mockDb({ hashes = [], songs = [] } = {}) {
+  const songById = Object.fromEntries(songs.map((s) => [s.id, s]));
+  const runStmt = async (sql, bound) => {
+    if (/FROM hashes h JOIN songs s|FROM hashes h\s*JOIN songs s|FROM hashes WHERE hash IN/i.test(sql)) {
+      const needles = new Set(bound.map((v) => Number(v)));
+      const results = hashes
+        .filter((h) => needles.has(h.hash))
+        .map((h) => {
+          const song = songById[h.song_id] ?? {};
+          return { hash: h.hash, song_id: h.song_id, offset: h.offset, title: song.title ?? '', artist: song.artist ?? '' };
+        });
+      return { results };
+    }
+    return { results: [] };
+  };
   return {
     prepare(sql) {
       let bound = [];
       return {
         bind(...values) { bound = values; return this; },
-        async all() {
-          if (/FROM hashes WHERE hash IN/i.test(sql)) {
-            const needles = new Set(bound.map((v) => Number(v)));
-            const results = hashes
-              .filter((h) => needles.has(h.hash))
-              .map((h) => ({ hash: h.hash, song_id: h.song_id, offset: h.offset }));
-            return { results };
-          }
-          return { results: [] };
-        },
+        async all() { return runStmt(sql, bound); },
         async first() {
           if (/FROM songs WHERE id/i.test(sql)) {
-            const id = String(bound[0]);
-            const found = songs.find((s) => s.id === id);
+            const found = songById[String(bound[0])];
             return found ? { id: found.id, title: found.title, artist: found.artist } : null;
           }
           return null;
         },
+        _sql: sql, _bound: () => bound,
       };
+    },
+    async batch(stmts) {
+      // En el endpoint real, cada stmt lleva su propio sql y bound tras `.bind()`. En el mock devolvemos lo mismo que
+      // haría llamar a `.all()` sobre cada uno (el endpoint prepara y hace bind antes de meterlos al array).
+      return Promise.all(stmts.map((s) => runStmt(s._sql, s._bound())));
     },
   };
 }
