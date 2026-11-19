@@ -11087,6 +11087,57 @@
       "added_at": "2026-11-19T17:16:59+00:00",
       "public": true,
       "track": 6
+    },
+    {
+      "id": "S2148395be122a402",
+      "title": "Cálmate",
+      "artist": "Kaze",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "2148395be122a402c6929d242ebb68e7b6274da3d9918b546e6a2743f4eb2f8b",
+      "duration_s": 240.06,
+      "codec": "opus",
+      "size_bytes": 1473027,
+      "added_at": "2026-11-19T17:17:56+00:00",
+      "public": true,
+      "track": 7
+    },
+    {
+      "id": "S942c98e0f0d46ec9",
+      "title": "Rolling in the Deep",
+      "artist": "Adele",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "942c98e0f0d46ec99b89b2fd2b73897fc43ee99807a305d33e0be7ad410da6d9",
+      "duration_s": 228.093,
+      "codec": "opus",
+      "size_bytes": 1399118,
+      "added_at": "2026-11-19T17:17:56+00:00",
+      "public": true,
+      "track": 8
+    },
+    {
+      "id": "S999075da5076c476",
+      "title": "Ride",
+      "artist": "Twenty One Pilots",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "999075da5076c476918b3cdef4717158b2c99b51b7f53179af4be1f7eba9ec21",
+      "duration_s": 214.507,
+      "codec": "opus",
+      "size_bytes": 1314075,
+      "added_at": "2026-11-19T17:17:56+00:00",
+      "public": true,
+      "track": 9
     }
   ]
 }
