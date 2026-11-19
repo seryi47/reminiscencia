@@ -31,6 +31,12 @@
       "name": "Musicales",
       "parent_id": null,
       "youtube_playlist_id": "PLJ4YD2A6ECLU"
+    },
+    {
+      "id": "Ff555ff7a9dc46813",
+      "name": "Mix",
+      "parent_id": null,
+      "youtube_playlist_id": "spotify_playlist_4qSuNKaoKhc1DRMCovq4VI"
     }
   ],
   "songs": [
@@ -10979,6 +10985,57 @@
       "added_at": "2026-11-17T12:31:33+00:00",
       "public": true,
       "track": 325
+    },
+    {
+      "id": "S27439d0a64c7e7c2",
+      "title": "No hago rap",
+      "artist": "Rayden",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "27439d0a64c7e7c256be6f971dcd34c94f5a132f95cd9c1fbe90fcc3d92210aa",
+      "duration_s": 174.021,
+      "codec": "opus",
+      "size_bytes": 1068836,
+      "added_at": "2026-11-19T17:15:16+00:00",
+      "public": true,
+      "track": 1
+    },
+    {
+      "id": "S4e97d47183be05e0",
+      "title": "The Wolf",
+      "artist": "SIAMES",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "4e97d47183be05e0519f7d8b401aea7511ef8a613f69ae37bfc96a9160f05fc3",
+      "duration_s": 186.945,
+      "codec": "opus",
+      "size_bytes": 1148296,
+      "added_at": "2026-11-19T17:15:16+00:00",
+      "public": true,
+      "track": 2
+    },
+    {
+      "id": "S7f1eba3968007689",
+      "title": "Skyfall",
+      "artist": "Adele",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "7f1eba3968007689f28d2b9534562679feecd5b0b14ba4aad36a764849ad6c8b",
+      "duration_s": 154.922,
+      "codec": "opus",
+      "size_bytes": 950649,
+      "added_at": "2026-11-19T17:15:16+00:00",
+      "public": true,
+      "track": 3
     }
   ]
 }
