@@ -220,15 +220,20 @@ const SPOTIFY_PREFIX = '/api/spotify/';
  */
 function spotifySearch(env, fetchImpl) {
   return async (query) => {
-    // YouTube Music (oficial, el Worker lo hace por fetch) + búsqueda normal (yt-dlp, por el upstream); music primero.
-    const regular = (async () => {
-      const search = new Request(`https://worker.local/api/youtube/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
-      const response = await forwardYoutube(search, env, fetchImpl);
-      if (!response.ok) return [];
+    // Upstream primero (yt-dlp vía Vercel/Netlify): si trae >=3 candidatos, NO llamamos a YouTube Music para
+    // esta pista. YT Music añade 'topic' (score +20) pero su cuota es mucho más estrecha que la del upstream y
+    // se agotaba en listas grandes (Mix de 100 dejaba 3-12 pistas vacías). Sin 'topic' la mayoría de pistas
+    // siguen puntuando suficiente para tier=alta (ADR-0046 ampliado 2026-11-19).
+    const search = new Request(`https://worker.local/api/youtube/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+    const response = await forwardYoutube(search, env, fetchImpl);
+    let items = [];
+    if (response.ok) {
       const data = await response.json().catch(() => ({}));
-      return Array.isArray(data.items) ? data.items : [];
-    })();
-    const [music, items] = await Promise.all([searchYoutubeMusic(query, { fetchImpl }).catch(() => []), regular]);
+      items = Array.isArray(data.items) ? data.items : [];
+    }
+    if (items.length >= 3) return items; // basta para el matcher; ahorra una llamada a YT Music
+    // Fallback: también YT Music (para pistas raras donde el upstream no encuentra)
+    const music = await searchYoutubeMusic(query, { fetchImpl }).catch(() => []);
     return mergeCandidates(music, items);
   };
 }
