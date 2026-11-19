@@ -80,9 +80,13 @@ export async function resolveCollection(
     }
     // Rescate contra el rate-limit silencioso de YouTube Music (ADR-0046 ampliado 2026-11-19): si todas las queries han
     // vuelto con 0 resultados y ningún error explícito (síntoma típico cuando se resuelven listas grandes a la vez),
-    // reintentamos la primera query una sola vez con un pequeño respiro. Solo cuesta tiempo cuando ya habría fallado.
-    if (byKey.size === 0 && !lastError && queries.length > 0) {
-      await new Promise((r) => setTimeout(r, 400));
+    // reintentamos la primera query hasta 3 veces con backoff progresivo (500/1500/3500 ms). Un solo reintento no basta:
+    // probado en producción el 19-nov con un Mix de 100 pistas, quedaban 9 pistas conocidas (Radioactive, Agua Pasá,
+    // Dangerous Woman…) con 0 candidatos tras el primer reintento; con tres y pausa creciente las rescata.
+    const backoffsMs = [500, 1500, 3500];
+    for (const waitMs of backoffsMs) {
+      if (byKey.size > 0 || lastError || queries.length === 0) break;
+      await new Promise((r) => setTimeout(r, waitMs));
       try {
         const candidates = (await searchYoutube(queries[0], track)) ?? [];
         for (const candidate of candidates) {

@@ -94,17 +94,30 @@ describe('resolveCollection', () => {
     assert.deepEqual(calls, ['Coldplay The Scientist lyrics'], 'con una coincidencia alta (en la variante lyrics) no se prueban más variantes');
   });
 
-  test('si YouTube devuelve 0 en todas las variantes SIN error, reintenta una vez (rate-limit silencioso)', async () => {
+  test('si YouTube devuelve 0 en todas las variantes SIN error, reintenta hasta 3 veces con backoff (rate-limit silencioso)', async () => {
     // Replica el caso real del 2026-11-19: al analizar un Mix de Spotify de 100 pistas, YouTube Music devolvía
-    // temporalmente 0 candidatos para algunas pistas sin tirar error; la pista se quedaba en «baja» con 0 alternativas.
-    // Con el rescate, un segundo intento la rescata.
+    // temporalmente 0 candidatos para 9 pistas aunque el servidor funcionaba (confirmado llamando fuera del pico). Con
+    // un solo reintento no bastaba; con tres reintentos con backoff (500/1500/3500 ms) sí las rescata.
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Rolling in the Deep', 'Adele', 228000)] };
     let n = 0;
-    const search = async () => { n += 1; return n <= 2 ? [] : [cand('ok', 'Rolling in the Deep', 'Adele', 229, 'topic')]; };
+    // 2 variantes vacías + 3 reintentos vacíos + 1 que rescata = 6 intentos. El rescate llega en el 3er reintento.
+    const search = async () => {
+      n += 1;
+      return n <= 4 ? [] : [cand('ok', 'Rolling in the Deep', 'Adele', 229, 'topic')];
+    };
     const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
-    assert.equal(result.results[0].tier, 'alta', 'el reintento lo rescata');
+    assert.equal(result.results[0].tier, 'alta', 'el 2º reintento lo rescata');
     assert.equal(result.results[0].best.candidate.id, 'ok');
-    assert.equal(n, 3, 'un intento por cada variante + un reintento global');
+    assert.ok(n >= 5, 'variantes + reintentos con backoff hasta encontrar');
+  });
+
+  test('tras 3 reintentos sin candidatos queda baja (no se queda colgado)', async () => {
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [track('X', 'Y', 200000)] };
+    let n = 0;
+    const search = async () => { n += 1; return []; };
+    const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
+    assert.equal(result.results[0].tier, 'baja');
+    assert.equal(n, 5, '2 variantes + 3 reintentos y para');
   });
 
   test('si YouTube devuelve 0 Y error, NO se reintenta en bucle (queda baja con el error)', async () => {

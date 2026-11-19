@@ -128,7 +128,10 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   }
 
   const pageCollection = { ...collection, tracks: pageTracks };
-  const resolved = await resolveCollection(pageCollection, { searchYoutube: search }, { concurrency: 4 });
+  // Concurrencia 2 (antes 4): YouTube Music rate-limita por IP del Worker cuando se resuelven listas grandes (Mix de 100).
+  // Bajar a 2 reduce las llamadas simultáneas (de 8 a 4 contando los dos upstreams) y, junto al reintento con backoff del
+  // resolver, mantiene el 0 vacías sin aumentar mucho el tiempo total (ADR-0046 ampliado 2026-11-19).
+  const resolved = await resolveCollection(pageCollection, { searchYoutube: search }, { concurrency: 2 });
   for (const result of resolved.results) result.index += offset; // índices globales
 
   return json(200, { ...resolved, offset, limit, total, hasMore: offset + limit < total });
