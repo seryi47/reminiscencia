@@ -12005,6 +12005,57 @@
       "added_at": "2026-11-19T18:14:47+00:00",
       "public": true,
       "track": 60
+    },
+    {
+      "id": "S913ab6bd5b1c7d24",
+      "title": "Itaboy! (feat. SFDK)",
+      "artist": "Rayden",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "913ab6bd5b1c7d249461006189d177493c5f2a02a2999ce858b69fd8cede507b",
+      "duration_s": 185.412,
+      "codec": "opus",
+      "size_bytes": 1137760,
+      "added_at": "2026-11-19T18:15:41+00:00",
+      "public": true,
+      "track": 61
+    },
+    {
+      "id": "S5a900b362e46b479",
+      "title": "A Little Messed Up",
+      "artist": "june",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "5a900b362e46b479ccf0b6631aefe14c8e76de78d5f04423532fa85a21bb1733",
+      "duration_s": 168.0,
+      "codec": "opus",
+      "size_bytes": 1031466,
+      "added_at": "2026-11-19T18:15:41+00:00",
+      "public": true,
+      "track": 62
+    },
+    {
+      "id": "Sf156c53bb6cd38d7",
+      "title": "The Devil Inside",
+      "artist": "Daniel Murphy",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "f156c53bb6cd38d76bca649657ec5a506e0df2eabfdc793ca23a862092df2ff4",
+      "duration_s": 209.514,
+      "codec": "opus",
+      "size_bytes": 1286907,
+      "added_at": "2026-11-19T18:15:41+00:00",
+      "public": true,
+      "track": 63
     }
   ]
 }
