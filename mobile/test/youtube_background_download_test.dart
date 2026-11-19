@@ -106,7 +106,7 @@ void main() {
     expect(await store.read(), isEmpty);
   });
 
-  Future<void> _waitState(YoutubeDownloads d, YoutubeDownloadState want) async {
+  Future<void> waitState(YoutubeDownloads d, YoutubeDownloadState want) async {
     for (var i = 0; i < 300 && d.of(_result.id).state != want; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
@@ -125,12 +125,12 @@ void main() {
     final downloads = YoutubeDownloads(store: store);
 
     unawaited(downloads.start(services, _result));
-    await _waitState(downloads, YoutubeDownloadState.running);
+    await waitState(downloads, YoutubeDownloadState.running);
     expect(downloads.of(_result.id).state, YoutubeDownloadState.running);
 
     downloads.suspend();
     gate.complete(http.Response('{"error":"fin"}', 500)); // libera el GET colgado para que llegue al throwIfCancelled
-    await _waitState(downloads, YoutubeDownloadState.idle);
+    await waitState(downloads, YoutubeDownloadState.idle);
 
     expect(downloads.of(_result.id).state, YoutubeDownloadState.idle,
         reason: 'pausada, no error ni cancelación del usuario');
@@ -149,14 +149,14 @@ void main() {
     final downloads = YoutubeDownloads(store: store);
 
     unawaited(downloads.start(services, _result));
-    await _waitState(downloads, YoutubeDownloadState.running);
+    await waitState(downloads, YoutubeDownloadState.running);
     downloads.suspend();
     gate.complete(http.Response('{"error":"fin"}', 500));
-    await _waitState(downloads, YoutubeDownloadState.idle);
+    await waitState(downloads, YoutubeDownloadState.idle);
 
     gate = Completer<http.Response>(); // compuerta nueva: el segundo intento vuelve a quedarse «en curso»
     downloads.resume(services);
-    await _waitState(downloads, YoutubeDownloadState.running);
+    await waitState(downloads, YoutubeDownloadState.running);
     expect(downloads.of(_result.id).state, YoutubeDownloadState.running,
         reason: 'al volver a primer plano la importación pendiente se reanuda');
 
@@ -174,11 +174,11 @@ void main() {
     final downloads = YoutubeDownloads(store: store);
 
     unawaited(downloads.start(services, _result));
-    await _waitState(downloads, YoutubeDownloadState.running);
+    await waitState(downloads, YoutubeDownloadState.running);
 
     downloads.cancel(_result.id);
     gate.complete(http.Response('{"error":"fin"}', 500));
-    await _waitState(downloads, YoutubeDownloadState.idle);
+    await waitState(downloads, YoutubeDownloadState.idle);
 
     expect(downloads.of(_result.id).state, YoutubeDownloadState.idle);
     expect(await store.read(), isEmpty,
