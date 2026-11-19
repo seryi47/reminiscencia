@@ -11,16 +11,23 @@
 import { matchFingerprint, enrichMatch } from './recognize-core.js';
 
 const MAX_HASHES_PER_QUERY = 50000; // tope defensivo
-const DB_LOOKUP_BATCH = 100;        // D1 (Cloudflare) acepta hasta 100 parámetros por prepared statement. Usamos el máximo
-                                    // para minimizar subrequests, que es lo que sacaba 503 al Worker (ver abajo).
+const DB_LOOKUP_BATCH = 100;        // D1 (Cloudflare) acepta hasta 100 parámetros por prepared statement.
 /*
- * MAX_UNIQUE_HASHES (2026-11-19, ampliación ADR-0048/0049): Workers Free tier limita a ~50 subrequests por invocación.
- * Con 5825 hashes se generaban 65 batches secuenciales a D1 → el Worker devolvía 503 «exceeded resource limits» en ~90%
- * de las consultas reales (reproducido: 1/10 aciertos antes del cambio). Cerramos el tope a 3500 hashes únicos (35
- * batches de 100) para dejar margen cómodo. La poda es por tiempo (primeros N por orden): un fragmento de 8 s tiene
- * ~6250 hashes y los 3500 primeros cubren ~4,5 s, suficiente para un match robusto.
+ * (2026-11-19, ampliación ADR-0048/0049): el Worker devolvía 503 «exceeded resource limits» en el 90% de las consultas
+ * reales. Dos causas:
+ *   a) demasiados subrequests (65 batches con 5825 hashes),
+ *   b) tamaño total de respuesta: los hashes reales son MUY COMUNES (suelen aparecer en decenas de canciones) y
+ *      acumular todas las filas devoraba memoria + CPU del Worker. Bajar hashes a 3500 no bastó (seguía 503 porque las
+ *      respuestas eran grandes).
+ *
+ * Solución combinada:
+ *   - MAX_UNIQUE_HASHES = 2000: 20 batches como mucho. Cubre ~2,5 s de la grabación de 8 s.
+ *   - PER_HASH_LIMIT = 50: cada query en D1 trae como mucho 50 (hash, song_id, offset) → cota superior de 20·100·50 =
+ *     100 000 filas tope. En la práctica muchos hashes coinciden con <5 canciones y se cortan los pocos ruidosos. Un
+ *     hash que coincida con 100+ canciones NO es discriminativo, perderlo no afecta al matching.
  */
-const MAX_UNIQUE_HASHES = 3500;
+const MAX_UNIQUE_HASHES = 2000;
+const PER_HASH_LIMIT = 50;
 
 /** Para pruebas: inyecta un `db` simulado con la misma interfaz (`prepare().bind().all()`). */
 let injectedDb = null;
@@ -75,8 +82,14 @@ export async function handleRecognizeRequest(request, { env } = {}) {
     for (let start = 0; start < uniqueHashes.length; start += DB_LOOKUP_BATCH) {
       const slice = uniqueHashes.slice(start, start + DB_LOOKUP_BATCH);
       const placeholders = slice.map(() => '?').join(',');
+      // Window function: por cada hash, solo las PER_HASH_LIMIT primeras ocurrencias (orden por offset). Evita que un
+      // hash «basura» presente en muchas canciones (y por tanto no discriminativo) hinche la respuesta y mate al Worker.
       const { results: rows } = await db.prepare(
-        `SELECT hash, song_id, offset FROM hashes WHERE hash IN (${placeholders})`
+        `WITH r AS (
+           SELECT hash, song_id, offset, ROW_NUMBER() OVER (PARTITION BY hash ORDER BY song_id, offset) rn
+           FROM hashes WHERE hash IN (${placeholders})
+         )
+         SELECT hash, song_id, offset FROM r WHERE rn <= ${PER_HASH_LIMIT}`
       ).bind(...slice).all();
       for (const row of rows ?? []) {
         if (!row) continue;
