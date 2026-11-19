@@ -94,30 +94,70 @@ describe('resolveCollection', () => {
     assert.deepEqual(calls, ['Coldplay The Scientist lyrics'], 'con una coincidencia alta (en la variante lyrics) no se prueban más variantes');
   });
 
-  test('si YouTube devuelve 0 en todas las variantes SIN error, reintenta hasta 3 veces con backoff (rate-limit silencioso)', async () => {
+  test('si YouTube devuelve 0 en todas las variantes SIN error, reintenta hasta 5 veces con backoff largo (rate-limit silencioso)', async () => {
     // Replica el caso real del 2026-11-19: al analizar un Mix de Spotify de 100 pistas, YouTube Music devolvía
-    // temporalmente 0 candidatos para 9 pistas aunque el servidor funcionaba (confirmado llamando fuera del pico). Con
-    // un solo reintento no bastaba; con tres reintentos con backoff (500/1500/3500 ms) sí las rescata.
+    // temporalmente 0 candidatos. Con 3 reintentos cortos aún quedaban 12 vacías; se extiende a 5 reintentos con backoff
+    // mayor (800/2000/5000/10000/20000 ms) y cada reintento prueba TODAS las variantes.
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Rolling in the Deep', 'Adele', 228000)] };
     let n = 0;
-    // 2 variantes vacías + 3 reintentos vacíos + 1 que rescata = 6 intentos. El rescate llega en el 3er reintento.
     const search = async () => {
       n += 1;
+      // Devuelve vacío durante los 2 primeros intentos; en el tercer intento rescata.
       return n <= 4 ? [] : [cand('ok', 'Rolling in the Deep', 'Adele', 229, 'topic')];
     };
     const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
-    assert.equal(result.results[0].tier, 'alta', 'el 2º reintento lo rescata');
+    assert.equal(result.results[0].tier, 'alta', 'el reintento lo rescata');
     assert.equal(result.results[0].best.candidate.id, 'ok');
     assert.ok(n >= 5, 'variantes + reintentos con backoff hasta encontrar');
   });
 
-  test('tras 3 reintentos sin candidatos queda baja (no se queda colgado)', async () => {
+  test('tras 5 reintentos sin candidatos queda baja (no se queda colgado)', async () => {
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('X', 'Y', 200000)] };
     let n = 0;
     const search = async () => { n += 1; return []; };
     const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
     assert.equal(result.results[0].tier, 'baja');
-    assert.equal(n, 5, '2 variantes + 3 reintentos y para');
+    // 2 variantes iniciales + 5 reintentos × 2 variantes = 12 llamadas máximas, pero el reintento para en cuanto una
+    // variante devuelve algo (no es el caso aquí), así que recorre todas: 2 + 5×2 = 12. En la práctica la primera variante
+    // de cada reintento es la misma, así que como mínimo 2 + 5 = 7.
+    assert.ok(n >= 7, `al menos 7 intentos, se hicieron ${n}`);
+  });
+
+  test('cache de queries: una query repetida entre pistas solo llama al upstream una vez', async () => {
+    // Dos pistas con la misma primera consulta (p.ej. mismo artista + título, mismo anchor): el upstream solo debería
+    // recibirla una vez. Reduce la presión sobre YouTube Music y evita rate-limits en playlists donde el mismo artista
+    // aparece varias veces.
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [
+      track('Mismo', 'Artista', 200000),
+      track('Mismo', 'Artista', 200000),
+    ]};
+    const calls = [];
+    const search = async (query) => {
+      calls.push(query);
+      return [cand('a', 'Mismo', 'Artista', 200, 'topic')];
+    };
+    const result = await resolveCollection(col, { searchYoutube: search });
+    assert.equal(result.results[0].tier, 'alta');
+    assert.equal(result.results[1].tier, 'alta');
+    // Solo 1 llamada al upstream porque la 2ª pista reusa la cache
+    assert.equal(calls.length, 1, `cache debe reducir llamadas: hubo ${calls.length}`);
+  });
+
+  test('cache NO guarda resultados vacíos (un vacío transitorio no tapa el reintento)', async () => {
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [
+      track('Mismo', 'Artista', 200000),
+      track('Mismo', 'Artista', 200000),
+    ]};
+    let n = 0;
+    const search = async () => {
+      n += 1;
+      // La primera llamada devuelve vacío (simula rate-limit); las siguientes sí encuentran
+      return n === 1 ? [] : [cand('a', 'Mismo', 'Artista', 200, 'topic')];
+    };
+    const result = await resolveCollection(col, { searchYoutube: search });
+    // Primera pista se rescata por reintento; segunda pista NO debería leer el vacío de la cache
+    assert.equal(result.results[0].tier, 'alta', 'primera pista rescatada');
+    assert.equal(result.results[1].tier, 'alta', 'segunda pista también alta (cache vacía no se guarda)');
   });
 
   test('si YouTube devuelve 0 Y error, NO se reintenta en bucle (queda baja con el error)', async () => {

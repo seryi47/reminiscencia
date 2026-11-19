@@ -50,10 +50,25 @@ export function albumOf(collection) {
 export async function resolveCollection(
   collection,
   { searchYoutube },
-  { concurrency = 4, maxAlternatives = 5, maxQueries = 7 } = {},
+  { concurrency = 1, maxAlternatives = 5, maxQueries = 7 } = {},
 ) {
   if (!collection || !Array.isArray(collection.tracks)) throw new Error('colección inválida');
   if (typeof searchYoutube !== 'function') throw new Error('falta searchYoutube');
+
+  // Cache de candidatos por consulta normalizada (ADR-0046 ampliado 2026-11-19): el mismo artista suele mandar varias
+  // pistas en una misma lista y muchas variantes de consulta repiten las palabras. Compartirlos ahorra llamadas al
+  // upstream y reduce la presión que dispara el rate-limit de YouTube Music.
+  const queryCache = new Map(); // normalizedQuery -> candidates[]
+  const normalizeQuery = (q) => String(q ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  async function searchWithCache(query, track) {
+    const key = normalizeQuery(query);
+    if (queryCache.has(key)) return queryCache.get(key);
+    const candidates = (await searchYoutube(query, track)) ?? [];
+    // Solo cacheamos resultados NO vacíos: un vacío transitorio por rate-limit no debe tapar un reintento posterior.
+    if (candidates.length > 0) queryCache.set(key, candidates);
+    return candidates;
+  }
 
   const results = await mapPool(collection.tracks, concurrency, async (track, index) => {
     // Se prueban varias variantes de consulta (ADR-0046) acumulando candidatos: así una primera búsqueda floja no deja la
@@ -66,7 +81,7 @@ export async function resolveCollection(
     for (const query of queries) {
       let candidates;
       try {
-        candidates = (await searchYoutube(query, track)) ?? [];
+        candidates = await searchWithCache(query, track);
       } catch (error) {
         lastError = error;
         continue;
@@ -80,23 +95,27 @@ export async function resolveCollection(
     }
     // Rescate contra el rate-limit silencioso de YouTube Music (ADR-0046 ampliado 2026-11-19): si todas las queries han
     // vuelto con 0 resultados y ningún error explícito (síntoma típico cuando se resuelven listas grandes a la vez),
-    // reintentamos la primera query hasta 3 veces con backoff progresivo (500/1500/3500 ms). Un solo reintento no basta:
-    // probado en producción el 19-nov con un Mix de 100 pistas, quedaban 9 pistas conocidas (Radioactive, Agua Pasá,
-    // Dangerous Woman…) con 0 candidatos tras el primer reintento; con tres y pausa creciente las rescata.
-    const backoffsMs = [500, 1500, 3500];
+    // reintentamos TODAS las variantes con backoff progresivo largo. Tres reintentos cortos no bastaban (confirmado en
+    // producción el 19-nov: un Mix de 100 pistas dejaba 12 vacías). Con concurrencia 1 en el endpoint + 5 reintentos
+    // largos no debe quedar ninguna en «baja» por silencio del upstream.
+    const backoffsMs = [800, 2000, 5000, 10000, 20000];
     for (const waitMs of backoffsMs) {
       if (byKey.size > 0 || lastError || queries.length === 0) break;
       await new Promise((r) => setTimeout(r, waitMs));
-      try {
-        const candidates = (await searchYoutube(queries[0], track)) ?? [];
-        for (const candidate of candidates) {
-          const key = candidate?.id || candidate?.url;
-          if (key && !byKey.has(key)) byKey.set(key, candidate);
+      for (const query of queries) {
+        try {
+          const candidates = (await searchYoutube(query, track)) ?? [];
+          for (const candidate of candidates) {
+            const key = candidate?.id || candidate?.url;
+            if (key && !byKey.has(key)) byKey.set(key, candidate);
+          }
+          if (byKey.size > 0) break; // basta con que una variante del reintento devuelva algo
+        } catch (error) {
+          lastError = error;
+          break;
         }
-        if (byKey.size > 0) match = classifyMatch(track, [...byKey.values()], { maxAlternatives });
-      } catch (error) {
-        lastError = error;
       }
+      if (byKey.size > 0) match = classifyMatch(track, [...byKey.values()], { maxAlternatives });
     }
     const query = queries[0];
     if (byKey.size === 0 && lastError) {
