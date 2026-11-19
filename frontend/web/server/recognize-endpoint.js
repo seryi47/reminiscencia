@@ -82,21 +82,18 @@ export async function handleRecognizeRequest(request, { env } = {}) {
     for (let start = 0; start < uniqueHashes.length; start += DB_LOOKUP_BATCH) {
       const slice = uniqueHashes.slice(start, start + DB_LOOKUP_BATCH);
       const placeholders = slice.map(() => '?').join(',');
-      // Window function: por cada hash, solo las PER_HASH_LIMIT primeras ocurrencias (orden por offset). Evita que un
-      // hash «basura» presente en muchas canciones (y por tanto no discriminativo) hinche la respuesta y mate al Worker.
       const { results: rows } = await db.prepare(
-        `WITH r AS (
-           SELECT hash, song_id, offset, ROW_NUMBER() OVER (PARTITION BY hash ORDER BY song_id, offset) rn
-           FROM hashes WHERE hash IN (${placeholders})
-         )
-         SELECT hash, song_id, offset FROM r WHERE rn <= ${PER_HASH_LIMIT}`
+        `SELECT hash, song_id, offset FROM hashes WHERE hash IN (${placeholders})`
       ).bind(...slice).all();
       for (const row of rows ?? []) {
         if (!row) continue;
         const h = Number(row.hash);
-        const list = indexForMatch.get(h) ?? [];
+        let list = indexForMatch.get(h);
+        if (!list) { list = []; indexForMatch.set(h, list); }
+        // Tope por hash en JS: evita que hashes «basura» (presentes en muchas canciones y no discriminativos) hinchen
+        // la estructura y maten al Worker. La window function SQL causaba db_query_failed intermitente en D1 bajo carga.
+        if (list.length >= PER_HASH_LIMIT) continue;
         list.push({ songId: String(row.song_id), offset: Number(row.offset) });
-        indexForMatch.set(h, list);
       }
     }
     const result = matchFingerprint({ hashes: body.hashes, offsets: body.offsets }, indexForMatch);
