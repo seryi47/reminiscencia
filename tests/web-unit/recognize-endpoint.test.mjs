@@ -77,21 +77,18 @@ describe('handleRecognizeRequest con D1 simulado', () => {
     assert.equal(res.status, 400);
   });
 
-  test('match: 6 hashes con delta coherente para S1 → 200 matched:true, con title/artist de songs', async () => {
-    const db = mockDb({
-      hashes: [
-        { hash: 10, song_id: 'S1', offset: 100 },
-        { hash: 11, song_id: 'S1', offset: 101 },
-        { hash: 12, song_id: 'S1', offset: 102 },
-        { hash: 13, song_id: 'S1', offset: 103 },
-        { hash: 14, song_id: 'S1', offset: 104 },
-        { hash: 15, song_id: 'S1', offset: 105 },
-        { hash: 10, song_id: 'S2', offset: 500 },
-      ],
-      songs: [{ id: 'S1', title: 'La Raíz', artist: 'La Raíz' }],
-    });
+  test('match: 30 hashes con delta coherente para S1 → 200 matched:true, con title/artist de songs', async () => {
+    // Umbral subido a 25 votos para evitar falsos positivos con base D1 ruidosa. Un match sano tiene cientos de votos;
+    // los casos espúreos de 15-30 que pasan colaban canciones equivocadas (reproducido en vivo 13/15 falsos antes).
+    const dbHashes = [];
+    for (let i = 10; i < 40; i++) dbHashes.push({ hash: i, song_id: 'S1', offset: i + 90 });
+    dbHashes.push({ hash: 10, song_id: 'S2', offset: 500 });
+    const db = mockDb({ hashes: dbHashes, songs: [{ id: 'S1', title: 'La Raíz', artist: 'La Raíz' }] });
     const res = await handleRecognizeRequest(
-      req({ hashes: [10, 11, 12, 13, 14, 15], offsets: [0, 1, 2, 3, 4, 5] }),
+      req({
+        hashes: Array.from({ length: 30 }, (_, i) => 10 + i),
+        offsets: Array.from({ length: 30 }, (_, i) => i),
+      }),
       { env: { RECOGNIZE_DB: db } },
     );
     assert.equal(res.status, 200);

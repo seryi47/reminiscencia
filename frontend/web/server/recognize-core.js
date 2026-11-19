@@ -14,7 +14,7 @@
  * @param {{minVotes?: number}=} opts
  * @returns {{matched: boolean, songId?: string, votes?: number, totalQueryHashes: number, confidence: number}}
  */
-export function matchFingerprint(query, index, { minVotes = 5 } = {}) {
+export function matchFingerprint(query, index, { minVotes = 25 } = {}) {
   if (!query || !Array.isArray(query.hashes) || !Array.isArray(query.offsets)) {
     return { matched: false, totalQueryHashes: 0, confidence: 0 };
   }
