@@ -116,6 +116,24 @@ export async function resolveCollection(
       }
       if (byKey.size > 0) match = classifyMatch(track, [...byKey.values()], { maxAlternatives });
     }
+    // Fallback DE ÚLTIMA OPORTUNIDAD: si tras los reintentos sigue vacío, esperamos 8 s para que la ventana de
+    // rate-limit se cierre y lanzamos UNA query mínima (artista + título, sin "lyrics" ni variantes). Confirmado
+    // en producción (19-nov) que la ráfaga de una página entera agotaba cuota del upstream y 6 pistas quedaban
+    // vacías aunque se resolvieran bien al llamarlas en solitario minutos después.
+    if (byKey.size === 0 && !lastError && Array.isArray(track.artists) && track.artists[0] && track.title) {
+      await new Promise((r) => setTimeout(r, 8000));
+      const minimalQuery = `${track.artists[0]} ${track.title}`.replace(/\s+/g, ' ').trim();
+      try {
+        const candidates = (await searchYoutube(minimalQuery, track)) ?? [];
+        for (const candidate of candidates) {
+          const key = candidate?.id || candidate?.url;
+          if (key && !byKey.has(key)) byKey.set(key, candidate);
+        }
+        if (byKey.size > 0) match = classifyMatch(track, [...byKey.values()], { maxAlternatives });
+      } catch (error) {
+        lastError = error;
+      }
+    }
     const query = queries[0];
     if (byKey.size === 0 && lastError) {
       return { index, track, query, tier: 'baja', best: null, alternatives: [], error: String(lastError?.message ?? lastError) };
