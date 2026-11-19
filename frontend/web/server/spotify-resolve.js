@@ -93,12 +93,11 @@ export async function resolveCollection(
       match = classifyMatch(track, [...byKey.values()], { maxAlternatives });
       if (match.tier === 'alta') break;
     }
-    // Rescate contra el rate-limit silencioso de YouTube Music (ADR-0046 ampliado 2026-11-19): si todas las queries han
-    // vuelto con 0 resultados y ningún error explícito (síntoma típico cuando se resuelven listas grandes a la vez),
-    // reintentamos TODAS las variantes con backoff progresivo largo. Tres reintentos cortos no bastaban (confirmado en
-    // producción el 19-nov: un Mix de 100 pistas dejaba 12 vacías). Con concurrencia 1 en el endpoint + 5 reintentos
-    // largos no debe quedar ninguna en «baja» por silencio del upstream.
-    const backoffsMs = [800, 2000, 5000, 10000, 20000];
+    // Rescate contra el rate-limit silencioso del upstream (ADR-0046 ampliado 2026-11-19): si todas las queries han
+    // vuelto con 0 resultados y ningún error explícito, reintentamos todas las variantes con backoff progresivo.
+    // Con el cambio del Worker (upstream primero, YT Music como fallback) ya no hace falta un backoff tan largo;
+    // 3 reintentos cortos bastan porque el upstream es mucho más tolerante.
+    const backoffsMs = [500, 1500, 4000];
     for (const waitMs of backoffsMs) {
       if (byKey.size > 0 || lastError || queries.length === 0) break;
       await new Promise((r) => setTimeout(r, waitMs));

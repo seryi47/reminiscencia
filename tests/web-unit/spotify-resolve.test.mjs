@@ -94,10 +94,10 @@ describe('resolveCollection', () => {
     assert.deepEqual(calls, ['Coldplay The Scientist lyrics'], 'con una coincidencia alta (en la variante lyrics) no se prueban más variantes');
   });
 
-  test('si YouTube devuelve 0 en todas las variantes SIN error, reintenta hasta 5 veces con backoff largo (rate-limit silencioso)', async () => {
-    // Replica el caso real del 2026-11-19: al analizar un Mix de Spotify de 100 pistas, YouTube Music devolvía
-    // temporalmente 0 candidatos. Con 3 reintentos cortos aún quedaban 12 vacías; se extiende a 5 reintentos con backoff
-    // mayor (800/2000/5000/10000/20000 ms) y cada reintento prueba TODAS las variantes.
+  test('si YouTube devuelve 0 en todas las variantes SIN error, reintenta con backoff (rate-limit silencioso)', async () => {
+    // Replica el caso real del 2026-11-19: YouTube Music devolvía temporalmente 0 candidatos. El reintento
+    // prueba TODAS las variantes cada vez. Con el cambio en el Worker (upstream primero, YT Music solo
+    // fallback) 3 reintentos cortos (500/1500/4000 ms) bastan.
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Rolling in the Deep', 'Adele', 228000)] };
     let n = 0;
     const search = async () => {
@@ -111,16 +111,14 @@ describe('resolveCollection', () => {
     assert.ok(n >= 5, 'variantes + reintentos con backoff hasta encontrar');
   });
 
-  test('tras 5 reintentos sin candidatos queda baja (no se queda colgado)', async () => {
+  test('tras los reintentos sin candidatos queda baja (no se queda colgado)', async () => {
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('X', 'Y', 200000)] };
     let n = 0;
     const search = async () => { n += 1; return []; };
     const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
     assert.equal(result.results[0].tier, 'baja');
-    // 2 variantes iniciales + 5 reintentos × 2 variantes = 12 llamadas máximas, pero el reintento para en cuanto una
-    // variante devuelve algo (no es el caso aquí), así que recorre todas: 2 + 5×2 = 12. En la práctica la primera variante
-    // de cada reintento es la misma, así que como mínimo 2 + 5 = 7.
-    assert.ok(n >= 7, `al menos 7 intentos, se hicieron ${n}`);
+    // 2 variantes iniciales + 3 reintentos × 2 variantes = 8 llamadas máximas
+    assert.ok(n >= 5 && n <= 10, `entre 5 y 10 intentos, se hicieron ${n}`);
   });
 
   test('cache de queries: una query repetida entre pistas solo llama al upstream una vez', async () => {
