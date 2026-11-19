@@ -105,6 +105,42 @@ export async function resolveCollection({ api, url, source, ref, storage = globa
     if (!page.hasMore) break;
     offset += pageLimit;
   }
+  // Rescate final (ADR-0044 ampliado 2026-11-19): aisladas, las pistas sí salen `tier=alta`; en una página de 25 un
+  // puñado se pierde por rate-limit acumulado del upstream. Para esos sobrantes, relanzamos `/resolve` UNO a UNO con la
+  // URL del track — concurrencia 2 y solo las verdaderamente vacías (`tier=baja, alternatives=[], !error`), nunca las
+  // que el servidor ya marcó como fallidas con error. Si la 2ª llamada sigue vacía, la dejamos tal cual.
+  if (!compareOnly) {
+    const stragglers = [];
+    for (let i = 0; i < results.length; i += 1) {
+      const r = results[i];
+      if (r.tier === 'baja' && (!r.alternatives || r.alternatives.length === 0) && !r.error && r.track?.spotifyId) {
+        stragglers.push(i);
+      }
+    }
+    if (stragglers.length > 0) {
+      onPage?.({ loaded: results.length, total, album, retrying: stragglers.length });
+      let next = 0;
+      const rescue = async () => {
+        while (next < stragglers.length) {
+          const idx = next; next += 1;
+          const i = stragglers[idx];
+          const r = results[i];
+          const trackUrl = `https://open.spotify.com/track/${r.track.spotifyId}`;
+          try {
+            const page = await api.resolve({ url: trackUrl, accessToken });
+            const fresh = page?.results?.[0];
+            if (fresh && (fresh.tier === 'alta' || fresh.tier === 'media')) {
+              // sumar al sumario (restar de baja, sumar al nuevo tier)
+              summary.baja = Math.max(0, (summary.baja ?? 0) - 1);
+              summary[fresh.tier] = (summary[fresh.tier] ?? 0) + 1;
+              results[i] = { ...fresh, index: r.index }; // conservar índice global
+            }
+          } catch { /* una pista que falla en el rescate se deja como estaba */ }
+        }
+      };
+      await Promise.all([rescue(), rescue()]);
+    }
+  }
   return { album, results, total, summary };
 }
 

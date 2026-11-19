@@ -99,6 +99,71 @@ describe('resolveCollection', () => {
   test('sin sesión lanza needsAuth', async () => {
     await assert.rejects(() => resolveCollection({ api: {}, url: 'u', storage: fakeStorage() }), (e) => e.needsAuth === true);
   });
+
+  test('reintenta por URL las pistas que vuelven tier=baja con 0 alternativas y sin error (rescate ADR-0044)', async () => {
+    const storage = fakeStorage();
+    writeSession({ accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3_600_000 }, storage);
+    const trackCalls = [];
+    const api = {
+      resolve: async ({ url, offset, limit }) => {
+        // Página inicial: 2 pistas, la 0 sale 'alta' y la 1 sale 'baja' SIN candidatos ni error (síntoma de rate-limit silencioso).
+        if (!url?.includes('/track/')) {
+          return {
+            album: { id: 'spotify_playlist_P', name: 'L' }, total: 2, hasMore: false,
+            summary: { alta: 1, media: 0, baja: 1, error: 0 },
+            results: [
+              { index: 0, tier: 'alta', best: { candidate: { url: 'u0' } }, alternatives: [], track: { title: 'T0', artists: ['A'], spotifyId: 'id0' } },
+              { index: 1, tier: 'baja', best: null, alternatives: [], track: { title: 'T1', artists: ['A'], spotifyId: 'id1' } },
+            ],
+          };
+        }
+        // Rescate: al pedir /resolve con la URL individual del track, el servidor SÍ encuentra candidatos.
+        trackCalls.push(url);
+        return { results: [{ index: 0, tier: 'alta', best: { candidate: { url: 'u1-rescued' } }, alternatives: [], track: { title: 'T1', artists: ['A'], spotifyId: 'id1' } }] };
+      },
+    };
+    const out = await resolveCollection({ api, url: 'spotify:playlist:P', storage });
+    assert.equal(out.results[1].tier, 'alta', 'la pista rescatada pasa a alta');
+    assert.equal(out.results[1].best?.candidate?.url, 'u1-rescued');
+    assert.equal(out.results[1].index, 1, 'conserva el índice global');
+    assert.deepEqual(trackCalls, ['https://open.spotify.com/track/id1']);
+    assert.equal(out.summary.alta, 2);
+    assert.equal(out.summary.baja, 0);
+  });
+
+  test('NO reintenta si la pista vino con error del servidor', async () => {
+    const storage = fakeStorage();
+    writeSession({ accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3_600_000 }, storage);
+    let trackCalls = 0;
+    const api = {
+      resolve: async ({ url }) => {
+        if (url?.includes('/track/')) { trackCalls += 1; return { results: [] }; }
+        return {
+          album: null, total: 1, hasMore: false, summary: { alta: 0, baja: 1 },
+          results: [{ index: 0, tier: 'baja', best: null, alternatives: [], error: 'red caída', track: { title: 'T', artists: [], spotifyId: 'id' } }],
+        };
+      },
+    };
+    await resolveCollection({ api, url: 'u', storage });
+    assert.equal(trackCalls, 0, 'no se reintenta si el servidor ya dijo que la pista falló con error');
+  });
+
+  test('NO reintenta en modo compareOnly (solo recuento)', async () => {
+    const storage = fakeStorage();
+    writeSession({ accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3_600_000 }, storage);
+    let trackCalls = 0;
+    const api = {
+      resolve: async ({ url }) => {
+        if (url?.includes('/track/')) { trackCalls += 1; return { results: [] }; }
+        return {
+          album: null, total: 1, hasMore: false, summary: { alta: 0, baja: 1 },
+          results: [{ index: 0, tier: 'baja', best: null, alternatives: [], track: { title: 'T', artists: [], spotifyId: 'id' } }],
+        };
+      },
+    };
+    await resolveCollection({ api, url: 'u', storage, compareOnly: true });
+    assert.equal(trackCalls, 0);
+  });
 });
 
 describe('listLibrary', () => {

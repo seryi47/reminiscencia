@@ -81,11 +81,12 @@ class SpotifyLogin {
 
 /// Metadatos de una pista de Spotify (los que da /resolve).
 class SpotifyTrackMeta {
-  const SpotifyTrackMeta({required this.title, this.artists = const [], this.durationMs, this.album});
+  const SpotifyTrackMeta({required this.title, this.artists = const [], this.durationMs, this.album, this.spotifyId});
   final String title;
   final List<String> artists;
   final int? durationMs;
   final String? album;
+  final String? spotifyId;
   String get artist => artists.isNotEmpty ? artists.first : '';
   double? get durationS => durationMs == null ? null : durationMs! / 1000;
 
@@ -94,6 +95,7 @@ class SpotifyTrackMeta {
         artists: ((json['artists'] as List?) ?? const []).whereType<String>().toList(),
         durationMs: (json['durationMs'] as num?)?.toInt(),
         album: json['album'] as String?,
+        spotifyId: json['spotifyId'] as String?,
       );
 }
 
@@ -132,6 +134,7 @@ class TransferMatch {
     this.alternatives = const [],
     this.inLibrary = false,
     this.override,
+    this.error,
   });
   final int index;
   final SpotifyTrackMeta track;
@@ -141,6 +144,7 @@ class TransferMatch {
   bool inLibrary;
   TransferCandidate? override; // elección del usuario (alternativa o búsqueda manual)
   bool excluded = false;
+  final String? error; // null salvo que el servidor haya fallado la búsqueda para esta pista
 
   /// El candidato elegido: el override, o la mejor coincidencia si la hay (alta O media, ya pre-elegida). Las de confianza
   /// baja no traen `best`, así que quedan sin elegir hasta que el usuario pique una versión.
@@ -152,7 +156,19 @@ class TransferMatch {
         tier: (json['tier'] as String?) ?? 'baja',
         best: _entryCandidate(json['best']),
         alternatives: ((json['alternatives'] as List?) ?? const []).map(_entryCandidate).whereType<TransferCandidate>().toList(),
+        error: json['error'] as String?,
       );
+
+  TransferMatch copyWithIndex(int newIndex) => TransferMatch(
+        index: newIndex,
+        track: track,
+        tier: tier,
+        best: best,
+        alternatives: alternatives,
+        inLibrary: inLibrary,
+        override: override,
+        error: error,
+      )..excluded = excluded;
 }
 
 class TransferAlbum {
@@ -400,6 +416,43 @@ class SpotifyTransfer {
       // máximo real de una colección de Spotify (~10 000 pistas), se corta para no quedarse en un bucle sin fin.
       if (results.length == before || results.length >= _maxResolveTracks) break;
       offset += _pageLimit;
+    }
+    // Rescate final (ADR-0044 ampliado 2026-11-19): el rate-limit acumulado del upstream deja un puñado de pistas con
+    // tier=baja y 0 alternativas. Las mismas, aisladas, salen tier=alta. Relanzamos /resolve una por una (concurrencia 2)
+    // solo para esas sobrantes verdaderamente vacías (`tier=baja, alternatives=[], !error`, con spotifyId). Si la
+    // segunda llamada sigue vacía, la dejamos tal cual.
+    if (!compareOnly) {
+      final stragglers = <int>[];
+      for (var i = 0; i < results.length; i += 1) {
+        final r = results[i];
+        if (r.tier == 'baja' && r.alternatives.isEmpty && r.error == null && r.track.spotifyId != null) {
+          stragglers.add(i);
+        }
+      }
+      if (stragglers.isNotEmpty) {
+        var next = 0;
+        Future<void> rescue() async {
+          while (next < stragglers.length) {
+            final idx = next; next += 1;
+            final i = stragglers[idx];
+            final r = results[i];
+            try {
+              final page = await _post('/api/spotify/resolve', {
+                'url': 'https://open.spotify.com/track/${r.track.spotifyId}',
+                'accessToken': accessToken,
+              });
+              final fresh = (page['results'] as List?)?.cast<dynamic>().firstOrNull;
+              if (fresh is Map) {
+                final newMatch = TransferMatch.fromJson(fresh.cast<String, dynamic>());
+                if (newMatch.tier == 'alta' || newMatch.tier == 'media') {
+                  results[i] = newMatch.copyWithIndex(r.index);
+                }
+              }
+            } catch (_) { /* una pista que falla en el rescate se deja como estaba */ }
+          }
+        }
+        await Future.wait([rescue(), rescue()]);
+      }
     }
     return TransferResolution(results: results, album: album, total: total);
   }
