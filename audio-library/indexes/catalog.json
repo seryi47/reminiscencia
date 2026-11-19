@@ -11308,6 +11308,40 @@
       "added_at": "2026-11-19T17:20:58+00:00",
       "public": true,
       "track": 19
+    },
+    {
+      "id": "S8ad93defd24f5982",
+      "title": "Rueda la Corona",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "8ad93defd24f59829254b03ecd583602b54c9bede1bc7ec6e6ae4a057607e52a",
+      "duration_s": 238.887,
+      "codec": "opus",
+      "size_bytes": 1466873,
+      "added_at": "2026-11-19T17:21:56+00:00",
+      "public": true,
+      "track": 20
+    },
+    {
+      "id": "S707eb673fd9c555a",
+      "title": "Llueve en Semana Santa",
+      "artist": "La Raíz",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "707eb673fd9c555aa8c906a3519bfd79c6130cec3d934e880f48dd3aaab419b2",
+      "duration_s": 271.456,
+      "codec": "opus",
+      "size_bytes": 1664947,
+      "added_at": "2026-11-19T17:21:56+00:00",
+      "public": true,
+      "track": 21
     }
   ]
 }
