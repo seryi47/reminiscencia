@@ -21,13 +21,14 @@ const DB_LOOKUP_BATCH = 100;        // D1 (Cloudflare) acepta hasta 100 parámet
  *      respuestas eran grandes).
  *
  * Solución combinada:
- *   - MAX_UNIQUE_HASHES = 2000: 20 batches como mucho. Cubre ~2,5 s de la grabación de 8 s.
- *   - PER_HASH_LIMIT = 50: cada query en D1 trae como mucho 50 (hash, song_id, offset) → cota superior de 20·100·50 =
- *     100 000 filas tope. En la práctica muchos hashes coinciden con <5 canciones y se cortan los pocos ruidosos. Un
- *     hash que coincida con 100+ canciones NO es discriminativo, perderlo no afecta al matching.
+ *   - MAX_UNIQUE_HASHES = 1200: 12 batches. Cubre ~1,5 s si primeros; con muestreo uniforme (stride) cubrimos los 8 s.
+ *   - PER_HASH_LIMIT = 30: cada hash en el índice local se corta en 30 ocurrencias. Un hash presente en >30 canciones
+ *     no es discriminativo. Esto limita el tamaño de la estructura en memoria aunque D1 devuelva más filas.
+ *   - SAMPLE_STRIDE: en vez de coger los primeros N hashes únicos (sesgo temporal al inicio), muestreamos uniformemente
+ *     el array completo con un stride = ceil(len / MAX_UNIQUE_HASHES). Así cubrimos los 8 s del fragmento.
  */
-const MAX_UNIQUE_HASHES = 2000;
-const PER_HASH_LIMIT = 50;
+const MAX_UNIQUE_HASHES = 1200;
+const PER_HASH_LIMIT = 30;
 
 /** Para pruebas: inyecta un `db` simulado con la misma interfaz (`prepare().bind().all()`). */
 let injectedDb = null;
@@ -65,18 +66,18 @@ export async function handleRecognizeRequest(request, { env } = {}) {
     // hashes únicos a MAX_UNIQUE_HASHES para no exceder el cap de subrequests de Workers (~50/invocación). Antes se
     // generaban 65 batches con 5825 hashes → 503 en ~90% de las consultas reales.
     //
-    // Dedup preservando el ORDEN de primera aparición (son un orden temporal razonable: primeros fotogramas, luego
-    // siguientes). Si sobran, nos quedamos con los primeros; los últimos del fragmento aún pueden votar si esos hashes
-    // están repetidos antes en la query (matchFingerprint vota por cada posición de query.hashes que coincide con el
-    // índice, no por hash único).
+    // Muestreo UNIFORME del array completo (no primeros N): el fragmento de 8 s tiene ~5825 hashes; si cortamos a los
+    // primeros N cubrimos solo los primeros segundos y perdemos la segunda mitad. Con stride cubrimos la grabación
+    // entera. Dedup preservando la primera aparición dentro del muestreo.
+    const stride = Math.max(1, Math.ceil(body.hashes.length / MAX_UNIQUE_HASHES));
     const seenHash = new Set();
     const uniqueHashes = [];
-    for (const h of body.hashes) {
-      if (!seenHash.has(h)) {
-        seenHash.add(h);
-        uniqueHashes.push(h);
-        if (uniqueHashes.length >= MAX_UNIQUE_HASHES) break;
-      }
+    for (let i = 0; i < body.hashes.length; i += stride) {
+      const h = body.hashes[i];
+      if (seenHash.has(h)) continue;
+      seenHash.add(h);
+      uniqueHashes.push(h);
+      if (uniqueHashes.length >= MAX_UNIQUE_HASHES) break;
     }
     const indexForMatch = new Map();
     for (let start = 0; start < uniqueHashes.length; start += DB_LOOKUP_BATCH) {

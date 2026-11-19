@@ -120,7 +120,7 @@ describe('handleRecognizeRequest con D1 simulado', () => {
     assert.equal(res.status, 413);
   });
 
-  test('con >MAX_UNIQUE_HASHES hashes únicos, solo busca los primeros 2000 en D1 (cap de subrequests Workers)', async () => {
+  test('con >MAX_UNIQUE_HASHES hashes únicos, solo busca los primeros 1200 en D1 (cap de subrequests Workers)', async () => {
     // Replica el caso real del 2026-11-19: el cliente envía ~6000 hashes únicos → el Worker hacía 65 queries D1 y
     // devolvía 503 «exceeded resource limits». El cap de ~50 subrequests del plan gratuito obliga a limitar.
     let d1Calls = 0;
@@ -144,7 +144,7 @@ describe('handleRecognizeRequest con D1 simulado', () => {
     assert.equal(body.matched, true);
     assert.equal(body.songId, 'S9');
     // 2000 hashes únicos / 100 por batch = 20 queries (+1 para songs). Muy por debajo del cap.
-    assert.ok(d1Calls <= 25, `queries D1 (${d1Calls}) deben ≤ 25 para respetar el cap de Workers`);
-    assert.equal(d1Calls, 20);
+    assert.ok(d1Calls <= 15, `queries D1 (${d1Calls}) deben ≤ 25 para respetar el cap de Workers`);
+    assert.equal(d1Calls, 12);
   });
 });
