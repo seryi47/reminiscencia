@@ -94,6 +94,29 @@ describe('resolveCollection', () => {
     assert.deepEqual(calls, ['Coldplay The Scientist lyrics'], 'con una coincidencia alta (en la variante lyrics) no se prueban más variantes');
   });
 
+  test('si YouTube devuelve 0 en todas las variantes SIN error, reintenta una vez (rate-limit silencioso)', async () => {
+    // Replica el caso real del 2026-11-19: al analizar un Mix de Spotify de 100 pistas, YouTube Music devolvía
+    // temporalmente 0 candidatos para algunas pistas sin tirar error; la pista se quedaba en «baja» con 0 alternativas.
+    // Con el rescate, un segundo intento la rescata.
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Rolling in the Deep', 'Adele', 228000)] };
+    let n = 0;
+    const search = async () => { n += 1; return n <= 2 ? [] : [cand('ok', 'Rolling in the Deep', 'Adele', 229, 'topic')]; };
+    const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
+    assert.equal(result.results[0].tier, 'alta', 'el reintento lo rescata');
+    assert.equal(result.results[0].best.candidate.id, 'ok');
+    assert.equal(n, 3, 'un intento por cada variante + un reintento global');
+  });
+
+  test('si YouTube devuelve 0 Y error, NO se reintenta en bucle (queda baja con el error)', async () => {
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [track('X', 'Y', 200000)] };
+    let n = 0;
+    const search = async () => { n += 1; throw new Error('red caída'); };
+    const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
+    assert.equal(result.results[0].tier, 'baja');
+    assert.match(result.results[0].error, /red caída/);
+    assert.equal(n, 2, 'solo las variantes, sin reintento extra cuando hubo error');
+  });
+
   test('acumula candidatos de varias variantes para ofrecer alternativas', async () => {
     // Ninguna variante da «alta», pero juntando ambas hay alternativas para el salto anti-truncado de la APK.
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Tema', 'Grupo', 200000)] };

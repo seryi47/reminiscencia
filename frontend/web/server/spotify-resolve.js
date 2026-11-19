@@ -78,6 +78,22 @@ export async function resolveCollection(
       match = classifyMatch(track, [...byKey.values()], { maxAlternatives });
       if (match.tier === 'alta') break;
     }
+    // Rescate contra el rate-limit silencioso de YouTube Music (ADR-0046 ampliado 2026-11-19): si todas las queries han
+    // vuelto con 0 resultados y ningún error explícito (síntoma típico cuando se resuelven listas grandes a la vez),
+    // reintentamos la primera query una sola vez con un pequeño respiro. Solo cuesta tiempo cuando ya habría fallado.
+    if (byKey.size === 0 && !lastError && queries.length > 0) {
+      await new Promise((r) => setTimeout(r, 400));
+      try {
+        const candidates = (await searchYoutube(queries[0], track)) ?? [];
+        for (const candidate of candidates) {
+          const key = candidate?.id || candidate?.url;
+          if (key && !byKey.has(key)) byKey.set(key, candidate);
+        }
+        if (byKey.size > 0) match = classifyMatch(track, [...byKey.values()], { maxAlternatives });
+      } catch (error) {
+        lastError = error;
+      }
+    }
     const query = queries[0];
     if (byKey.size === 0 && lastError) {
       return { index, track, query, tier: 'baja', best: null, alternatives: [], error: String(lastError?.message ?? lastError) };
