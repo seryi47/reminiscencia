@@ -158,6 +158,33 @@ Future<String?> downloadApk(
     } finally {
       await sink.close();
     }
+    // 1.4.15: NO renombrar como APK válida si la descarga está truncada. Antes, cualquier corte en la red
+    // dejaba un `reminiscencia-X.Y.Z.apk` incompleto en caché y Android lo abría con «No se ha podido analizar el
+    // paquete». Ahora exigimos que `received` coincida con el `Content-Length` del servidor (si lo da) y, en su
+    // defecto, que el fichero tenga al menos la cabecera ZIP del APK (PK\x03\x04) y 1 MiB mínimo.
+    if (total > 0 && received != total) {
+      try { await partial.delete(); } catch (_) {}
+      return null;
+    }
+    if (received < 1024 * 1024) {
+      try { await partial.delete(); } catch (_) {}
+      return null;
+    }
+    try {
+      final raf = await partial.open();
+      try {
+        final header = await raf.read(4);
+        if (header.length < 4 || header[0] != 0x50 || header[1] != 0x4B || header[2] != 0x03 || header[3] != 0x04) {
+          try { await partial.delete(); } catch (_) {}
+          return null;
+        }
+      } finally {
+        await raf.close();
+      }
+    } catch (_) {
+      try { await partial.delete(); } catch (_) {}
+      return null;
+    }
     await partial.rename(target.path);
     return target.path;
   } catch (_) {
