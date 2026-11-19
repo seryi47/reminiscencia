@@ -119,4 +119,34 @@ describe('handleRecognizeRequest con D1 simulado', () => {
     const res = await handleRecognizeRequest(req({ hashes, offsets }), { env: { RECOGNIZE_DB: mockDb() } });
     assert.equal(res.status, 413);
   });
+
+  test('con >MAX_UNIQUE_HASHES hashes únicos, solo busca los primeros 3500 en D1 (cap de subrequests Workers)', async () => {
+    // Replica el caso real del 2026-11-19: el cliente envía ~6000 hashes únicos → el Worker hacía 65 queries D1 y
+    // devolvía 503 «exceeded resource limits». El cap de ~50 subrequests del plan gratuito nos obliga a limitar.
+    // Contamos las queries D1 interceptándolas en el mock.
+    let d1Calls = 0;
+    const songRows = [];
+    // 4500 hashes únicos (secuenciales) con offset consistente para song S9
+    const total = 4500;
+    for (let i = 1; i <= total; i++) songRows.push({ hash: i, song_id: 'S9', offset: 100 + i });
+    const songs = [{ id: 'S9', title: 'Nueve', artist: 'A' }];
+    const baseDb = mockDb({ hashes: songRows, songs });
+    const db = {
+      ...baseDb,
+      prepare(sql) {
+        if (/FROM hashes WHERE hash IN/i.test(sql)) d1Calls++;
+        return baseDb.prepare(sql);
+      },
+    };
+    const hashes = Array.from({ length: total }, (_, i) => i + 1);
+    const offsets = Array.from({ length: total }, (_, i) => i); // offsets paralelos consistentes
+    const res = await handleRecognizeRequest(req({ hashes, offsets }), { env: { RECOGNIZE_DB: db } });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.matched, true);
+    assert.equal(body.songId, 'S9');
+    // 3500 hashes únicos / 100 por batch = 35 queries (+1 para songs = 36). Nunca pasa de 50.
+    assert.ok(d1Calls <= 40, `queries D1 (${d1Calls}) deben ≤ 40 para respetar el cap de Workers`);
+    assert.ok(d1Calls >= 30, `queries D1 (${d1Calls}) deben ser ~35; menos sería un corte prematuro`);
+  });
 });

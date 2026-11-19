@@ -11,7 +11,16 @@
 import { matchFingerprint, enrichMatch } from './recognize-core.js';
 
 const MAX_HASHES_PER_QUERY = 50000; // tope defensivo
-const DB_LOOKUP_BATCH = 90;         // D1 (Cloudflare) tiene un tope de 100 parámetros por prepared statement; 90 va sobrado
+const DB_LOOKUP_BATCH = 100;        // D1 (Cloudflare) acepta hasta 100 parámetros por prepared statement. Usamos el máximo
+                                    // para minimizar subrequests, que es lo que sacaba 503 al Worker (ver abajo).
+/*
+ * MAX_UNIQUE_HASHES (2026-11-19, ampliación ADR-0048/0049): Workers Free tier limita a ~50 subrequests por invocación.
+ * Con 5825 hashes se generaban 65 batches secuenciales a D1 → el Worker devolvía 503 «exceeded resource limits» en ~90%
+ * de las consultas reales (reproducido: 1/10 aciertos antes del cambio). Cerramos el tope a 3500 hashes únicos (35
+ * batches de 100) para dejar margen cómodo. La poda es por tiempo (primeros N por orden): un fragmento de 8 s tiene
+ * ~6250 hashes y los 3500 primeros cubren ~4,5 s, suficiente para un match robusto.
+ */
+const MAX_UNIQUE_HASHES = 3500;
 
 /** Para pruebas: inyecta un `db` simulado con la misma interfaz (`prepare().bind().all()`). */
 let injectedDb = null;
@@ -44,11 +53,24 @@ export async function handleRecognizeRequest(request, { env } = {}) {
   }
 
   try {
-    // Intenté `db.batch()` con JOIN y `Promise.all` con oleadas: ambos rompen el Worker (503 Cloudflare en pruebas
-    // reales con 5825 hashes → 65 lotes). El CPU time y el subrequest cap del Worker en Free tier no toleran tanta
-    // concurrencia a D1. Secuencial es más lento pero FIABLE. ADR-0049: optimización pendiente hasta probar en
-    // Workers Paid o con un índice pre-agrupado.
-    const uniqueHashes = [...new Set(body.hashes)];
+    // Secuencial sigue siendo lo más FIABLE (db.batch() con JOIN y Promise.all con oleadas rompían el Worker en
+    // pruebas: tamaño de respuesta y concurrencia). La diferencia respecto a la versión anterior: ahora limitamos los
+    // hashes únicos a MAX_UNIQUE_HASHES para no exceder el cap de subrequests de Workers (~50/invocación). Antes se
+    // generaban 65 batches con 5825 hashes → 503 en ~90% de las consultas reales.
+    //
+    // Dedup preservando el ORDEN de primera aparición (son un orden temporal razonable: primeros fotogramas, luego
+    // siguientes). Si sobran, nos quedamos con los primeros; los últimos del fragmento aún pueden votar si esos hashes
+    // están repetidos antes en la query (matchFingerprint vota por cada posición de query.hashes que coincide con el
+    // índice, no por hash único).
+    const seenHash = new Set();
+    const uniqueHashes = [];
+    for (const h of body.hashes) {
+      if (!seenHash.has(h)) {
+        seenHash.add(h);
+        uniqueHashes.push(h);
+        if (uniqueHashes.length >= MAX_UNIQUE_HASHES) break;
+      }
+    }
     const indexForMatch = new Map();
     for (let start = 0; start < uniqueHashes.length; start += DB_LOOKUP_BATCH) {
       const slice = uniqueHashes.slice(start, start + DB_LOOKUP_BATCH);
