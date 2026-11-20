@@ -12073,6 +12073,40 @@
       "added_at": "2026-11-19T18:19:27+00:00",
       "public": true,
       "track": 64
+    },
+    {
+      "id": "S21934476e80c7e78",
+      "title": "Stay",
+      "artist": "Rihanna",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "21934476e80c7e78c16238aee25f8ad1221553253336b990eec9a54a97c6c69c",
+      "duration_s": 241.162,
+      "codec": "opus",
+      "size_bytes": 1479540,
+      "added_at": "2026-11-20T22:41:21+00:00",
+      "public": true,
+      "track": 78
+    },
+    {
+      "id": "S004cc19695922174",
+      "title": "Copycat",
+      "artist": "Billie Eilish",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "004cc196959221741684e7fc1e9bff2d4c3c404b48491eb40d1c8224c2ce3d5c",
+      "duration_s": 193.028,
+      "codec": "opus",
+      "size_bytes": 1184580,
+      "added_at": "2026-11-20T22:41:21+00:00",
+      "public": true,
+      "track": 79
     }
   ]
 }
