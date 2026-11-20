@@ -97,7 +97,17 @@ export async function handleRecognizeRequest(request, { env } = {}) {
         list.push({ songId: String(row.song_id), offset: Number(row.offset) });
       }
     }
-    const result = matchFingerprint({ hashes: body.hashes, offsets: body.offsets }, indexForMatch);
+    // Umbrales anti-falsos-positivos (ADR-0048 refuerzo 2026-11-20): medido en vivo con audio del catálogo, el matcher
+    // devolvía falsos positivos con 26–45 votos cuando el verdadero coincidía con ruido parecido en otras canciones.
+    // Preferimos "no reconocido" a "mentir con una canción incorrecta". Reglas combinadas:
+    //   minVotes: votos absolutos del top1
+    //   minRatio: top1 debe ganar al top2 por este factor (lo "claro" de la decisión)
+    //   minShare: fracción mínima del query que vota al ganador (filtra ruido estadístico)
+    const result = matchFingerprint(
+      { hashes: body.hashes, offsets: body.offsets },
+      indexForMatch,
+      { minVotes: 60, minRatio: 1.5, minShare: 0.05 },
+    );
     if (!result.matched) {
       return jsonResponse(200, { ok: true, matched: false, totalQueryHashes: body.hashes.length });
     }

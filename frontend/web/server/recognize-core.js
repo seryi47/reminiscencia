@@ -14,7 +14,7 @@
  * @param {{minVotes?: number}=} opts
  * @returns {{matched: boolean, songId?: string, votes?: number, totalQueryHashes: number, confidence: number}}
  */
-export function matchFingerprint(query, index, { minVotes = 25 } = {}) {
+export function matchFingerprint(query, index, { minVotes = 25, minRatio = 1, minShare = 0 } = {}) {
   if (!query || !Array.isArray(query.hashes) || !Array.isArray(query.offsets)) {
     return { matched: false, totalQueryHashes: 0, confidence: 0 };
   }
@@ -37,21 +37,41 @@ export function matchFingerprint(query, index, { minVotes = 25 } = {}) {
       perDelta.set(delta, (perDelta.get(delta) ?? 0) + 1);
     }
   }
-  let bestSong = null;
-  let bestVotes = 0;
+  // Mejor voto POR CANCIÓN (máximo sobre sus deltas): así el ratio top1/top2 es entre canciones distintas,
+  // no entre dos deltas de la misma canción. Un match legítimo tiene un delta dominante CLARO; los falsos positivos
+  // reparten sus votos entre deltas y entre canciones con similitud de hashes basura. (ADR-0048 refuerzo 2026-11-20).
+  const topPerSong = [];
   for (const [songId, perDelta] of bestBySong) {
-    for (const v of perDelta.values()) {
-      if (v > bestVotes) { bestVotes = v; bestSong = songId; }
-    }
+    let m = 0;
+    for (const v of perDelta.values()) if (v > m) m = v;
+    topPerSong.push({ songId, votes: m });
   }
-  if (bestSong === null || bestVotes < minVotes) {
-    return { matched: false, totalQueryHashes: total, confidence: 0 };
+  topPerSong.sort((a, b) => b.votes - a.votes);
+  const top1 = topPerSong[0];
+  const top2 = topPerSong[1];
+  if (!top1 || top1.votes < minVotes) {
+    return { matched: false, totalQueryHashes: total, confidence: 0, votes: top1?.votes ?? 0, runnerUpVotes: top2?.votes ?? 0 };
+  }
+  // Rechazo por "ganador no claro": el top1 debe superar al top2 por un factor de `minRatio`. Sin este cheque, canciones
+  // con 26 votos pueden ganar aunque la canción correcta tenga 24: ambas son ruido indistinguible.
+  const ratio = top2 ? top1.votes / Math.max(1, top2.votes) : Infinity;
+  if (top2 && ratio < minRatio) {
+    return { matched: false, totalQueryHashes: total, confidence: 0, votes: top1.votes, runnerUpVotes: top2.votes, ratio };
+  }
+  // Rechazo por "share bajo": el top1 debe representar al menos `minShare` del total del query. Con 1200 hashes, 40
+  // votos = share 3,3 %, demasiado bajo para fiarse — es ruido.
+  const share = top1.votes / total;
+  if (share < minShare) {
+    return { matched: false, totalQueryHashes: total, confidence: 0, votes: top1.votes, runnerUpVotes: top2?.votes ?? 0, share };
   }
   // Confianza: curva sublineal con la raíz del nº total de hashes para que el denominador no crezca tanto con samples
   // largos como con el total*0.1 anterior (que daba confidence 0,37 pese a 214 votos sobre match perfecto). Un match
   // «sano» de biblioteca tiene votos del orden de O(10) a O(100); con K = 3 llegamos a confianza > 0,7 fácil.
-  const confidence = Math.min(1, bestVotes / Math.max(10, 3 * Math.sqrt(total)));
-  return { matched: true, songId: bestSong, votes: bestVotes, totalQueryHashes: total, confidence };
+  const confidence = Math.min(1, top1.votes / Math.max(10, 3 * Math.sqrt(total)));
+  return {
+    matched: true, songId: top1.songId, votes: top1.votes, runnerUpVotes: top2?.votes ?? 0,
+    ratio: Number.isFinite(ratio) ? ratio : null, totalQueryHashes: total, confidence,
+  };
 }
 
 /** Index: `{ hash_as_string: [{s: songId, o: offset}, ...] }`. Compacto para caber en JSON. Lo abrimos al arrancar. */

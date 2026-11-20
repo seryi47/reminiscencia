@@ -77,17 +77,17 @@ describe('handleRecognizeRequest con D1 simulado', () => {
     assert.equal(res.status, 400);
   });
 
-  test('match: 30 hashes con delta coherente para S1 → 200 matched:true, con title/artist de songs', async () => {
-    // Umbral subido a 25 votos para evitar falsos positivos con base D1 ruidosa. Un match sano tiene cientos de votos;
-    // los casos espúreos de 15-30 que pasan colaban canciones equivocadas (reproducido en vivo 13/15 falsos antes).
+  test('match: 80 hashes con delta coherente para S1 → 200 matched:true, con title/artist de songs', async () => {
+    // Umbral subido a 60 votos + ratio 1.5× y share 5 % para evitar falsos positivos con base D1 ruidosa. Un match sano
+    // tiene cientos de votos alineados en un único delta; los falsos positivos en vivo tenían 26–45 votos repartidos.
     const dbHashes = [];
-    for (let i = 10; i < 40; i++) dbHashes.push({ hash: i, song_id: 'S1', offset: i + 90 });
+    for (let i = 10; i < 90; i++) dbHashes.push({ hash: i, song_id: 'S1', offset: i + 90 });
     dbHashes.push({ hash: 10, song_id: 'S2', offset: 500 });
     const db = mockDb({ hashes: dbHashes, songs: [{ id: 'S1', title: 'La Raíz', artist: 'La Raíz' }] });
     const res = await handleRecognizeRequest(
       req({
-        hashes: Array.from({ length: 30 }, (_, i) => 10 + i),
-        offsets: Array.from({ length: 30 }, (_, i) => i),
+        hashes: Array.from({ length: 80 }, (_, i) => 10 + i),
+        offsets: Array.from({ length: 80 }, (_, i) => i),
       }),
       { env: { RECOGNIZE_DB: db } },
     );
@@ -97,6 +97,27 @@ describe('handleRecognizeRequest con D1 simulado', () => {
     assert.equal(data.songId, 'S1');
     assert.equal(data.title, 'La Raíz');
     assert.equal(data.artist, 'La Raíz');
+  });
+
+  test('26 vs 24 votos (patrón real de falso positivo) → 200 matched:false (ratio insuficiente)', async () => {
+    // Replica el síntoma medido en producción el 2026-11-20: la canción falsa ganaba por 2 votos sobre la correcta.
+    const dbHashes = [];
+    // 26 hashes de S1 con delta 10
+    for (let i = 0; i < 26; i++) dbHashes.push({ hash: i, song_id: 'S1', offset: i + 10 });
+    // 24 hashes de S2 con delta 100 (reparte igual de bien que S1 pero con distinto delta)
+    for (let i = 0; i < 24; i++) dbHashes.push({ hash: i, song_id: 'S2', offset: i + 100 });
+    // Rellenamos con ruido para que share quede bajo
+    const db = mockDb({ hashes: dbHashes, songs: [{ id: 'S1', title: 'X', artist: 'X' }] });
+    const res = await handleRecognizeRequest(
+      req({
+        hashes: Array.from({ length: 1200 }, (_, i) => i < 26 ? i : 99999 + i),
+        offsets: Array.from({ length: 1200 }, (_, i) => i),
+      }),
+      { env: { RECOGNIZE_DB: db } },
+    );
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.matched, false, 'ratio 26/24=1.08 < 1.5 → no reconocido');
   });
 
   test('sin votos suficientes → 200 matched:false sin reason', async () => {
