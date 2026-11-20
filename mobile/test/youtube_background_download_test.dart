@@ -107,7 +107,8 @@ void main() {
   });
 
   Future<void> waitState(YoutubeDownloads d, YoutubeDownloadState want) async {
-    for (var i = 0; i < 300 && d.of(_result.id).state != want; i++) {
+    // Margen amplio para runners CI lentos: 15 s (antes 3 s). Local pasa en <100 ms, sobra.
+    for (var i = 0; i < 1500 && d.of(_result.id).state != want; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
   }
