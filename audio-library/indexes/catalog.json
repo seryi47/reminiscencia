@@ -12107,6 +12107,57 @@
       "added_at": "2026-11-20T22:41:21+00:00",
       "public": true,
       "track": 79
+    },
+    {
+      "id": "Sdb0150c29cce6b71",
+      "title": "Legends Never Die (feat. Against the Current)",
+      "artist": "League of Legends",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "db0150c29cce6b711883e3da350477b76a4689f9a4e9b5a42812cff6928da806",
+      "duration_s": 235.172,
+      "codec": "opus",
+      "size_bytes": 1440507,
+      "added_at": "2026-11-20T22:52:28+00:00",
+      "public": true,
+      "track": 80
+    },
+    {
+      "id": "S318a8f7f8185266d",
+      "title": "Haciéndonos los muertos",
+      "artist": "Rayden",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "318a8f7f8185266ded92fe0c71d506ad189f7dce58d18c4941912aab67e2f689",
+      "duration_s": 255.687,
+      "codec": "opus",
+      "size_bytes": 1544289,
+      "added_at": "2026-11-20T22:52:28+00:00",
+      "public": true,
+      "track": 81
+    },
+    {
+      "id": "Sfba948d968d1d2b5",
+      "title": "Stay",
+      "artist": "Rihanna",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "fba948d968d1d2b52bcbffa44a53ff98a91500abcfc7cd47174fee6945abe6b3",
+      "duration_s": 213.824,
+      "codec": "opus",
+      "size_bytes": 1312823,
+      "added_at": "2026-11-20T22:52:28+00:00",
+      "public": true,
+      "track": 82
     }
   ]
 }
