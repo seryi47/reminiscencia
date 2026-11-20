@@ -12362,6 +12362,40 @@
       "added_at": "2026-11-20T22:56:41+00:00",
       "public": true,
       "track": 94
+    },
+    {
+      "id": "S9049a2033d1e1a8e",
+      "title": "Vientos del Pueblo",
+      "artist": "EBRI KNIGHT",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "9049a2033d1e1a8e6a98f5ca88c6ee9a1c11c95cf55a25e989d3cad4cf82b1c3",
+      "duration_s": 280.267,
+      "codec": "opus",
+      "size_bytes": 1719892,
+      "added_at": "2026-11-20T22:57:26+00:00",
+      "public": true,
+      "track": 95
+    },
+    {
+      "id": "Se50507945fe078e9",
+      "title": "Comancheria",
+      "artist": "Los Chikos del Maiz",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "e50507945fe078e943ddbb289999840014fb14665d851259cae218ce8799bfd6",
+      "duration_s": 208.347,
+      "codec": "opus",
+      "size_bytes": 1278618,
+      "added_at": "2026-11-20T22:57:26+00:00",
+      "public": true,
+      "track": 96
     }
   ]
 }
