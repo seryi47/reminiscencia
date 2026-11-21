@@ -218,12 +218,22 @@ jobs:
         working-directory: mobile
         run: flutter build apk --release --split-per-abi
 
+      # Universal con los 3 ABIs. CRÍTICO para el updater de la app (ADR-0047, update_check.dart:29): si el usuario tiene
+      # instalado el universal y la nueva release solo publica splits, Android rechaza la instalación como «no compatible»
+      # porque perdería librerías nativas. Por eso siempre publicamos universal PRIMERO en las preferencias del updater,
+      # y por eso el workflow lo construye también en cada release.
+      - name: Compilar APK universal de producción (los 3 ABIs en un solo APK)
+        if: steps.secretos.outputs.listo == 'true'
+        working-directory: mobile
+        run: flutter build apk --release
+
       - name: Verificar firma de cada APK de producción
         if: steps.secretos.outputs.listo == 'true'
         run: |
           for abi in arm64-v8a armeabi-v7a x86_64; do
             scripts/android/verify_apk.sh "mobile/build/app/outputs/flutter-apk/app-${abi}-release.apk" "$HUELLA_CERTIFICADO_PRODUCCION"
           done
+          scripts/android/verify_apk.sh "mobile/build/app/outputs/flutter-apk/app-release.apk" "$HUELLA_CERTIFICADO_PRODUCCION"
 
       - name: Preparar artefactos de producción
         if: steps.secretos.outputs.listo == 'true'
@@ -235,6 +245,9 @@ jobs:
             cp "mobile/build/app/outputs/flutter-apk/app-${abi}-release.apk" "dist/${abi}/reminiscencia-${NOMBRE}-${abi}.apk"
             (cd "dist/${abi}" && sha256sum "reminiscencia-${NOMBRE}-${abi}.apk" > SHA256SUMS.txt && cat SHA256SUMS.txt)
           done
+          mkdir -p dist/universal
+          cp "mobile/build/app/outputs/flutter-apk/app-release.apk" "dist/universal/reminiscencia-${NOMBRE}-universal.apk"
+          (cd dist/universal && sha256sum "reminiscencia-${NOMBRE}-universal.apk" > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       # Un artefacto por arquitectura: nombres distintos y sin choques al descargarlos en la publicación.
       - name: Subir artefacto apk-produccion-arm64-v8a
@@ -259,6 +272,14 @@ jobs:
         with:
           name: apk-produccion-x86_64
           path: dist/x86_64/
+          if-no-files-found: error
+
+      - name: Subir artefacto apk-produccion-universal
+        if: steps.secretos.outputs.listo == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apk-produccion-universal
+          path: dist/universal/
           if-no-files-found: error
 
       - name: Borrar material de firma
@@ -298,12 +319,18 @@ jobs:
           name: apk-produccion-x86_64
           path: entrega/produccion/x86_64
 
+      - name: Descargar apk-produccion-universal
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: apk-produccion-universal
+          path: entrega/produccion/universal
+
       - name: Reunir ficheros y comprobar sumas
         run: |
           mkdir -p entrega/ficheros
           find entrega/depuracion entrega/produccion -name '*.apk' -exec cp {} entrega/ficheros/ \;
-          if [ "$(find entrega/ficheros -name '*.apk' | wc -l)" -ne 4 ]; then
-            echo "::error::Se esperaban cuatro APK: uno de depuración y tres de producción (uno por arquitectura)."
+          if [ "$(find entrega/ficheros -name '*.apk' | wc -l)" -ne 5 ]; then
+            echo "::error::Se esperaban cinco APK: uno de depuración, tres de producción por arquitectura y uno universal (ADR-0047: crítico para el updater)."
             exit 1
           fi
           for sumas in entrega/depuracion/SHA256SUMS.txt entrega/produccion/*/SHA256SUMS.txt; do
