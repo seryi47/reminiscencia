@@ -32,6 +32,12 @@ research-data/**/raw/
 # Sistema
 .DS_Store
 
+# Editor/OS debris (previene ficheros fantasma por tecleo accidental en VS Code / editor)
+*~
+*.swp
+*.swo
+.vscode/
+
 # Web: no lleva audio (lo sirve R2, ADR-0020); los datos públicos de frontend/web/data sí se versionan (ADR-0007)
 
 # Móvil: la app no lleva audio empaquetado; lee la biblioteca de la web (ADR-0004)
