@@ -99,7 +99,7 @@ void main() {
       expect(info, isNull);
     });
 
-    test('las notas son un refrán romántico, nunca el body técnico de la release (2026-11-21)', () async {
+    test('las notas son un verso de poesía con autor, nunca el body técnico de la release (2026-11-21)', () async {
       final info = await checkForUpdate(
         client: _client(_release(body: 'xxx CAMBIOS TÉCNICOS xxx')),
         currentVersion: '1.3.4',
@@ -107,9 +107,9 @@ void main() {
       expect(info, isNotNull);
       expect(info!.notes, isNot(contains('CAMBIOS TÉCNICOS')));
       expect(info.notes, isNot(contains('xxx')));
-      // Coincide con alguno de los refranes conocidos (comprobado por longitud razonable y punto final).
-      expect(info.notes.length, lessThanOrEqualTo(200));
-      expect(info.notes, matches(RegExp(r'[.!…]$')));
+      // El formato es «Verso. — Autor»: debe contener un guion largo como separador de atribución.
+      expect(info.notes, contains('—'));
+      expect(info.notes.length, lessThanOrEqualTo(400));
     });
   });
 }
