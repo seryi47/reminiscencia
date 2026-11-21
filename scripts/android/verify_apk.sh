@@ -98,17 +98,38 @@ if [[ "$firma" == *"CN=Android Debug"* ]]; then
   echo "  Aviso: firmado con la clave de depuración de Android; no sirve para distribuir."
 fi
 
-# Huella del certificado frente a la esperada.
-huellas="$(printf '%s\n' "$firma" | sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p' | tr 'A-F' 'a-f')"
+# Huella del certificado frente a la esperada. Varios formatos de apksigner (según versión):
+#   - "Signer #1 certificate SHA-256 digest: xxxx"           (versiones modernas)
+#   - "cert[0] SHA-256 Fingerprint (SHA256): xx:xx:..."     (versiones antiguas)
+#   - "Signer #1 SHA-256 digest: xxxx"                      (sin "certificate")
+# Capturamos todos los formatos conocidos y, si no encontramos ninguna, imprimimos la salida cruda
+# para poder ajustar el regex en el futuro.
+huellas="$(printf '%s\n' "$firma" | awk '
+    /certificate SHA-256 digest:/ { sub(/.*certificate SHA-256 digest: */, ""); print; next }
+    /SHA-256 digest:/             { sub(/.*SHA-256 digest: */, ""); print; next }
+    /SHA-256 Fingerprint/         { sub(/.*Fingerprint[^:]*: */, ""); gsub(/:/, ""); print tolower($0); next }
+' | tr -d ': ' | tr 'A-F' 'a-f')"
+
 if [ -n "$esperada" ]; then
+  if [ -z "$huellas" ]; then
+    echo "ERROR: no se pudo extraer la huella SHA-256 del firmante del APK." >&2
+    echo "apksigner emitió un formato que este script no reconoce. Salida cruda:" >&2
+    echo "--- inicio apksigner ---" >&2
+    printf '%s\n' "$firma" >&2
+    echo "--- fin apksigner ---" >&2
+    exit 1
+  fi
   coincide=no
   while IFS= read -r huella; do
+    [ -z "$huella" ] && continue
     if [ "$huella" = "$esperada" ]; then
       coincide=si
     fi
   done <<< "$huellas"
   if [ "$coincide" != si ]; then
     echo "ERROR: ningún firmante del APK tiene la huella esperada ($esperada)." >&2
+    echo "Huellas encontradas en el APK:" >&2
+    printf '  - %s\n' $huellas >&2
     exit 1
   fi
   echo "OK: la huella del certificado coincide con la esperada."
