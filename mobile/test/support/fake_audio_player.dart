@@ -212,8 +212,12 @@ class FakeAudioPlayer implements AudioPlayer {
     }
     _position = position ?? Duration.zero;
     if (failingIndexes.contains(_currentIndex)) {
+      // just_audio NO cuelga el seek cuando el índice destino tiene una fuente mala: cambia el índice,
+      // completa el seek y emite el error por el stream de forma asíncrona. Antes devolvíamos un Completer
+      // sin completar, lo que colgaba el `await _player.seek()` del handler (y por tanto la orden playAt
+      // completa) cuando la cola era idéntica (ADR-0049). El camino de error del handler no podía arrancar.
       fail(_currentIndex!);
-      return Completer<void>().future;
+      return Future<void>.value();
     }
     _emit();
     return Future<void>.value();

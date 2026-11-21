@@ -299,7 +299,11 @@ void main() {
       );
     }
 
-    test('la carga del catálogo pide songs.json y folders.json sin caché', () async {
+    test('la carga del catálogo pide songs.json y folders.json (ADR-0049: sin forzar no-cache)', () async {
+      // ADR-0049 quitó el `Cache-Control: no-cache` forzado en LibraryStore._get: la frescura la controla la
+      // cabecera del servidor (stale-while-revalidate en frontend/web/_headers). El sondeo post-publish de
+      // HttpPublishedSongs sigue revalidando donde hace falta. Verificamos que se piden los dos JSON y que NO
+      // envía `Cache-Control` desde el cliente.
       final seen = <String, String?>{};
       final s = LibraryStore(
         root: () async => Directory('${tmp.path}/bib-nocache'),
@@ -309,14 +313,11 @@ void main() {
         }),
       );
       await s.load();
-      expect(seen['/data/songs.json'], 'no-cache');
-      expect(seen['/data/folders.json'], 'no-cache');
-    },
-      // Desactivado por bloqueo de release (TODO 2026-11-20): `s.load()` ya no pasa por `/data/songs.json`
-      // ni `/data/folders.json` (la URL o el cache-control cambiaron tras un refactor), seen[k] viene null.
-      // Pre-existente, no es flake de timing. Ver CI 44620473088. Actualizar según URL/headers reales.
-      skip: 'bug de comportamiento en LibraryStore.load: rutas o headers cambiaron',
-    );
+      expect(seen.containsKey('/data/songs.json'), isTrue, reason: 'debería pedir songs.json');
+      expect(seen.containsKey('/data/folders.json'), isTrue, reason: 'debería pedir folders.json');
+      expect(seen['/data/songs.json'], isNull, reason: 'ADR-0049: sin Cache-Control forzado');
+      expect(seen['/data/folders.json'], isNull, reason: 'ADR-0049: sin Cache-Control forzado');
+    });
 
     test('loadSaved: copia guardada sin red (arranque cache-first), o null si aún no hay', () async {
       final root = Directory('${tmp.path}/bib-cachefirst');

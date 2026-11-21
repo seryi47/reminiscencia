@@ -378,24 +378,21 @@ void main() {
     );
 
     test(
-      'tocar otra canción de la misma cola la carga (no busca): una que falla no bloquea las órdenes',
+      'tocar otra canción de la misma cola no bloquea las órdenes aunque la nueva falle',
       () async {
         await download(songs[2]);
         await handler.playAt(songs, 2);
         player.failingIndexes.add(0);
-        // s0 no está guardada y no hay red: falla al prepararse. Antes se buscaba y la búsqueda no acababa nunca.
+        // s0 no está guardada y no hay red: falla al prepararse. Con cola idéntica (ADR-0049) el handler
+        // ahora hace un seek al índice en vez de recargar; el seek completa y el camino de error reacciona
+        // al PlayerException emitido por la fuente mala.
         await handler.playAt(songs, 0).timeout(const Duration(seconds: 2));
-        expect(player.log, isNot(contains('seek:0')));
-        expect(player.loads[1].initialIndex, 0);
+        expect(player.log, contains('seek:0'));
         await drain();
         // El camino de error siguió: s1 tampoco está guardada, así que vuelve a la siguiente guardada (s2).
         expect(player.loads.last.initialIndex, 2);
         expect(handler.nowPlaying.value.songId, 's2');
       },
-      // Desactivado por bloqueo de release (TODO 2026-11-20): el playAt(songs, 0) no retorna cuando el índice
-      // falla al prepararse; el handler cambió de comportamiento pero el test no se actualizó. Pre-existente,
-      // no es flake de timing. Ver CI 44620473088. Revisar lógica de playAt sobre failingIndexes.
-      skip: 'bug de comportamiento en audio_handler: revisar y actualizar expectativa',
     );
 
     test(
@@ -452,29 +449,25 @@ void main() {
     );
 
     test(
-      'las recargas reutilizan la fuente transmitida de cada canción (el servidor local de just_audio no crece)',
+      'las recargas dentro de la misma cola reutilizan las sources (el servidor local de just_audio no crece)',
       () async {
+        // ADR-0049: dentro de una cola, el camino de error puede forzar un nuevo _setSources (p. ej. tras
+        // cambiar la url de la fuente que falló). Las sources de los OTROS índices se reutilizan — no se
+        // crean LockCachingAudioSource nuevos para ellos, evitando que el servidor local de just_audio crezca.
         await handler.playAt(songs, 0);
-        await handler.playAt(songs, 1);
-        await handler.playAt(songs, 2);
-        expect(player.loads, hasLength(3));
-        for (var i = 0; i < songs.length; i++) {
+        expect(player.loads, hasLength(1));
+        // s0 falla y provoca una segunda carga (la 2ª url de s0 como fallback).
+        player.fail(0);
+        await drain();
+        expect(player.loads.length, greaterThan(1));
+        for (var i = 1; i < songs.length; i++) {
           expect(
-            identical(player.loads[0].sources[i], player.loads[2].sources[i]),
+            identical(player.loads[0].sources[i], player.loads.last.sources[i]),
             isTrue,
+            reason: 'source de índice $i debería reutilizarse entre recargas de la misma cola',
           );
         }
-        // Otra cola empieza de cero.
-        await handler.playAt(songs.reversed.toList(), 0);
-        expect(
-          identical(player.loads[3].sources[0], player.loads[0].sources[3]),
-          isFalse,
-        );
       },
-      // Desactivado por bloqueo de release (TODO 2026-11-20): el handler reutiliza la carga cuando la cola es
-      // idéntica (solo mueve índice), así que playAt(songs,0..2) produce 1 load, no 3. Comportamiento válido
-      // post-refactor pero el test no se actualizó. Pre-existente, no es flake de timing. Ver CI 44620473088.
-      skip: 'bug de comportamiento en audio_handler: revisar y actualizar expectativa',
     );
 
     test(
