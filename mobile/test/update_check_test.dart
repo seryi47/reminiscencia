@@ -48,7 +48,8 @@ void main() {
       expect(info, isNotNull);
       expect(info!.version, '1.3.5');
       expect(info.url, 'https://x/universal.apk');
-      expect(info.notes, 'Novedades');
+      // Las notas ya no vienen del body de la release; son un refrán romántico aleatorio (2026-11-21).
+      expect(info.notes, isNotEmpty);
     });
 
     test('sin universal → se cae a arm64-v8a (ni al navegador ni a la página de la release)', () async {
@@ -98,13 +99,17 @@ void main() {
       expect(info, isNull);
     });
 
-    test('recorta notas largas', () async {
+    test('las notas son un refrán romántico, nunca el body técnico de la release (2026-11-21)', () async {
       final info = await checkForUpdate(
-        client: _client(_release(body: 'x' * 500)),
+        client: _client(_release(body: 'xxx CAMBIOS TÉCNICOS xxx')),
         currentVersion: '1.3.4',
       );
-      expect(info!.notes.length, lessThanOrEqualTo(401));
-      expect(info.notes.endsWith('…'), isTrue);
+      expect(info, isNotNull);
+      expect(info!.notes, isNot(contains('CAMBIOS TÉCNICOS')));
+      expect(info.notes, isNot(contains('xxx')));
+      // Coincide con alguno de los refranes conocidos (comprobado por longitud razonable y punto final).
+      expect(info.notes.length, lessThanOrEqualTo(200));
+      expect(info.notes, matches(RegExp(r'[.!…]$')));
     });
   });
 }

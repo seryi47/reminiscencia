@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import 'app_version.dart';
+import 'refranes_romanticos.dart';
 
 /// Chequeo de actualización de la APK (ADR-0047). Como la app no está en Google Play, al abrir mira la última release de
 /// GitHub (`android-vX.Y.Z`) y, si es más nueva que la instalada, ofrece descargarla (el usuario decide: actualizar o
@@ -107,9 +109,12 @@ Future<UpdateInfo?> checkForUpdate({
     }
     if (url.isEmpty) return null;
 
-    final body = data['body'];
-    final notes = body is String ? body.trim() : '';
-    return UpdateInfo(version: version, url: url, notes: notes.length > 400 ? '${notes.substring(0, 400)}…' : notes);
+    // Decisión del usuario (2026-11-21): el diálogo de actualización NO muestra «qué se ha arreglado»
+    // (el body técnico de la release). En su lugar, enseña un refrán romántico aleatorio de la lista de
+    // `refranes_romanticos.dart`. El random se hace una vez por invocación del checker, así que el diálogo
+    // muestra uno distinto cada vez que vuelve a aparecer.
+    final notes = refranesRomanticos[Random().nextInt(refranesRomanticos.length)];
+    return UpdateInfo(version: version, url: url, notes: notes);
   } catch (_) {
     return null;
   } finally {
