@@ -99,10 +99,6 @@ function transferPanel(ctx) {
       );
       return;
     }
-    // Si el fallback público ha entrado en acción, avisamos para que el usuario sepa por qué «Me gusta» y privadas no aparecen.
-    if (state.library?.publicOnly && !note) {
-      note = 'Spotify ya no permite listar automáticamente tus playlists privadas ni «Me gusta» desde esta app. Se muestran tus playlists públicas; para privadas o «Me gusta» pega el enlace.';
-    }
     paintLibrary(note);
   }
 
