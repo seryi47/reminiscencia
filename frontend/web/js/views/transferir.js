@@ -264,7 +264,10 @@ function transferPanel(ctx) {
           if (r.best && isUploadedRecently(r.best.candidate.url)) r.inLibrary = true;
           else if (state.transferredKeys.has(transferTrackKey(r.track))) r.inLibrary = true; // recién transferida (en vivo)
         }
-        collections.push({ name: source.label, album: out.album, results: out.results, excluded: new Set(), overrides: new Map() });
+        // Nombre REAL de la colección cuando se analiza por URL (p. ej. «Mix») en vez de la URL cruda. El embed devuelve
+        // `out.album.name`; si no hay, usamos la etiqueta original. Evita títulos tipo «https://open.spotify.com/…».
+        const realName = out.album?.name || source.label;
+        collections.push({ name: realName, album: out.album, results: out.results, excluded: new Set(), overrides: new Map() });
       }
       state.collections = collections;
       // Recoloca al momento lo que ya tienes pero suelto/en otro álbum (cubre también el caso «todo ya lo tienes», en el

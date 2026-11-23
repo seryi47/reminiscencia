@@ -62,23 +62,36 @@ export async function fetchPublicTrack(trackId, fetchImpl = fetch) {
   return fetchPublicEmbedTracks('track', trackId, fetchImpl);
 }
 
-/** Núcleo común: lee `trackList` del `__NEXT_DATA__` del embed público (playlist/album/track) de Spotify. */
+/** Núcleo común: lee `trackList` del `__NEXT_DATA__` del embed público (playlist/album/track) de Spotify.
+ * Reintentos con backoff (ADR-0044 ampliado 2026-11-23): el embed de Spotify devuelve a veces 5xx transitorios cuando
+ * se le piden varias páginas de la misma playlist seguidas (el cliente pagina y cada página vuelve a llamar aquí). Un
+ * fallo sin reintento se traducía en una página ENTERA de 25 pistas perdidas como `tier=baja` sin candidato: el usuario
+ * ve «faltan 5 de 100» pero solo puede marcar 3, porque 2 vienen de una página que cayó.
+ */
 async function fetchPublicEmbedTracks(kind, id, fetchImpl = fetch) {
-  try {
-    const res = await fetchImpl(`https://open.spotify.com/embed/${kind}/${encodeURIComponent(id)}`, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
-    });
-    if (!res.ok) return [];
-    const html = await res.text();
-    const match = html.match(NEXT_DATA);
-    if (!match) return [];
-    let data;
-    try { data = JSON.parse(match[1]); } catch { return []; }
-    return tracksFromEmbedData(data);
-  } catch {
-    return [];
+  const url = `https://open.spotify.com/embed/${kind}/${encodeURIComponent(id)}`;
+  const attempts = 3;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const res = await fetchImpl(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' } });
+      if (!res.ok) { if (i < attempts - 1) { await sleep(300 * (i + 1)); continue; } return []; }
+      const html = await res.text();
+      const match = html.match(NEXT_DATA);
+      if (!match) { if (i < attempts - 1) { await sleep(300 * (i + 1)); continue; } return []; }
+      let data;
+      try { data = JSON.parse(match[1]); } catch { if (i < attempts - 1) { await sleep(300 * (i + 1)); continue; } return []; }
+      const tracks = tracksFromEmbedData(data);
+      if (tracks.length === 0 && i < attempts - 1) { await sleep(300 * (i + 1)); continue; }
+      return tracks;
+    } catch {
+      if (i < attempts - 1) { await sleep(300 * (i + 1)); continue; }
+      return [];
+    }
   }
+  return [];
 }
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 /** Metadatos de cabecera del embed: name, image, artist (si álbum). Útil para pintar la card de la colección. */
 export async function fetchPublicEmbedMeta(kind, id, fetchImpl = fetch) {
