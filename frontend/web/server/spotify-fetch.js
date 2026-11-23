@@ -3,7 +3,7 @@
 // que se prueba contra respuestas simuladas sin credenciales. Respeta el tipo y el ORDEN.
 
 import { normalizeAlbum, normalizePlaylist, normalizeSingleTrack, normalizeTrack } from './spotify-core.js';
-import { fetchPublicPlaylistTracks } from './spotify-embed.js';
+import { fetchPublicPlaylistTracks, fetchPublicAlbumTracks, fetchPublicTrack, fetchPublicEmbedMeta } from './spotify-embed.js';
 
 const API = 'https://api.spotify.com';
 
@@ -60,10 +60,22 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
   if (!accessToken) throw new Error('falta el token de acceso');
 
   if (ref.type === 'track') {
-    const track = await getJson(`${API}/v1/tracks/${ref.id}`, accessToken, fetchImpl);
-    const collection = normalizeSingleTrack(track);
-    if (!collection) throw new SpotifyApiError(404, 'canción no disponible');
-    return collection;
+    // Fallback embed público si la Web API está bloqueada (owner sin Premium, 2026-11): intentamos el embed público
+    // de la canción y, si trae la pista, la devolvemos. Es mejor que tirar al usuario con 403.
+    try {
+      const track = await getJson(`${API}/v1/tracks/${ref.id}`, accessToken, fetchImpl);
+      const collection = normalizeSingleTrack(track);
+      if (collection) return collection;
+    } catch (error) {
+      if (!(error instanceof SpotifyApiError) || error.status !== 403) throw error;
+      // 403 por Premium del owner: usamos el embed público
+    }
+    const embedTracks = await fetchPublicTrack(ref.id, fetchImpl);
+    if (embedTracks.length > 0) {
+      const t = embedTracks[0];
+      return { type: 'track', id: ref.id, name: t.title, cover: null, artist: (t.artists||[])[0] || null, tracks: [t], source: 'embed' };
+    }
+    throw new SpotifyApiError(404, 'canción no disponible');
   }
 
   if (ref.type === 'liked') {
@@ -75,32 +87,58 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
   }
 
   if (ref.type === 'album') {
-    const album = await getJson(`${API}/v1/albums/${ref.id}`, accessToken, fetchImpl);
-    const items = await allItems(album.tracks ?? { items: [] }, accessToken, fetchImpl, maxTracks);
-    const collection = normalizeAlbum({ ...album, tracks: { items } });
-    if (!collection) throw new SpotifyApiError(404, 'álbum no disponible');
-    return collection;
+    try {
+      const album = await getJson(`${API}/v1/albums/${ref.id}`, accessToken, fetchImpl);
+      const items = await allItems(album.tracks ?? { items: [] }, accessToken, fetchImpl, maxTracks);
+      const collection = normalizeAlbum({ ...album, tracks: { items } });
+      if (collection) return collection;
+    } catch (error) {
+      if (!(error instanceof SpotifyApiError) || error.status !== 403) throw error;
+    }
+    // Fallback embed público (ADR-0044 ampliado 2026-11-23): el embed de álbum también trae trackList.
+    const embedTracks = await fetchPublicAlbumTracks(ref.id, fetchImpl);
+    if (embedTracks.length > 0) {
+      const meta = await fetchPublicEmbedMeta('album', ref.id, fetchImpl);
+      return {
+        type: 'album', id: ref.id,
+        name: meta?.name || 'Álbum', cover: meta?.image || null,
+        artist: meta?.subtitle || null,
+        tracks: maxTracks === Infinity ? embedTracks : embedTracks.slice(0, maxTracks),
+        source: 'embed',
+      };
+    }
+    throw new SpotifyApiError(404, 'álbum no disponible');
   }
 
   if (ref.type === 'playlist') {
     // GET /playlists/{id} no acepta `limit` (la migración de 2026); el objeto paginado es `items` (antes `tracks`) y se
     // sigue su `next` tal cual lo devuelve Spotify. En «development mode» solo trae el contenido de listas propias o
     // colaborativas; para el resto llega vacío (metadatos), y la UI avisa.
-    const playlist = await getJson(`${API}/v1/playlists/${ref.id}`, accessToken, fetchImpl);
-    const paging = playlist.items ?? playlist.tracks ?? { items: [] };
-    const items = await allItems(paging, accessToken, fetchImpl, maxTracks);
-    const collection = normalizePlaylist({ ...playlist, items: { items }, tracks: undefined });
-    if (!collection) throw new SpotifyApiError(404, 'playlist no disponible');
-    // Respaldo para listas PÚBLICAS que no son tuyas (en dev mode la API da metadatos pero 0 pistas): se leen del embed
-    // público (hasta ~100 pistas). Así una lista que solo sigues también se puede importar, aunque parcial (ADR-0044).
-    if (collection.tracks.length === 0) {
+    let collection = null;
+    try {
+      const playlist = await getJson(`${API}/v1/playlists/${ref.id}`, accessToken, fetchImpl);
+      const paging = playlist.items ?? playlist.tracks ?? { items: [] };
+      const items = await allItems(paging, accessToken, fetchImpl, maxTracks);
+      collection = normalizePlaylist({ ...playlist, items: { items }, tracks: undefined });
+    } catch (error) {
+      if (!(error instanceof SpotifyApiError) || error.status !== 403) throw error;
+      // 403 por Premium del owner: dejamos `collection` en null y caemos al embed siguiente.
+    }
+    // Respaldo para listas PÚBLICAS: se leen del embed público (hasta ~100 pistas). Así una lista ajena O cuando la
+    // Web API está bloqueada (owner sin Premium) también se puede importar, aunque parcial (ADR-0044).
+    if (!collection || collection.tracks.length === 0) {
       const embedTracks = await fetchPublicPlaylistTracks(ref.id, fetchImpl);
       if (embedTracks.length > 0) {
+        if (!collection) {
+          const meta = await fetchPublicEmbedMeta('playlist', ref.id, fetchImpl);
+          collection = { type: 'playlist', id: ref.id, name: meta?.name || 'Playlist', cover: meta?.image || null, tracks: [] };
+        }
         collection.tracks = maxTracks === Infinity ? embedTracks : embedTracks.slice(0, maxTracks);
         collection.source = 'embed';
         collection.partial = embedTracks.length >= 100; // el embed topa en ~100
       }
     }
+    if (!collection) throw new SpotifyApiError(404, 'playlist no disponible');
     return collection;
   }
 

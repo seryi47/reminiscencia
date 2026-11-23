@@ -49,8 +49,23 @@ export function tracksFromEmbedData(data) {
 
 /** Lee las pistas (hasta ~100) de una playlist pública por su página embed. Devuelve [] si no se puede. */
 export async function fetchPublicPlaylistTracks(playlistId, fetchImpl = fetch) {
+  return fetchPublicEmbedTracks('playlist', playlistId, fetchImpl);
+}
+
+/** Lee las pistas de un álbum público por su página embed. Devuelve [] si no se puede. */
+export async function fetchPublicAlbumTracks(albumId, fetchImpl = fetch) {
+  return fetchPublicEmbedTracks('album', albumId, fetchImpl);
+}
+
+/** Lee la pista única de una canción pública por su página embed. Devuelve [] si no se puede. */
+export async function fetchPublicTrack(trackId, fetchImpl = fetch) {
+  return fetchPublicEmbedTracks('track', trackId, fetchImpl);
+}
+
+/** Núcleo común: lee `trackList` del `__NEXT_DATA__` del embed público (playlist/album/track) de Spotify. */
+async function fetchPublicEmbedTracks(kind, id, fetchImpl = fetch) {
   try {
-    const res = await fetchImpl(`https://open.spotify.com/embed/playlist/${encodeURIComponent(playlistId)}`, {
+    const res = await fetchImpl(`https://open.spotify.com/embed/${kind}/${encodeURIComponent(id)}`, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
     });
     if (!res.ok) return [];
@@ -62,5 +77,26 @@ export async function fetchPublicPlaylistTracks(playlistId, fetchImpl = fetch) {
     return tracksFromEmbedData(data);
   } catch {
     return [];
+  }
+}
+
+/** Metadatos de cabecera del embed: name, image, artist (si álbum). Útil para pintar la card de la colección. */
+export async function fetchPublicEmbedMeta(kind, id, fetchImpl = fetch) {
+  try {
+    const res = await fetchImpl(`https://open.spotify.com/embed/${kind}/${encodeURIComponent(id)}`, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const match = html.match(NEXT_DATA);
+    if (!match) return null;
+    let data;
+    try { data = JSON.parse(match[1]); } catch { return null; }
+    const name = findDeep(data, 'name') || findDeep(data, 'title') || '';
+    const image = findDeep(data, 'imageUrl') || findDeep(data, 'image') || null;
+    const subtitle = findDeep(data, 'subtitle') || '';
+    return { name: String(name || ''), image: typeof image === 'string' ? image : null, subtitle: String(subtitle || '') };
+  } catch {
+    return null;
   }
 }
