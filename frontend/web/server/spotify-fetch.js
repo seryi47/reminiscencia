@@ -9,20 +9,32 @@ const API = 'https://api.spotify.com';
 
 /** Error con el estado HTTP, para que la capa de arriba distinga 401 (refrescar) de 429 (esperar) o lo demás. */
 export class SpotifyApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, { endpoint = '', body = null } = {}) {
     super(message);
     this.name = 'SpotifyApiError';
     this.status = status;
+    this.endpoint = endpoint; // path relativo del endpoint que falló (p. ej. '/v1/me/playlists')
+    this.body = body;          // cuerpo de error devuelto por Spotify, si lo hubiera (sin tokens)
   }
+}
+
+// Extrae el path relativo del endpoint de Spotify (sin host ni query sensible), para enriquecer los errores
+// con contexto diagnóstico sin filtrar nada secreto.
+function endpointOf(url) {
+  try {
+    const u = new URL(url);
+    return u.pathname + (u.search ? '?' + u.search.replace(/access_token=[^&]+/g, 'access_token=***') : '');
+  } catch { return url; }
 }
 
 async function getJson(url, accessToken, fetchImpl) {
   const response = await fetchImpl(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (response.status === 401) throw new SpotifyApiError(401, 'token de Spotify caducado o inválido');
-  if (response.status === 429) throw new SpotifyApiError(429, 'límite de peticiones de Spotify');
+  const endpoint = endpointOf(url);
+  if (response.status === 401) throw new SpotifyApiError(401, 'token de Spotify caducado o inválido', { endpoint });
+  if (response.status === 429) throw new SpotifyApiError(429, 'límite de peticiones de Spotify', { endpoint });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new SpotifyApiError(response.status, data.error?.message || `HTTP ${response.status}`);
+    throw new SpotifyApiError(response.status, data.error?.message || `HTTP ${response.status}`, { endpoint, body: data?.error ?? data ?? null });
   }
   return data;
 }

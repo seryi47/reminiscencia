@@ -74,7 +74,15 @@ export async function handleSpotifyMine(request, { fetchImpl = fetch } = {}) {
       return json(401, { error: 'token de Spotify caducado', needsAuth: true });
     }
     if (error instanceof SpotifyApiError && error.status === 429) return json(429, { error: 'Spotify pide esperar un momento' });
-    return json(502, { error: String(error?.message ?? 'no se pudo leer tu biblioteca de Spotify') });
+    // 502: envolvemos con contexto diagnóstico (endpoint que falló y cuerpo de Spotify si lo hubo). No lleva tokens.
+    // Útil para saber si el 403 viene de /v1/me, de /v1/me/playlists, o de la paginación.
+    const detalle = {
+      error: String(error?.message ?? 'no se pudo leer tu biblioteca de Spotify'),
+      endpoint: error?.endpoint ?? null,
+      spotifyStatus: error?.status ?? null,
+      spotifyBody: error?.body ?? null,
+    };
+    return json(502, detalle);
   }
 }
 
