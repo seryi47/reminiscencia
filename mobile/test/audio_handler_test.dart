@@ -618,6 +618,44 @@ void main() {
     );
   });
 
+  group('error del player con red caída (2026-11-23)', () {
+    test(
+      'un PlayerException durante stream con isOnline=false NO salta: espera y reanuda al volver la red',
+      () async {
+        // Caso real del usuario (1.4.20): corte ligero de cobertura, el player emite error, antes el handler
+        // agotaba fallbacks y saltaba a la siguiente guardada. Ahora, igual que el watchdog de parones,
+        // comprueba conectividad: si está offline, pausa y espera al evento de red; no salta.
+        final net = StreamController<bool>.broadcast();
+        addTearDown(net.close);
+        var online = true;
+        handler = build(
+          isOnline: () async => online,
+          connectivityChanges: () => net.stream,
+        );
+        await handler.playAt(songs, 1); // transmitida (no guardada)
+        final loads = player.loads.length;
+        online = false;
+        player.fail(1);
+        await drain(const Duration(milliseconds: 80));
+        expect(
+          player.loads.length,
+          loads,
+          reason: 'sin red no se agotan fallbacks ni se salta',
+        );
+        expect(handler.nowPlaying.value.songId, 's1');
+        online = true;
+        net.add(true);
+        await drain(const Duration(milliseconds: 80));
+        expect(handler.nowPlaying.value.songId, 's1');
+        expect(
+          player.loads.length,
+          greaterThan(loads),
+          reason: 'al volver la red recarga la misma canción',
+        );
+      },
+    );
+  });
+
   group('canciones descargadas que fallan o truncadas (no saltar)', () {
     test(
       'una descargada que falla al decodificar se REINTENTA (no salta de inmediato)',

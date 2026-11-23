@@ -602,6 +602,20 @@ class SonidosAudioHandler extends BaseAudioHandler
       }
       return;
     }
+    // Guardia de red (2026-11-23): un error del player con la red CAÍDA no debe saltar la canción NI quemar
+    // fallbacks. Igual que en `_onStall`, marcamos espera y la escucha de conectividad reanudará la misma canción
+    // desde el mismo punto cuando vuelva la red (ADR-0036/0046). Antes el `_recover` iba directo a
+    // fallback→skipUnavailable y una pérdida transitoria de red (packet loss de 1-2 s que ya volvió al chequear,
+    // o caída real) saltaba la canción.
+    if (!await _isOnline()) {
+      debugPrint(
+        'reproductor: «${song.title}» falló sin cobertura; espero a reanudar (no salto)',
+      );
+      _waitingForNetwork = true;
+      _ensureConnectivityWatch();
+      await _guardQuiet(_player.pause);
+      return;
+    }
     final next = nextFallbackUri(
       song: song,
       cached: false,
@@ -614,6 +628,16 @@ class SonidosAudioHandler extends BaseAudioHandler
       if (await _setSources(index, position)) {
         _startPlayback();
       }
+      return;
+    }
+    // Agotados fallbacks: re-chequear online. Si en este breve lapso la red se cayó, esperar en vez de saltar.
+    if (!await _isOnline()) {
+      debugPrint(
+        'reproductor: «${song.title}» sin fallbacks y la red cayó; espero a reanudar',
+      );
+      _waitingForNetwork = true;
+      _ensureConnectivityWatch();
+      await _guardQuiet(_player.pause);
       return;
     }
     await _skipUnavailable(index);
@@ -935,19 +959,40 @@ class SonidosAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> playNext() => _guard(() {
+  Future<void> playNext() => _guard(() async {
+    // Final de la cola sin repetir: antes, nextIndex quedaba null y «Siguiente» no hacía nada (el usuario se
+    // quedaba bloqueado al acabar el aleatorio o la última canción de la lista, 22-nov-2026). Ahora se cicla:
+    //  - En aleatorio: re-baraja y arranca por el primero del nuevo orden (como Spotify).
+    //  - En modo normal: vuelve al índice 0 de la cola.
+    if (_player.nextIndex == null && _queueIds.isNotEmpty) {
+      if (_player.shuffleModeEnabled) {
+        await _player.shuffle();
+      }
+      _publishIndexOptimistically(0);
+      await _bounded(_player.seek(Duration.zero, index: 0));
+      return;
+    }
     _publishIndexOptimistically(_player.nextIndex);
-    return _bounded(_player.seekToNext());
+    await _bounded(_player.seekToNext());
   });
 
   /// Como en cualquier reproductor: pasados unos segundos, «Anterior» vuelve al principio de la canción.
   @override
-  Future<void> playPrevious() => _guard(() {
-    if (_player.position > kRestartThreshold || !_player.hasPrevious) {
-      return _bounded(_player.seek(Duration.zero));
+  Future<void> playPrevious() => _guard(() async {
+    if (_player.position > kRestartThreshold) {
+      await _bounded(_player.seek(Duration.zero));
+      return;
+    }
+    // Primera canción de la cola sin loop: antes `!hasPrevious` reiniciaba al segundo 0 y ya está. Ahora cicla
+    // al último (natural: te lleva al final para que puedas escuchar lo último del aleatorio o del álbum).
+    if (!_player.hasPrevious && _queueIds.isNotEmpty) {
+      final last = _queueIds.length - 1;
+      _publishIndexOptimistically(last);
+      await _bounded(_player.seek(Duration.zero, index: last));
+      return;
     }
     _publishIndexOptimistically(_player.previousIndex);
-    return _bounded(_player.seekToPrevious());
+    await _bounded(_player.seekToPrevious());
   });
 
   /// Publica YA la metadata de la canción de destino de un salto (título, artista y portada), sin esperar a que just_audio
