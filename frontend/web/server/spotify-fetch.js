@@ -118,7 +118,22 @@ export async function listMine({ accessToken }, fetchImpl = fetch) {
   // propias o colaborativas; las que solo sigues llegan vacías (ADR-0044). Marcar el dueño evita el «no hay canciones».
   let me = null;
   try { me = (await getJson(`${API}/v1/me`, accessToken, fetchImpl))?.id ?? null; } catch { /* sin /me, no se marca dueño */ }
-  const first = await getJson(`${API}/v1/me/playlists?limit=50`, accessToken, fetchImpl);
+  // Spotify restringió /v1/me/playlists en apps en Development Mode sin Extended Quota (2024-11+, ADR-0044 ampliado
+  // 2026-11-23): devuelve 403 aunque el token sea válido. Si pasa, caemos a /v1/users/{me}/playlists, que SÍ sigue
+  // público y lista las playlists públicas del usuario (sin scopes especiales). Limitación: no incluye las privadas
+  // ni «Me gusta», pero cubre a quien tenga la mayoría públicas. Para «Me gusta» el usuario tiene que pegar la URL.
+  let first;
+  let publicOnly = false;
+  try {
+    first = await getJson(`${API}/v1/me/playlists?limit=50`, accessToken, fetchImpl);
+  } catch (error) {
+    if (error instanceof SpotifyApiError && error.status === 403 && me) {
+      first = await getJson(`${API}/v1/users/${encodeURIComponent(me)}/playlists?limit=50`, accessToken, fetchImpl);
+      publicOnly = true;
+    } else {
+      throw error;
+    }
+  }
   const items = await allItems(first, accessToken, fetchImpl);
   const playlists = items.filter(Boolean).map((pl) => {
     const ownerId = pl.owner?.id ?? null;
@@ -140,5 +155,5 @@ export async function listMine({ accessToken }, fetchImpl = fetch) {
     const saved = await getJson(`${API}/v1/me/tracks?limit=1`, accessToken, fetchImpl);
     liked = saved.total ?? 0;
   } catch { /* si no hay permiso de biblioteca, se omite «Me gusta» */ }
-  return { playlists, liked, me };
+  return { playlists, liked, me, publicOnly };
 }

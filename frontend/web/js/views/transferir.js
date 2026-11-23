@@ -88,6 +88,7 @@ function transferPanel(ctx) {
       // Pintamos la biblioteca VACÍA, que mantiene el input «pega un enlace» funcional (álbum/canción/playlist
       // vía embed) y añadimos un aviso explicativo arriba.
       if (error?.spotifyStatus === 403 && String(error?.endpoint || '').includes('playlists')) {
+        // Backup extra: si el fallback de /v1/users/{id}/playlists también ha fallado, al menos dejamos pegar URLs.
         state.library = { playlists: [], liked: 0 };
         paintLibrary('Spotify ya no permite listar tus playlists automáticamente desde esta app. Pega un enlace de álbum, canción o playlist de Spotify y lo transferimos igual.');
         return;
@@ -97,6 +98,10 @@ function transferPanel(ctx) {
         el('button', { type: 'button', class: 'button button-text', on: { click: () => renderLibrary() } }, 'Reintentar'),
       );
       return;
+    }
+    // Si el fallback público ha entrado en acción, avisamos para que el usuario sepa por qué «Me gusta» y privadas no aparecen.
+    if (state.library?.publicOnly && !note) {
+      note = 'Spotify ya no permite listar automáticamente tus playlists privadas ni «Me gusta» desde esta app. Se muestran tus playlists públicas; para privadas o «Me gusta» pega el enlace.';
     }
     paintLibrary(note);
   }
