@@ -83,6 +83,15 @@ function transferPanel(ctx) {
       state.library = state.library ?? await listLibrary({ api });
     } catch (error) {
       if (error?.needsAuth) { renderConnect('Tu sesión de Spotify ha caducado. Conéctala de nuevo.'); return; }
+      // Spotify restringió el listado automático de playlists para apps en Development Mode (noviembre 2024,
+      // ADR-0044 ampliado 2026-11-23): el endpoint /v1/me/playlists devuelve 403 aunque el token es válido.
+      // Pintamos la biblioteca VACÍA, que mantiene el input «pega un enlace» funcional (álbum/canción/playlist
+      // vía embed) y añadimos un aviso explicativo arriba.
+      if (error?.spotifyStatus === 403 && String(error?.endpoint || '').includes('playlists')) {
+        state.library = { playlists: [], liked: 0 };
+        paintLibrary('Spotify ya no permite listar tus playlists automáticamente desde esta app. Pega un enlace de álbum, canción o playlist de Spotify y lo transferimos igual.');
+        return;
+      }
       setSection(
         el('p', { class: 'transferir-error', 'data-testid': 'transferir-error' }, error?.message || 'No se pudo leer tu biblioteca.'),
         el('button', { type: 'button', class: 'button button-text', on: { click: () => renderLibrary() } }, 'Reintentar'),

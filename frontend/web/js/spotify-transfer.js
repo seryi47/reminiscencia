@@ -37,7 +37,16 @@ export function createTransferApi(fetchImpl = globalThis.fetch, base = '') {
     });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 || data.needsAuth) throw needAuth();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(data.error || `HTTP ${res.status}`);
+      // Propagamos el detalle del fallo de Spotify (ADR-0044 ampliado 2026-11-23): si Spotify ha restringido
+      // el listado automático de playlists (403 en /v1/me/playlists para apps en Development Mode sin Extended
+      // Quota), el cliente lo detecta y ofrece la vía manual «pega una URL» en vez del error genérico.
+      err.endpoint = data.endpoint;
+      err.spotifyStatus = data.spotifyStatus;
+      err.spotifyBody = data.spotifyBody;
+      throw err;
+    }
     return data;
   };
   return {
