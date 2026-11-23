@@ -40,8 +40,8 @@ describe('resolveCollection', () => {
     assert.deepEqual(result.results.map((r) => r.index), [0, 1, 2]); // orden conservado
     assert.equal(result.results[0].tier, 'alta');
     assert.equal(result.results[0].best.candidate.id, 'ok');
-    assert.equal(result.results[1].tier, 'alta'); // dos subidas de la misma canción: se autoacepta la primera
-    assert.equal(result.results[1].best.candidate.id, 'a');
+    assert.equal(result.results[1].tier, 'alta'); // dos subidas de la misma canción: se autoacepta
+    assert.ok(['a', 'b'].includes(result.results[1].best.candidate.id)); // cualquiera vale, es la misma grabación
     assert.equal(result.results[2].tier, 'baja'); // nada encaja
     assert.equal(result.results[2].best, null);
     assert.deepEqual(result.summary, { total: 3, alta: 2, media: 0, baja: 1, error: 0 });
@@ -79,7 +79,9 @@ describe('resolveCollection', () => {
     const result = await resolveCollection(col, { searchYoutube: search });
     assert.notEqual(result.results[0].tier, 'baja');
     assert.equal(result.results[0].best.candidate.id, 'good');
-    assert.deepEqual(calls, ['Luis Fonsi Despacito lyrics', 'Luis Fonsi Despacito', 'Despacito'], 'prueba más variantes (lyrics, exacta, título) al no bastar la primera');
+    // Las primeras variantes meten ruido → sigue probando. La variante solo-título es el último recurso.
+    assert.ok(calls[0].endsWith('official audio'), `primera variante sesga a estudio: ${calls[0]}`);
+    assert.ok(calls.includes('Despacito'), 'llega al título solo cuando las de arriba no bastan');
   });
 
   test('para en cuanto hay una coincidencia ALTA (no gasta consultas de más)', async () => {
@@ -87,11 +89,11 @@ describe('resolveCollection', () => {
     const calls = [];
     const search = async (query) => {
       calls.push(query);
-      return [cand('ok', 'The Scientist - Coldplay', 'Coldplay', 309, 'official')];
+      return [cand('ok', 'The Scientist - Coldplay (Official Audio)', 'Coldplay', 309, 'official')];
     };
     const result = await resolveCollection(col, { searchYoutube: search });
     assert.equal(result.results[0].tier, 'alta');
-    assert.deepEqual(calls, ['Coldplay The Scientist lyrics'], 'con una coincidencia alta (en la variante lyrics) no se prueban más variantes');
+    assert.equal(calls.length, 1, `con una coincidencia alta en la primera variante no se prueban más (calls=${calls.length})`);
   });
 
   test('si YouTube devuelve 0 en todas las variantes SIN error, reintenta con backoff (rate-limit silencioso)', async () => {
@@ -171,11 +173,11 @@ describe('resolveCollection', () => {
   test('acumula candidatos de varias variantes para ofrecer alternativas', async () => {
     // Ninguna variante da «alta», pero juntando ambas hay alternativas para el salto anti-truncado de la APK.
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Tema', 'Grupo', 200000)] };
-    // Dos variantes (lyrics y la exacta) aportan candidatos distintos que se acumulan como alternativas.
-    const search = async (query) => (/\blyrics\b/.test(query)
+    // Dos variantes aportan candidatos distintos (official audio y la exacta) que se acumulan como alternativas.
+    const search = async (query) => (/official audio/.test(query)
       ? [cand('v1', 'Tema', 'Grupo', 231)]
       : [cand('v2', 'Tema (Audio)', 'Grupo', 232)]);
-    const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 2 });
+    const result = await resolveCollection(col, { searchYoutube: search }, { maxQueries: 3 });
     const ids = [result.results[0].best?.candidate.id, ...result.results[0].alternatives.map((a) => a.candidate.id)];
     assert.ok(ids.includes('v1') && ids.includes('v2'), 'las dos variantes aportan candidatos');
   });

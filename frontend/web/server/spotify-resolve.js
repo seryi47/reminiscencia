@@ -50,7 +50,7 @@ export function albumOf(collection) {
 export async function resolveCollection(
   collection,
   { searchYoutube },
-  { concurrency = 1, maxAlternatives = 5, maxQueries = 7 } = {},
+  { concurrency = 1, maxAlternatives = 5, maxQueries = 10 } = {},
 ) {
   if (!collection || !Array.isArray(collection.tracks)) throw new Error('colección inválida');
   if (typeof searchYoutube !== 'function') throw new Error('falta searchYoutube');

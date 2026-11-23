@@ -56,6 +56,16 @@ export const WEIGHTS = Object.freeze({
   sourceTopic: 20, // YouTube Music «Topic»/«Art Track»: subida oficial de sello
   sourceOfficial: 12, // VEVO o canal del artista
   isrcExact: 1000, // decisivo
+  // Señales de estudio en el título del candidato (empujan a la grabación oficial, ADR-0044 ampliado 2026-11-23).
+  officialAudio: 25, // «Official Audio» / «Audio Oficial»
+  officialVideo: 20, // «Official Music Video» / «Video Oficial» / «Videoclip Oficial»
+  lyricsVideo: 12, // «Lyrics» / «Letra» / «Lyric Video»
+  // EXCLUSIÓN DURA (ADR-0044 ampliado 2026-11-23): si la pista de Spotify NO es directo/remix/cover/instrumental/etc.,
+  // un candidato que SÍ lo sea recibe un gran negativo que lo saca del tier «alta»/«media» pero lo deja visible en el
+  // selector de alternativas, por si el usuario quiere elegirlo manualmente.
+  hardExcluded: -500,
+  // Duración incompatible (fragmento muy corto o compilación muy larga): también excluyente.
+  durationUnusable: -500,
 });
 
 export const THRESHOLDS = Object.freeze({
@@ -90,6 +100,55 @@ export function detectVersions(rawTitle) {
 function isLenient(rawTitle) {
   const norm = normalizeText(rawTitle);
   return Object.values(LENIENT_TAGS).some((phrases) => phrases.some((phrase) => hasPhrase(norm, phrase)));
+}
+
+// Categorías de versión que —si el track de Spotify NO las pide— son EXCLUYENTES, no solo una penalización.
+// 'extended' y 'demo' también entran: cambian la grabación de forma relevante.
+const HARD_EXCLUDE_CATEGORIES = Object.freeze(['live', 'acoustic', 'remix', 'instrumental', 'cover', 'altered', 'extended', 'demo']);
+
+/**
+ * ¿El candidato debería ser excluido porque añade una categoría de versión (live, remix, cover, karaoke…) que la
+ * pista original de Spotify NO pide? Si Spotify también lo pide (p. ej. un track llamado «Song (Live at X)»), el
+ * candidato live NO queda excluido — se busca la MISMA versión. Devuelve la categoría culpable, o null.
+ */
+export function hardExcludedReason(track, candidate) {
+  const sp = detectVersions(track.title);
+  const cand = detectVersions(candidate.title);
+  for (const category of HARD_EXCLUDE_CATEGORIES) {
+    if (cand.has(category) && !sp.has(category)) return category;
+  }
+  return null;
+}
+
+// Señales de «es la grabación de estudio» en el título del candidato: Official Audio, Official Music Video, Lyrics…
+// Suman puntos para que una subida oficial o un lyric video que reproduce la grabación de estudio GANE siempre al mero
+// candidato con el nombre coincidente.
+const OFFICIAL_SIGNAL_PATTERNS = Object.freeze({
+  officialAudio: [/\bofficial audio\b/, /\baudio oficial\b/],
+  officialVideo: [/\bofficial music video\b/, /\bofficial video\b/, /\bvideo oficial\b/, /\bvideoclip oficial\b/, /\bmusic video\b/],
+  lyricsVideo: [/\blyric video\b/, /\blyrics video\b/, /\bofficial lyric video\b/, /\bvideo lyric\b/, /\blyrics\b/, /\blyric\b/, /\bletra\b/, /\bcon letra\b/],
+});
+
+/** Devuelve { officialAudio, officialVideo, lyricsVideo } booleanos según lo que diga el título. */
+export function detectOfficialSignals(rawTitle) {
+  const norm = normalizeText(rawTitle);
+  const out = { officialAudio: false, officialVideo: false, lyricsVideo: false };
+  for (const [key, patterns] of Object.entries(OFFICIAL_SIGNAL_PATTERNS)) {
+    out[key] = patterns.some((re) => re.test(norm));
+  }
+  return out;
+}
+
+/**
+ * ¿La duración del candidato es inservible para esta pista? Fragmentos (<60 s cuando Spotify es >100 s) o compilaciones
+ * excesivamente largas (>2,5× la de Spotify, cuando Spotify es >100 s). Esto no es «otra versión»: es «no es la canción».
+ */
+export function isDurationUnusable(spDurS, candDurS) {
+  if (typeof spDurS !== 'number' || typeof candDurS !== 'number') return false;
+  if (spDurS < 100) return false; // muy corta: no evaluamos fragmento/compilación
+  if (candDurS < 60) return true; // trozo / preview
+  if (candDurS > spDurS * 2.5) return true; // compilación / álbum completo
+  return false;
 }
 
 /** Tokens del «núcleo» del título: normalizado, sin ruido ni etiquetas de versión ni la cola de «feat…». */
@@ -190,10 +249,30 @@ export function scoreCandidate(track, candidate) {
   // ISRC (decisivo si ambos lo traen e igual; calculado arriba para poder saltar la criba de título).
   if (isrcExact) { score += WEIGHTS.isrcExact; reasons.push('isrc:exacto'); }
 
+  // Señales explícitas de «es la grabación de estudio» en el título: Official Audio / Music Video / Lyrics / Letra.
+  // Un candidato que se identifique como «Official Audio» o «Lyric Video» reproduce la grabación de estudio con muy
+  // alta probabilidad, por eso suman por encima del bonus de fuente (ADR-0044 ampliado 2026-11-23).
+  const officialSignals = detectOfficialSignals(candidate.title);
+  if (officialSignals.officialAudio) { score += WEIGHTS.officialAudio; reasons.push('oficial:audio'); }
+  else if (officialSignals.officialVideo) { score += WEIGHTS.officialVideo; reasons.push('oficial:video'); }
+  else if (officialSignals.lyricsVideo) { score += WEIGHTS.lyricsVideo; reasons.push('oficial:letra'); }
+
+  // EXCLUSIÓN DURA por versión (live, remix, cover, karaoke, nightcore, extended…): si Spotify NO pide esa categoría y
+  // el candidato la trae, no es la misma grabación — se saca de la carrera con un negativo grande que lo lleva muy por
+  // debajo de `mediumFloor`. Se mantiene en la lista de alternativas para que el usuario pueda elegirlo a mano si de
+  // verdad quiere esa versión (ADR-0044 ampliado 2026-11-23).
+  const hardReason = hardExcludedReason(track, candidate);
+  if (hardReason) { score += WEIGHTS.hardExcluded; reasons.push(`descartado:${hardReason}`); }
+
+  // EXCLUSIÓN DURA por duración incompatible (fragmento o compilación): tampoco es la misma canción.
+  if (isDurationUnusable(spDur, candDur)) { score += WEIGHTS.durationUnusable; reasons.push('descartado:duracion'); }
+
   return {
     score,
     reasons,
-    signals: { coverage, durDiff, artistMatch, extra, missing, source, isrcExact, spVersions: [...spVersions] },
+    signals: { coverage, durDiff, artistMatch, extra, missing, source, isrcExact, spVersions: [...spVersions],
+      officialAudio: officialSignals.officialAudio, officialVideo: officialSignals.officialVideo,
+      lyricsVideo: officialSignals.lyricsVideo, hardExcluded: hardReason, durationUnusable: isDurationUnusable(spDur, candDur) },
   };
 }
 

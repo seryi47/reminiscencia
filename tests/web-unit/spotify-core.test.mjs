@@ -156,20 +156,46 @@ describe('normalizeSingleTrack / youtubeQueryFor', () => {
     assert.equal(result.tracks.length, 1);
     assert.equal(result.tracks[0].title, 'The Scientist');
   });
-  test('la consulta de YouTube es «artista título [lyrics]» sin la cola de feat', () => {
-    assert.equal(youtubeQueryFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown'] }), 'Chris Brown Loyal lyrics');
-    assert.equal(youtubeQueryFor({ title: 'The Scientist', artists: ['Coldplay'] }), 'Coldplay The Scientist lyrics');
+  test('la consulta de YouTube empieza por «artista título official audio» sin la cola de feat', () => {
+    assert.equal(youtubeQueryFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown'] }), 'Chris Brown Loyal official audio');
+    assert.equal(youtubeQueryFor({ title: 'The Scientist', artists: ['Coldplay'] }), 'Coldplay The Scientist official audio');
   });
 
   test('youtubeQueriesFor da variantes de la más precisa a la más amplia, sin duplicados', () => {
-    // Primero la variante con «lyrics» (sesga al vídeo de la canción real), luego primaria + «solo título».
-    assert.deepEqual(youtubeQueriesFor({ title: 'The Scientist', artists: ['Coldplay'] }),
-      ['Coldplay The Scientist lyrics', 'Coldplay The Scientist', 'The Scientist']);
-    // Colaboración: «lyrics» + primaria + TODOS los artistas + la amplia.
-    assert.deepEqual(youtubeQueriesFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown', 'Lil Wayne', 'Tyga'] }),
-      ['Chris Brown Loyal lyrics', 'Chris Brown Loyal', 'Chris Brown Lil Wayne Tyga Loyal', 'Loyal']);
-    // Sin artista: «título lyrics» y el título solo.
-    assert.deepEqual(youtubeQueriesFor({ title: 'Clocks', artists: [] }), ['Clocks lyrics', 'Clocks']);
+    // Variantes orientadas a la grabación de estudio (official audio/video, lyrics/letra) antes de la primaria y el
+    // título solo. El orden está pensado para que YouTube devuelva primero la subida oficial o un lyric video.
+    assert.deepEqual(youtubeQueriesFor({ title: 'The Scientist', artists: ['Coldplay'] }), [
+      'Coldplay The Scientist official audio',
+      'Coldplay The Scientist audio oficial',
+      'Coldplay The Scientist official video',
+      'Coldplay The Scientist video oficial',
+      'Coldplay The Scientist lyrics',
+      'Coldplay The Scientist letra',
+      'Coldplay The Scientist',
+      'The Scientist',
+    ]);
+    // Colaboración: incluye además la variante con TODOS los artistas.
+    assert.deepEqual(youtubeQueriesFor({ title: 'Loyal (feat. Lil Wayne, Tyga)', artists: ['Chris Brown', 'Lil Wayne', 'Tyga'] }), [
+      'Chris Brown Loyal official audio',
+      'Chris Brown Loyal audio oficial',
+      'Chris Brown Loyal official video',
+      'Chris Brown Loyal video oficial',
+      'Chris Brown Loyal lyrics',
+      'Chris Brown Loyal letra',
+      'Chris Brown Loyal',
+      'Chris Brown Lil Wayne Tyga Loyal',
+      'Loyal',
+    ]);
+    // Sin artista: igualmente se añaden sufijos para sesgar a estudio, acabando en el título solo.
+    assert.deepEqual(youtubeQueriesFor({ title: 'Clocks', artists: [] }), [
+      'Clocks official audio',
+      'Clocks audio oficial',
+      'Clocks official video',
+      'Clocks video oficial',
+      'Clocks lyrics',
+      'Clocks letra',
+      'Clocks',
+    ]);
   });
 
   test('youtubeQueryFor es la primera variante de youtubeQueriesFor', () => {
@@ -179,17 +205,25 @@ describe('normalizeSingleTrack / youtubeQueryFor', () => {
 
   test('con guion o tilde añade una variante PLEGADA (sin guion/acento) para que YouTube la encuentre', () => {
     const hyphen = youtubeQueriesFor({ title: 'Peli-Culeo', artists: ['Cazzu', 'De La Ghetto'] });
-    assert.equal(hyphen[0], 'Cazzu Peli-Culeo lyrics');
+    assert.equal(hyphen[0], 'Cazzu Peli-Culeo official audio');
     assert.ok(hyphen.includes('cazzu peli culeo'), `falta la variante plegada: ${JSON.stringify(hyphen)}`);
 
     const accent = youtubeQueriesFor({ title: 'AMANECIÓ', artists: ['Quevedo'] });
-    assert.equal(accent[0], 'Quevedo AMANECIÓ lyrics');
+    assert.equal(accent[0], 'Quevedo AMANECIÓ official audio');
     assert.ok(accent.includes('quevedo amanecio'), `falta la variante plegada: ${JSON.stringify(accent)}`);
   });
 
   test('sin guion ni tilde NO añade variantes redundantes solo por mayúsculas/minúsculas', () => {
     // «Coldplay The Scientist» y su plegado «coldplay the scientist» son lo mismo para YouTube → una sola.
-    assert.deepEqual(youtubeQueriesFor({ title: 'The Scientist', artists: ['Coldplay'] }),
-      ['Coldplay The Scientist lyrics', 'Coldplay The Scientist', 'The Scientist']);
+    assert.deepEqual(youtubeQueriesFor({ title: 'The Scientist', artists: ['Coldplay'] }), [
+      'Coldplay The Scientist official audio',
+      'Coldplay The Scientist audio oficial',
+      'Coldplay The Scientist official video',
+      'Coldplay The Scientist video oficial',
+      'Coldplay The Scientist lyrics',
+      'Coldplay The Scientist letra',
+      'Coldplay The Scientist',
+      'The Scientist',
+    ]);
   });
 });

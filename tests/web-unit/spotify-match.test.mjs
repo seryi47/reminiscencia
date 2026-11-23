@@ -142,16 +142,18 @@ describe('acentos y feat', () => {
 });
 
 describe('dos subidas de la misma canción → autoaceptar (sin dar trabajo al usuario)', () => {
-  test('dos oficiales casi idénticos: se acepta el primero con confianza alta y el otro queda como alternativa', () => {
+  test('dos oficiales casi idénticos: se acepta con confianza alta y el otro queda como alternativa', () => {
     // Son la MISMA canción subida dos veces (vídeo oficial + lyric/VEVO). Escoger cualquiera es correcto, así que no
     // tiene sentido mandarlo a «revisar»: se autoacepta y la otra subida queda disponible por si se quiere cambiar.
+    // Con el bonus de señales oficiales (ADR-0044 ampliado 2026-11-23), el que lo diga explícitamente en el título
+    // («Official Video») sube por delante — también es correcto, es la misma grabación.
     const clocks = track('Clocks', ['Coldplay'], 307000);
     const result = classifyMatch(clocks, [
       cand('a', 'Clocks - Coldplay', 'Coldplay', 307, 'official'),
       cand('b', 'Clocks (Official Video) - Coldplay', 'ColdplayVEVO', 308, 'official'),
     ]);
     assert.equal(result.tier, 'alta');
-    assert.equal(result.best.candidate.id, 'a');
+    assert.ok(result.best.candidate.id === 'a' || result.best.candidate.id === 'b', `cualquiera vale: ${result.best.candidate.id}`);
     assert.ok(result.alternatives.length >= 1, 'la otra subida sigue disponible como alternativa');
   });
 });
@@ -232,3 +234,89 @@ describe('fuente oficial como desempate', () => {
     assert.equal(result[0].candidate.id, 'topic');
   });
 });
+
+describe('exclusión dura de versiones no pedidas (ADR-0044 ampliado 2026-11-23)', () => {
+  // Si Spotify pide la grabación de estudio, un directo/remix/cover/karaoke/nightcore no puede ganar aunque sea el
+  // único candidato: queda muy por debajo del tier «alta»/«media» y la pista entra como «baja» (revisión manual).
+  // El candidato excluido SÍ sigue en la lista de alternativas, por si el usuario de verdad quiere esa versión.
+  const studio = track('Orgullo Banderillero', ['SFDK'], 268000);
+
+  test('solo hay directos → pista en baja con los directos como alternativas', () => {
+    const result = classifyMatch(studio, [
+      cand('a', 'SFDK - Orgullo Banderillero (En Directo)', 'SFDK', 272, 'official'),
+      cand('b', 'SFDK - Orgullo Banderillero (Live)', 'SFDK', 275, 'search'),
+      cand('c', 'SFDK - Orgullo Banderillero (En Concierto 2024)', 'SFDK', 280, 'search'),
+    ]);
+    assert.equal(result.tier, 'baja');
+    assert.equal(result.best, null);
+    assert.equal(result.alternatives.length, 3, 'siguen disponibles para elegir a mano');
+  });
+
+  test('con un directo y un estudio, gana el estudio aunque el directo venga antes', () => {
+    const result = classifyMatch(studio, [
+      cand('live', 'SFDK - Orgullo Banderillero (Live at Mad Cool)', 'SFDK', 275, 'official'),
+      cand('studio', 'SFDK - Orgullo Banderillero', 'SFDK', 268, 'search'),
+    ]);
+    assert.equal(result.tier, 'alta');
+    assert.equal(result.best.candidate.id, 'studio');
+  });
+
+  test('cover, karaoke, nightcore y 8D no ganan al estudio', () => {
+    const ranked = rankCandidates(studio, [
+      cand('studio', 'Orgullo Banderillero', 'SFDK', 268, 'search'),
+      cand('cover', 'Orgullo Banderillero (Piano Cover)', 'OtrosArtistas', 270, 'search'),
+      cand('kar', 'Orgullo Banderillero (Karaoke Version)', 'Sing King', 269, 'search'),
+      cand('ncore', 'Orgullo Banderillero [Nightcore]', 'Nightcore Channel', 220, 'search'),
+      cand('8d', 'Orgullo Banderillero (8D Audio)', '8D Music', 272, 'search'),
+    ]);
+    assert.equal(ranked[0].candidate.id, 'studio');
+    for (const r of ranked.slice(1)) {
+      assert.ok(r.score < THRESHOLDS_MEDIUM, `${r.candidate.id} debería estar por debajo de mediumFloor (${r.score})`);
+    }
+  });
+
+  test('si la pista de Spotify ES un directo, el candidato en directo NO queda excluido', () => {
+    const liveTrack = track('Song (Live at Wembley)', ['Band'], 300000);
+    const result = classifyMatch(liveTrack, [
+      cand('live', 'Band - Song (Live at Wembley)', 'Band', 302, 'official'),
+    ]);
+    assert.equal(result.tier, 'alta');
+  });
+});
+
+describe('señales de estudio en el título del candidato', () => {
+  test('«Official Audio» gana a «(Live)» aunque la duración sea similar', () => {
+    const song = track('Nos Volveremos a Ver', ['La Raíz'], 285000);
+    const ranked = rankCandidates(song, [
+      cand('live', 'La Raíz - Nos Volveremos a Ver (En Directo desde Zaragoza)', 'La Raíz', 288, 'official'),
+      cand('oa', 'La Raíz - Nos Volveremos a Ver (Official Audio)', 'La Raíz', 285, 'search'),
+      cand('lyr', 'La Raíz - Nos Volveremos a Ver (Lyric Video)', 'La Raíz', 284, 'search'),
+    ]);
+    assert.equal(ranked[0].candidate.id, 'oa');
+    assert.ok(ranked[1].candidate.id === 'lyr', 'tras «Official Audio», el lyric video queda segundo');
+    assert.ok(ranked.find((r) => r.candidate.id === 'live').score < ranked[0].score);
+  });
+});
+
+describe('duración incompatible = no es la canción', () => {
+  test('fragmento de 45 s (teaser) de una canción de 3:30 no gana', () => {
+    const song = track('Una Canción Larga', ['Artista'], 210000);
+    const result = classifyMatch(song, [
+      cand('teaser', 'Una Canción Larga - Artista (preview 45s)', 'Artista', 45, 'search'),
+      cand('full', 'Una Canción Larga - Artista', 'Artista', 210, 'search'),
+    ]);
+    assert.equal(result.best.candidate.id, 'full');
+  });
+
+  test('compilación de 1 hora de una canción de 3:30 no gana aunque mencione el título', () => {
+    const song = track('La Canción', ['El Grupo'], 210000);
+    const result = classifyMatch(song, [
+      cand('comp', 'El Grupo - Todos Sus Éxitos (Mix 1 Hora, incluye La Canción)', 'El Grupo', 3600, 'search'),
+      cand('normal', 'La Canción - El Grupo', 'El Grupo', 210, 'search'),
+    ]);
+    assert.equal(result.best.candidate.id, 'normal');
+  });
+});
+
+// Constante auxiliar para asertar que los excluidos quedan por debajo de medium.
+const THRESHOLDS_MEDIUM = 45;

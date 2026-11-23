@@ -157,10 +157,17 @@ export function youtubeQueriesFor(internalTrack) {
     const key = q.toLowerCase();
     if (q && !seen.has(key)) { seen.add(key); out.push(q); }
   };
-  // Primero la variante con «lyrics»: sesga hacia el vídeo de la canción real (lyric/estudio) y evita directos,
-  // actuaciones o popurrís (p. ej. una actuación de los GRAMMYs de 9 min en vez de la canción); YouTube la indexa
-  // también para canciones en español. Si no hay lyric video, las variantes de debajo lo rescatan (ADR-0046).
+  // Variantes orientadas a la GRABACIÓN DE ESTUDIO (ADR-0044 ampliado 2026-11-23): se piden explícitamente
+  // «official audio», «official music video» y «lyrics», que son las tres subidas que reproducen la toma de estudio.
+  // Empujan a que YouTube devuelva esas versiones antes que los directos y las actuaciones. Si no existen, las
+  // variantes de debajo (sin sufijo) rescatan a la canción. Primero «official audio»: es el formato de subida
+  // más limpio (sin vídeo ni actuación), siempre es la toma de estudio cuando lo publica el canal del artista.
+  add([a0, titleCore, 'official audio']);
+  add([a0, titleCore, 'audio oficial']);
+  add([a0, titleCore, 'official video']);
+  add([a0, titleCore, 'video oficial']);
   add([a0, titleCore, 'lyrics']);
+  add([a0, titleCore, 'letra']);
   // Exacta y, justo detrás, la PLEGADA (sin tildes ni guiones): «Cazzu Peli-Culeo» → «cazzu peli culeo», «Quevedo AMANECIÓ»
   // → «quevedo amanecio». Es la que rescata los títulos con guion o acento que YouTube no encontraba tal cual (ADR-0046).
   add([a0, titleCore]);
