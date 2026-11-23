@@ -429,7 +429,10 @@ class LibraryStore implements LibrarySource {
         // estéreo ronda 48 kbps (~6 KB/s) y el mono 32 kbps (~4 KB/s). El suelo de 3 KB/s queda por debajo del mono
         // (no rechaza ficheros íntegros) pero atrapa descargas cortadas a la mitad, que antes se colaban (suelo de 2 KB/s)
         // y hacían que el reproductor tomara el fichero como completo y saltara sola a la siguiente.
-        const minOpusBytesPerSecond = 3000;
+        // 22-nov-2026: subido de 3000 a 3500 B/s tras incidencias de «salta sola» con Opus 48k (ADR-0051): en
+        // ocasiones el servidor no manda Content-Length y colaban descargas al 50-60 %. 3500 queda aún por debajo
+        // del mono bitrate real (~4000 B/s) y atrapa los cortados en al menos el 85 %.
+        const minOpusBytesPerSecond = 3500;
         if ((expected == null || expected < 0) && song.durationS > 1) {
           final floor = (song.durationS * minOpusBytesPerSecond).round();
           if (received < floor) {
