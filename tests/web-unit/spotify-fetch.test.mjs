@@ -52,25 +52,60 @@ describe('fetchCollection', () => {
     assert.ok(calls.some((u) => u.includes('/next-album')), 'siguió la paginación');
   });
 
-  test('playlist con paginación (esquema 2026 items/item), saltando nulas, en orden', async () => {
+  test('playlist con paginación por offset explícito, saltando nulas, en orden', async () => {
+    // Nuevo flujo (ADR-0044 ampliado 2026-11-24): primero metadatos (/v1/playlists/{id}?fields=...), después
+    // tracks por offset explícito.
     const { fetchImpl } = router([
-      [`/v1/playlists/${ID}`, okJson({
+      [`/v1/playlists/${ID}?fields=`, okJson({
         id: ID, name: 'Lista', images: [{ url: 'p.jpg' }], owner: { display_name: 'S' },
-        items: {
-          items: [{ item: { ...trackObj('A', 1), type: 'track', album: { name: 'AA', release_date: '2001' } } }, { item: null }],
-          next: 'https://api.spotify.com/next-pl',
-        },
+        tracks: { total: 2, limit: 100 },
       })],
-      ['/next-pl', okJson({ items: [{ item: { ...trackObj('B', 2), type: 'track', album: { name: 'BB', release_date: '2002' } } }], next: null })],
+      [`/v1/playlists/${ID}/tracks?offset=0`, okJson({
+        items: [
+          { track: { ...trackObj('A', 1), type: 'track', album: { name: 'AA', release_date: '2001' } } },
+          { track: null },
+        ],
+        total: 2,
+      })],
     ]);
     const col = await fetchCollection({ ref: { type: 'playlist', id: ID }, accessToken: 'AT' }, fetchImpl);
     assert.equal(col.type, 'playlist');
-    assert.deepEqual(col.tracks.map((t) => t.title), ['A', 'B']);
+    assert.deepEqual(col.tracks.map((t) => t.title), ['A']); // la nula se descarta
+  });
+
+  test('playlist >100 pistas: NO se capa a 100 (regresión del bug del 2026-11-24)', async () => {
+    // El bug viejo: seguíamos `.next` del wrapper y si Spotify devolvía `.next=null` en la primera página, la lista
+    // se capaba a 100 aunque tuviera 300. Ahora iteramos por offset hasta cubrir `total`.
+    const page = (offset, size) => ({
+      items: Array.from({ length: size }, (_, i) => ({
+        track: { ...trackObj(`T${offset + i}`, offset + i + 1), type: 'track', album: { name: 'X', release_date: '2024' } },
+      })),
+      total: 300,
+    });
+    const { fetchImpl, calls } = router([
+      [`/v1/playlists/${ID}?fields=`, okJson({ id: ID, name: 'L300', tracks: { total: 300, limit: 100 } })],
+      [`/v1/playlists/${ID}/tracks?offset=0&limit=100`, okJson(page(0, 100))],
+      [`/v1/playlists/${ID}/tracks?offset=100&limit=100`, okJson(page(100, 100))],
+      [`/v1/playlists/${ID}/tracks?offset=200&limit=100`, okJson(page(200, 100))],
+    ]);
+    const col = await fetchCollection({ ref: { type: 'playlist', id: ID }, accessToken: 'AT' }, fetchImpl);
+    assert.equal(col.tracks.length, 300, 'trae las 300, no 100');
+    assert.equal(col.tracks[0].title, 'T0');
+    assert.equal(col.tracks[299].title, 'T299');
+    assert.ok(calls.some((u) => u.includes('offset=200')), 'llega a pedir la tercera página');
   });
 
   test('maxTracks limita playlists enormes', async () => {
-    const items = Array.from({ length: 5 }, (_, i) => ({ item: { ...trackObj(`S${i}`, i + 1), type: 'track', album: { name: 'X', release_date: '2000' } } }));
-    const { fetchImpl } = router([[`/v1/playlists/${ID}`, okJson({ id: ID, name: 'L', items: { items, next: null } })]]);
+    const page = (offset) => okJson({
+      items: Array.from({ length: 5 }, (_, i) => ({
+        track: { ...trackObj(`S${offset + i}`, offset + i + 1), type: 'track', album: { name: 'X', release_date: '2000' } },
+      })),
+      total: 5,
+    });
+    const { fetchImpl } = router([
+      [`/v1/playlists/${ID}?fields=`, okJson({ id: ID, name: 'L', tracks: { total: 5, limit: 100 } })],
+      [`/v1/playlists/${ID}/tracks?offset=0`, page(0)],
+    ]);
     const col = await fetchCollection({ ref: { type: 'playlist', id: ID }, accessToken: 'AT' }, fetchImpl, { maxTracks: 2 });
     assert.equal(col.tracks.length, 2);
   });

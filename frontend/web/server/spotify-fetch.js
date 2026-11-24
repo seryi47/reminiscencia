@@ -39,7 +39,32 @@ async function getJson(url, accessToken, fetchImpl) {
   return data;
 }
 
-// Sigue `.next` de un objeto paginado (p. ej. playlist.tracks o album.tracks) y acumula todos los items, en orden.
+/**
+ * Pide las pistas de una playlist por offset explícito hasta cubrir `cap` (o el total).
+ * Es MÁS ROBUSTO que seguir `.next` del wrapper: Spotify a veces devuelve `.next=null` en primera página para
+ * listas ajenas o enlaces internos rotos, cortando la paginación a 100 pistas aunque haya más. Aquí vamos
+ * offset=0,100,200,… hasta que la última página venga con menos de `limit` items (señal de que ya no hay más).
+ */
+async function fetchPlaylistTracksByOffset(playlistId, accessToken, fetchImpl, cap = Infinity) {
+  const LIMIT = 100; // tope duro de /v1/playlists/{id}/tracks por petición
+  const items = [];
+  let offset = 0;
+  while (items.length < cap) {
+    const url = `${API}/v1/playlists/${encodeURIComponent(playlistId)}/tracks?offset=${offset}&limit=${LIMIT}`;
+    const page = await getJson(url, accessToken, fetchImpl);
+    const pageItems = Array.isArray(page?.items) ? page.items : [];
+    if (pageItems.length === 0) break;
+    items.push(...pageItems);
+    if (pageItems.length < LIMIT) break; // ya no queda nada
+    offset += LIMIT;
+    // Cortocircuito por `total` (si Spotify lo da): evitamos la última petición vacía.
+    if (Number.isFinite(page?.total) && offset >= page.total) break;
+  }
+  return cap === Infinity ? items : items.slice(0, cap);
+}
+
+// Sigue `.next` de un objeto paginado (p. ej. album.tracks). Se mantiene para álbumes y «liked», donde el
+// comportamiento de `.next` es estable. Para playlists usamos fetchPlaylistTracksByOffset.
 async function allItems(firstPage, accessToken, fetchImpl, cap = Infinity) {
   const items = [...(firstPage.items ?? [])];
   let next = firstPage.next;
@@ -111,21 +136,23 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
   }
 
   if (ref.type === 'playlist') {
-    // GET /playlists/{id} no acepta `limit` (la migración de 2026); el objeto paginado es `items` (antes `tracks`) y se
-    // sigue su `next` tal cual lo devuelve Spotify. En «development mode» solo trae el contenido de listas propias o
-    // colaborativas; para el resto llega vacío (metadatos), y la UI avisa.
+    // Paginación EXPLÍCITA por offset (ADR-0044 ampliado 2026-11-24): antes seguíamos `.next` del wrapper, pero Spotify
+    // a veces devuelve `.next=null` en la primera página (p. ej. listas ajenas en Development Mode) o un `.next` con
+    // host interno que da 404 → se capaba a 100 pistas aunque la lista tuviera 300. Ahora pedimos los metadatos,
+    // leemos `tracks.total` y pedimos las páginas por offset hasta cubrirlo todo. Da la vuelta al bug de raíz.
     let collection = null;
+    let totalTracks = 0;
     try {
-      const playlist = await getJson(`${API}/v1/playlists/${ref.id}`, accessToken, fetchImpl);
-      const paging = playlist.items ?? playlist.tracks ?? { items: [] };
-      const items = await allItems(paging, accessToken, fetchImpl, maxTracks);
-      collection = normalizePlaylist({ ...playlist, items: { items }, tracks: undefined });
+      const playlist = await getJson(`${API}/v1/playlists/${ref.id}?fields=id,name,images,owner,tracks(total,limit)`, accessToken, fetchImpl);
+      totalTracks = Number.isFinite(playlist?.tracks?.total) ? playlist.tracks.total : 0;
+      const cap = Math.min(totalTracks, maxTracks === Infinity ? totalTracks : maxTracks);
+      const items = await fetchPlaylistTracksByOffset(ref.id, accessToken, fetchImpl, cap);
+      collection = normalizePlaylist({ ...playlist, tracks: { items } });
     } catch (error) {
       if (!(error instanceof SpotifyApiError) || error.status !== 403) throw error;
-      // 403 por Premium del owner: dejamos `collection` en null y caemos al embed siguiente.
+      // 403 por Premium del owner o lista bloqueada en dev-mode: dejamos `collection` en null y caemos al embed.
     }
-    // Respaldo para listas PÚBLICAS: se leen del embed público (hasta ~100 pistas). Así una lista ajena O cuando la
-    // Web API está bloqueada (owner sin Premium) también se puede importar, aunque parcial (ADR-0044).
+    // Respaldo para listas PÚBLICAS cuando la Web API está bloqueada (owner sin Premium, dev-mode).
     if (!collection || collection.tracks.length === 0) {
       const embedTracks = await fetchPublicPlaylistTracks(ref.id, fetchImpl);
       if (embedTracks.length > 0) {
@@ -135,7 +162,7 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
         }
         collection.tracks = maxTracks === Infinity ? embedTracks : embedTracks.slice(0, maxTracks);
         collection.source = 'embed';
-        collection.partial = embedTracks.length >= 100; // el embed topa en ~100
+        collection.partial = embedTracks.length >= 100; // el embed topa a ~100 (limitación del embed, no nuestra)
       }
     }
     if (!collection) throw new SpotifyApiError(404, 'playlist no disponible');

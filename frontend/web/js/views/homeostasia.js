@@ -26,7 +26,8 @@ const CONFIG = {
   convertCreateGap: 2000,
   pollInterval: 3000,
   statusErrorRetries: 5,
-  jobTimeout: 600000,
+  jobTimeout: 240000, // 4 min por pista: antes eran 10 min, pero una pista estancada nos capaba la cola entera
+  stallPollsThreshold: 20, // si queuePosition/progress no cambian en 20 polls (~60 s), damos la pista por atascada
   transferPasses: 4, // reintentos de la LISTA completa: tras cada pasada se reintentan solo las pistas que fallaron
   transferPassGap: 30000, // espera entre pasadas para que el conversor (yttowav) se recupere del throttling
   circuitBreak: 15, // si fallan N conversiones SEGUIDAS, el conversor está capado: se corta la tanda (lo hecho queda subido)
@@ -358,6 +359,11 @@ async function crearJob(url, title, signal, deadline, onRetry, traceId, onCreate
 async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId, videoId) {
   let consecutiveStatusErrors = 0;
   let poll = 0;
+  // Detector de cola estancada (ADR-0044 ampliado 2026-11-24): si yttowav devuelve los mismos valores de progreso
+  // durante `stallPollsThreshold` polls seguidos, la pista está atascada en su cola. Antes seguíamos esperando los
+  // 10 min completos (ahora 4): una sola pista podrida capaba la lista de 100 de un Mix hasta que llegaba el timeout.
+  let stallSignature = null;
+  let stallPolls = 0;
 
   while (Date.now() < deadline) {
     let data;
@@ -412,6 +418,26 @@ async function esperarYDescargar(jobId, signal, deadline, onStatus, traceId, vid
         queueLength: data.queueLength,
         progress: data.progress
       });
+    }
+
+    // Detector de estancamiento: si los valores no han cambiado en `stallPollsThreshold` polls seguidos y seguimos en
+    // «queued»/«processing», abandonamos esta pista (lanzamos un error del mismo tipo que un `status:error` del server).
+    // El pipeline de arriba (`convertirPlaylist`) pasa a la siguiente; el usuario puede reintentar esta en frío más tarde.
+    if (status === 'queued' || status === 'processing') {
+      const signature = `${status}|${data.queuePosition ?? ''}|${data.queueLength ?? ''}|${data.progress ?? ''}`;
+      if (signature === stallSignature) {
+        stallPolls += 1;
+        if (stallPolls >= CONFIG.stallPollsThreshold) {
+          saveImportRecord(videoId, { state: 'failed', jobId: null });
+          throw new Error('El conversor se quedó atascado con esta pista. Se salta y se sigue con la siguiente.');
+        }
+      } else {
+        stallSignature = signature;
+        stallPolls = 0;
+      }
+    } else {
+      stallSignature = null;
+      stallPolls = 0;
     }
 
     if (status === 'error') {

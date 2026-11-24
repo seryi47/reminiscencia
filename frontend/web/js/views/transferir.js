@@ -536,6 +536,10 @@ function transferPanel(ctx) {
         lastFailed = failedCycle;
         if (abort.signal.aborted) break;
         if (failedCycle === 0) break; // completado: ya no falla nada
+        // ADR-0044 ampliado 2026-11-24: si un ciclo ENTERO no añadió ni una sola canción nueva, lo que queda no es un
+        // tope temporal del conversor: son pistas rotas (vídeos caídos, bloqueados por región o DRM). Esperar otros
+        // 10 min no las va a arreglar y el usuario veía «reintento en 10 min» una y otra vez durante horas.
+        if (addedCycle === 0 && cycle >= 2) break;
         if (cycle >= AUTO_RESUME_MAX_CYCLES) break;
         try { await countdownWait(progress, Date.now() + AUTO_RESUME_GAP_MS, failedCycle, abort.signal); }
         catch { break; } // parado durante la espera
@@ -556,11 +560,13 @@ function transferPanel(ctx) {
         el('p', { class: 'transferir-summary', 'data-testid': 'transferir-done' },
           done
             ? `¡Listo! Añadidas ${addedTotal}. Verás el progreso de publicación en «Tu biblioteca».`
-            : `Añadidas ${addedTotal}${lastFailed ? ` · quedan ~${lastFailed}` : ''}. ${stopped ? 'Reintento automático detenido.' : 'Se alcanzó el límite de reintentos.'}`),
+            : `Añadidas ${addedTotal}${lastFailed ? ` · quedan ~${lastFailed}` : ''}. ${stopped ? 'Reintento automático detenido.' : 'Se dejó de reintentar: esas pistas no se pudieron pasar.'}`),
         done
           ? el('div')
           : el('p', { class: 'transferir-intro' },
-            'El tope es de YouTube, no un fallo. Vuelve a darle a «Transferir» más tarde: saltará lo que ya tienes y seguirá con lo que falta.'),
+            addedTotal === 0
+              ? 'Ninguna avanzó: los vídeos de YouTube están caídos o bloqueados para esas canciones. Prueba a abrir cada una y pulsar «Buscar otra en YouTube» para elegir manualmente.'
+              : 'Lo que ha quedado pendiente no se pasó automáticamente. Puedes abrir cada pista y pulsar «Buscar otra en YouTube» para elegir manualmente.'),
         el('button', { type: 'button', class: 'homeostasia-submit', on: { click: () => { state.sources.clear(); state.collections = []; paintLibrary('¿Transferir algo más?'); } } }, 'Transferir más'),
       );
     } catch (error) {
