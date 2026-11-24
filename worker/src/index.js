@@ -218,8 +218,12 @@ async function forwardYoutube(request, env, fetchImpl) {
   // Ambas solo usan `fetch` y no necesitan yt-dlp. Así «Transferir música» y el botón «Buscar otra en YouTube» siguen
   // funcionando aunque no haya upstream yt-dlp. Solo `/search` tiene este fallback; `/playlist` sigue necesitándolo.
   if (source.pathname === `${YOUTUBE_PREFIX}search`) {
-    const query = source.searchParams.get('q') ?? '';
-    if (query) {
+    // Saneado de la query antes de salir al upstream: mismo tope que la función oficial de /search
+    // (MAX_QUERY_LENGTH=100). Sin él, una query larga gasta CPU del Worker y subrequests sin aportar nada
+    // (YouTube corta por su cuenta en los primeros chars).
+    const query = (source.searchParams.get('q') ?? '')
+      .replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+    if (query.length >= 2) {
       const [music, scrape] = await Promise.all([
         searchYoutubeMusic(query, { fetchImpl }).catch(() => []),
         searchYoutubeScrape(query, { fetchImpl }).catch(() => []),
@@ -260,7 +264,10 @@ function spotifySearch(env, fetchImpl) {
       const data = await response.json().catch(() => ({}));
       items = Array.isArray(data.items) ? data.items : [];
     }
-    if (items.length >= 3) return items; // basta para el matcher; ahorra una llamada a YT Music
+    // Si forwardYoutube ya cayó en su propio fallback (worker-fallback), YT Music ya está DENTRO de la respuesta
+    // (ADR-0038 ampliado 2026-11-24). No llamamos otra vez para no duplicar gasto de cuota ni latencia.
+    const alreadyFellBack = response.headers.get(YOUTUBE_MARK_HEADER) === 'worker-fallback';
+    if (items.length >= 3 || alreadyFellBack) return items;
     // Fallback: también YT Music (para pistas raras donde el upstream no encuentra)
     const music = await searchYoutubeMusic(query, { fetchImpl }).catch(() => []);
     return mergeCandidates(music, items);

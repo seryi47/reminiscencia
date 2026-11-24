@@ -298,6 +298,36 @@ describe('señales de estudio en el título del candidato', () => {
   });
 });
 
+describe('señales oficiales NO son promiscuas (findings auditoría 2026-11-24)', () => {
+  test('«Lyrics Compilation» NO activa el bonus lyricsVideo (era un falso positivo grave)', () => {
+    // Antes: /\blyrics\b/ matcheaba cualquier «Lyrics» suelto → compilación recibía +12 pts → tier=alta.
+    const song = track('Rolling in the Deep', ['Adele'], 228000);
+    const result = classifyMatch(song, [
+      cand('comp', 'Rolling in the Deep - Adele Lyrics Compilation', 'TopLyrics Channel', 230, 'search'),
+    ]);
+    assert.notEqual(result.tier, 'alta', 'una compilación con «Lyrics» no debe autoaceptarse');
+  });
+
+  test('«Music Video» suelto (sin «official») NO activa officialVideo bonus', () => {
+    // Antes: /\bmusic video\b/ pasaba cualquier «New Music Video Trailer» como oficial.
+    const song = track('Yesterday', ['The Beatles'], 125000);
+    const ranked = rankCandidates(song, [
+      cand('fan', 'Yesterday - Her New Music Video 2024', 'FanChannel', 130, 'search'),
+      cand('real', 'Yesterday - The Beatles (Official Audio)', 'The Beatles', 125, 'topic'),
+    ]);
+    assert.equal(ranked[0].candidate.id, 'real', 'el real gana al fan video sin bonus trampa');
+  });
+
+  test('«Lyric Video» (con la palabra «video») SÍ activa lyricsVideo bonus (comprueba que no rompimos el bueno)', () => {
+    const song = track('Nos Volveremos a Ver', ['La Raíz'], 285000);
+    const ranked = rankCandidates(song, [
+      cand('normal', 'Nos Volveremos a Ver - La Raíz', 'La Raíz', 285, 'search'),
+      cand('lyric', 'Nos Volveremos a Ver - La Raíz (Lyric Video)', 'La Raíz', 285, 'search'),
+    ]);
+    assert.equal(ranked[0].candidate.id, 'lyric', 'el Lyric Video sigue siendo preferido sobre el normal');
+  });
+});
+
 describe('duración incompatible = no es la canción', () => {
   test('fragmento de 45 s (teaser) de una canción de 3:30 no gana', () => {
     const song = track('Una Canción Larga', ['Artista'], 210000);

@@ -23,6 +23,9 @@ export const VERSION_TAGS = Object.freeze({
   altered: ['sped up', 'speed up', 'spedup', 'slowed', 'slowed down', 'nightcore', 'reverb', '8d', '8d audio', 'daycore'],
   demo: ['demo'],
   extended: ['extended', 'extended mix', 'extended version'],
+  // Recopilaciones y mixes: nunca son «la canción». Un candidato con cualquiera de estas pasa la exclusión dura
+  // incluso si el título «contiene» el de la canción buscada (ADR-0044 ampliado tras auditoría 2026-11-24).
+  compilation: ['compilation', 'compilacion', 'megamix', 'full album', 'album completo', 'greatest hits', 'best of'],
 });
 
 // Categorías que NO cambian la grabación (misma pista): no cuentan como desajuste de versión.
@@ -104,7 +107,7 @@ function isLenient(rawTitle) {
 
 // Categorías de versión que —si el track de Spotify NO las pide— son EXCLUYENTES, no solo una penalización.
 // 'extended' y 'demo' también entran: cambian la grabación de forma relevante.
-const HARD_EXCLUDE_CATEGORIES = Object.freeze(['live', 'acoustic', 'remix', 'instrumental', 'cover', 'altered', 'extended', 'demo']);
+const HARD_EXCLUDE_CATEGORIES = Object.freeze(['live', 'acoustic', 'remix', 'instrumental', 'cover', 'altered', 'extended', 'demo', 'compilation']);
 
 /**
  * ¿El candidato debería ser excluido porque añade una categoría de versión (live, remix, cover, karaoke…) que la
@@ -124,9 +127,15 @@ export function hardExcludedReason(track, candidate) {
 // Suman puntos para que una subida oficial o un lyric video que reproduce la grabación de estudio GANE siempre al mero
 // candidato con el nombre coincidente.
 const OFFICIAL_SIGNAL_PATTERNS = Object.freeze({
+  // Solo frases explícitas de que es la toma de estudio: «Official Audio», «Audio Oficial». Sin `/\baudio\b/` suelto
+  // porque haría pasar cualquier vídeo con la palabra «audio» en el título.
   officialAudio: [/\bofficial audio\b/, /\baudio oficial\b/],
-  officialVideo: [/\bofficial music video\b/, /\bofficial video\b/, /\bvideo oficial\b/, /\bvideoclip oficial\b/, /\bmusic video\b/],
-  lyricsVideo: [/\blyric video\b/, /\blyrics video\b/, /\bofficial lyric video\b/, /\bvideo lyric\b/, /\blyrics\b/, /\blyric\b/, /\bletra\b/, /\bcon letra\b/],
+  // Idem con el videoclip oficial: SIEMPRE con «official»/«oficial» (sin `/\bmusic video\b/` suelto, que colaba con
+  // «New Music Video Trailer», «Fan Music Video» etc.).
+  officialVideo: [/\bofficial music video\b/, /\bofficial video\b/, /\bvideo oficial\b/, /\bvideoclip oficial\b/],
+  // Lyrics o letra: EXIGIR «video»/«visualizer»/«con letra» para no coger a cualquier vídeo que mencione «lyrics» o
+  // «letra» en el título (p. ej. «Rolling in the Deep - Adele Lyrics Compilation», que era compilación con score alta).
+  lyricsVideo: [/\blyric video\b/, /\blyrics video\b/, /\bofficial lyric video\b/, /\bvideo lyric\b/, /\blyric visualizer\b/, /\bcon letra\b/],
 });
 
 /** Devuelve { officialAudio, officialVideo, lyricsVideo } booleanos según lo que diga el título. */
@@ -145,9 +154,11 @@ export function detectOfficialSignals(rawTitle) {
  */
 export function isDurationUnusable(spDurS, candDurS) {
   if (typeof spDurS !== 'number' || typeof candDurS !== 'number') return false;
-  if (spDurS < 100) return false; // muy corta: no evaluamos fragmento/compilación
-  if (candDurS < 60) return true; // trozo / preview
-  if (candDurS > spDurS * 2.5) return true; // compilación / álbum completo
+  // Fragmento (preview / avance): candidato muy corto, solo si Spotify es «canción normal» (≥100 s).
+  if (candDurS < 60 && spDurS >= 100) return true;
+  // Compilación / álbum completo / mix largo: candidato más de 2,5× la duración de Spotify. SIEMPRE aplica
+  // (una intro de 90 s de Spotify no debe aceptar un «full album» de 10 min como «la misma pista»).
+  if (candDurS > Math.max(spDurS * 2.5, 300)) return true;
   return false;
 }
 

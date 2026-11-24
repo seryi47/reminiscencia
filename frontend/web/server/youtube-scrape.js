@@ -119,7 +119,10 @@ export async function searchYoutubeScrape(query, { fetchImpl = globalThis.fetch 
     const url = new URL('https://www.youtube.com/results');
     url.searchParams.set('search_query', query);
     // Filtro «Vídeo»: sin listas, canales ni películas.
-    url.searchParams.set('sp', 'EgIQAQ%3D%3D');
+    // IMPORTANTE: el valor es el string base64 crudo `EgIQAQ==`, no el URL-encoded `EgIQAQ%3D%3D`.
+    // `URLSearchParams.set` ya URL-encoda al serializar; pasar el encoded aquí lo encoda DOBLE y YouTube
+    // ignora el filtro, devolviendo luego también playlists, canales y películas.
+    url.searchParams.set('sp', 'EgIQAQ==');
     const response = await fetchWithTimeout(fetchImpl, url.href, {
       headers: {
         Accept: 'text/html,application/xhtml+xml',
