@@ -170,6 +170,30 @@ describe('resolveCollection', () => {
     assert.equal(n, 2, 'solo las variantes, sin reintento extra cuando hubo error');
   });
 
+  test('presupuesto agotado antes de empezar: queda tiempo-agotado, no se cuelga (ADR-0046 ampliado 2026-11-24)', async () => {
+    // Replica el 503 del Worker del 2026-11-24: 25 pistas serializadas × backoffs + 8 s de último recurso
+    // se pasaban de los 30 s de CPU y Cloudflare devolvía 503. El presupuesto corta a tiempo.
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [
+      track('Primera', 'A', 200000),
+      track('Segunda', 'B', 200000),
+    ]};
+    let n = 0;
+    const search = async () => { n += 1; return []; }; // siempre vacío, dispara reintentos
+    const result = await resolveCollection(col, { searchYoutube: search }, { budgetMs: 1500 });
+    // Primera pista consume el presupuesto en backoffs; la segunda ya no puede reintentar.
+    assert.equal(result.results[0].tier, 'baja');
+    assert.equal(result.results[1].tier, 'baja');
+    assert.match(result.results[1].error ?? '', /tiempo agotado/, 'la 2ª pista lleva error de presupuesto');
+    assert.ok(n < 50, `sin presupuesto se recortan intentos: hubo ${n}`); // sin presupuesto subiría a cientos
+  });
+
+  test('presupuesto generoso NO recorta: el camino nominal sigue intacto', async () => {
+    // Regresión defensiva: si el budget alcanza, el resolver se comporta como siempre (no se nota el cambio).
+    const col = { type: 'album', id: 'A', name: 'X', tracks: [track('The Scientist', 'Coldplay', 309000)] };
+    const result = await resolveCollection(col, { searchYoutube }, { budgetMs: 25000 });
+    assert.equal(result.results[0].tier, 'alta');
+  });
+
   test('acumula candidatos de varias variantes para ofrecer alternativas', async () => {
     // Ninguna variante da «alta», pero juntando ambas hay alternativas para el salto anti-truncado de la APK.
     const col = { type: 'album', id: 'A', name: 'X', tracks: [track('Tema', 'Grupo', 200000)] };

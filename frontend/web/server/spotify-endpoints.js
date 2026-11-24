@@ -141,7 +141,10 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   // 25 pistas por página elimina la saturación del upstream: cada pista espera a que la anterior termine antes de
   // llamar a YouTube Music. Es más lento pero garantiza que ninguna caiga por silencio del upstream; junto al cache de
   // consultas y los 5 reintentos largos del resolver, 0 vacías por rate-limit (ADR-0046 ampliado 2026-11-19).
-  const resolved = await resolveCollection(pageCollection, { searchYoutube: search }, { concurrency: 1 });
+  // budgetMs 25 s: el límite de CPU del Worker de Cloudflare es 30 s. 5 s de margen para que la respuesta salga a tiempo
+  // aunque el upstream vaya lento. Antes, un resolve pesado con todos los reintentos superaba 30 s y Cloudflare devolvía
+  // 503 (Error 1102 CPU exceeded). El cliente ya sabe reintentar las pistas que vuelven con error.
+  const resolved = await resolveCollection(pageCollection, { searchYoutube: search }, { concurrency: 1, budgetMs: 25000 });
   for (const result of resolved.results) result.index += offset; // índices globales
 
   return json(200, { ...resolved, offset, limit, total, hasMore: offset + limit < total });

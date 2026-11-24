@@ -155,7 +155,13 @@ export async function listMine({ accessToken }, fetchImpl = fetch) {
   // Id del usuario, para saber qué listas son SUYAS. En «development mode» Spotify solo deja leer el contenido de listas
   // propias o colaborativas; las que solo sigues llegan vacías (ADR-0044). Marcar el dueño evita el «no hay canciones».
   let me = null;
-  try { me = (await getJson(`${API}/v1/me`, accessToken, fetchImpl))?.id ?? null; } catch { /* sin /me, no se marca dueño */ }
+  try { me = (await getJson(`${API}/v1/me`, accessToken, fetchImpl))?.id ?? null; } catch (error) {
+    // 401 (token caducado) SÍ se propaga: si lo tragamos aquí, /v1/me/playlists también dará 401 pero nosotros ya
+    // lo habríamos convertido en 403 por el catch de abajo → envoltorio 502 y el cliente no refresca. Dejamos que
+    // suba y el handler lo mapee a 401 + needsAuth (ADR-0044 ampliado 2026-11-24). El 403 (dev-mode sin quota),
+    // el 429 (rate-limit) y cualquier error de red siguen tragados: se seguirá sin marcar dueño.
+    if (error instanceof SpotifyApiError && error.status === 401) throw error;
+  }
   // Spotify restringió /v1/me/playlists en apps en Development Mode sin Extended Quota (2024-11+, ADR-0044 ampliado
   // 2026-11-23): devuelve 403 aunque el token sea válido. Si pasa, caemos a /v1/users/{me}/playlists, que SÍ sigue
   // público y lista las playlists públicas del usuario (sin scopes especiales). Limitación: no incluye las privadas
@@ -167,6 +173,12 @@ export async function listMine({ accessToken }, fetchImpl = fetch) {
   } catch (error) {
     if (error instanceof SpotifyApiError && error.status === 403 && me) {
       first = await getJson(`${API}/v1/users/${encodeURIComponent(me)}/playlists?limit=50`, accessToken, fetchImpl);
+      publicOnly = true;
+    } else if (error instanceof SpotifyApiError && error.status === 403 && !me) {
+      // Sin `me` (porque /v1/me también falló con 403 y lo tragamos arriba: cuenta sin Extended Quota) seguimos
+      // dando una lista VACÍA en vez de tirar el 502 (ADR-0044 ampliado 2026-11-24). El cliente ya sabe tratar
+      // publicOnly (muestra el aviso de que hay que pegar enlaces); antes esto reventaba la pantalla al abrir.
+      first = { items: [], next: null };
       publicOnly = true;
     } else {
       throw error;

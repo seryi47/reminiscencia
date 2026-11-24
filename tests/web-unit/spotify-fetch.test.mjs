@@ -110,4 +110,34 @@ describe('listMine', () => {
     assert.equal(mine.playlists[0].image, 'i.jpg');
     assert.equal(mine.liked, 42);
   });
+
+  test('401 de /v1/me se propaga (no lo traga el catch): el cliente refresca (ADR-0044 ampliado 2026-11-24)', async () => {
+    // Antes: /v1/me con 401 se tragaba silenciosamente → me=null → /v1/me/playlists daba 403 sin fallback (requiere `me`)
+    // → envoltorio 502 y el cliente no refrescaba el token. Ahora el 401 sube limpio al handler, que devuelve 401 +
+    // needsAuth para disparar el refresh.
+    const fetchImpl = async (url) => {
+      if (url.includes('/v1/me')) return { ok: false, status: 401, json: async () => ({ error: { message: 'token caducado' } }) };
+      throw new Error('no debería llegar aquí');
+    };
+    await assert.rejects(
+      () => listMine({ accessToken: 'AT' }, fetchImpl),
+      (error) => error instanceof SpotifyApiError && error.status === 401,
+    );
+  });
+
+  test('403 de /v1/me/playlists SIN `me` devuelve lista vacía con publicOnly (no 502)', async () => {
+    // Antes, cuando /v1/me daba 403 (dev-mode sin Extended Quota) `me` quedaba null; /v1/me/playlists daba 403 también,
+    // y como el fallback público necesita `me`, se lanzaba el error → envoltorio 502 y pantalla en blanco. Ahora cae a
+    // lista vacía con publicOnly=true: el cliente muestra la ayuda de pegar enlaces en vez de reventar.
+    const fetchImpl = async (url) => {
+      if (url.includes('/v1/me/playlists')) return { ok: false, status: 403, json: async () => ({ error: { message: 'Insufficient client scope' } }) };
+      if (url.endsWith('/v1/me')) return { ok: false, status: 403, json: async () => ({ error: { message: 'User not registered in the Developer Dashboard' } }) };
+      if (url.includes('/v1/me/tracks')) return { ok: false, status: 403, json: async () => ({ error: { message: 'Insufficient client scope' } }) };
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    const mine = await listMine({ accessToken: 'AT' }, fetchImpl);
+    assert.deepEqual(mine.playlists, []);
+    assert.equal(mine.publicOnly, true);
+    assert.equal(mine.me, null);
+  });
 });
