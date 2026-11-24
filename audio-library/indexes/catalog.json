@@ -12430,6 +12430,23 @@
       "added_at": "2026-11-24T11:39:45+00:00",
       "public": true,
       "track": 98
+    },
+    {
+      "id": "Scc01378a2f66c377",
+      "title": "Orgullo Banderillero",
+      "artist": "SFDK",
+      "year": null,
+      "tags": [],
+      "folder_id": "Ff555ff7a9dc46813",
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "cc01378a2f66c377492efc7caec8a9e59b225d6ff999fc9f880ad37830c1646c",
+      "duration_s": 266.986,
+      "codec": "opus",
+      "size_bytes": 1639222,
+      "added_at": "2026-11-24T11:40:34+00:00",
+      "public": true,
+      "track": 99
     }
   ]
 }
