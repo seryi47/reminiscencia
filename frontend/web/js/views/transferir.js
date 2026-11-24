@@ -267,7 +267,12 @@ function transferPanel(ctx) {
         // Nombre REAL de la colección cuando se analiza por URL (p. ej. «Mix») en vez de la URL cruda. El embed devuelve
         // `out.album.name`; si no hay, usamos la etiqueta original. Evita títulos tipo «https://open.spotify.com/…».
         const realName = out.album?.name || source.label;
-        collections.push({ name: realName, album: out.album, results: out.results, excluded: new Set(), overrides: new Map() });
+        collections.push({
+          name: realName, album: out.album, results: out.results,
+          excluded: new Set(), overrides: new Map(),
+          devModeCap: out.devModeCap === true,
+          reportedTotal: out.reportedTotal ?? out.results.length,
+        });
       }
       state.collections = collections;
       // Recoloca al momento lo que ya tienes pero suelto/en otro álbum (cubre también el caso «todo ya lo tienes», en el
@@ -355,11 +360,22 @@ function transferPanel(ctx) {
     node._refreshCount = () => { go.querySelector('[data-testid="transferir-go-text"]').textContent = `Transferir ${totalSelected()} canciones`; };
 
     const stats = transferStats(state.collections);
+    // Aviso de tope de dev-mode (ADR-0044): si Spotify respondió `tracks.total` mayor de lo que pudimos leer, la app
+    // estaba en Dev Mode sin Extended Quota y Spotify capa a 100 pistas las playlists AJENAS. Se lo contamos al
+    // usuario con una vía de salida real: clonar la lista a su propio Spotify (donde no hay tope).
+    const capped = state.collections.filter((c) => c.devModeCap && c.reportedTotal > c.results.length);
+    const cappedNote = capped.length > 0
+      ? el('p', { class: 'transferir-intro transferir-tope', 'data-testid': 'transferir-tope' },
+          capped.length === 1
+            ? `«${capped[0].name ?? 'esa lista'}» tiene ${capped[0].reportedTotal} canciones en Spotify pero solo hemos podido leer ${capped[0].results.length} (tope de Spotify para listas que no son tuyas). Para traerlas todas: ábrela en Spotify, pulsa los tres puntos → «Añadir a otra playlist» → «Nueva playlist», y transfiere desde esa copia tuya.`
+            : `${capped.length} de las listas elegidas tienen más canciones de las que Spotify nos deja leer (tope de listas ajenas). Para traerlas enteras, clónalas a tu perfil: tres puntos → «Añadir a otra playlist» → «Nueva playlist».`)
+      : null;
     setSection(
       el('p', { class: 'transferir-intro' },
         `Comparado con tu biblioteca: faltan ${plural(stats.uniqueMissing, 'canción', 'canciones')} por transferir${stats.totalHave ? `; ya tienes ${stats.totalHave}` : ''}. `
         + (anyReview ? 'Abajo solo lo que conviene revisar (ya hay una versión elegida; cámbiala solo si hace falta).'
           : 'Todo identificado automáticamente. Dale a «Transferir».')),
+      ...(cappedNote ? [cappedNote] : []),
       recolocNote(),
       ...blocks,
       el('div', { class: 'transferir-actions' },

@@ -65,7 +65,7 @@ La canción fantasma y los cierres son **solo de la APK**.
   - Las transmitidas reutilizan su fuente mientras la dirección no cambie, así el servidor local de just_audio no crece y una descarga en curso no se repite.
   - La descarga y la caché de just_audio usan temporales distintos (`.N.part` y `.part`) y renombran al final.
   - La descarga rechaza un cuerpo más corto que `Content-Length` (`library_store.dart`).
-- **Vigilante de parones** (`kStallTimeout`, 15 s, igual que la web), solo para canciones transmitidas: si se queda esperando datos sin avanzar, reintenta una vez desde el mismo punto y, si sigue, va por el camino de error. Nunca actúa sobre una canción que suena desde el fichero.
+- **Vigilante de parones** (`kStallTimeout`, 20 s, igual que la web; `kStallMaxRetries = 2` desde 2026-11-24), solo para canciones transmitidas: si se queda esperando datos sin avanzar, reintenta hasta 2 veces desde el mismo punto y, si sigue, va por el camino de error. Nunca actúa sobre una canción que suena desde el fichero. (Antes de 2026-11-24 era 15 s y un solo reintento; con dos hipos seguidos de red móvil la canción saltaba a mitad.)
 - **Registro de errores** (`lib/error_log.dart`):
   - recoge `FlutterError.onError` y `PlatformDispatcher.onError`;
   - guarda 256 KB más una copia rotada, en `files/registro/`;
@@ -74,7 +74,7 @@ La canción fantasma y los cierres son **solo de la APK**.
 
 ### Web
 
-- **Vigilante de parones** (`js/player.js`, `STALL_TIMEOUT_MS = 15 000`): con la reproducción pedida, un `waiting`/`stalled` sin avance reintenta una vez la misma fuente desde el mismo punto y después va por el camino de error de siempre. No toca las canciones servidas desde el dispositivo (descargadas o subidas aquí): el service worker las sirve desde la caché, sin red.
+- **Vigilante de parones** (`js/player.js`, `STALL_TIMEOUT_MS = 20 000`, `STALL_MAX_RETRIES = 2` desde 2026-11-24): con la reproducción pedida, un `waiting`/`stalled` sin avance reintenta hasta 2 veces la misma fuente desde el mismo punto y después va por el camino de error. No toca las canciones servidas desde el dispositivo (descargadas o subidas aquí): el service worker las sirve desde la caché, sin red. (Antes era 15 s y un solo reintento; con dos hipos seguidos de red móvil se saltaba a mitad.)
 - **Versión nueva sin cortar la música** (`js/pwa.js`, `updateAction`):
   - Sin nada cargado, la página se recarga como antes.
   - Con una canción cargada (sonando o en pausa) o el vídeo de YouTube, no se recarga. Sale el aviso «Hay una versión nueva de Reminiscencia.» con «Recargar» (`update-notice`, `role="status"`).

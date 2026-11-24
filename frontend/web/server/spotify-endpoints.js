@@ -132,6 +132,8 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
     return json(200, {
       type: collection.type, id: collection.id, name: collection.name, album: albumOf(collection),
       results, summary, offset, limit, total, hasMore: offset + limit < total,
+      devModeCap: collection.devModeCap === true,
+      reportedTotal: collection.reportedTotal ?? total,
     });
   }
 
@@ -147,7 +149,11 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   const resolved = await resolveCollection(pageCollection, { searchYoutube: search }, { concurrency: 1, budgetMs: 25000 });
   for (const result of resolved.results) result.index += offset; // índices globales
 
-  return json(200, { ...resolved, offset, limit, total, hasMore: offset + limit < total });
+  return json(200, {
+    ...resolved, offset, limit, total, hasMore: offset + limit < total,
+    devModeCap: collection.devModeCap === true,
+    reportedTotal: collection.reportedTotal ?? total,
+  });
 }
 
 /** GET /api/spotify/callback → la página que cierra el login (web: cambia el código; APK: lo devuelve por el esquema). */

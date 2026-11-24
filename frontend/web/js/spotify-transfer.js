@@ -96,6 +96,8 @@ export async function resolveCollection({ api, url, source, ref, storage = globa
   let album = null;
   let total = 0;
   let offset = 0;
+  let devModeCap = false;
+  let reportedTotal = 0;
   for (;;) {
     let page;
     try {
@@ -107,6 +109,10 @@ export async function resolveCollection({ api, url, source, ref, storage = globa
     }
     album = page.album ?? album;
     total = page.total ?? results.length + page.results.length;
+    // Tope de dev-mode de Spotify: una página marca la colección si Spotify respondió un total mayor que lo leído
+    // (ADR-0044). Lo propagamos arriba para que la vista pueda mostrar el aviso con el recuento real.
+    devModeCap = devModeCap || page.devModeCap === true;
+    reportedTotal = Math.max(reportedTotal, page.reportedTotal ?? total);
     results.push(...page.results);
     for (const tier of ['alta', 'media', 'baja', 'error']) summary[tier] += page.summary?.[tier] ?? 0;
     summary.total = results.length;
@@ -150,7 +156,7 @@ export async function resolveCollection({ api, url, source, ref, storage = globa
       await Promise.all([rescue(), rescue()]);
     }
   }
-  return { album, results, total, summary };
+  return { album, results, total, summary, devModeCap, reportedTotal };
 }
 
 /** Lista la biblioteca del usuario (playlists + «Me gusta») para elegir qué transferir. Refresca el token si hace falta. */

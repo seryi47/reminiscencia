@@ -78,7 +78,15 @@ Tras una prueba real que se quedó colgada, se auditó todo el flujo contra la d
 
 ## Límite conocido: «development mode»
 
-En development mode, Spotify solo devuelve el **contenido de las playlists propias o colaborativas**; las de otras personas o las editoriales llegan sin pistas (solo metadatos). Los **álbumes** y las **canciones sueltas** (catálogo) funcionan siempre. El dueño de la app necesita **Premium** y se permiten hasta 5 cuentas. La UI avisa si una playlist llega vacía.
+En development mode, Spotify solo devuelve el **contenido de las playlists propias o colaborativas**; las de otras personas o las editoriales llegan sin pistas (solo metadatos). Los **álbumes** y las **canciones sueltas** (catálogo) funcionan siempre. El dueño de la app necesita **Premium** y se permiten hasta 5 cuentas.
+
+**Ampliación 2026-11-24 — tope de 100 pistas en listas ajenas sin «Extended Quota»:** en apps en dev-mode SIN Extended Quota, Spotify **TOPA a 100 pistas** la lectura de playlists ajenas aunque la lista tenga más (p. ej. una lista pública de 304 canciones devuelve `tracks.total: 304` pero `/v1/playlists/<id>/tracks` solo expone las 100 primeras). **No hay vía pública para saltarlo**: el endpoint `open.spotify.com/get_access_token` que usa el reproductor web devuelve `403 Varnish` desde IPs sin cookies de sesión (nuestro Worker lo intentó y se bloqueó). Lo que sí hace el Worker es MARCAR la colección como `devModeCap: true` + `reportedTotal: 304`; el cliente muestra un aviso explicando el tope y la vía de salida real: **clonar la lista al Spotify del usuario** (tres puntos → Añadir a otra playlist → Nueva playlist) porque las listas propias/colaborativas NO tienen tope. Reintentos cortos para 5xx transitorios en `getJson` (3 intentos, backoff 300/900 ms) y resilencia en la paginación (si una página falla, se devuelve lo acumulado en vez de propagar) completan la robustez.
+
+**Ampliación 2026-11-24 — resolver: presupuesto de tiempo + auto-rescate cliente.** El resolver pasa `budgetMs: 25000` al pipeline para que, con 25 pistas × `concurrency: 1` + reintentos + «último recurso» de 8 s, no se supere el límite de 30 s de CPU del Worker (antes se traducía a 503 Error 1102). El cliente, cuando una pista llega con `best=null` y sin `alternatives`, lanza una búsqueda directa a `/api/youtube/search` con `artista título` y rellena el selector al vuelo (evita el dropdown vacío «Elige una versión»).
+
+**Ampliación 2026-11-24 — transferir: detector de cola atascada y corte por ciclo seco.** `jobTimeout` bajado de 10 min a 4 min por pista, y si la cola del conversor no cambia en 20 polls (~60 s) la pista se da por atascada y se salta. Y si un ciclo entero de reintentos no añade NI UNA pista nueva, el bucle corta (antes repetía «reintento en 10 min» en bucle aunque llevara horas sin avanzar).
+
+**Ampliación 2026-11-24 — fetch robusto: propagación limpia de 401.** El 401 de `/v1/me` se propaga al handler (antes se tragaba en silencio → `me=null` → 403 de `/v1/me/playlists` sin fallback → 502 al cliente, que nunca refrescaba el token). Ahora sube limpio y el handler devuelve 401 + `needsAuth` para disparar el refresh. Y si `/v1/me/playlists` da 403 sin `me`, se responde lista vacía con `publicOnly: true` (antes reventaba la pantalla al abrir «Transferir»).
 
 ## Límite conocido del login web
 
