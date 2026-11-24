@@ -779,7 +779,7 @@ describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover
     const response = await handleRequest(new Request(`${SITE}/api/youtube/search?q=SFDK+Orgullo+Banderillero`), {}, { fetchImpl });
     assert.equal(response.status, 200);
     // La respuesta trae la cabecera-marca para que el navegador vea que es del Worker, no de la plataforma.
-    assert.equal(response.headers.get('X-Reminiscencia-Youtube'), 'worker-music-fallback');
+    assert.equal(response.headers.get('X-Reminiscencia-Youtube'), 'worker-fallback');
     const data = await response.json();
     assert.ok(Array.isArray(data.items));
     assert.ok(data.items.length > 0, 'YT Music devolvió candidatos cuando los upstreams estaban caídos');

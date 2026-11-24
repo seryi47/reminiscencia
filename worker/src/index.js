@@ -35,6 +35,7 @@ import { handleStatus } from '../../frontend/web/server/youtube-status.js';
 import { handleDownload } from '../../frontend/web/server/youtube-download.js';
 import { YOUTUBE_MARK_HEADER, markYoutube } from '../../frontend/web/server/youtube-mark.js';
 import { searchYoutubeMusic, mergeCandidates } from '../../frontend/web/server/youtube-music.js';
+import { searchYoutubeScrape } from '../../frontend/web/server/youtube-scrape.js';
 import {
   handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyCallback,
 } from '../../frontend/web/server/spotify-endpoints.js';
@@ -209,27 +210,32 @@ async function forwardYoutube(request, env, fetchImpl) {
     console.error('youtube: upstream caído', base, response.status);
     youtubeDown.set(base, now + YOUTUBE_DOWN_TTL_MS);
   }
-  // Fallback a YouTube Music desde el propio Worker (ADR-0038 ampliado 2026-11-24): si Vercel y Netlify están caídos
-  // los dos (Vercel pausado por Fast Origin Transfer hasta 2026-12-07, Netlify con cupo mensual agotado) se intenta
-  // resolver aquí la búsqueda de `/search` con `searchYoutubeMusic`, que solo necesita `fetch` y no depende de yt-dlp.
-  // Así el botón «Buscar otra en YouTube» y «Transferir música» no dejan de funcionar aunque no haya upstream yt-dlp.
-  // Solo /search tiene este fallback; /playlist sigue necesitando yt-dlp. Un error aquí deja el 502 original.
+  // Fallbacks desde el propio Worker (ADR-0038 ampliado 2026-11-24): si Vercel y Netlify están caídos los dos (Vercel
+  // pausado por Fast Origin Transfer hasta 2026-12-07, Netlify con cupo mensual agotado) se intenta resolver aquí la
+  // búsqueda de `/search` con dos capas:
+  //   1. `searchYoutubeMusic` → canales oficiales (Topic/Art Track), señal de ADR-0044 más valiosa.
+  //   2. `searchYoutubeScrape` → scraping de youtube.com/results, el mismo HTML que yt-dlp parsea.
+  // Ambas solo usan `fetch` y no necesitan yt-dlp. Así «Transferir música» y el botón «Buscar otra en YouTube» siguen
+  // funcionando aunque no haya upstream yt-dlp. Solo `/search` tiene este fallback; `/playlist` sigue necesitándolo.
   if (source.pathname === `${YOUTUBE_PREFIX}search`) {
     const query = source.searchParams.get('q') ?? '';
     if (query) {
-      try {
-        const music = await searchYoutubeMusic(query, { fetchImpl });
-        if (music.length > 0) {
-          return new Response(JSON.stringify({ items: music }), {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
-              [YOUTUBE_MARK_HEADER]: 'worker-music-fallback',
-            },
-          });
-        }
-      } catch (error) { console.error('youtube: fallback YT Music falló', error?.name ?? 'Error'); }
+      const [music, scrape] = await Promise.all([
+        searchYoutubeMusic(query, { fetchImpl }).catch(() => []),
+        searchYoutubeScrape(query, { fetchImpl }).catch(() => []),
+      ]);
+      // YT Music primero (canales oficiales); el scraping rellena con los vídeos normales.
+      const items = mergeCandidates(music, scrape);
+      if (items.length > 0) {
+        return new Response(JSON.stringify({ items }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+            [YOUTUBE_MARK_HEADER]: 'worker-fallback',
+          },
+        });
+      }
     }
   }
   return jsonResponse(502, { ok: false, error: 'El servicio de YouTube no responde ahora mismo. Inténtalo más tarde.' });
