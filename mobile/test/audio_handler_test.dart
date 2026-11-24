@@ -69,7 +69,8 @@ void main() {
         'es.orbitalabs.reminiscencia.audio',
       );
       expect(kIdleStopAfter, const Duration(minutes: 15));
-      expect(kStallTimeout, const Duration(seconds: 15));
+      expect(kStallTimeout, const Duration(seconds: 20));
+      expect(kStallMaxRetries, 2);
     });
 
     test(
@@ -490,31 +491,32 @@ void main() {
     });
 
     test(
-      'parada esperando datos: reintenta una vez en el mismo punto y después va al camino de error',
+      'parada esperando datos: reintenta hasta kStallMaxRetries veces y después va al camino de error',
       () async {
+        // Antes solo había 1 reintento; con dos hipos seguidos de red móvil la canción saltaba a mitad (2026-11-24).
+        // Cada hipo se simula con un buffering nuevo (en el aparato real, cada waiting del navegador/just_audio).
         await handler.playAt(songs, 0);
         final loads = player.loads.length;
+        for (var i = 1; i <= kStallMaxRetries; i += 1) {
+          player.setState(
+            ProcessingState.buffering,
+            position: const Duration(seconds: 30),
+          );
+          await drain(const Duration(milliseconds: 80));
+          expect(player.loads.length, loads + i, reason: 'reintento $i');
+          expect(
+            player.loads.last.uriAt(0),
+            player.loads.first.uriAt(0),
+            reason: 'misma dirección',
+          );
+        }
+        // Agotados los reintentos: el siguiente hipo lleva al camino de error (otro host de audio).
         player.setState(
           ProcessingState.buffering,
           position: const Duration(seconds: 30),
         );
         await drain(const Duration(milliseconds: 80));
-
-        expect(player.loads.length, loads + 1, reason: 'un reintento');
-        expect(player.loads.last.initialPosition, const Duration(seconds: 30));
-        expect(
-          player.loads.last.uriAt(0),
-          player.loads.first.uriAt(0),
-          reason: 'misma dirección',
-        );
-
-        // Sigue parada: ahora es un error (siguiente dirección del audio), no otro reintento igual.
-        player.setState(
-          ProcessingState.buffering,
-          position: const Duration(seconds: 30),
-        );
-        await drain(const Duration(milliseconds: 80));
-        expect(player.loads.length, loads + 2);
+        expect(player.loads.length, loads + kStallMaxRetries + 1);
         expect(
           player.loads.last.uriAt(0).host,
           isNot(player.loads.first.uriAt(0).host),

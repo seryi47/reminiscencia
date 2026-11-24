@@ -199,7 +199,8 @@ class SpotifyPlaylistRef {
   final String name;
   final int total;
   final String? image;
-  final bool? mine; // null si no se pudo saber; false = no es tuya (en dev mode se importa por la vía pública, máx 100)
+  final bool? mine; // null si no se pudo saber; false = no es tuya (el Worker usa fallback con token anónimo del
+  // reproductor web público para saltar el tope de 100 pistas de dev-mode, ADR-0044 ampliado 2026-11-24)
   final String? ownerName;
   factory SpotifyPlaylistRef.fromJson(Map<String, dynamic> json) => SpotifyPlaylistRef(
         id: (json['id'] as String?) ?? '',

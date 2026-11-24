@@ -34,10 +34,11 @@ const AudioServiceConfig kAudioServiceConfig = AudioServiceConfig(
 /// su servicio y su notificación.
 const Duration kIdleStopAfter = Duration(minutes: 15);
 
-/// Si una canción que llega por la red se queda esperando datos este tiempo sin avanzar, se reintenta una vez desde
-/// el mismo punto; si sigue parada, se trata como un error. Igual que la web (`STALL_TIMEOUT_MS`, js/player.js).
-/// No se aplica a las canciones que suenan desde un fichero del teléfono.
-const Duration kStallTimeout = Duration(seconds: 15);
+/// Si una canción que llega por la red se queda esperando datos este tiempo sin avanzar, se reintenta desde
+/// el mismo punto; hasta [kStallMaxRetries] veces antes de saltar. Igual que la web (`STALL_TIMEOUT_MS`/
+/// `STALL_MAX_RETRIES`, js/player.js). No se aplica a las canciones que suenan desde un fichero del teléfono.
+const Duration kStallTimeout = Duration(seconds: 20);
+const int kStallMaxRetries = 2;
 
 /// Espera máxima de una búsqueda (siguiente, anterior, saltar a un punto): just_audio no la da por acabada si la
 /// canción de destino falla, y la orden no debe quedarse colgada.
@@ -137,7 +138,7 @@ class SonidosAudioHandler extends BaseAudioHandler
       }
       // Otra canción: los reintentos por parón y por fichero vuelven a estar disponibles.
       if (index != _lastIndex) {
-        _stallRetried = false;
+        _stallRetries = 0;
         _fileRetried = false;
       }
       _lastIndex = index;
@@ -205,9 +206,9 @@ class SonidosAudioHandler extends BaseAudioHandler
   Timer? _idleStop;
   Timer? _stall;
   Duration _stallFrom = Duration.zero;
-  bool _stallRetried = false;
+  int _stallRetries = 0;
 
-  /// Reintento del fichero local de la canción actual antes de descartarlo (análogo a [_stallRetried], ADR-0046).
+  /// Reintento del fichero local de la canción actual antes de descartarlo (análogo a [_stallRetries], ADR-0046).
   bool _fileRetried = false;
 
   /// Canciones cacheadas ya detectadas como truncadas y re-transmitidas (una vez cada una, para no entrar en bucle).
@@ -419,7 +420,7 @@ class SonidosAudioHandler extends BaseAudioHandler
     final sources = <AudioSource>[for (final (s, _) in pairs) s];
     final fromFile = <bool>[for (final (_, f) in pairs) f];
     _fromFile = fromFile;
-    _stallRetried = false;
+    _stallRetries = 0;
     // Conservar el orden aleatorio entre recargas (reintento, parón, reconexión): si no, just_audio lo RE-BARAJA en
     // cada setAudioSources y las canciones ya escuchadas vuelven a salir enseguida (ADR-0046). Solo se baraja de nuevo
     // al empezar una cola nueva (freshShuffle, desde _loadQueue) o cuando el usuario activa el aleatorio (setShuffle).
@@ -708,7 +709,7 @@ class SonidosAudioHandler extends BaseAudioHandler
       if (state == ProcessingState.ready &&
           _player.playing &&
           _player.position > _stallFrom) {
-        _stallRetried = false;
+        _stallRetries = 0;
       }
       return;
     }
@@ -748,13 +749,18 @@ class SonidosAudioHandler extends BaseAudioHandler
           );
           return;
         }
-        // Con conexión pero la fuente no responde: un reintento desde el mismo punto.
-        if (!_stallRetried) {
+        // Con conexión pero la fuente no responde: reintento desde el mismo punto. Incrementamos el contador
+        // ANTES de _setSources porque _setSources pone _stallRetries=0 (al ser el camino normal de cambiar de
+        // pista); si no, los reintentos nunca se cuentan y nos quedamos en bucle infinito reintentando la
+        // misma canción (2026-11-24).
+        if (_stallRetries < kStallMaxRetries) {
+          _stallRetries += 1;
+          final attempt = _stallRetries;
           debugPrint(
-            'reproductor: «${_titleAt(index)}» parada; reintento desde el mismo punto',
+            'reproductor: «${_titleAt(index)}» parada; reintento $attempt/$kStallMaxRetries desde el mismo punto',
           );
           if (await _setSources(index, position)) {
-            _stallRetried = true;
+            _stallRetries = attempt; // _setSources lo había reseteado; recuperamos el contador
             _startPlayback();
           }
           return;
