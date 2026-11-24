@@ -393,9 +393,41 @@ function transferPanel(ctx) {
       match);
   }
 
+  // Auto-rescate (ADR-0044 ampliado 2026-11-24): cuando una pista llega con best=null Y sin alternativas (p.ej. todas las
+  // variantes del resolver cayeron por rate-limit del upstream o la primera query no encontró nada), el cliente dispara
+  // una búsqueda directa con «artista título» y rellena las alternativas; antes el usuario tenía que pulsar manualmente
+  // «Buscar otra en YouTube» por cada una y veía una lista entera de pistas sin candidatos aunque YouTube los tuviera.
+  async function autoRescueCandidates(result) {
+    if (result._rescued) return [];
+    result._rescued = true;
+    const artist = (result.track.artists || [])[0] || '';
+    const title = result.track.title || '';
+    const query = `${artist} ${title}`.trim();
+    if (query.length < 2) return [];
+    try {
+      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return [];
+      const data = await res.json().catch(() => ({}));
+      const items = Array.isArray(data.items) ? data.items : [];
+      return items.slice(0, 5).map((it) => ({
+        candidate: { url: it.url, title: it.title, durationS: it.durationS, source: it.source || 'search', id: it.id, artist: it.artist },
+      }));
+    } catch { return []; }
+  }
+
   // Selector de versión (compacto) + un enlace para buscar otra en YouTube (oculto hasta que se pulsa).
   function paintMatch(collection, container, result, chosen) {
     const options = dedupeCandidates([result.best, ...(result.alternatives || [])].filter(Boolean));
+    // Si el server no trajo ni best ni alternativas, lanzamos la búsqueda directa y repintamos cuando llegue.
+    if (options.length === 0) {
+      autoRescueCandidates(result).then((entries) => {
+        if (entries.length === 0) return;
+        result.alternatives = entries;
+        result.best = result.best || entries[0];
+        const cell = node.querySelector(`.transferir-row[data-index="${result.index}"] .transferir-match`);
+        if (cell) paintMatch(collection, cell, result, chosenEntry(collection, result));
+      });
+    }
     const select = el('select', { class: 'input transferir-alt', 'data-testid': 'transferir-alt', 'data-index': String(result.index) });
     if (!chosen) select.append(el('option', { value: '' }, '— Elige una versión —'));
     for (const entry of options) {

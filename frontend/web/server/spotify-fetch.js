@@ -145,8 +145,10 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
     try {
       const playlist = await getJson(`${API}/v1/playlists/${ref.id}?fields=id,name,images,owner,tracks(total,limit)`, accessToken, fetchImpl);
       totalTracks = Number.isFinite(playlist?.tracks?.total) ? playlist.tracks.total : 0;
-      const cap = Math.min(totalTracks, maxTracks === Infinity ? totalTracks : maxTracks);
-      const items = await fetchPlaylistTracksByOffset(ref.id, accessToken, fetchImpl, cap);
+      // NO confiamos en `tracks.total` como tope de paginación: Spotify a veces reporta un total menor que las pistas
+      // que realmente devuelve (Mix dinámicas, playlists editoriales). Iteramos hasta vacío y solo limitamos por
+      // `maxTracks` si se pide. El `total` queda para telemetría/logs.
+      const items = await fetchPlaylistTracksByOffset(ref.id, accessToken, fetchImpl, maxTracks);
       collection = normalizePlaylist({ ...playlist, tracks: { items } });
     } catch (error) {
       if (!(error instanceof SpotifyApiError) || error.status !== 403) throw error;
