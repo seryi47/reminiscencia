@@ -209,6 +209,29 @@ async function forwardYoutube(request, env, fetchImpl) {
     console.error('youtube: upstream caído', base, response.status);
     youtubeDown.set(base, now + YOUTUBE_DOWN_TTL_MS);
   }
+  // Fallback a YouTube Music desde el propio Worker (ADR-0038 ampliado 2026-11-24): si Vercel y Netlify están caídos
+  // los dos (Vercel pausado por Fast Origin Transfer hasta 2026-12-07, Netlify con cupo mensual agotado) se intenta
+  // resolver aquí la búsqueda de `/search` con `searchYoutubeMusic`, que solo necesita `fetch` y no depende de yt-dlp.
+  // Así el botón «Buscar otra en YouTube» y «Transferir música» no dejan de funcionar aunque no haya upstream yt-dlp.
+  // Solo /search tiene este fallback; /playlist sigue necesitando yt-dlp. Un error aquí deja el 502 original.
+  if (source.pathname === `${YOUTUBE_PREFIX}search`) {
+    const query = source.searchParams.get('q') ?? '';
+    if (query) {
+      try {
+        const music = await searchYoutubeMusic(query, { fetchImpl });
+        if (music.length > 0) {
+          return new Response(JSON.stringify({ items: music }), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+              [YOUTUBE_MARK_HEADER]: 'worker-music-fallback',
+            },
+          });
+        }
+      } catch (error) { console.error('youtube: fallback YT Music falló', error?.name ?? 'Error'); }
+    }
+  }
   return jsonResponse(502, { ok: false, error: 'El servicio de YouTube no responde ahora mismo. Inténtalo más tarde.' });
 }
 

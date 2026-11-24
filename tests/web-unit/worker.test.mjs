@@ -738,6 +738,53 @@ describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover
     assert.deepEqual(order, [WEB_ORIGIN, NETLIFY_ORIGIN, NETLIFY_ORIGIN]);
   });
 
+  test('fallback a YT Music cuando AMBOS upstreams caídos (ADR-0038 ampliado 2026-11-24): /search sirve desde el Worker', async () => {
+    const { resetMusicCredsCache } = await import('../../frontend/web/server/youtube-music.js');
+    resetMusicCredsCache();
+    // Replica el caso real del 2026-11-24: Vercel pausado (402) + Netlify con cupo mensual agotado (usage_exceeded,
+    // un 429 sin la cabecera-marca). El Worker tiene que caer a searchYoutubeMusic directamente y servir el /search.
+    const fetchImpl = async (url) => {
+      const u = new URL(url);
+      if (u.origin === WEB_ORIGIN) return new Response('', { status: 402 });
+      if (u.origin === NETLIFY_ORIGIN) return new Response('{"error":"usage_exceeded"}', { status: 429 });
+      // YouTube Music home (devuelve el HTML con las creds de InnerTube)
+      if (u.hostname === 'music.youtube.com' && u.pathname === '/') {
+        return new Response(
+          '<html>var ytcfg = {"INNERTUBE_API_KEY":"TEST_KEY","INNERTUBE_CLIENT_VERSION":"1.20260101.01.00"};</html>',
+          { status: 200, headers: { 'Content-Type': 'text/html' } },
+        );
+      }
+      // YouTube Music search API
+      if (u.hostname === 'music.youtube.com' && u.pathname.includes('/youtubei/v1/search')) {
+        const body = JSON.stringify({
+          contents: { tabbedSearchResultsRenderer: { tabs: [{ tabRenderer: { content: { sectionListRenderer: { contents: [
+            { musicShelfRenderer: { contents: [
+              { musicResponsiveListItemRenderer: {
+                flexColumns: [
+                  { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: 'Orgullo Banderillero' }] } } },
+                  // cols[1] lleva artista + bullets + duración, que es como YT Music lo serializa en el renderer
+                  { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [
+                    { text: 'SFDK' }, { text: ' • ' }, { text: '4:28' },
+                  ] } } },
+                ],
+                navigationEndpoint: { watchEndpoint: { videoId: 'abcdefghijk' } },
+              } },
+            ] } },
+          ] } } } }] } },
+        });
+        return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new TypeError('fetch failed');
+    };
+    const response = await handleRequest(new Request(`${SITE}/api/youtube/search?q=SFDK+Orgullo+Banderillero`), {}, { fetchImpl });
+    assert.equal(response.status, 200);
+    // La respuesta trae la cabecera-marca para que el navegador vea que es del Worker, no de la plataforma.
+    assert.equal(response.headers.get('X-Reminiscencia-Youtube'), 'worker-music-fallback');
+    const data = await response.json();
+    assert.ok(Array.isArray(data.items));
+    assert.ok(data.items.length > 0, 'YT Music devolvió candidatos cuando los upstreams estaban caídos');
+  });
+
   test('si ningún upstream responde, 502 con la cabecera del Worker; otro origen, 403 sin reenviar', async () => {
     const failing = async () => { throw new TypeError('fetch failed'); };
     const down = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`), {}, { fetchImpl: failing });
