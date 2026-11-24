@@ -10,6 +10,7 @@ import {
   PREVIOUS_RESTART_SECONDS,
   REPEAT_MODES,
   STALL_TIMEOUT_MS,
+  STALL_MAX_RETRIES,
   clampVolume,
   createPlayer,
   createPrefsSaver,
@@ -518,23 +519,24 @@ describe('parones de la red (vigilante)', () => {
     assert.equal(STALL_TIMEOUT_MS >= 15_000 && STALL_TIMEOUT_MS <= 20_000, true);
   });
 
-  test('sin avance, primero vuelve a pedir la misma canción desde el mismo punto y después la trata como un error', () => {
+  test('sin avance, reintenta STALL_MAX_RETRIES veces desde el mismo punto y después la trata como un error', () => {
+    // Antes solo se reintentaba una vez y una red móvil con dos hipos seguidos saltaba la canción a mitad
+    // (reportado 2026-11-24). Ahora toleramos hasta STALL_MAX_RETRIES hipos antes de saltar.
     const { player, audio, timers, notices } = setup();
     player.load([A, B], 0);
     advanceTo(audio, 42);
     audio.emit('waiting');
-    const plays = audio.playCalls;
-    timers.run(STALL_TIMEOUT_MS);
-    // Reintento: misma fuente, recargada, en el mismo segundo y sonando.
-    assert.equal(audio.loadCalls, 1);
-    assert.equal(audio.src, A.audioUrl);
-    assert.equal(audio.currentTime, 42);
-    assert.equal(audio.playCalls, plays + 1);
-    assert.equal(player.getState().playing, true);
-    assert.equal(player.getState().track.id, A.id);
-    assert.deepEqual(notices, []);
-    assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS]);
-    // Tampoco avanza: como un error de reproducción (aviso y, tras ERROR_SKIP_MS, la siguiente).
+    for (let i = 1; i <= STALL_MAX_RETRIES; i += 1) {
+      timers.run(STALL_TIMEOUT_MS);
+      assert.equal(audio.loadCalls, i, `reintento ${i}: recarga`);
+      assert.equal(audio.src, A.audioUrl);
+      assert.equal(audio.currentTime, 42);
+      assert.equal(player.getState().playing, true);
+      assert.equal(player.getState().track.id, A.id);
+      assert.deepEqual(notices, []);
+      assert.deepEqual(timers.pending(), [STALL_TIMEOUT_MS]);
+    }
+    // Tras el último reintento sin progreso: aviso y pasa a la siguiente.
     timers.run(STALL_TIMEOUT_MS);
     assert.deepEqual(notices, [NOTICES.error]);
     assert.equal(player.getState().playing, false);

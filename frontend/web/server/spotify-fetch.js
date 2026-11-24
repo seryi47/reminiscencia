@@ -85,6 +85,41 @@ async function fetchPlaylistTracksByOffset(playlistId, accessToken, fetchImpl, c
   return cap === Infinity ? items : items.slice(0, cap);
 }
 
+/**
+ * Token anónimo del reproductor web público de Spotify. Lo emite el endpoint que abre open.spotify.com cuando se
+ * carga sin sesión: no está sujeto al tope de 100 pistas que Spotify aplica a apps en Development Mode sobre
+ * playlists ajenas (ADR-0044 ampliado 2026-11-24). Se cachea por isolate hasta su expiración.
+ */
+let anonymousTokenCache = { token: null, expiresAt: 0 };
+async function getAnonymousAccessToken(fetchImpl) {
+  const now = Date.now();
+  if (anonymousTokenCache.token && anonymousTokenCache.expiresAt > now + 30_000) {
+    return anonymousTokenCache.token;
+  }
+  try {
+    const res = await fetchImpl('https://open.spotify.com/get_access_token?reason=transport&productType=web-player', {
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!data?.accessToken) return null;
+    anonymousTokenCache = { token: data.accessToken, expiresAt: Number(data.accessTokenExpirationTimestampMs) || (now + 55 * 60_000) };
+    return anonymousTokenCache.token;
+  } catch { return null; }
+}
+
+/**
+ * Como fetchPlaylistTracksByOffset pero con el token anónimo del reproductor web. Se usa como FALLBACK cuando la
+ * lectura con el token del usuario tope por Development Mode y se queda corta frente a `tracks.total`.
+ */
+async function fetchPlaylistTracksAnonymous(playlistId, fetchImpl, cap = Infinity) {
+  const token = await getAnonymousAccessToken(fetchImpl);
+  if (!token) return [];
+  try {
+    return await fetchPlaylistTracksByOffset(playlistId, token, fetchImpl, cap);
+  } catch { return []; }
+}
+
 // Sigue `.next` de un objeto paginado (p. ej. album.tracks). Se mantiene para álbumes y «liked», donde el
 // comportamiento de `.next` es estable. Para playlists usamos fetchPlaylistTracksByOffset.
 async function allItems(firstPage, accessToken, fetchImpl, cap = Infinity) {
@@ -167,11 +202,20 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
     try {
       // Pedimos la metadata y las pistas por separado; cualquier error (403 lista bloqueada, 404, 5xx transitorio
       // de Spotify) hace que `collection` quede en null y caigamos al embed público. Solo el 401 sube para forzar
-      // un refresh de token en el cliente. Antes, un 5xx puntual de Spotify a mitad de una Mix tiraba un 502 al
-      // usuario; ahora degradamos a embed.
+      // un refresh de token en el cliente.
       const playlist = await getJson(`${API}/v1/playlists/${ref.id}?fields=id,name,images,owner,tracks(total,limit)`, accessToken, fetchImpl);
       totalTracks = Number.isFinite(playlist?.tracks?.total) ? playlist.tracks.total : 0;
-      const items = await fetchPlaylistTracksByOffset(ref.id, accessToken, fetchImpl, maxTracks);
+      let items = await fetchPlaylistTracksByOffset(ref.id, accessToken, fetchImpl, maxTracks);
+      // Dev-mode cap de Spotify (ADR-0044 ampliado 2026-11-24): si la app está en Development Mode sin Extended
+      // Quota, Spotify SOLO deja ver las primeras 100 pistas de playlists AJENAS aunque la lista tenga más. Lo
+      // detectamos comparando lo leído con `tracks.total`. Reintento con el token ANÓNIMO del reproductor web
+      // (open.spotify.com/get_access_token), que no está sujeto a ese tope. Así una playlist pública ajena de
+      // 304 pistas vuelve a leerse ENTERA.
+      const wantMore = items.length < Math.min(totalTracks, maxTracks === Infinity ? Infinity : maxTracks);
+      if (wantMore) {
+        const extra = await fetchPlaylistTracksAnonymous(ref.id, fetchImpl, maxTracks);
+        if (extra.length > items.length) items = extra;
+      }
       collection = normalizePlaylist({ ...playlist, tracks: { items } });
     } catch (error) {
       if (error instanceof SpotifyApiError && error.status === 401) throw error;

@@ -11,8 +11,9 @@ export const REPEAT_MODES = Object.freeze(['off', 'all', 'one']);
 export const PREVIOUS_RESTART_SECONDS = 3;
 export const ERROR_SKIP_MS = 3000;
 /** Si una canción que llega por la red se queda esperando datos (eventos waiting o stalled) y no avanza en este tiempo,
- *  se vuelve a pedir una vez desde el mismo punto; si tampoco avanza, se trata como un error (aviso y siguiente). */
-export const STALL_TIMEOUT_MS = 15_000;
+ *  se vuelve a pedir desde el mismo punto; hasta `STALL_MAX_RETRIES` veces antes de saltar (aviso y siguiente). */
+export const STALL_TIMEOUT_MS = 20_000;
+export const STALL_MAX_RETRIES = 2;
 export const NOTICES = Object.freeze({
   unavailable: 'Algunas canciones no están disponibles sin conexión y se han saltado.',
   noneAvailable: 'No hay canciones disponibles sin conexión.',
@@ -150,7 +151,7 @@ export function createPlayer(options = {}) {
   // se sirve desde el dispositivo (se decide al cargarla, no con cada avance del tiempo).
   let stallTimer = null;
   let stallFrom = 0;
-  let stallRetried = false;
+  let stallRetries = 0;
   let sourceOnDevice = false;
   let cachedUpcoming = null;
   const cleanups = [];
@@ -256,7 +257,7 @@ export function createPlayer(options = {}) {
   function setSource(track) {
     errored = false;
     clearStallTimer();
-    stallRetried = false;
+    stallRetries = 0;
     sourceOnDevice = onDevice(track);
     sourceLoaded = Boolean(track && track.audioUrl);
     try {
@@ -331,12 +332,14 @@ export function createPlayer(options = {}) {
       console.warn('Reproductor: una canción guardada en este dispositivo lleva un rato sin avanzar.');
       return;
     }
-    if (stallRetried) {
+    if (stallRetries >= STALL_MAX_RETRIES) {
       handleError();
       return;
     }
-    // Primer intento: se vuelve a pedir la misma fuente desde el mismo punto (la conexión colgada se descarta).
-    stallRetried = true;
+    // Reintento: se vuelve a pedir la misma fuente desde el mismo punto (la conexión colgada se descarta).
+    // Antes solo se reintentaba una vez y una red móvil con dos hipos seguidos saltaba la canción a mitad
+    // (reportado 2026-11-24). Ahora toleramos hasta STALL_MAX_RETRIES hipos antes de dar por perdida la pista.
+    stallRetries += 1;
     const at = elementTime();
     sourceOnDevice = onDevice(item.track);
     try {
@@ -360,7 +363,7 @@ export function createPlayer(options = {}) {
     if (stallTimer === null || audio.seeking) return;
     if (elementTime() === stallFrom) return;
     clearStallTimer();
-    stallRetried = false;
+    stallRetries = 0;
   }
 
   // Un salto pedido (barra de progreso, teclas multimedia) empieza un plazo nuevo desde el punto de destino.

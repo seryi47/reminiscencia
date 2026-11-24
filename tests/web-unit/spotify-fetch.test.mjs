@@ -127,6 +127,44 @@ describe('fetchCollection', () => {
     assert.equal(col.tracks.length, 100, 'devuelve las 100 primeras aunque la 2ª página falle');
   });
 
+  test('dev-mode cap de 100 pistas: fallback con token anónimo del reproductor web (2026-11-24)', async () => {
+    // Spotify tope dev-mode: con el token del usuario solo llega hasta 100 pistas de una lista ajena de 304.
+    // Nuestro fallback pide un token anónimo a open.spotify.com y vuelve a pedir la playlist entera con él.
+    const page = (offset, size, auth) => ({
+      items: Array.from({ length: size }, (_, i) => ({
+        track: { ...trackObj(`${auth}-T${offset + i}`, offset + i + 1), type: 'track', album: { name: 'X', release_date: '2024' } },
+      })),
+    });
+    const fetchImpl = async (url, init = {}) => {
+      const auth = init.headers?.Authorization ?? '';
+      if (url.includes('get_access_token')) {
+        return { ok: true, status: 200, json: async () => ({ accessToken: 'ANON', accessTokenExpirationTimestampMs: Date.now() + 3_600_000 }) };
+      }
+      if (url.includes(`/v1/playlists/${ID}?fields=`)) {
+        return okJson({ id: ID, name: 'L304', tracks: { total: 304, limit: 100 } });
+      }
+      if (url.includes(`/v1/playlists/${ID}/tracks`)) {
+        // Con el token del usuario: solo las primeras 100, luego se acaba (simula el tope de dev-mode).
+        if (auth.includes('AT')) {
+          if (url.includes('offset=0')) return okJson(page(0, 100, 'user'));
+          return okJson({ items: [] }); // "fin" artificial de Spotify dev-mode
+        }
+        // Con el token anónimo: 4 páginas enteras (304 pistas).
+        if (auth.includes('ANON')) {
+          if (url.includes('offset=0')) return okJson(page(0, 100, 'anon'));
+          if (url.includes('offset=100')) return okJson(page(100, 100, 'anon'));
+          if (url.includes('offset=200')) return okJson(page(200, 100, 'anon'));
+          if (url.includes('offset=300')) return okJson(page(300, 4, 'anon'));
+        }
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    const col = await fetchCollection({ ref: { type: 'playlist', id: ID }, accessToken: 'AT' }, fetchImpl);
+    assert.equal(col.tracks.length, 304, 'con el fallback anónimo trae las 304 enteras');
+    // Las devueltas son las del fallback anónimo (reemplazan las 100 del token del usuario).
+    assert.ok(col.tracks[0].title.startsWith('anon-'), 'reemplaza por las del token anónimo');
+  });
+
   test('maxTracks limita playlists enormes', async () => {
     const page = (offset) => okJson({
       items: Array.from({ length: 5 }, (_, i) => ({
