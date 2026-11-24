@@ -28,37 +28,59 @@ function endpointOf(url) {
 }
 
 async function getJson(url, accessToken, fetchImpl) {
-  const response = await fetchImpl(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  // Reintentos cortos para 5xx transitorios de Spotify (ADR-0044 ampliado 2026-11-24): su API devuelve 500/502/503
+  // ocasionalmente sin que nada esté roto, y antes se traducía a 502 en seco para el usuario. 3 intentos con backoff
+  // breve (300/900 ms) cubren casi todo el ruido. 401/429/404 NO se reintentan (son decisiones firmes de Spotify).
   const endpoint = endpointOf(url);
-  if (response.status === 401) throw new SpotifyApiError(401, 'token de Spotify caducado o inválido', { endpoint });
-  if (response.status === 429) throw new SpotifyApiError(429, 'límite de peticiones de Spotify', { endpoint });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new SpotifyApiError(response.status, data.error?.message || `HTTP ${response.status}`, { endpoint, body: data?.error ?? data ?? null });
+  const transient = new Set([500, 502, 503, 504]);
+  let lastResponse = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetchImpl(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (response.status === 401) throw new SpotifyApiError(401, 'token de Spotify caducado o inválido', { endpoint });
+    if (response.status === 429) throw new SpotifyApiError(429, 'límite de peticiones de Spotify', { endpoint });
+    if (transient.has(response.status) && attempt < 2) {
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1) ** 2));
+      lastResponse = response;
+      continue;
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new SpotifyApiError(response.status, data.error?.message || `HTTP ${response.status}`, { endpoint, body: data?.error ?? data ?? null });
+    }
+    return data;
   }
-  return data;
+  // 3 intentos agotados en 5xx: propagamos con el último estado.
+  throw new SpotifyApiError(lastResponse?.status ?? 502, `Spotify respondió ${lastResponse?.status ?? 502} tras 3 intentos`, { endpoint });
 }
 
 /**
- * Pide las pistas de una playlist por offset explícito hasta cubrir `cap` (o el total).
- * Es MÁS ROBUSTO que seguir `.next` del wrapper: Spotify a veces devuelve `.next=null` en primera página para
- * listas ajenas o enlaces internos rotos, cortando la paginación a 100 pistas aunque haya más. Aquí vamos
- * offset=0,100,200,… hasta que la última página venga con menos de `limit` items (señal de que ya no hay más).
+ * Pide las pistas de una playlist por offset explícito hasta cubrir `cap` (o hasta que no quede nada).
+ * Resiliente: si una página en medio falla (5xx transitorio de Spotify, red flaky, rate-limit), devuelve lo que
+ * llevamos acumulado en lugar de propagar el error — una petición parcial siempre vale más que un 502 en seco.
+ * Los 401 (token caducado) SÍ se propagan: si no, el cliente no sabría que debe refrescar.
  */
 async function fetchPlaylistTracksByOffset(playlistId, accessToken, fetchImpl, cap = Infinity) {
   const LIMIT = 100; // tope duro de /v1/playlists/{id}/tracks por petición
+  const MAX_PAGES = 100; // seguridad contra bucles infinitos o listas absurdas (10 000 pistas máximo)
   const items = [];
   let offset = 0;
-  while (items.length < cap) {
+  for (let pages = 0; pages < MAX_PAGES && items.length < cap; pages += 1) {
     const url = `${API}/v1/playlists/${encodeURIComponent(playlistId)}/tracks?offset=${offset}&limit=${LIMIT}`;
-    const page = await getJson(url, accessToken, fetchImpl);
+    let page;
+    try {
+      page = await getJson(url, accessToken, fetchImpl);
+    } catch (error) {
+      // 401: dejamos que suba (el cliente tiene que refrescar el token). Cualquier otro error lo convertimos en
+      // «fin de paginación»: devolvemos lo que tengamos. Un 5xx transitorio de Spotify a mitad de una lista grande
+      // dejaba al usuario sin NADA en pantalla; ahora al menos ve las primeras N páginas.
+      if (error instanceof SpotifyApiError && error.status === 401) throw error;
+      break;
+    }
     const pageItems = Array.isArray(page?.items) ? page.items : [];
     if (pageItems.length === 0) break;
     items.push(...pageItems);
-    if (pageItems.length < LIMIT) break; // ya no queda nada
+    if (pageItems.length < LIMIT) break; // Spotify dice que esto es el final
     offset += LIMIT;
-    // Cortocircuito por `total` (si Spotify lo da): evitamos la última petición vacía.
-    if (Number.isFinite(page?.total) && offset >= page.total) break;
   }
   return cap === Infinity ? items : items.slice(0, cap);
 }
@@ -143,16 +165,17 @@ export async function fetchCollection({ ref, accessToken }, fetchImpl = fetch, {
     let collection = null;
     let totalTracks = 0;
     try {
+      // Pedimos la metadata y las pistas por separado; cualquier error (403 lista bloqueada, 404, 5xx transitorio
+      // de Spotify) hace que `collection` quede en null y caigamos al embed público. Solo el 401 sube para forzar
+      // un refresh de token en el cliente. Antes, un 5xx puntual de Spotify a mitad de una Mix tiraba un 502 al
+      // usuario; ahora degradamos a embed.
       const playlist = await getJson(`${API}/v1/playlists/${ref.id}?fields=id,name,images,owner,tracks(total,limit)`, accessToken, fetchImpl);
       totalTracks = Number.isFinite(playlist?.tracks?.total) ? playlist.tracks.total : 0;
-      // NO confiamos en `tracks.total` como tope de paginación: Spotify a veces reporta un total menor que las pistas
-      // que realmente devuelve (Mix dinámicas, playlists editoriales). Iteramos hasta vacío y solo limitamos por
-      // `maxTracks` si se pide. El `total` queda para telemetría/logs.
       const items = await fetchPlaylistTracksByOffset(ref.id, accessToken, fetchImpl, maxTracks);
       collection = normalizePlaylist({ ...playlist, tracks: { items } });
     } catch (error) {
-      if (!(error instanceof SpotifyApiError) || error.status !== 403) throw error;
-      // 403 por Premium del owner o lista bloqueada en dev-mode: dejamos `collection` en null y caemos al embed.
+      if (error instanceof SpotifyApiError && error.status === 401) throw error;
+      // Cualquier otro error (403/404/5xx): caemos al embed, es mejor que un 502 en seco.
     }
     // Respaldo para listas PÚBLICAS cuando la Web API está bloqueada (owner sin Premium, dev-mode).
     if (!collection || collection.tracks.length === 0) {

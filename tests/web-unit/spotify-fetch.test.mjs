@@ -95,6 +95,38 @@ describe('fetchCollection', () => {
     assert.ok(calls.some((u) => u.includes('offset=200')), 'llega a pedir la tercera página');
   });
 
+  test('5xx transitorio de Spotify se reintenta en getJson (regresión 502 en bucle 2026-11-24)', async () => {
+    // El bug: Spotify devolvía un 502 ocasional en /playlists/{id} y nosotros lo propagábamos como 502 al cliente
+    // en bucle. Ahora reintentamos 3 veces los 5xx con backoff corto y, si al final siguen fallando, caemos al embed.
+    let hits = 0;
+    const fetchImpl = async (url) => {
+      hits += 1;
+      if (url.includes(`/v1/playlists/${ID}?fields=`)) {
+        if (hits <= 2) return { ok: false, status: 502, json: async () => ({}) };
+        return okJson({ id: ID, name: 'OK', tracks: { total: 1, limit: 100 } });
+      }
+      if (url.includes(`/v1/playlists/${ID}/tracks`)) {
+        return okJson({ items: [{ track: { ...trackObj('OnlyOne', 1), type: 'track', album: { name: 'X', release_date: '2024' } } }], total: 1 });
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    const col = await fetchCollection({ ref: { type: 'playlist', id: ID }, accessToken: 'AT' }, fetchImpl);
+    assert.equal(col.tracks.length, 1);
+    assert.ok(hits >= 3, 'hubo al menos 2 reintentos de la metadata (3 intentos totales)');
+  });
+
+  test('fallo a mitad de paginación: devuelve lo que llevamos en vez de 502 (ADR-0044 ampliado 2026-11-24)', async () => {
+    const page0 = { items: Array.from({ length: 100 }, (_, i) => ({ track: { ...trackObj(`T${i}`, i + 1), type: 'track', album: { name: 'X', release_date: '2024' } } })) };
+    const fetchImpl = async (url) => {
+      if (url.includes(`/v1/playlists/${ID}?fields=`)) return okJson({ id: ID, name: 'Large', tracks: { total: 300, limit: 100 } });
+      if (url.includes('offset=0')) return okJson(page0);
+      if (url.includes('offset=100')) return { ok: false, status: 503, json: async () => ({ error: { message: 'maintenance' } }) };
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    const col = await fetchCollection({ ref: { type: 'playlist', id: ID }, accessToken: 'AT' }, fetchImpl);
+    assert.equal(col.tracks.length, 100, 'devuelve las 100 primeras aunque la 2ª página falle');
+  });
+
   test('maxTracks limita playlists enormes', async () => {
     const page = (offset) => okJson({
       items: Array.from({ length: 5 }, (_, i) => ({
