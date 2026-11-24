@@ -456,10 +456,10 @@ class _TransferirSheetState extends State<_TransferirSheet> {
               value: _selected.contains('pl:${p.id}'),
               onChanged: (v) => setState(() => v == true ? _selected.add('pl:${p.id}') : _selected.remove('pl:${p.id}')),
               title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              // Si no es tuya (solo la sigues), Spotify no da su contenido por la API: se importa por la vía pública (máx 100).
+              // En Dev Mode, Spotify topa a 100 pistas la lectura de listas ajenas (ADR-0044); la UI avisa al revisar.
               subtitle: Text(
                 p.mine == false
-                    ? '${p.total} canciones · no es tuya (de ${p.ownerName ?? 'otra cuenta'}): vía pública, máx 100'
+                    ? '${p.total} canciones · no es tuya (de ${p.ownerName ?? 'otra cuenta'})'
                     : (count ?? '${p.total} canciones'),
                 maxLines: 2, overflow: TextOverflow.ellipsis),
             );

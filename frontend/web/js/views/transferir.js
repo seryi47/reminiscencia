@@ -114,11 +114,11 @@ function transferPanel(ctx) {
       const query = q.trim().toLowerCase();
       const shown = playlists.filter((p) => !query || p.name.toLowerCase().includes(query));
       playlistsBox.replaceChildren(...shown.map((p) => {
-        // En modo desarrollo la API no da el contenido de listas ajenas, pero si la lista es PÚBLICA se lee por el embed
-        // (hasta ~100 pistas). Se deja seleccionable con un aviso; si fuera privada, al analizar saldrá vacía con su mensaje.
+        // En Dev Mode, Spotify topa a 100 pistas la lectura de listas ajenas (ADR-0044). Se deja seleccionable: si
+        // tiene más, el panel de revisión avisa y propone clonarla al Spotify del usuario (donde no hay tope).
         const notMine = p.mine === false;
         return sourceRow(`pl:${p.id}`, p.name, `${p.total} canciones`, { ref: { type: 'playlist', id: p.id } },
-          { note: notMine ? `No es tuya (de ${p.ownerName || 'otra cuenta'}): se importa por la vía pública, máx 100` : null });
+          { note: notMine ? `No es tuya (de ${p.ownerName || 'otra cuenta'})` : null });
       }));
       // Recuento automático al abrir (ADR-0046), solo de las listas PROPIAS visibles (las ajenas no dan contenido en dev).
       unawaitedCounts(shown.filter((p) => p.mine !== false).map((p) => ({ key: `pl:${p.id}`, source: { ref: { type: 'playlist', id: p.id } } })));
