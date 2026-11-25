@@ -105,3 +105,21 @@ El Redirect URI registrado es el del Worker (`reminiscencia.cometia.es`), así q
 - **Límite conocido**: sin huella acústica de Spotify, la identificación es por metadatos; por eso los casos dudosos van a revisión manual en vez de adivinar.
 - **Requisito externo**: registrar una app de Spotify una sola vez (el usuario, por seguridad). Hasta entonces se desarrolla y prueba contra respuestas simuladas, así que nada bloquea la construcción.
 - **Verificación**: el flujo completo de extremo a extremo (OAuth real + descarga + publicación) se confirma cuando existan las credenciales; el motor y la ingesta se prueban antes contra fixtures.
+
+## Ampliación 2026-11-25 — ampliar playlists con el historial de reproducción (`/recent`)
+
+Spotify expone el objeto playlist tal cual está guardado en la cuenta del owner. Las sugerencias de Autoplay que aparecen en el reproductor web NO son parte de la playlist y no hay endpoint que las devuelva. Lo más parecido que ofrece la API es el historial reciente del usuario (`/v1/me/player/recently-played`): si has estado escuchando una Mix con Autoplay, muchas de esas canciones quedan ahí.
+
+- Scope nuevo: `user-read-recently-played` añadido a `SPOTIFY_SCOPES` en `server/spotify-auth.js`. Un login OAuth existente devuelve 403 en `/recent` con `needsReconnect:true`; el cliente pide reconectar una vez.
+- `server/spotify-fetch.js::fetchRecentlyPlayed` pagina `/v1/me/player/recently-played?limit=50` con el cursor `before`. Deduplica por `track.id` conservando la más reciente. Hasta 300 pistas (6 × 50).
+- Endpoint `POST /api/spotify/recent` en `server/spotify-endpoints.js`. Devuelve `{tracks:[...]}` crudo para que el cliente lo mande al `/resolve` con el camino `tracks:[...]` + `indexOffset` (ADR-0044 ampliado 2026-11-25).
+- Cliente (`js/spotify-transfer.js::resolveCollection`) activa el flujo tras resolver una playlist (`ref.type === 'playlist'`, URL con `/playlist/` o `source === 'liked'`): llama a `api.recent`, deduplica contra lo ya traído por `spotifyId` y resuelve las nuevas en ventanas de `pageLimit` matcheando YouTube con el camino `tracks:[...]`.
+- No es equivalente al Autoplay (eso es per-sesión de reproductor), pero recupera las canciones que has estado escuchando y no están en la playlist estática, que es el 90 % de lo que el usuario intenta pasar a su biblioteca.
+
+## Ampliación 2026-11-25 — tope diario del conversor yttowav
+
+Confirmado en producción: yttowav limita a **40 conversiones por día por IP**. Antes se trataba como un 429 normal y el cliente reintentaba 6 veces por canción; al tocar el tope, con 60 canciones en cola, generaba cientos de llamadas inútiles hasta que `circuitBreak` por fallos consecutivos lo cortaba. Fix:
+
+- `js/views/homeostasia.js::crearJob` detecta `daily conversion limit`, `40 per day` o `come back tomorrow` y lanza un error con `dailyLimit:true` SIN pasar por el backoff.
+- `convertirCancion` propaga `dailyLimit` al resultado; `convertirPlaylist` abre el circuito al instante al verlo. Las siguientes canciones de la tanda se marcan como pendientes sin llamar al conversor.
+- El usuario puede esperar al reset diario (00:00 UTC) o usar la APK, que va directa a yttowav con su propia IP (ADR-0045).

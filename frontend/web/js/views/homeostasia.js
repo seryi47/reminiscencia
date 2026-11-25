@@ -126,11 +126,16 @@ function sleep(ms, signal) {
   });
 }
 
-/** El conversor no tiene tope diario de verdad (ADR-0044): aunque el mensaje de error diga «daily conversion limit»,
- *  reintentando funciona. Se mantiene la función para quienes la importan, pero siempre devuelve false para que no
- *  corte la tanda ni abra el circuito. Si de verdad el conversor se cayera por completo, el `circuitBreak` general
- *  (N fallos seguidos) sigue parando la tanda. */
-function isDailyLimit(_error) { return false; }
+/** Rechazo de yttowav por tope diario (40/día/IP, confirmado en caliente 2026-11-25). Antes se asumía que no
+ *  existía y reintentábamos como cualquier otro 429; en producción se tocaba el tope y el cliente hacía cientos
+ *  de llamadas inútiles hasta que el `circuitBreak` por N fallos seguidos lo cortaba. Ahora `crearJob` detecta
+ *  el mensaje de daily-limit y lanza un error con `dailyLimit:true`, lo que corta el bucle de inmediato. */
+function isDailyLimit(error) {
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes('daily conversion limit')
+    || message.includes('40 per day')
+    || message.includes('come back tomorrow');
+}
 
 async function esperarTurnoCreacion(signal, deadline) {
   const now = Date.now();
