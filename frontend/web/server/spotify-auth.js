@@ -7,7 +7,7 @@ const AUTH_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
 
 // Permisos mínimos: leer las listas privadas y colaborativas del usuario y su biblioteca («Tus me gusta»).
-export const SPOTIFY_SCOPES = 'playlist-read-private playlist-read-collaborative user-library-read';
+export const SPOTIFY_SCOPES = 'playlist-read-private playlist-read-collaborative user-library-read user-read-recently-played';
 
 const bytesToBase64Url = (bytes) => {
   let binary = '';

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
-  handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyCallback,
+  handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyRecent, handleSpotifyCallback,
 } from '../../frontend/web/server/spotify-endpoints.js';
 
 const PL = '3n3Ppam7vgaVa1iaRUc9Lp';
@@ -160,6 +160,36 @@ describe('resolve', () => {
   test('tracks vacíos → 400', async () => {
     const res = await handleSpotifyResolve(post({ tracks: [], accessToken: 'AT' }), { search: goodSearch, fetchImpl });
     assert.equal(res.status, 400);
+  });
+});
+
+describe('recent (ADR-0044 ampliado 2026-11-25)', () => {
+  test('devuelve las pistas crudas del historial del usuario', async () => {
+    const page1 = { items: [{ track: { id: 'a', name: 'A', type: 'track' } }, { track: { id: 'b', name: 'B', type: 'track' } }], cursors: { before: '100' } };
+    const page2 = { items: [{ track: { id: 'c', name: 'C', type: 'track' } }], cursors: {} };
+    const fetchImpl = async (url) => {
+      if (url.includes('before=100')) return okJson(page2);
+      if (url.includes('/v1/me/player/recently-played')) return okJson(page1);
+      return okJson({});
+    };
+    const res = await handleSpotifyRecent(post({ accessToken: 'AT', cap: 100 }), { fetchImpl });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.tracks.length, 3);
+    assert.deepEqual(body.tracks.map((t) => t.id), ['a', 'b', 'c']);
+  });
+
+  test('sin token -> 401 needsAuth', async () => {
+    const res = await handleSpotifyRecent(post({}), { fetchImpl: async () => okJson({}) });
+    assert.equal(res.status, 401);
+    assert.equal((await res.json()).needsAuth, true);
+  });
+
+  test('403 de Spotify (sin scope) -> 403 needsReconnect', async () => {
+    const fetchImpl = async () => ({ ok: false, status: 403, json: async () => ({ error: { message: 'Insufficient client scope' } }) });
+    const res = await handleSpotifyRecent(post({ accessToken: 'AT' }), { fetchImpl });
+    assert.equal(res.status, 403);
+    assert.equal((await res.json()).needsReconnect, true);
   });
 });
 

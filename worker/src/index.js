@@ -37,7 +37,7 @@ import { YOUTUBE_MARK_HEADER, markYoutube } from '../../frontend/web/server/yout
 import { searchYoutubeMusic, mergeCandidates } from '../../frontend/web/server/youtube-music.js';
 import { searchYoutubeScrape, scrapeYoutubePlaylist } from '../../frontend/web/server/youtube-scrape.js';
 import {
-  handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyCallback,
+  handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyRecent, handleSpotifyCallback,
 } from '../../frontend/web/server/spotify-endpoints.js';
 import { handleRecognizeRequest } from '../../frontend/web/server/recognize-endpoint.js';
 import { handleRecognizeLyricsRequest } from '../../frontend/web/server/recognize-lyrics.js';
@@ -316,6 +316,7 @@ async function handleSpotify(name, request, env, fetchImpl) {
     case 'token': return handleSpotifyToken(request, { env, fetchImpl });
     case 'refresh': return handleSpotifyRefresh(request, { env, fetchImpl });
     case 'mine': return handleSpotifyMine(request, { fetchImpl });
+    case 'recent': return handleSpotifyRecent(request, { fetchImpl });
     case 'resolve': return handleSpotifyResolve(request, { search: spotifySearch(env, fetchImpl), fetchImpl });
     case 'callback': return handleSpotifyCallback();
     default: return jsonResponse(404, { ok: false, error: 'No existe.' });

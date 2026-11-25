@@ -268,3 +268,34 @@ export async function listMine({ accessToken }, fetchImpl = fetch) {
   } catch { /* si no hay permiso de biblioteca, se omite «Me gusta» */ }
   return { playlists, liked, me, publicOnly };
 }
+
+/**
+ * Lee las últimas pistas escuchadas del usuario (ADR-0044 ampliado 2026-11-25). Spotify devuelve las últimas 50
+ * por llamada; paginamos hacia atrás con el cursor `before` para traer hasta `cap`. Los duplicados por `spotifyId`
+ * se eliminan conservando la más reciente. Requiere scope `user-read-recently-played`.
+ *
+ * Esto NO es el «Autoplay» de una playlist concreta (Spotify no lo expone), sino el historial de reproducción
+ * reciente del usuario. Se usa para ampliar una playlist tipo Mix con las canciones que has estado escuchando y
+ * no están en la lista.
+ */
+export async function fetchRecentlyPlayed({ accessToken, cap = 200 }, fetchImpl = fetch) {
+  if (!accessToken) throw new Error('falta el token de acceso');
+  const items = [];
+  const seen = new Set();
+  let before = null;
+  for (let pages = 0; pages < 6 && items.length < cap; pages += 1) { // 6 × 50 = 300 máx
+    const qs = `?limit=50${before ? `&before=${before}` : ''}`;
+    const page = await getJson(`${API}/v1/me/player/recently-played${qs}`, accessToken, fetchImpl);
+    const entries = Array.isArray(page?.items) ? page.items : [];
+    if (entries.length === 0) break;
+    for (const entry of entries) {
+      const track = entry?.track;
+      if (!track?.id || seen.has(track.id)) continue;
+      seen.add(track.id);
+      items.push(track);
+    }
+    before = page?.cursors?.before;
+    if (!before) break;
+  }
+  return items.slice(0, cap);
+}

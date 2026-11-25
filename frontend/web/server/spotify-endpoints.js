@@ -9,7 +9,7 @@
 
 import { startLogin, exchangeCode, refreshAccess } from './spotify-auth.js';
 import { parseSpotifyRef, normalizeSpotifyRef, normalizeTrack } from './spotify-core.js';
-import { fetchCollection, listMine, SpotifyApiError } from './spotify-fetch.js';
+import { fetchCollection, fetchRecentlyPlayed, listMine, SpotifyApiError } from './spotify-fetch.js';
 import { resolveCollection, albumOf } from './spotify-resolve.js';
 import { spotifyClientId, SPOTIFY_REDIRECT_URI } from './spotify-config.js';
 
@@ -83,6 +83,33 @@ export async function handleSpotifyMine(request, { fetchImpl = fetch } = {}) {
       spotifyBody: error?.body ?? null,
     };
     return json(502, detalle);
+  }
+}
+
+/**
+ * POST /api/spotify/recent { accessToken, cap? } → { tracks:[...] }.
+ * Devuelve las ÚLTIMAS N pistas escuchadas del usuario, en formato CRUDO de la API de Spotify (`items[i].track`),
+ * para que el cliente pueda pasárselas al `/resolve` con `tracks:[...]` y las matchee contra YouTube. Hasta 300
+ * pistas (6 páginas × 50). Útil para extender una Mix con las que has estado escuchando (ADR-0044 ampliado 2026-11-25).
+ */
+export async function handleSpotifyRecent(request, { fetchImpl = fetch } = {}) {
+  if (request.method !== 'POST') return json(405, { error: 'método no permitido' });
+  const body = await readJson(request);
+  if (!isText(body.accessToken)) return json(401, { error: 'falta el token de Spotify', needsAuth: true });
+  const cap = Number.isInteger(body.cap) && body.cap > 0 ? Math.min(300, body.cap) : 200;
+  try {
+    const tracks = await fetchRecentlyPlayed({ accessToken: body.accessToken, cap }, fetchImpl);
+    return json(200, { tracks });
+  } catch (error) {
+    if (error instanceof SpotifyApiError && error.status === 401) {
+      return json(401, { error: 'token de Spotify caducado', needsAuth: true });
+    }
+    if (error instanceof SpotifyApiError && error.status === 403) {
+      // Falta scope user-read-recently-played: el cliente debe pedir reconexión con los nuevos scopes.
+      return json(403, { error: 'falta el permiso user-read-recently-played; reconecta Spotify', needsReconnect: true });
+    }
+    if (error instanceof SpotifyApiError && error.status === 429) return json(429, { error: 'Spotify pide esperar un momento' });
+    return json(502, { error: String(error?.message ?? 'no se pudo leer el historial de Spotify') });
   }
 }
 

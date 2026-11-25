@@ -55,6 +55,7 @@ export function createTransferApi(fetchImpl = globalThis.fetch, base = '') {
     refresh: (refreshToken) => post('/api/spotify/refresh', { refreshToken }),
     mine: (accessToken) => post('/api/spotify/mine', { accessToken }),
     resolve: (params) => post('/api/spotify/resolve', params), // { url|source|ref|tracks, accessToken, offset, limit }
+    recent: (accessToken, cap = 200) => post('/api/spotify/recent', { accessToken, cap }), // últimas pistas escuchadas
   };
 }
 
@@ -120,11 +121,56 @@ export async function resolveCollection({ api, url, source, ref, storage = globa
     if (!page.hasMore) break;
     offset += pageLimit;
   }
-  // Ampliación 2026-11-25 (web): el fallback «Web Player» desde el navegador se intentó, pero Spotify
-  // responde con CORS cerrado (403) a cualquier origen que no sea open.spotify.com, así que es IMPOSIBLE
-  // leer la playlist entera desde navegador. El banner de la vista (ya sabe mirar `devModeCap` + `reportedTotal`)
-  // dirige al usuario a la APK, que sí lo consigue via WebView. El código `fetchPlaylistFromWebPlayer` se
-  // conserva en el repo por si Spotify lo permitiera en el futuro, pero no se invoca.
+  // Ampliación 2026-11-25 — amplía con RECENTLY-PLAYED del usuario: cuando se resuelve una PLAYLIST (típicamente
+  // una «Mix» con Autoplay), pedimos también sus últimas pistas escuchadas (hasta 300) y añadimos al batch las
+  // que NO estén ya en la lista. Esto emula lo que hace TuneMyMusic: ver más allá de las 100 pistas fijas de
+  // la Mix cogiendo las canciones que han estado sonando por Autoplay. Spotify no expone el Autoplay directamente
+  // pero el historial es la señal más cercana. Solo se activa cuando NO es compareOnly.
+  const isPlaylistLike = ref?.type === 'playlist'
+    || (url && typeof url === 'string' && url.includes('/playlist/'))
+    || source === 'liked';
+  if (!compareOnly && isPlaylistLike) {
+    let recentTracks = [];
+    try {
+      const r = await api.recent(accessToken, 300);
+      recentTracks = Array.isArray(r?.tracks) ? r.tracks : [];
+    } catch (error) {
+      // 403 (sin scope user-read-recently-played): seguimos SIN aviso duro; el usuario tiene que reconectar,
+      // pero las 100 de la playlist van igual. Un 401 ya lo gestiona el flujo normal abajo.
+      if (error?.needsAuth) throw error;
+    }
+    // Deduplicar: quitar del `recentTracks` los spotifyId ya presentes en la playlist.
+    const existingIds = new Set(results.map((r) => r.track?.spotifyId).filter(Boolean));
+    const extraRaw = recentTracks
+      .filter((t) => t && t.id && !existingIds.has(t.id))
+      .filter((t) => (t.type ?? 'track') === 'track' && !t.is_local);
+    if (extraRaw.length > 0) {
+      const alreadyLoaded = results.length;
+      const albumRef = ref?.type === 'playlist' ? ref
+        : (url?.includes('/playlist/') ? { type: 'playlist', id: url.match(/\/playlist\/([A-Za-z0-9]+)/)?.[1] ?? 'recent' } : { type: 'playlist', id: 'recent' });
+      // Matcheamos las nuevas en ventanas de `pageLimit` usando el endpoint `tracks:[...]` (ADR-0044 2026-11-25).
+      for (let extraOffset = 0; extraOffset < extraRaw.length; extraOffset += pageLimit) {
+        const window = extraRaw.slice(extraOffset, extraOffset + pageLimit);
+        const indexOffset = alreadyLoaded + extraOffset;
+        const call = () => api.resolve({
+          tracks: window, accessToken, albumRef, name: album?.name,
+          offset: 0, limit: window.length, indexOffset,
+        });
+        let page;
+        try { page = await call(); }
+        catch (error) {
+          if (!error.needsAuth) throw error;
+          accessToken = await refreshNow({ api, storage });
+          page = await call();
+        }
+        results.push(...page.results);
+        for (const tier of ['alta', 'media', 'baja', 'error']) summary[tier] += page.summary?.[tier] ?? 0;
+        summary.total = results.length;
+        total = alreadyLoaded + extraRaw.length;
+        onPage?.({ loaded: results.length, total, album, recent: true });
+      }
+    }
+  }
   // Rescate final (ADR-0044 ampliado 2026-11-19): aisladas, las pistas sí salen `tier=alta`; en una página de 25 un
   // puñado se pierde por rate-limit acumulado del upstream. Para esos sobrantes, relanzamos `/resolve` UNO a UNO con la
   // URL del track — concurrencia 2 y solo las verdaderamente vacías (`tier=baja, alternatives=[], !error`), nunca las
