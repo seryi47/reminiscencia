@@ -54,6 +54,12 @@ Trampas descubiertas en caliente (2026-11-25):
 - **Migración de `playlistVideoRenderer` → `lockupViewModel`.** YouTube cambió en 2026-11 el renderer de los vídeos de una playlist: ya no es `playlistVideoRenderer` con `videoId` y `title.runs`, sino `lockupViewModel` con `contentId` (el videoId), `contentType: 'LOCKUP_CONTENT_TYPE_VIDEO'` y `metadata.lockupMetadataViewModel.title.content` (el título). Nuestro parser (`extractPlaylistVideos`) acepta **los dos** formatos, así que sigue funcionando si YouTube revierte.
 - **Regla `ignore` de Netlify:** al mover el núcleo de las funciones a `frontend/web/server`, ya no se excluye esa carpeta; si se volviera a excluir, un arreglo de las funciones no se desplegaría.
 
+### Ampliación 2026-11-25 (bis) — `/playlist` con URL de VÍDEO suelto
+
+`/api/youtube/playlist` acepta tanto una URL de playlist como una de vídeo individual (homeostasia pega el enlace de un vídeo por el mismo endpoint y espera `{ items: [{ url, title }] }`). Con ambos upstreams caídos, el fallback de scraping anterior solo cubría playlists (`youtube.com/playlist?list=<ID>`); un `youtu.be/<id>` caía a 502 «El servicio de YouTube no responde ahora mismo» aunque oEmbed de YouTube estuviera perfectamente operativo.
+
+Fix: el Worker detecta cuando la URL es un vídeo (`youtu.be/<id>`, `/watch?v=<id>`, `/shorts/<id>` o `/embed/<id>`) y pide el título a `https://www.youtube.com/oembed?url=<canonical>&format=json`. Un solo `fetch` público sin API key. Devuelve el mismo contrato que yt-dlp para este caso: `{ items: [{ url: canonical, title }] }` + cabecera-marca `worker-fallback`.
+
 ## Comprobar en producción (pendiente)
 
 - `node scripts/smoke_produccion.mjs https://reminiscencia.netlify.app` y la del Worker.

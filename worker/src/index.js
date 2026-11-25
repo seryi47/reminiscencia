@@ -223,11 +223,25 @@ async function forwardYoutube(request, env, fetchImpl) {
     // audio, solo la lista de vídeos: homeostasia.js ya sabe pedir cada vídeo por separado.
     // El cliente puede mandar `?list=<ID>` directamente o `?url=https://youtube.com/playlist?list=<ID>` (homeostasia).
     let list = source.searchParams.get('list');
-    if (!list) {
-      const urlParam = source.searchParams.get('url');
-      if (urlParam) {
-        try { list = new URL(urlParam).searchParams.get('list'); } catch { /* url mala */ }
-      }
+    let videoIdFromUrl = null;
+    const urlParam = source.searchParams.get('url');
+    if (urlParam) {
+      try {
+        const parsed = new URL(urlParam);
+        if (!list) list = parsed.searchParams.get('list');
+        // Detecta un enlace de VÍDEO suelto (sin `list=`): youtu.be/<id>, youtube.com/watch?v=<id>, /shorts/<id>, /embed/<id>.
+        if (!list) {
+          if (parsed.hostname === 'youtu.be') {
+            videoIdFromUrl = parsed.pathname.slice(1).split('/')[0] ?? '';
+          } else if (parsed.pathname === '/watch') {
+            videoIdFromUrl = parsed.searchParams.get('v') ?? '';
+          } else {
+            const match = parsed.pathname.match(/^\/(?:shorts|embed)\/([A-Za-z0-9_-]{11})$/);
+            videoIdFromUrl = match ? match[1] : null;
+          }
+          if (videoIdFromUrl && !/^[A-Za-z0-9_-]{11}$/.test(videoIdFromUrl)) videoIdFromUrl = null;
+        }
+      } catch { /* url mala */ }
     }
     if (list && /^[A-Za-z0-9_-]{1,64}$/.test(list)) {
       const scraped = await scrapeYoutubePlaylist(list, { fetchImpl });
@@ -248,6 +262,37 @@ async function forwardYoutube(request, env, fetchImpl) {
             [YOUTUBE_MARK_HEADER]: 'worker-fallback',
           },
         });
+      }
+    }
+    // Fallback para VÍDEO suelto (ADR-0038 ampliado 2026-11-25): si no hay yt-dlp arriba y la URL no es una playlist,
+    // resolvemos el título vía oEmbed de YouTube (público, sin API key). Es un solo fetch barato. Antes caía al 502
+    // «El servicio de YouTube no responde ahora mismo» aunque oEmbed estuviera perfectamente operativo.
+    if (videoIdFromUrl) {
+      const canonical = `https://www.youtube.com/watch?v=${videoIdFromUrl}`;
+      try {
+        const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(canonical)}&format=json`;
+        const response = await fetchImpl(oembedUrl, {
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          },
+        });
+        if (response.ok) {
+          const data = await response.json().catch(() => null);
+          const title = typeof data?.title === 'string' ? data.title.trim().slice(0, 200) : '';
+          if (title) {
+            return new Response(JSON.stringify({ items: [{ url: canonical, title }] }), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+                [YOUTUBE_MARK_HEADER]: 'worker-fallback',
+              },
+            });
+          }
+        }
+      } catch (error) {
+        console.error('youtube: fallback oembed fallo', error?.name ?? 'Error');
       }
     }
   }

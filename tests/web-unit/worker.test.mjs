@@ -835,6 +835,36 @@ describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover
     assert.equal(data.playlist?.title, 'Mi Lista');
   });
 
+  test('fallback de /playlist con URL de VÍDEO suelto: resuelve el título vía oEmbed (ADR-0038 ampliado 2026-11-25)', async () => {
+    // Un enlace de vídeo (no playlist) por `/api/youtube/playlist` antes caía a 502 cuando Vercel+Netlify estaban caídos:
+    // el scrape de youtube.com/playlist no aplicaba (no hay `list=`) y no había alternativa. Ahora el Worker resuelve el
+    // título con oEmbed de YouTube (público, sin API key).
+    const fetchImpl = async (url) => {
+      const u = new URL(String(url));
+      if (u.hostname === 'reminiscencia.vercel.app' || u.hostname === 'reminiscencia.netlify.app') {
+        return new Response('', { status: 402 });
+      }
+      if (u.hostname === 'www.youtube.com' && u.pathname === '/oembed') {
+        return new Response(JSON.stringify({ title: 'SIX the Musical - Haus of Holbein' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new TypeError('fetch failed');
+    };
+    const response = await handleRequest(
+      new Request(`${SITE}/api/youtube/playlist?url=${encodeURIComponent('https://youtu.be/KbyNfnlPCn4?si=JWMuxvGNz6QKuiOh')}`),
+      {},
+      { fetchImpl },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('X-Reminiscencia-Youtube'), 'worker-fallback');
+    const data = await response.json();
+    assert.equal(data.items.length, 1);
+    assert.equal(data.items[0].title, 'SIX the Musical - Haus of Holbein');
+    assert.equal(data.items[0].url, 'https://www.youtube.com/watch?v=KbyNfnlPCn4');
+  });
+
   test('si ningún upstream responde, 502 con la cabecera del Worker; otro origen, 403 sin reenviar', async () => {
     const failing = async () => { throw new TypeError('fetch failed'); };
     const down = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`), {}, { fetchImpl: failing });
