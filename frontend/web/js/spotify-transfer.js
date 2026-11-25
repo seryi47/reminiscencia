@@ -5,6 +5,7 @@
 
 import { isSameLibraryTrack } from './library-match.js';
 import { normalizeText } from './catalog.js';
+import { fetchPlaylistFromWebPlayer } from './spotify-webplayer.js';
 
 export const SESSION_KEY = 'reminiscencia.spotify';
 export const PKCE_KEY = 'reminiscencia.spotify.pkce';
@@ -54,7 +55,7 @@ export function createTransferApi(fetchImpl = globalThis.fetch, base = '') {
     token: (code, verifier) => post('/api/spotify/token', { code, verifier }),
     refresh: (refreshToken) => post('/api/spotify/refresh', { refreshToken }),
     mine: (accessToken) => post('/api/spotify/mine', { accessToken }),
-    resolve: (params) => post('/api/spotify/resolve', params), // { url|source|ref, accessToken, offset, limit }
+    resolve: (params) => post('/api/spotify/resolve', params), // { url|source|ref|tracks, accessToken, offset, limit }
   };
 }
 
@@ -119,6 +120,55 @@ export async function resolveCollection({ api, url, source, ref, storage = globa
     onPage?.({ loaded: results.length, total, album });
     if (!page.hasMore) break;
     offset += pageLimit;
+  }
+  // Rescate Web Player (ADR-0044 ampliado 2026-11-25): si la colección se marcó como `devModeCap` porque Spotify
+  // la capa a 100 pistas (lista ajena en Dev Mode), intentamos leer las restantes directamente desde el navegador
+  // del usuario usando el token del reproductor web público (`open.spotify.com/get_access_token`), que lleva sus
+  // cookies de sesión y escapa del tope. Si lo conseguimos, pedimos al server que las matchee (payload `tracks`
+  // en vez de `url`); si no (sin sesión abierta en Spotify en este navegador), seguimos con el banner como antes.
+  const playlistId = ref?.type === 'playlist' ? ref.id
+    : (url?.includes('/playlist/') ? url.match(/\/playlist\/([A-Za-z0-9]+)/)?.[1] : null);
+  if (devModeCap && reportedTotal > results.length && playlistId) {
+    const fetched = await fetchPlaylistFromWebPlayer(playlistId).catch(() => null);
+    if (Array.isArray(fetched) && fetched.length > results.length) {
+      // Normalizar las pistas CRUDAS que da `/v1/playlists/{id}/tracks` al formato interno (title, artists, etc.).
+      // Reusamos las primeras `results.length` ya resueltas por el server y solo matcheamos las NUEVAS.
+      const alreadyLoaded = results.length;
+      const extraRawTracks = fetched.slice(alreadyLoaded)
+        .map((entry) => entry?.track).filter((t) => t && (t.type ?? 'track') === 'track' && !t.is_local);
+      if (extraRawTracks.length > 0) {
+        const albumRef = ref?.type === 'playlist' ? ref : { type: 'playlist', id: playlistId };
+        const name = album?.name;
+        let extraOffset = 0;
+        for (;;) {
+          let page;
+          try {
+            page = await api.resolve({
+              tracks: extraRawTracks.slice(extraOffset, extraOffset + pageLimit),
+              accessToken, albumRef, name,
+              offset: extraOffset, limit: pageLimit,
+            });
+          } catch (error) {
+            if (!error.needsAuth) throw error;
+            accessToken = await refreshNow({ api, storage });
+            page = await api.resolve({
+              tracks: extraRawTracks.slice(extraOffset, extraOffset + pageLimit),
+              accessToken, albumRef, name,
+              offset: extraOffset, limit: pageLimit,
+            });
+          }
+          for (const r of page.results) results.push({ ...r, index: alreadyLoaded + r.index });
+          for (const tier of ['alta', 'media', 'baja', 'error']) summary[tier] += page.summary?.[tier] ?? 0;
+          summary.total = results.length;
+          total = alreadyLoaded + extraRawTracks.length;
+          onPage?.({ loaded: results.length, total, album });
+          if (!page.hasMore) break;
+          extraOffset += pageLimit;
+        }
+        // Ya no estamos limitados: quitamos el aviso.
+        devModeCap = false;
+      }
+    }
   }
   // Rescate final (ADR-0044 ampliado 2026-11-19): aisladas, las pistas sí salen `tier=alta`; en una página de 25 un
   // puñado se pierde por rate-limit acumulado del upstream. Para esos sobrantes, relanzamos `/resolve` UNO a UNO con la

@@ -36,7 +36,10 @@ describe("vercel.json: Content-Security-Policy", () => {
     assert.deepEqual(directives.get("media-src"), ["'self'", AUDIO_ORIGIN, ...(WORKER_AUDIO_ORIGIN ? [WORKER_AUDIO_ORIGIN] : [])]);
     // Además de la propia web, el bucket de R2 (audio, ADR-0020; índice de portadas, ADR-0029), el Worker del API en
     // workers.dev (ADR-0029) y en su dominio propio (ADR-0034: la web de Vercel lo llama con CORS).
-    assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN, WORKERS_DEV, SITE]);
+    // Spotify: `api.spotify.com` y `open.spotify.com` se añaden para el fallback «Web Player» (ADR-0044 ampliado
+    // 2026-11-25): si Spotify topa a 100 pistas una lista ajena, el navegador del usuario (con su sesión de Spotify
+    // abierta) pide un token al reproductor web público y lee la lista entera.
+    assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN, WORKERS_DEV, SITE, "https://api.spotify.com", "https://open.spotify.com"]);
     // Las portadas del índice se sirven desde el bucket público.
     assert.deepEqual(directives.get("img-src"), ["'self'", "data:", AUDIO_ORIGIN]);
     assert.deepEqual(directives.get("frame-ancestors"), ["'none'"]);

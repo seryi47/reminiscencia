@@ -8,7 +8,7 @@
 // el cliente lo manda en cada /resolve.
 
 import { startLogin, exchangeCode, refreshAccess } from './spotify-auth.js';
-import { parseSpotifyRef, normalizeSpotifyRef } from './spotify-core.js';
+import { parseSpotifyRef, normalizeSpotifyRef, normalizeTrack } from './spotify-core.js';
 import { fetchCollection, listMine, SpotifyApiError } from './spotify-fetch.js';
 import { resolveCollection, albumOf } from './spotify-resolve.js';
 import { spotifyClientId, SPOTIFY_REDIRECT_URI } from './spotify-config.js';
@@ -87,8 +87,12 @@ export async function handleSpotifyMine(request, { fetchImpl = fetch } = {}) {
 }
 
 /**
- * POST /api/spotify/resolve { url|ref|source, accessToken, offset?, limit?, concurrency? }
- * → { type, id, name, album, results, summary, offset, limit, total, hasMore }.
+ * POST /api/spotify/resolve
+ *   { url|ref|source, accessToken, offset?, limit?, compareOnly? }        → lee la colección de Spotify
+ *   { tracks:[...], accessToken, albumRef, offset?, limit? }               → recibe las pistas ya normalizadas
+ * → { type, id, name, album, results, summary, offset, limit, total, hasMore, devModeCap?, reportedTotal? }.
+ * `tracks` se usa para el fallback Web Player (ADR-0044 ampliado 2026-11-25): el CLIENTE lee la playlist entera
+ * con el token del reproductor web público y nos envía las pistas; el server solo hace el matching de YouTube.
  * `search` (inyectada) recibe una consulta y devuelve candidatos de YouTube. Resuelve solo la página [offset, limit)
  * para no agotar el tiempo de la función; el cliente pide las siguientes.
  */
@@ -99,27 +103,37 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   // SIN resolver YouTube. Es rápido (una lectura de Spotify) y permite enseñar el recuento al abrir un álbum sin transferir.
   const compareOnly = body.compareOnly === true;
   if (!compareOnly && typeof search !== 'function') return json(500, { error: 'búsqueda de YouTube no disponible' });
-  // El id de `ref` se interpola en la ruta de la API de Spotify (spotify-fetch.js): se valida siempre, tanto el `ref`
-  // que manda el cliente como el que sale de la URL, a tipo conocido + id base62 de 22 (evita inyección de ruta).
-  const rawRef = body.ref ?? (body.source === 'liked' ? { type: 'liked' } : parseSpotifyRef(body.url));
-  const ref = normalizeSpotifyRef(rawRef);
-  if (!ref) return json(400, { error: 'enlace de Spotify no válido' });
   if (!isText(body.accessToken)) return json(401, { error: 'falta el token de Spotify', needsAuth: true });
 
   const offset = Number.isInteger(body.offset) && body.offset >= 0 ? body.offset : 0;
   const limit = Math.min(RESOLVE_MAX_LIMIT, Number.isInteger(body.limit) && body.limit > 0 ? body.limit : RESOLVE_DEFAULT_LIMIT);
 
+  // Camino WEB PLAYER: el cliente ya ha leído la playlist entera con su propia sesión; nosotros solo matcheamos.
+  // Esto se activa cuando el fallback del navegador (ADR-0044 ampliado 2026-11-25) consigue saltar el tope de 100
+  // pistas que Spotify aplica a listas ajenas en Dev Mode.
   let collection;
-  try {
-    collection = await fetchCollection({ ref, accessToken: body.accessToken }, fetchImpl);
-  } catch (error) {
-    if (error instanceof SpotifyApiError && error.status === 401) {
-      return json(401, { error: 'token de Spotify caducado', needsAuth: true });
+  if (Array.isArray(body.tracks) && body.tracks.length > 0) {
+    const albumRef = normalizeSpotifyRef(body.albumRef) ?? { type: 'playlist', id: 'external' };
+    const tracks = body.tracks.map((t) => normalizeTrack(t)).filter(Boolean);
+    if (tracks.length === 0) return json(400, { error: 'pistas no válidas' });
+    const name = typeof body.name === 'string' ? body.name : '';
+    collection = { type: albumRef.type, id: albumRef.id, name, cover: null, tracks, source: 'webplayer' };
+  } else {
+    // El id de `ref` se interpola en la ruta de la API de Spotify (spotify-fetch.js): se valida siempre.
+    const rawRef = body.ref ?? (body.source === 'liked' ? { type: 'liked' } : parseSpotifyRef(body.url));
+    const ref = normalizeSpotifyRef(rawRef);
+    if (!ref) return json(400, { error: 'enlace de Spotify no válido' });
+    try {
+      collection = await fetchCollection({ ref, accessToken: body.accessToken }, fetchImpl);
+    } catch (error) {
+      if (error instanceof SpotifyApiError && error.status === 401) {
+        return json(401, { error: 'token de Spotify caducado', needsAuth: true });
+      }
+      if (error instanceof SpotifyApiError && error.status === 429) {
+        return json(429, { error: 'Spotify pide esperar un momento' });
+      }
+      return json(502, { error: String(error?.message ?? 'no se pudo leer de Spotify') });
     }
-    if (error instanceof SpotifyApiError && error.status === 429) {
-      return json(429, { error: 'Spotify pide esperar un momento' });
-    }
-    return json(502, { error: String(error?.message ?? 'no se pudo leer de Spotify') });
   }
 
   const total = collection.tracks.length;

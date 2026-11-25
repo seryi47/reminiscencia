@@ -2,7 +2,7 @@
 # todas las rutas. Cloudflare solo las aplica a los ficheros de la web; las respuestas del Worker (/api/*, /audio/*)
 # llevan las suyas. tests/web-unit/cabeceras.test.mjs comprueba que las dos copias son iguales.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; media-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://reminiscencia.cometia.es; connect-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://*.workers.dev https://reminiscencia.cometia.es; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; media-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://reminiscencia.cometia.es; connect-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://*.workers.dev https://reminiscencia.cometia.es https://api.spotify.com https://open.spotify.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'
 
 # ADR-0049: cache del catálogo (songs.json, folders.json, catalog.json) con `stale-while-revalidate`. Por defecto
 # devolvemos `max-age=0 must-revalidate` lo que hace al cliente lanzar un `If-None-Match` a CF en cada apertura

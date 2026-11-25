@@ -115,6 +115,32 @@ describe('resolve', () => {
     const res = await handleSpotifyResolve(post({ url: `https://open.spotify.com/playlist/${PL}`, accessToken: 'AT' }), { fetchImpl });
     assert.equal(res.status, 500);
   });
+
+  test('tracks explícitos del cliente (fallback Web Player): el server no llama a Spotify, solo matchea YouTube', async () => {
+    // Camino nuevo (ADR-0044 ampliado 2026-11-25): el cliente lee las 304 pistas con su sesión del Web Player y
+    // nos envía las que faltan. El server NO toca api.spotify.com (si lo hiciera, el fetchImpl de abajo lanzaría).
+    let touchedSpotify = false;
+    const explodingFetch = async (url) => { if (url.includes('spotify.com')) { touchedSpotify = true; throw new Error('no tocar spotify'); } return okJson({}); };
+    const rawTracks = [
+      { id: 't100', name: 'Pista 101', type: 'track', duration_ms: 200000, artists: [{ name: 'Coldplay' }], album: { name: 'X', release_date: '2024' } },
+      { id: 't101', name: 'Pista 102', type: 'track', duration_ms: 205000, artists: [{ name: 'Coldplay' }], album: { name: 'X', release_date: '2024' } },
+    ];
+    const res = await handleSpotifyResolve(
+      post({ tracks: rawTracks, accessToken: 'AT', albumRef: { type: 'playlist', id: PL }, name: 'Mix', limit: 2 }),
+      { search: goodSearch, fetchImpl: explodingFetch },
+    );
+    assert.equal(res.status, 200);
+    assert.equal(touchedSpotify, false, 'no se ha ido a api.spotify.com');
+    const body = await res.json();
+    assert.equal(body.total, 2);
+    assert.equal(body.results.length, 2);
+    assert.equal(body.results[0].tier, 'alta');
+  });
+
+  test('tracks vacíos → 400', async () => {
+    const res = await handleSpotifyResolve(post({ tracks: [], accessToken: 'AT' }), { search: goodSearch, fetchImpl });
+    assert.equal(res.status, 400);
+  });
 });
 
 describe('mine / resolve liked', () => {
