@@ -830,6 +830,9 @@ describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover
     assert.equal(data.title, 'Mi Lista');
     assert.equal(data.items.length, 2);
     assert.match(data.items[0].url, /aaaaaaaaaaa/);
+    // Contrato de `/playlist` que espera homeostasia.js (ADR-0038 ampliado 2026-11-25): `playlist.{id,title}`.
+    assert.equal(data.playlist?.id, 'PLabc123');
+    assert.equal(data.playlist?.title, 'Mi Lista');
   });
 
   test('si ningún upstream responde, 502 con la cabecera del Worker; otro origen, 403 sin reenviar', async () => {

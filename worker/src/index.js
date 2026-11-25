@@ -232,7 +232,15 @@ async function forwardYoutube(request, env, fetchImpl) {
     if (list && /^[A-Za-z0-9_-]{1,64}$/.test(list)) {
       const scraped = await scrapeYoutubePlaylist(list, { fetchImpl });
       if (scraped && Array.isArray(scraped.items) && scraped.items.length > 0) {
-        return new Response(JSON.stringify(scraped), {
+        // Contrato esperado por homeostasia.js::listarPlaylist (ADR-0021): items + playlist.{id,title}. Si la
+        // respuesta solo trae `title` (como antes de 2026-11-25), el cliente la rechaza con «YouTube no ha
+        // devuelto el nombre de la playlist».
+        const payload = {
+          items: scraped.items,
+          title: scraped.title,
+          playlist: { id: list, title: scraped.title || list },
+        };
+        return new Response(JSON.stringify(payload), {
           status: 200,
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
