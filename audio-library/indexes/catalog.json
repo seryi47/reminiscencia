@@ -88,7 +88,7 @@
       "codec": "mp3",
       "size_bytes": 1979392,
       "added_at": "2026-10-31T11:19:10+00:00",
-      "public": true,
+      "public": false,
       "gain_db": -1.2
     },
     {
