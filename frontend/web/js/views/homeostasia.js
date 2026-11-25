@@ -21,7 +21,10 @@ const PLAYLIST_ENDPOINT = '/api/youtube/playlist';
 const CONFIG = {
   format: 'wav',
   quality: 'original',
-  batchSize: 4,
+  // Bajado de 4 a 2 el 2026-11-25: con batch=4 yttowav devolvía jobId OK en /api/convert pero descartaba la mitad de los
+  // jobs en el backend (404 inmediato en /api/status). Patrón en consola: 2 pistas sí / 2 pistas 404 por tanda de 4, repetido.
+  // Con batch=2 cada pista arranca de verdad; el throughput apenas baja (yttowav serializa igual los downloads por IP).
+  batchSize: 2,
   convertCreateAttempts: 6,
   convertCreateGap: 2000,
   pollInterval: 3000,
@@ -608,9 +611,13 @@ async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
       try {
         return await esperarYDescargar(jobId, signal, deadline, onStatus, traceId, videoId);
       } catch (error) {
-        // Rescate: si reutilizando el jobId guardado la primera consulta devuelve 404 (yttowav lo purgó),
-        // creamos uno nuevo y seguimos. Sin esto, cada pista con un `pendingJob` viejo contamina el cortacircuitos.
-        if (pendingJob && error?.status === 404 && !signal?.aborted) {
+        // Rescate 404 (ampliado 2026-11-25): yttowav devuelve 404 en /api/status para jobs recién creados cuando satura su
+        // cupo de concurrencia por IP (acepta /api/convert y devuelve jobId OK pero descarta el job en el backend). Pasaba
+        // tanto reutilizando un `pendingJob` viejo como con jobIds frescos; en consola se veía un patrón de «2 pistas OK / 2
+        // pistas 404» por tanda. Un único reintento resuelve casi siempre: esperamos un poco para no machacar y creamos
+        // otro job. Si el nuevo también falla con 404, SÍ es terminal (devolvemos el error original, no bucle infinito).
+        if (error?.status === 404 && !signal?.aborted) {
+          try { await sleep(5000, signal); } catch { throw error; }
           const freshJobId = await createFreshJob();
           return esperarYDescargar(freshJobId, signal, Date.now() + CONFIG.jobTimeout, onStatus, traceId, videoId);
         }

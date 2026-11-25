@@ -134,3 +134,8 @@ Fix (`js/views/homeostasia.js`):
 
 - Constante `PENDING_JOB_TTL_MS = 30 min`. Solo se reutiliza `pendingJob` si `Date.now() - saved.updatedAt < PENDING_JOB_TTL_MS`. Un record `'converting'` viejo se degrada a `'retry'` y se crea un job nuevo.
 - Rescate 404: si al reutilizar un `pendingJob` fresco la consulta a `/api/status` devuelve 404 (yttowav ya lo purgó), se crea un job nuevo con el mismo `traceId` y se reanuda el polling sin romper el cortacircuitos.
+
+**Ampliación 2026-11-25 (bis)** — Los logs del usuario mostraron además un patrón distinto: **jobIds frescos** (recién creados, no de `localStorage`) devolvían 404 en `/api/status` con el patrón «2 pistas OK / 2 pistas 404» por tanda de 4. yttowav acepta `/api/convert` (devuelve `jobId` válido) pero descarta el job en el backend cuando supera su cupo de concurrencia por IP. Dos cambios:
+
+- `CONFIG.batchSize`: 4 → 2. Con batch de 2, cada pista llega al worker de verdad. El throughput apenas baja porque yttowav serializa los `yt-dlp` por IP de todos modos.
+- Rescate 404 generalizado: **cualquier** 404 en status (no solo con `pendingJob`) → espera 5 s y crea job nuevo. Un único reintento; si el nuevo vuelve a ser 404 se propaga como error real.
