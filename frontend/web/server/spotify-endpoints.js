@@ -135,7 +135,13 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
       if (error instanceof SpotifyApiError && error.status === 429) {
         return json(429, { error: 'Spotify pide esperar un momento' });
       }
-      return json(502, { error: String(error?.message ?? 'no se pudo leer de Spotify') });
+      // ADR-0044 ampliado 2026-11-25 — diagnóstico: devolvemos el estado y endpoint de Spotify, no tokens.
+      return json(502, {
+        error: String(error?.message ?? 'no se pudo leer de Spotify'),
+        endpoint: error?.endpoint ?? null,
+        spotifyStatus: error?.status ?? null,
+        spotifyBody: error?.body ?? null,
+      });
     }
   }
 

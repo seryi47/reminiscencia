@@ -5,7 +5,6 @@
 
 import { isSameLibraryTrack } from './library-match.js';
 import { normalizeText } from './catalog.js';
-import { fetchPlaylistFromWebPlayer } from './spotify-webplayer.js';
 
 export const SESSION_KEY = 'reminiscencia.spotify';
 export const PKCE_KEY = 'reminiscencia.spotify.pkce';
@@ -121,52 +120,11 @@ export async function resolveCollection({ api, url, source, ref, storage = globa
     if (!page.hasMore) break;
     offset += pageLimit;
   }
-  // Rescate Web Player (ADR-0044 ampliado 2026-11-25): si la colección se marcó como `devModeCap` porque Spotify
-  // la capa a 100 pistas (lista ajena en Dev Mode), intentamos leer las restantes directamente desde el navegador
-  // del usuario usando el token del reproductor web público (`open.spotify.com/get_access_token`), que lleva sus
-  // cookies de sesión y escapa del tope. Si lo conseguimos, pedimos al server que las matchee (payload `tracks`
-  // en vez de `url`); si no (sin sesión abierta en Spotify en este navegador), seguimos con el banner como antes.
-  const playlistId = ref?.type === 'playlist' ? ref.id
-    : (url?.includes('/playlist/') ? url.match(/\/playlist\/([A-Za-z0-9]+)/)?.[1] : null);
-  if (devModeCap && reportedTotal > results.length && playlistId) {
-    const fetched = await fetchPlaylistFromWebPlayer(playlistId).catch(() => null);
-    if (Array.isArray(fetched) && fetched.length > results.length) {
-      // Normalizar las pistas CRUDAS que da `/v1/playlists/{id}/tracks` al formato interno (title, artists, etc.).
-      // Reusamos las primeras `results.length` ya resueltas por el server y solo matcheamos las NUEVAS.
-      const alreadyLoaded = results.length;
-      const extraRawTracks = fetched.slice(alreadyLoaded)
-        .map((entry) => entry?.track).filter((t) => t && (t.type ?? 'track') === 'track' && !t.is_local);
-      if (extraRawTracks.length > 0) {
-        const albumRef = ref?.type === 'playlist' ? ref : { type: 'playlist', id: playlistId };
-        const name = album?.name;
-        // El server, en el camino `tracks`, NO re-pagina: solo matchea la ventana que le mandamos. Nosotros aquí
-        // somos quien pagina: tandas de `pageLimit`, con `indexOffset` global para que los índices salgan bien
-        // en la vista. Cada llamada responde `hasMore:false` (por contrato), así que iteramos hasta cubrir.
-        for (let extraOffset = 0; extraOffset < extraRawTracks.length; extraOffset += pageLimit) {
-          const window = extraRawTracks.slice(extraOffset, extraOffset + pageLimit);
-          const indexOffset = alreadyLoaded + extraOffset;
-          const call = () => api.resolve({
-            tracks: window, accessToken, albumRef, name,
-            offset: 0, limit: window.length, indexOffset,
-          });
-          let page;
-          try { page = await call(); }
-          catch (error) {
-            if (!error.needsAuth) throw error;
-            accessToken = await refreshNow({ api, storage });
-            page = await call();
-          }
-          results.push(...page.results);
-          for (const tier of ['alta', 'media', 'baja', 'error']) summary[tier] += page.summary?.[tier] ?? 0;
-          summary.total = results.length;
-          total = alreadyLoaded + extraRawTracks.length;
-          onPage?.({ loaded: results.length, total, album });
-        }
-        // Ya no estamos limitados: quitamos el aviso.
-        devModeCap = false;
-      }
-    }
-  }
+  // Ampliación 2026-11-25 (web): el fallback «Web Player» desde el navegador se intentó, pero Spotify
+  // responde con CORS cerrado (403) a cualquier origen que no sea open.spotify.com, así que es IMPOSIBLE
+  // leer la playlist entera desde navegador. El banner de la vista (ya sabe mirar `devModeCap` + `reportedTotal`)
+  // dirige al usuario a la APK, que sí lo consigue via WebView. El código `fetchPlaylistFromWebPlayer` se
+  // conserva en el repo por si Spotify lo permitiera en el futuro, pero no se invoca.
   // Rescate final (ADR-0044 ampliado 2026-11-19): aisladas, las pistas sí salen `tier=alta`; en una página de 25 un
   // puñado se pierde por rate-limit acumulado del upstream. Para esos sobrantes, relanzamos `/resolve` UNO a UNO con la
   // URL del track — concurrencia 2 y solo las verdaderamente vacías (`tier=baja, alternatives=[], !error`), nunca las

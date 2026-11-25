@@ -367,8 +367,8 @@ function transferPanel(ctx) {
     const cappedNote = capped.length > 0
       ? el('p', { class: 'transferir-intro transferir-tope', 'data-testid': 'transferir-tope' },
           capped.length === 1
-            ? `«${capped[0].name ?? 'esa lista'}» tiene ${capped[0].reportedTotal} canciones en Spotify pero solo hemos podido leer ${capped[0].results.length} (tope de Spotify para listas que no son tuyas). Para traerlas todas: ábrela en Spotify, pulsa los tres puntos → «Añadir a otra playlist» → «Nueva playlist», y transfiere desde esa copia tuya.`
-            : `${capped.length} de las listas elegidas tienen más canciones de las que Spotify nos deja leer (tope de listas ajenas). Para traerlas enteras, clónalas a tu perfil: tres puntos → «Añadir a otra playlist» → «Nueva playlist».`)
+            ? `«${capped[0].name ?? 'esa lista'}» tiene ${capped[0].reportedTotal} canciones en Spotify pero desde el navegador solo nos deja leer ${capped[0].results.length} (tope de Spotify para listas que no son tuyas). Opciones: 1) usa la APK, que sí lee la lista entera; 2) en Spotify, tres puntos → «Añadir a otra playlist» → «Nueva playlist», y transfiere desde esa copia tuya; 3) pide Extended Quota a Spotify.`
+            : `${capped.length} de las listas elegidas tienen más canciones de las que Spotify nos deja leer desde el navegador (tope de listas ajenas). Usa la APK, o clónalas a tu perfil: tres puntos → «Añadir a otra playlist» → «Nueva playlist».`)
       : null;
     setSection(
       el('p', { class: 'transferir-intro' },
