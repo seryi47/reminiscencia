@@ -108,11 +108,14 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   const offset = Number.isInteger(body.offset) && body.offset >= 0 ? body.offset : 0;
   const limit = Math.min(RESOLVE_MAX_LIMIT, Number.isInteger(body.limit) && body.limit > 0 ? body.limit : RESOLVE_DEFAULT_LIMIT);
 
-  // Camino WEB PLAYER: el cliente ya ha leído la playlist entera con su propia sesión; nosotros solo matcheamos.
-  // Esto se activa cuando el fallback del navegador (ADR-0044 ampliado 2026-11-25) consigue saltar el tope de 100
-  // pistas que Spotify aplica a listas ajenas en Dev Mode.
+  // Camino WEB PLAYER: el cliente ya ha leído la playlist entera con su propia sesión y nos manda la ventana de
+  // pistas YA paginada (sus 25 pistas de esta página). `indexOffset` es el índice global de la primera pista
+  // dentro de la colección completa — los resultados lo reciben y la vista los ordena. `offset`/`limit` en este
+  // camino siguen siendo los del contrato del cliente, pero ignoramos la paginación interna porque el cliente ya
+  // seleccionó la ventana correcta. ADR-0044 ampliado 2026-11-25.
   let collection;
-  if (Array.isArray(body.tracks) && body.tracks.length > 0) {
+  const fromTracks = Array.isArray(body.tracks) && body.tracks.length > 0;
+  if (fromTracks) {
     const albumRef = normalizeSpotifyRef(body.albumRef) ?? { type: 'playlist', id: 'external' };
     const tracks = body.tracks.map((t) => normalizeTrack(t)).filter(Boolean);
     if (tracks.length === 0) return json(400, { error: 'pistas no válidas' });
@@ -136,16 +139,22 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
     }
   }
 
-  const total = collection.tracks.length;
-  const pageTracks = collection.tracks.slice(offset, offset + limit);
+  // Camino `tracks` del cliente: la ventana ya está paginada arriba (no re-paginamos). `indexOffset` sirve para
+  // que los resultados lleven el índice GLOBAL dentro de la colección completa, no el local a esta ventana.
+  const indexOffset = fromTracks && Number.isInteger(body.indexOffset) && body.indexOffset >= 0 ? body.indexOffset : offset;
+  const total = fromTracks ? collection.tracks.length : collection.tracks.length;
+  const pageTracks = fromTracks ? collection.tracks : collection.tracks.slice(offset, offset + limit);
+  // `hasMore` lo decide el cliente en el camino `tracks` (sabe cuántas páginas faltan); por simetría del contrato
+  // devolvemos false cuando el camino es Web Player (una llamada = una ventana).
+  const hasMore = fromTracks ? false : offset + limit < total;
 
   if (compareOnly) {
     // Solo pistas, sin candidatos de YouTube: el cliente marca `inLibrary` y cuenta total/tengo/faltan.
-    const results = pageTracks.map((track, i) => ({ index: offset + i, track, tier: 'baja', best: null, alternatives: [] }));
+    const results = pageTracks.map((track, i) => ({ index: indexOffset + i, track, tier: 'baja', best: null, alternatives: [] }));
     const summary = { total: results.length, alta: 0, media: 0, baja: results.length, error: 0 };
     return json(200, {
       type: collection.type, id: collection.id, name: collection.name, album: albumOf(collection),
-      results, summary, offset, limit, total, hasMore: offset + limit < total,
+      results, summary, offset, limit, total, hasMore,
       devModeCap: collection.devModeCap === true,
       reportedTotal: collection.reportedTotal ?? total,
     });
@@ -161,10 +170,10 @@ export async function handleSpotifyResolve(request, { search, fetchImpl = fetch 
   // aunque el upstream vaya lento. Antes, un resolve pesado con todos los reintentos superaba 30 s y Cloudflare devolvía
   // 503 (Error 1102 CPU exceeded). El cliente ya sabe reintentar las pistas que vuelven con error.
   const resolved = await resolveCollection(pageCollection, { searchYoutube: search }, { concurrency: 1, budgetMs: 25000 });
-  for (const result of resolved.results) result.index += offset; // índices globales
+  for (const result of resolved.results) result.index += indexOffset; // índices globales
 
   return json(200, {
-    ...resolved, offset, limit, total, hasMore: offset + limit < total,
+    ...resolved, offset, limit, total, hasMore,
     devModeCap: collection.devModeCap === true,
     reportedTotal: collection.reportedTotal ?? total,
   });

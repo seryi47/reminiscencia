@@ -139,31 +139,28 @@ export async function resolveCollection({ api, url, source, ref, storage = globa
       if (extraRawTracks.length > 0) {
         const albumRef = ref?.type === 'playlist' ? ref : { type: 'playlist', id: playlistId };
         const name = album?.name;
-        let extraOffset = 0;
-        for (;;) {
+        // El server, en el camino `tracks`, NO re-pagina: solo matchea la ventana que le mandamos. Nosotros aquí
+        // somos quien pagina: tandas de `pageLimit`, con `indexOffset` global para que los índices salgan bien
+        // en la vista. Cada llamada responde `hasMore:false` (por contrato), así que iteramos hasta cubrir.
+        for (let extraOffset = 0; extraOffset < extraRawTracks.length; extraOffset += pageLimit) {
+          const window = extraRawTracks.slice(extraOffset, extraOffset + pageLimit);
+          const indexOffset = alreadyLoaded + extraOffset;
+          const call = () => api.resolve({
+            tracks: window, accessToken, albumRef, name,
+            offset: 0, limit: window.length, indexOffset,
+          });
           let page;
-          try {
-            page = await api.resolve({
-              tracks: extraRawTracks.slice(extraOffset, extraOffset + pageLimit),
-              accessToken, albumRef, name,
-              offset: extraOffset, limit: pageLimit,
-            });
-          } catch (error) {
+          try { page = await call(); }
+          catch (error) {
             if (!error.needsAuth) throw error;
             accessToken = await refreshNow({ api, storage });
-            page = await api.resolve({
-              tracks: extraRawTracks.slice(extraOffset, extraOffset + pageLimit),
-              accessToken, albumRef, name,
-              offset: extraOffset, limit: pageLimit,
-            });
+            page = await call();
           }
-          for (const r of page.results) results.push({ ...r, index: alreadyLoaded + r.index });
+          results.push(...page.results);
           for (const tier of ['alta', 'media', 'baja', 'error']) summary[tier] += page.summary?.[tier] ?? 0;
           summary.total = results.length;
           total = alreadyLoaded + extraRawTracks.length;
           onPage?.({ loaded: results.length, total, album });
-          if (!page.hasMore) break;
-          extraOffset += pageLimit;
         }
         // Ya no estamos limitados: quitamos el aviso.
         devModeCap = false;

@@ -137,6 +137,26 @@ describe('resolve', () => {
     assert.equal(body.results[0].tier, 'alta');
   });
 
+  test('tracks + indexOffset: los índices salen globales (ADR-0044 ampliado 2026-11-25)', async () => {
+    // Regresión del bug encontrado en la auditoría: el cliente ya pagina las pistas (manda solo 25) y pasa
+    // `indexOffset: 100` para la ventana 100-124. El server NO debe re-paginar: devuelve esas 25 con
+    // index = 100..124. Antes el server hacía slice(100, 125) sobre una ventana de 25 → vacío.
+    const rawTracks = Array.from({ length: 25 }, (_, i) => ({
+      id: `t${100 + i}`, name: `S${100 + i}`, type: 'track', duration_ms: 200000,
+      artists: [{ name: 'Coldplay' }], album: { name: 'X', release_date: '2024' },
+    }));
+    const res = await handleSpotifyResolve(
+      post({ tracks: rawTracks, accessToken: 'AT', albumRef: { type: 'playlist', id: PL }, indexOffset: 100, offset: 0, limit: 25 }),
+      { search: goodSearch, fetchImpl },
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.results.length, 25, 'las 25 pistas llegan, no 0');
+    assert.equal(body.results[0].index, 100, 'indexOffset se aplica');
+    assert.equal(body.results[24].index, 124);
+    assert.equal(body.hasMore, false, 'el camino tracks SIEMPRE devuelve hasMore:false (lo pagina el cliente)');
+  });
+
   test('tracks vacíos → 400', async () => {
     const res = await handleSpotifyResolve(post({ tracks: [], accessToken: 'AT' }), { search: goodSearch, fetchImpl });
     assert.equal(res.status, 400);
