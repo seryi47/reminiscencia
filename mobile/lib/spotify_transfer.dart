@@ -186,10 +186,21 @@ class TransferAlbum {
 }
 
 class TransferResolution {
-  TransferResolution({required this.results, this.album, this.total = 0});
+  TransferResolution({
+    required this.results,
+    this.album,
+    this.total = 0,
+    this.devModeCap = false,
+    this.reportedTotal = 0,
+  });
   final List<TransferMatch> results;
   final TransferAlbum? album;
   final int total;
+  /// true si Spotify capa a 100 pistas por Dev Mode (ADR-0044 ampliado 2026-11-25). El cliente puede intentar
+  /// completarlo con el fallback Web Player (`spotify_webplayer.dart`).
+  final bool devModeCap;
+  /// Total real reportado por Spotify (para mostrar en la UI mientras llega el rescate del Web Player).
+  final int reportedTotal;
 }
 
 /// Una playlist del usuario para elegir en la lista (no sus pistas todavía).
@@ -370,6 +381,37 @@ class SpotifyTransfer {
   Future<TransferResolution> resolveRef(Map<String, dynamic> ref, {void Function(int, int)? onPage}) =>
       _resolve({'ref': ref}, onPage: onPage);
 
+  /// Resuelve una ventana de pistas CRUDAS de Spotify (formato `/v1/playlists/<id>/tracks`): el server solo
+  /// hace matching de YouTube, sin ir a Spotify (ADR-0044 ampliado 2026-11-25). Se usa en el rescate Web Player.
+  Future<TransferResolution> resolveTracks({
+    required List<Map<String, dynamic>> rawTracks,
+    required Map<String, dynamic> albumRef,
+    String? name,
+    int indexOffset = 0,
+  }) async {
+    var accessToken = await _freshAccessToken();
+    final results = <TransferMatch>[];
+    TransferAlbum? album;
+    final body = {
+      'tracks': rawTracks, 'accessToken': accessToken, 'albumRef': albumRef,
+      ...?(name != null ? {'name': name} : null),
+      'offset': 0, 'limit': rawTracks.length, 'indexOffset': indexOffset,
+    };
+    Map<String, dynamic> page;
+    try {
+      page = await _post('/api/spotify/resolve', body);
+    } on SpotifyNeedsAuth {
+      accessToken = await _refresh((await _store.read())!);
+      page = await _post('/api/spotify/resolve', {...body, 'accessToken': accessToken});
+    }
+    final albumJson = page['album'];
+    if (albumJson is Map) album = TransferAlbum.fromJson(albumJson.cast<String, dynamic>());
+    for (final entry in (page['results'] as List? ?? const [])) {
+      results.add(TransferMatch.fromJson((entry as Map).cast<String, dynamic>()));
+    }
+    return TransferResolution(results: results, album: album, total: results.length);
+  }
+
   /// Comparación LIGERA al abrir (ADR-0046): lista las pistas (compareOnly, sin resolver YouTube) y cuenta total/tengo/faltan
   /// contra la biblioteca. `owned` son claves título|artista de lo recién transferido (aún sin publicar), para la vista en vivo.
   Future<({int total, int have, int missing})> compareCollection(
@@ -395,6 +437,8 @@ class SpotifyTransfer {
     TransferAlbum? album;
     var total = 0;
     var offset = 0;
+    var devModeCap = false;
+    var reportedTotal = 0;
     while (true) {
       Map<String, dynamic> page;
       final body = {...target, if (compareOnly) 'compareOnly': true, 'accessToken': accessToken, 'offset': offset, 'limit': _pageLimit};
@@ -407,6 +451,11 @@ class SpotifyTransfer {
       final albumJson = page['album'];
       if (albumJson is Map) album = TransferAlbum.fromJson(albumJson.cast<String, dynamic>());
       total = (page['total'] as num?)?.toInt() ?? results.length;
+      // Tope dev-mode de Spotify (ADR-0044 ampliado 2026-11-25): se propaga para que la UI ofrezca el
+      // fallback Web Player desde la APK.
+      if (page['devModeCap'] == true) devModeCap = true;
+      final repTotal = (page['reportedTotal'] as num?)?.toInt() ?? total;
+      if (repTotal > reportedTotal) reportedTotal = repTotal;
       final before = results.length;
       for (final entry in (page['results'] as List? ?? const [])) {
         results.add(TransferMatch.fromJson((entry as Map).cast<String, dynamic>()));
@@ -455,7 +504,10 @@ class SpotifyTransfer {
         await Future.wait([rescue(), rescue()]);
       }
     }
-    return TransferResolution(results: results, album: album, total: total);
+    return TransferResolution(
+      results: results, album: album, total: total,
+      devModeCap: devModeCap, reportedTotal: reportedTotal,
+    );
   }
 
   /// Búsqueda manual en YouTube para una pista sin buena coincidencia.

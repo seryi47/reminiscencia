@@ -10,6 +10,7 @@ import '../spotify_transfer.dart';
 import '../theme.dart';
 import '../youtube_importer.dart';
 import 'common.dart';
+import 'spotify_web_player_dialog.dart';
 
 // «Transferir música» en la APK (ADR-0044): conectar Spotify (OAuth en un WebView que intercepta la vuelta) → ELEGIR de
 // tu biblioteca (playlists + «Me gusta», como TuneMyMusic) o pegar un enlace → revisar coincidencias → transferir por el
@@ -237,11 +238,39 @@ class _TransferirSheetState extends State<_TransferirSheet> {
       for (final src in sources) {
         if (mounted) setState(() => _message = 'Analizando «${src.key}»…');
         final target = src.value;
-        final res = target.containsKey('source')
+        var res = target.containsKey('source')
             ? await _spotify.resolveSource(target['source'] as String, onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); })
             : target.containsKey('ref')
                 ? await _spotify.resolveRef((target['ref'] as Map).cast<String, dynamic>(), onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); })
                 : await _spotify.resolve(target['url'] as String, onPage: (l, t) { if (mounted) setState(() => _message = '«${src.key}»: $l${t > 0 ? ' de $t' : ''}…'); });
+        // Rescate Web Player (ADR-0044 ampliado 2026-11-25): si Spotify capa la lista a 100, abrimos un WebView
+        // que pide un token al reproductor web público (usa la sesión de Spotify del usuario) y leemos la lista
+        // entera. Se pinta un diálogo; si el usuario cancela, nos quedamos con las 100 originales.
+        if (res.devModeCap && res.reportedTotal > res.results.length && mounted) {
+          final playlistId = _playlistIdFromTarget(target);
+          if (playlistId != null) {
+            final extra = await runWebPlayerRescue(
+              context,
+              spotify: _spotify,
+              playlistId: playlistId,
+              albumRef: target.containsKey('ref')
+                  ? (target['ref'] as Map).cast<String, dynamic>()
+                  : {'type': 'playlist', 'id': playlistId},
+              name: res.album?.name,
+              alreadyLoaded: res.results.length,
+              reportedTotal: res.reportedTotal,
+            );
+            if (extra != null && extra.isNotEmpty) {
+              res = TransferResolution(
+                results: [...res.results, ...extra],
+                album: res.album,
+                total: res.results.length + extra.length,
+                devModeCap: false,
+                reportedTotal: res.reportedTotal,
+              );
+            }
+          }
+        }
         markTransferDuplicates(res.results, _library0);
         for (final r in res.results) {
           // Además de lo publicado, lo recién subido (set `done`) o recién transferido en vivo también cuenta como «ya la tienes».
@@ -615,6 +644,21 @@ class _TransferirSheetState extends State<_TransferirSheet> {
       decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
       child: Text(label, style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600)),
     );
+  }
+
+  /// Saca el id de playlist (base62) de un `target` del flujo de analizar.
+  String? _playlistIdFromTarget(Map<String, dynamic> target) {
+    final ref = target['ref'];
+    if (ref is Map && ref['type'] == 'playlist') {
+      final id = ref['id'];
+      if (id is String && RegExp(r'^[A-Za-z0-9]{22}$').hasMatch(id)) return id;
+    }
+    final url = target['url'];
+    if (url is String) {
+      final match = RegExp(r'/playlist/([A-Za-z0-9]{22})').firstMatch(url);
+      if (match != null) return match.group(1);
+    }
+    return null;
   }
 }
 
