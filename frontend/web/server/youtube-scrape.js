@@ -110,35 +110,47 @@ export function extractVideos(data) {
   return dedup;
 }
 
-/** Walk de ytInitialData sacando los `playlistVideoRenderer` (vídeos dentro de una playlist). */
+/**
+ * Walk de ytInitialData sacando los vídeos de la playlist. Soporta DOS formatos:
+ * - El clásico `playlistVideoRenderer` (anterior a 2026-11).
+ * - El nuevo `lockupViewModel` (YouTube migró en 2026-11): el videoId está en `contentId` y el título en
+ *   `metadata.lockupMetadataViewModel.title.content`. Lo detectamos por `contentType === 'LOCKUP_CONTENT_TYPE_VIDEO'`.
+ */
 export function extractPlaylistVideos(data) {
   const out = [];
+  const seenKeys = new Set();
+  const push = (id, title) => {
+    if (!VIDEO_ID.test(id) || !title) return;
+    if (seenKeys.has(id)) return;
+    seenKeys.add(id);
+    out.push({ url: canonicalVideoUrl(id), title: String(title).trim().slice(0, 200) });
+  };
+  const titleOfLockup = (lockup) => {
+    const meta = lockup?.metadata?.lockupMetadataViewModel?.title;
+    if (!meta) return '';
+    if (typeof meta.content === 'string') return meta.content;
+    return readText(meta);
+  };
   const walk = (node, depth) => {
     if (!node || typeof node !== 'object' || depth > 40) return;
     if (Array.isArray(node)) { for (const child of node) walk(child, depth + 1); return; }
-    const renderer = node.playlistVideoRenderer;
-    if (renderer && typeof renderer === 'object') {
-      const id = renderer.videoId;
-      const title = readText(renderer.title).trim().slice(0, 200);
-      if (VIDEO_ID.test(id) && title) {
-        out.push({ url: canonicalVideoUrl(id), title });
-      }
+    const classic = node.playlistVideoRenderer;
+    if (classic && typeof classic === 'object') {
+      push(classic.videoId, readText(classic.title));
+    }
+    const lockup = node.lockupViewModel;
+    if (lockup && typeof lockup === 'object'
+        && typeof lockup.contentType === 'string'
+        && lockup.contentType.includes('VIDEO')) {
+      push(lockup.contentId, titleOfLockup(lockup));
     }
     for (const key of Object.keys(node)) {
-      if (key === 'playlistVideoRenderer') continue;
+      if (key === 'playlistVideoRenderer' || key === 'lockupViewModel') continue;
       walk(node[key], depth + 1);
     }
   };
   walk(data, 0);
-  const seen = new Set();
-  const dedup = [];
-  for (const item of out) {
-    const key = item.url;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    dedup.push(item);
-  }
-  return dedup;
+  return out;
 }
 
 /** Lee el título de la playlist del embedded header. */
@@ -165,12 +177,16 @@ function findTitle(node, depth = 0) {
  */
 export async function scrapeYoutubePlaylist(playlistId, { fetchImpl = globalThis.fetch } = {}) {
   try {
-    const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+    const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}&hl=en&gl=US`;
+    // Cookie `CONSENT` para saltar el redirect a consent.youtube.com (GDPR): sin ella, YouTube devuelve
+    // una página en blanco de 0 bytes para cualquier user-agent europeo. Lo mismo hacen yt-dlp y los clientes
+    // oficiales en primer arranque. Un valor plausible basta porque YouTube solo comprueba presencia.
     const response = await fetchWithTimeout(fetchImpl, url, {
       headers: {
         Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
         'User-Agent': USER_AGENT,
+        Cookie: 'CONSENT=YES+cb.20210328-17-p0.en+FX+667; SOCS=CAESHAgDEhJnd3NfMjAyNDAxMjQtMF9SQzAaAmVuIAEaBgiAw5OtBg',
       },
     }, TIMEOUT_MS);
     if (!response.ok) return null;
@@ -197,8 +213,9 @@ export async function searchYoutubeScrape(query, { fetchImpl = globalThis.fetch 
     const response = await fetchWithTimeout(fetchImpl, url.href, {
       headers: {
         Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
         'User-Agent': USER_AGENT,
+        Cookie: 'CONSENT=YES+cb.20210328-17-p0.en+FX+667; SOCS=CAESHAgDEhJnd3NfMjAyNDAxMjQtMF9SQzAaAmVuIAEaBgiAw5OtBg',
       },
     }, TIMEOUT_MS);
     if (!response.ok) return [];

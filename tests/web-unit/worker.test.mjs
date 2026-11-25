@@ -786,15 +786,21 @@ describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover
   });
 
   test('fallback de /playlist: con upstreams caídos, scrapeamos youtube.com/playlist (ADR-0038 ampliado 2026-11-25)', async () => {
-    // youtube.com devuelve una página con `playlistVideoRenderer` para cada vídeo de la lista; nuestro parser
-    // los extrae con título y URL canónica. Antes, con ambos upstreams caídos, importar una playlist daba 502.
+    // YouTube migró en 2026-11 a `lockupViewModel` — nuestro parser acepta tanto ese como el antiguo
+    // `playlistVideoRenderer`. Antes, con ambos upstreams caídos, importar una playlist daba 502.
     const ytInitialData = {
-      header: { playlistHeaderRenderer: { title: { simpleText: 'Mi Lista' } } },
+      header: { pageHeaderRenderer: { pageTitle: 'Mi Lista' } },
       contents: {
         twoColumnBrowseResultsRenderer: {
           tabs: [{ tabRenderer: { content: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [{ playlistVideoListRenderer: { contents: [
+            // Formato clásico (sigue funcionando).
             { playlistVideoRenderer: { videoId: 'aaaaaaaaaaa', title: { runs: [{ text: 'Primera' }] } } },
-            { playlistVideoRenderer: { videoId: 'bbbbbbbbbbb', title: { runs: [{ text: 'Segunda' }] } } },
+            // Formato nuevo (lockupViewModel).
+            { lockupViewModel: {
+              contentId: 'bbbbbbbbbbb',
+              contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+              metadata: { lockupMetadataViewModel: { title: { content: 'Segunda' } } },
+            } },
           ] } }] } }] } } } }],
         },
       },
