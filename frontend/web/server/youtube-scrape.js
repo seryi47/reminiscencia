@@ -110,6 +110,77 @@ export function extractVideos(data) {
   return dedup;
 }
 
+/** Walk de ytInitialData sacando los `playlistVideoRenderer` (vídeos dentro de una playlist). */
+export function extractPlaylistVideos(data) {
+  const out = [];
+  const walk = (node, depth) => {
+    if (!node || typeof node !== 'object' || depth > 40) return;
+    if (Array.isArray(node)) { for (const child of node) walk(child, depth + 1); return; }
+    const renderer = node.playlistVideoRenderer;
+    if (renderer && typeof renderer === 'object') {
+      const id = renderer.videoId;
+      const title = readText(renderer.title).trim().slice(0, 200);
+      if (VIDEO_ID.test(id) && title) {
+        out.push({ url: canonicalVideoUrl(id), title });
+      }
+    }
+    for (const key of Object.keys(node)) {
+      if (key === 'playlistVideoRenderer') continue;
+      walk(node[key], depth + 1);
+    }
+  };
+  walk(data, 0);
+  const seen = new Set();
+  const dedup = [];
+  for (const item of out) {
+    const key = item.url;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedup.push(item);
+  }
+  return dedup;
+}
+
+/** Lee el título de la playlist del embedded header. */
+function readPlaylistTitle(data) {
+  const header = findTitle(data);
+  return typeof header === 'string' ? header.slice(0, 200) : '';
+}
+function findTitle(node, depth = 0) {
+  if (!node || typeof node !== 'object' || depth > 30) return null;
+  if (Array.isArray(node)) {
+    for (const c of node) { const t = findTitle(c, depth + 1); if (t) return t; }
+    return null;
+  }
+  if (node.playlistHeaderRenderer?.title) return readText(node.playlistHeaderRenderer.title);
+  if (node.pageHeaderRenderer?.pageTitle) return node.pageHeaderRenderer.pageTitle;
+  for (const v of Object.values(node)) { const t = findTitle(v, depth + 1); if (t) return t; }
+  return null;
+}
+
+/**
+ * Lee las pistas de una playlist pública de YouTube scrapeando `youtube.com/playlist?list=<ID>` (ADR-0038
+ * ampliado 2026-11-25). Fallback cuando yt-dlp de Vercel/Netlify está caído. Solo `fetch`.
+ * Devuelve `{ items: [{url, title}], title: string }` o `null` si falla.
+ */
+export async function scrapeYoutubePlaylist(playlistId, { fetchImpl = globalThis.fetch } = {}) {
+  try {
+    const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+    const response = await fetchWithTimeout(fetchImpl, url, {
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'User-Agent': USER_AGENT,
+      },
+    }, TIMEOUT_MS);
+    if (!response.ok) return null;
+    const html = await response.text();
+    const data = parseInitialData(html);
+    if (!data) return null;
+    return { items: extractPlaylistVideos(data), title: readPlaylistTitle(data) };
+  } catch { return null; }
+}
+
 /**
  * Busca canciones scrapeando youtube.com/results. Fallback cuando YT Music tampoco responde (ADR-0038 ampliado
  * 2026-11-24). Solo fetch; devuelve [] si no se puede.

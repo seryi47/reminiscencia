@@ -35,7 +35,7 @@ import { handleStatus } from '../../frontend/web/server/youtube-status.js';
 import { handleDownload } from '../../frontend/web/server/youtube-download.js';
 import { YOUTUBE_MARK_HEADER, markYoutube } from '../../frontend/web/server/youtube-mark.js';
 import { searchYoutubeMusic, mergeCandidates } from '../../frontend/web/server/youtube-music.js';
-import { searchYoutubeScrape } from '../../frontend/web/server/youtube-scrape.js';
+import { searchYoutubeScrape, scrapeYoutubePlaylist } from '../../frontend/web/server/youtube-scrape.js';
 import {
   handleSpotifyLogin, handleSpotifyToken, handleSpotifyRefresh, handleSpotifyMine, handleSpotifyResolve, handleSpotifyCallback,
 } from '../../frontend/web/server/spotify-endpoints.js';
@@ -217,6 +217,32 @@ async function forwardYoutube(request, env, fetchImpl) {
   //   2. `searchYoutubeScrape` → scraping de youtube.com/results, el mismo HTML que yt-dlp parsea.
   // Ambas solo usan `fetch` y no necesitan yt-dlp. Así «Transferir música» y el botón «Buscar otra en YouTube» siguen
   // funcionando aunque no haya upstream yt-dlp. Solo `/search` tiene este fallback; `/playlist` sigue necesitándolo.
+  if (source.pathname === `${YOUTUBE_PREFIX}playlist`) {
+    // Fallback de playlist cuando ambos upstreams yt-dlp (Vercel/Netlify) están caídos (ADR-0038 ampliado 2026-11-25):
+    // scrapeamos directamente `youtube.com/playlist?list=<ID>` y devolvemos sus items. Esto NO resuelve metadatos de
+    // audio, solo la lista de vídeos: homeostasia.js ya sabe pedir cada vídeo por separado.
+    // El cliente puede mandar `?list=<ID>` directamente o `?url=https://youtube.com/playlist?list=<ID>` (homeostasia).
+    let list = source.searchParams.get('list');
+    if (!list) {
+      const urlParam = source.searchParams.get('url');
+      if (urlParam) {
+        try { list = new URL(urlParam).searchParams.get('list'); } catch { /* url mala */ }
+      }
+    }
+    if (list && /^[A-Za-z0-9_-]{1,64}$/.test(list)) {
+      const scraped = await scrapeYoutubePlaylist(list, { fetchImpl });
+      if (scraped && Array.isArray(scraped.items) && scraped.items.length > 0) {
+        return new Response(JSON.stringify(scraped), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+            [YOUTUBE_MARK_HEADER]: 'worker-fallback',
+          },
+        });
+      }
+    }
+  }
   if (source.pathname === `${YOUTUBE_PREFIX}search`) {
     // Saneado de la query antes de salir al upstream: mismo tope que la función oficial de /search
     // (MAX_QUERY_LENGTH=100). Sin él, una query larga gasta CPU del Worker y subrequests sin aportar nada

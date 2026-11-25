@@ -785,6 +785,47 @@ describe('web en Cloudflare (ADR-0034) y YouTube por Vercel/Netlify con failover
     assert.ok(data.items.length > 0, 'YT Music devolvió candidatos cuando los upstreams estaban caídos');
   });
 
+  test('fallback de /playlist: con upstreams caídos, scrapeamos youtube.com/playlist (ADR-0038 ampliado 2026-11-25)', async () => {
+    // youtube.com devuelve una página con `playlistVideoRenderer` para cada vídeo de la lista; nuestro parser
+    // los extrae con título y URL canónica. Antes, con ambos upstreams caídos, importar una playlist daba 502.
+    const ytInitialData = {
+      header: { playlistHeaderRenderer: { title: { simpleText: 'Mi Lista' } } },
+      contents: {
+        twoColumnBrowseResultsRenderer: {
+          tabs: [{ tabRenderer: { content: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [{ playlistVideoListRenderer: { contents: [
+            { playlistVideoRenderer: { videoId: 'aaaaaaaaaaa', title: { runs: [{ text: 'Primera' }] } } },
+            { playlistVideoRenderer: { videoId: 'bbbbbbbbbbb', title: { runs: [{ text: 'Segunda' }] } } },
+          ] } }] } }] } } } }],
+        },
+      },
+    };
+    const page = `<!doctype html><html><head></head><body>
+      <script>var ytInitialData = ${JSON.stringify(ytInitialData)};</script>
+    </body></html>`;
+    const fetchImpl = async (url) => {
+      const u = new URL(String(url));
+      // Vercel/Netlify caídos.
+      if (u.hostname === 'reminiscencia.vercel.app' || u.hostname === 'reminiscencia.netlify.app') {
+        return new Response('', { status: 402 });
+      }
+      if (u.hostname === 'www.youtube.com' && u.pathname === '/playlist') {
+        return new Response(page, { status: 200, headers: { 'Content-Type': 'text/html' } });
+      }
+      throw new TypeError('fetch failed');
+    };
+    const response = await handleRequest(
+      new Request(`${SITE}/api/youtube/playlist?list=PLabc123`),
+      {},
+      { fetchImpl },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('X-Reminiscencia-Youtube'), 'worker-fallback');
+    const data = await response.json();
+    assert.equal(data.title, 'Mi Lista');
+    assert.equal(data.items.length, 2);
+    assert.match(data.items[0].url, /aaaaaaaaaaa/);
+  });
+
   test('si ningún upstream responde, 502 con la cabecera del Worker; otro origen, 403 sin reenviar', async () => {
     const failing = async () => { throw new TypeError('fetch failed'); };
     const down = await handleRequest(new Request(`${SITE}/api/youtube/search?q=x`), {}, { fetchImpl: failing });
