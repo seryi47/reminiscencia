@@ -392,14 +392,78 @@ void main() {
   );
 
   test(
-    'un trabajo vencido se olvida y el siguiente intento crea uno nuevo',
+    'un pendingJob sin savedAt (de versiones anteriores) se descarta: se crea job nuevo',
     () async {
+      // Record heredado del formato antiguo (sin `savedAt`): el TTL lo descarta y se crea job nuevo.
+      // ADR-0044 ampliado 2026-11-25.
       SharedPreferences.setMockInitialValues({
         'homeostasia.youtube.job.abcdefghijk': jsonEncode({
           'jobId': 'job-expired',
           'traceId': '01234567-89ab-4cde-8abc-0123456789ab',
         }),
       });
+      final wav = List<int>.filled(64, 0);
+      wav.setRange(0, 4, 'RIFF'.codeUnits);
+      wav.setRange(8, 12, 'WAVE'.codeUnits);
+      final jobIdsConsultados = <String>[];
+      var createAttempts = 0;
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/youtube/playlist') {
+            return http.Response(
+              jsonEncode({
+                'playlist': {'id': 'PL_demo', 'title': 'Nuestra playlist'},
+                'items': [
+                  {
+                    'url': 'https://www.youtube.com/watch?v=abcdefghijk',
+                    'title': 'Mi tema',
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          if (request.url.path == '/api/status') {
+            jobIdsConsultados.add(request.url.queryParameters['jobId'] ?? '');
+            return http.Response(jsonEncode({'status': 'completed'}), 200);
+          }
+          if (request.url.path == '/api/convert') {
+            createAttempts++;
+            return http.Response(jsonEncode({'jobId': 'job-new'}), 200);
+          }
+          if (request.url.path == '/api/download/') {
+            return http.Response.bytes(wav, 200);
+          }
+          fail('Ruta inesperada: ${request.url}');
+        }),
+        base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
+        tempDir: () => Directory.systemTemp.createTemp('youtube-expired-test'),
+        wait: (_) async {},
+      );
+
+      final audios = await importer.importPlaylist(
+        'https://www.youtube.com/playlist?list=PL_demo',
+      );
+
+      expect(
+        createAttempts,
+        1,
+        reason:
+            'El record heredado sin `savedAt` se descarta y se crea un job nuevo en vez de reutilizar `job-expired`.',
+      );
+      expect(jobIdsConsultados, ['job-new']);
+      expect(audios, hasLength(1));
+      await importer.cleanup(audios);
+    },
+  );
+
+  test(
+    'un 404 en /api/status para un job recién creado se rescata creando uno nuevo',
+    () async {
+      // yttowav acepta /api/convert pero descarta en backend cuando satura concurrencia por IP. Rescate transparente:
+      // un único reintento con job nuevo. ADR-0044 ampliado 2026-11-25.
+      SharedPreferences.setMockInitialValues({});
       final wav = List<int>.filled(64, 0);
       wav.setRange(0, 4, 'RIFF'.codeUnits);
       wav.setRange(8, 12, 'WAVE'.codeUnits);
@@ -434,7 +498,10 @@ void main() {
           }
           if (request.url.path == '/api/convert') {
             createAttempts++;
-            return http.Response(jsonEncode({'jobId': 'job-new'}), 200);
+            return http.Response(
+              jsonEncode({'jobId': 'job-$createAttempts'}),
+              200,
+            );
           }
           if (request.url.path == '/api/download/') {
             return http.Response.bytes(wav, 200);
@@ -443,7 +510,65 @@ void main() {
         }),
         base: Uri.parse('https://example.test/'),
         converterBase: Uri.parse('https://example.test/'),
-        tempDir: () => Directory.systemTemp.createTemp('youtube-expired-test'),
+        tempDir: () => Directory.systemTemp.createTemp('youtube-rescue-test'),
+        wait: (_) async {},
+      );
+
+      final audios = await importer.importPlaylist(
+        'https://www.youtube.com/playlist?list=PL_demo',
+      );
+
+      expect(
+        createAttempts,
+        2,
+        reason:
+            'Primer /api/convert crea `job-1`; el 404 lo rescata creando `job-2` en vez de propagar el error.',
+      );
+      expect(audios, hasLength(1));
+      await importer.cleanup(audios);
+    },
+  );
+
+  test(
+    'un 404 persistente tras el rescate SÍ propaga el error (no bucle infinito)',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      var createAttempts = 0;
+      final importer = YoutubeImporter(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/youtube/playlist') {
+            return http.Response(
+              jsonEncode({
+                'playlist': {'id': 'PL_demo', 'title': 'Nuestra playlist'},
+                'items': [
+                  {
+                    'url': 'https://www.youtube.com/watch?v=abcdefghijk',
+                    'title': 'Mi tema',
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          if (request.url.path == '/api/status') {
+            return http.Response(
+              jsonEncode({'error': 'La conversión ya no está disponible.'}),
+              404,
+            );
+          }
+          if (request.url.path == '/api/convert') {
+            createAttempts++;
+            return http.Response(
+              jsonEncode({'jobId': 'job-$createAttempts'}),
+              200,
+            );
+          }
+          fail('Ruta inesperada: ${request.url}');
+        }),
+        base: Uri.parse('https://example.test/'),
+        converterBase: Uri.parse('https://example.test/'),
+        tempDir: () =>
+            Directory.systemTemp.createTemp('youtube-rescue-fail-test'),
         wait: (_) async {},
       );
 
@@ -459,13 +584,11 @@ void main() {
           ),
         ),
       );
-      final audios = await importer.importPlaylist(
-        'https://www.youtube.com/playlist?list=PL_demo',
+      expect(
+        createAttempts,
+        2,
+        reason: 'Un único reintento: no debe seguir creando jobs tras el segundo 404.',
       );
-
-      expect(createAttempts, 1);
-      expect(audios, hasLength(1));
-      await importer.cleanup(audios);
     },
   );
 

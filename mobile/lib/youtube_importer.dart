@@ -14,7 +14,15 @@ import 'library_store.dart';
 const int kYoutubeMaxPlaylistItems = 200;
 const int kYoutubeMaxWavBytes = 256 * 1024 * 1024;
 const int kYoutubeMaxTitleRunes = 120;
-const int kYoutubeConcurrency = 4;
+/// Concurrencia de conversiones simultáneas por IP. Bajada de 4 a 2 el 2026-11-25: yttowav acepta /api/convert con batch 4
+/// pero descarta la mitad de los jobs en el backend (404 inmediato en /api/status) cuando satura su cupo de concurrencia
+/// por IP. Patrón observado en la web: 2 pistas OK / 2 pistas 404 por tanda. Con 2 cada pista arranca de verdad; el
+/// throughput apenas baja porque yttowav serializa los `yt-dlp` por IP de todos modos. Espejo de la web (ADR-0044).
+const int kYoutubeConcurrency = 2;
+/// TTL del `pendingJob` guardado en SharedPreferences. yttowav purga los jobs tras unas horas; un id heredado de una
+/// importación de ayer devuelve 404 en /api/status («La conversión ya no está disponible»). Por encima del TTL se descarta
+/// y se crea uno nuevo. Espejo del fix web (ADR-0044 ampliado 2026-11-25).
+const Duration kYoutubePendingJobTtl = Duration(minutes: 30);
 const int kYoutubeConvertCreateAttempts = 6;
 /// ADR-0049: tope de TIMEOUTS consecutivos del conversor en la misma tanda. Antes podía gastar hasta ~18 min en una
 /// sola pista (6 intentos × 3 min de timeout). Con este circuito, tras 2 timeouts seguidos salta a la siguiente pista
@@ -164,10 +172,16 @@ class YoutubeImportCancellation {
 }
 
 class _PendingYoutubeJob {
-  const _PendingYoutubeJob({required this.jobId, required this.traceId});
+  const _PendingYoutubeJob({
+    required this.jobId,
+    required this.traceId,
+    required this.savedAt,
+  });
 
   final String jobId;
   final String traceId;
+  /// Marca temporal en milisegundos (epoch) para aplicar el TTL (`kYoutubePendingJobTtl`).
+  final int savedAt;
 }
 
 /// Cliente Android del importador de YouTube.
@@ -581,9 +595,17 @@ class YoutubeImporter {
     if (pending == null) {
       await _savePendingJob(
         videoId,
-        _PendingYoutubeJob(jobId: jobId, traceId: traceId),
+        _PendingYoutubeJob(
+          jobId: jobId,
+          traceId: traceId,
+          savedAt: _clock().millisecondsSinceEpoch,
+        ),
       );
     }
+    // El polling trabaja sobre esta variable para que el rescate 404 (abajo) pueda sustituir el jobId por uno fresco sin
+    // salir del bucle. ADR-0044 ampliado 2026-11-25.
+    var activeJobId = jobId;
+    var rescuedAfter404 = false;
     var poll = 0;
     var statusErrors = 0;
     String? previousState;
@@ -597,7 +619,7 @@ class YoutubeImporter {
           await _get(
             _converterEndpoint(
               'api/status',
-            ).replace(queryParameters: {'jobId': jobId}),
+            ).replace(queryParameters: {'jobId': activeJobId}),
             headers: {
               'X-Homeostasia-Trace': traceId,
               'X-Homeostasia-Poll': '$poll',
@@ -609,6 +631,33 @@ class YoutubeImporter {
         statusErrors = 0;
       } on Object catch (error) {
         if (error is YoutubeHttpException && error.statusCode == 404) {
+          // Rescate 404: yttowav devuelve 404 tanto si reutilizamos un pendingJob viejo como si satura su cupo de
+          // concurrencia por IP y descarta un job recién creado. Un único reintento: creamos job nuevo y seguimos.
+          // Si el nuevo vuelve a ser 404, SÍ es terminal. Espejo del fix web (ADR-0044 ampliado 2026-11-25).
+          if (!rescuedAfter404) {
+            rescuedAfter404 = true;
+            await _removePendingJob(videoId);
+            await _waitCancellable(const Duration(seconds: 5), cancellation);
+            cancellation?.throwIfCancelled();
+            activeJobId = await _createJob(
+              track,
+              deadline: _clock().add(kYoutubeJobTimeout),
+              traceId: traceId,
+              index: index,
+              total: total,
+              onProgress: onProgress,
+              cancellation: cancellation,
+            );
+            await _savePendingJob(
+              videoId,
+              _PendingYoutubeJob(
+                jobId: activeJobId,
+                traceId: traceId,
+                savedAt: _clock().millisecondsSinceEpoch,
+              ),
+            );
+            continue;
+          }
           await _removePendingJob(videoId);
           throw const AppException(
             'La conversión ya no está disponible. Inicia de nuevo para crear otro trabajo.',
@@ -716,7 +765,7 @@ class YoutubeImporter {
     final output = File('${directory.path}/$index-$safeTitle.wav');
     // La descarga es reanudable: si el WAV (grande) se corta en móvil, _downloadWav pide el resto con Range.
     await _downloadWav(
-      _resolveDownload(downloadCandidate, jobId),
+      _resolveDownload(downloadCandidate, activeJobId),
       output,
       headers: _converterHeaders(),
       cancellation: cancellation,
@@ -818,9 +867,18 @@ class YoutubeImporter {
     try {
       final data = jsonDecode(raw);
       if (data is Map && data['jobId'] is String && data['traceId'] is String) {
+        final savedAt = data['savedAt'] is int ? data['savedAt'] as int : 0;
+        // TTL: records anteriores al fix no traen `savedAt`; se tratan como caducados y se recrea el job
+        // (yttowav los purga igualmente). Espejo de la web (ADR-0044 ampliado 2026-11-25).
+        final ageMs = _clock().millisecondsSinceEpoch - savedAt;
+        if (savedAt == 0 || ageMs > kYoutubePendingJobTtl.inMilliseconds) {
+          await _removePendingJob(videoId);
+          return null;
+        }
         return _PendingYoutubeJob(
           jobId: data['jobId'] as String,
           traceId: data['traceId'] as String,
+          savedAt: savedAt,
         );
       }
     } on FormatException catch (error) {
@@ -835,7 +893,11 @@ class YoutubeImporter {
     final preferences = await SharedPreferences.getInstance();
     final saved = await preferences.setString(
       _pendingJobKey(videoId),
-      jsonEncode({'jobId': job.jobId, 'traceId': job.traceId}),
+      jsonEncode({
+        'jobId': job.jobId,
+        'traceId': job.traceId,
+        'savedAt': job.savedAt,
+      }),
     );
     if (!saved) {
       throw const AppException(
