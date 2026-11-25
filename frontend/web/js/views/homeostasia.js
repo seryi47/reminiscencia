@@ -316,8 +316,17 @@ async function crearJob(url, title, signal, deadline, onRetry, traceId, onCreate
       );
       break;
     } catch (error) {
-      // (Antes se cortaba si el mensaje mencionaba un «tope diario»; ADR-0044 aclara que no existe tal tope, así que se
-      // trata como un 429 normal y se reintenta con espera exponencial.)
+      // Tope diario del conversor (yttowav, confirmado 2026-11-25): «You've reached the daily conversion limit (40
+      // per day). Please come back tomorrow!». NO merece reintentos exponenciales — una vez tocado el tope diario,
+      // CADA llamada de HOY devolverá lo mismo. Levantamos un flag `dailyLimit` en el error y que el bucle superior
+      // corte la tanda entera (antes se reintentaba 6 veces por canción × 60 canciones restantes = cientos de 429 inútiles).
+      const message = String(error?.message ?? '').toLowerCase();
+      if (message.includes('daily conversion limit') || message.includes('40 per day')
+          || message.includes('come back tomorrow')) {
+        const dailyErr = new Error('El conversor ha alcanzado su tope diario (40/día por IP). Vuelve a intentarlo mañana o prueba desde la APK (cada móvil tiene su IP).');
+        dailyErr.dailyLimit = true;
+        throw dailyErr;
+      }
       const retryable = error?.name !== 'AbortError' && (
         error.status === undefined ||
         [408, 425, 429, 503, 504].includes(error.status)
@@ -616,7 +625,10 @@ async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
       skipped: false,
       title: item.title,
       item,
-      error
+      error,
+      // El tope diario de yttowav (40/día por IP) se detecta al crear el job. Lo propagamos hacia arriba para que
+      // `convertirPlaylist` levante `circuitOpen` + `dailyLimit:true` y pare la tanda entera (2026-11-25).
+      dailyLimit: Boolean(error?.dailyLimit),
     };
   } finally {
     activeVideos.delete(videoId);
@@ -641,9 +653,10 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
   // error (pendiente) para un reintento posterior, que al ir por caché salta lo ya hecho.
   let consecutiveFails = 0;
   let circuitOpen = false;
-  // El tope «diario» del conversor no existe en realidad (ADR-0044); el aggregate lo expone como false para que las vistas
-  // viejas que aún miran dailyLimit no corten la tanda.
-  const dailyLimit = false;
+  // Tope diario de yttowav (confirmado 2026-11-25): 40 conversiones/día por IP. Cuando se toca, TODAS las siguientes
+  // llamadas devuelven el mismo 429 hasta las 00:00 UTC. En vez de reintentar 6 veces por canción × N canciones
+  // restantes = cientos de llamadas inútiles, al detectar «daily conversion limit» cortamos la tanda.
+  let dailyLimit = false;
 
   const total = items.length;
 
@@ -714,6 +727,8 @@ async function convertirPlaylist(items, onProgress, signal, onBatch) {
           errors.push(result);
           consecutiveFails++;
           if (consecutiveFails >= CONFIG.circuitBreak) circuitOpen = true;
+          // Tope diario yttowav: no reintentar hoy, cerrar el circuito YA (2026-11-25).
+          if (result.dailyLimit) { dailyLimit = true; circuitOpen = true; }
         }
 
         onProgress({
