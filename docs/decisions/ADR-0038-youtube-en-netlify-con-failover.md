@@ -39,7 +39,19 @@ Repartir las funciones por **capacidad** y dar al Worker un **reenvío con failo
 - **Bucle de reenvío:** no redirigir `/api/youtube/search` ni `/playlist` al Worker en `netlify.toml`. El Worker reenvía a Netlify; si Netlify los devuelve al Worker, es un bucle. Solo `convert`/`status`/`download` se redirigen.
 - **Detección de «plataforma caída»:** 402 (Vercel pausado) o un error 4xx/5xx **sin** la cabecera-marca. Un **2xx siempre cuenta como en pie**, aunque no lleve la marca (clave para la vuelta automática a Vercel con el código anterior). Una función real puede devolver 502 (p. ej. «YouTube devolvió demasiados datos») **con** la marca y debe tratarse como respuesta válida, no como caída. No basar la detección solo en «tiene marca / no tiene marca»: eso dejaría a Vercel fuera para siempre tras el desbloqueo.
 - **La memoria de salud es por isolate** y persiste entre peticiones (y entre pruebas en el mismo proceso): en las pruebas se reinicia con `resetYoutubeUpstreamHealth()` en `beforeEach`.
-- **Cloudflare no tiene `child_process`:** por eso `search`/`playlist` no se ejecutan en el Worker, solo se reenvían.
+- **Cloudflare no tiene `child_process`:** por eso `search`/`playlist` no se ejecutan en el Worker, solo se reenvían — con una excepción documentada abajo (fallback por scraping).
+
+## Ampliación 2026-11-25 — fallback por scraping en el Worker
+
+Cuando **ambos** upstreams están caídos (Vercel pausado por Fast Origin Transfer + Netlify con cupo mensual agotado), el Worker ejecuta un fallback por scraping para `search` **y** `playlist` desde `frontend/web/server/youtube-scrape.js`. No necesita `child_process`: solo `fetch`.
+
+- `/api/youtube/search`: combina `searchYoutubeMusic` (YouTube Music via InnerTube) + `searchYoutubeScrape` (scraping de `youtube.com/results`).
+- `/api/youtube/playlist`: `scrapeYoutubePlaylist(id)` lee `youtube.com/playlist?list=<ID>`, parsea `ytInitialData` y extrae los vídeos. Acepta `?list=<ID>` o `?url=https://youtube.com/playlist?list=<ID>` (homeostasia manda el segundo formato).
+
+Trampas descubiertas en caliente (2026-11-25):
+
+- **Cookie `CONSENT` obligatoria.** Sin ella, `youtube.com` responde 0 bytes y redirige a `consent.youtube.com` por GDPR (el Worker va desde IPs europeas de Cloudflare). Enviamos `Cookie: CONSENT=YES+cb.20210328-17-p0.en+FX+667; SOCS=…` plausible — YouTube solo comprueba presencia. Idéntico a lo que hace yt-dlp.
+- **Migración de `playlistVideoRenderer` → `lockupViewModel`.** YouTube cambió en 2026-11 el renderer de los vídeos de una playlist: ya no es `playlistVideoRenderer` con `videoId` y `title.runs`, sino `lockupViewModel` con `contentId` (el videoId), `contentType: 'LOCKUP_CONTENT_TYPE_VIDEO'` y `metadata.lockupMetadataViewModel.title.content` (el título). Nuestro parser (`extractPlaylistVideos`) acepta **los dos** formatos, así que sigue funcionando si YouTube revierte.
 - **Regla `ignore` de Netlify:** al mover el núcleo de las funciones a `frontend/web/server`, ya no se excluye esa carpeta; si se volviera a excluir, un arreglo de las funciones no se desplegaría.
 
 ## Comprobar en producción (pendiente)
