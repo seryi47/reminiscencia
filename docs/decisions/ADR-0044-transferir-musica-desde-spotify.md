@@ -123,3 +123,14 @@ Confirmado en producción: yttowav limita a **40 conversiones por día por IP**.
 - `js/views/homeostasia.js::crearJob` detecta `daily conversion limit`, `40 per day` o `come back tomorrow` y lanza un error con `dailyLimit:true` SIN pasar por el backoff.
 - `convertirCancion` propaga `dailyLimit` al resultado; `convertirPlaylist` abre el circuito al instante al verlo. Las siguientes canciones de la tanda se marcan como pendientes sin llamar al conversor.
 - El usuario puede esperar al reset diario (00:00 UTC) o usar la APK, que va directa a yttowav con su propia IP (ADR-0045).
+
+## Ampliación 2026-11-25 — `pendingJob` caducado (TTL + rescate 404)
+
+Síntoma: al reintentar una playlist grande de YouTube el reporte salía «Importación procesada: 296 canciones. 0 WAV preparados para subir. 273 errores de conversión. Primer error: La conversión ya no está disponible.» con yttowav perfectamente sano.
+
+Causa raíz: `convertirCancion` reutiliza el `jobId` guardado en `localStorage` cuando el record quedó en estado `'converting'` (p. ej. el usuario cerró la pestaña a mitad). yttowav purga jobs tras unas horas, así que al reutilizar un id de ayer la primera consulta a `/api/status` devuelve 404 → «La conversión ya no está disponible» → se marca la pista como `expired`. Con una lista grande heredada, los 15 primeros fallos seguidos abren el cortacircuitos y las ~280 restantes caen con «El conversor alcanzó su límite», aunque la cuota diaria seguía intacta.
+
+Fix (`js/views/homeostasia.js`):
+
+- Constante `PENDING_JOB_TTL_MS = 30 min`. Solo se reutiliza `pendingJob` si `Date.now() - saved.updatedAt < PENDING_JOB_TTL_MS`. Un record `'converting'` viejo se degrada a `'retry'` y se crea un job nuevo.
+- Rescate 404: si al reutilizar un `pendingJob` fresco la consulta a `/api/status` devuelve 404 (yttowav ya lo purgó), se crea un job nuevo con el mismo `traceId` y se reanuda el polling sin romper el cortacircuitos.

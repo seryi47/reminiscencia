@@ -35,6 +35,9 @@ const CONFIG = {
 
 const IMPORT_STORAGE_KEY = 'reminiscencia.youtube-imports';
 const IMPORT_STORAGE_VERSION = 1;
+// Tras 30 min, un jobId guardado como 'converting' se considera caducado: yttowav suele purgarlos en pocas horas y reutilizar
+// un id obsoleto devuelve 404 inmediato en /api/status («La conversión ya no está disponible»), contaminando el cortacircuitos.
+const PENDING_JOB_TTL_MS = 30 * 60 * 1000;
 const YOUTUBE_DB_NAME = 'reminiscencia-youtube-import';
 const YOUTUBE_DB_VERSION = 1;
 const YOUTUBE_DB_STORE = 'wav';
@@ -560,39 +563,59 @@ async function convertirCancion(item, index, total, signal, onRetry, onStatus) {
   activeVideos.add(videoId);
   try {
     const saved = cachedRecord(videoId);
-    const pendingJob = saved?.state === 'converting' && typeof saved.jobId === 'string'
-      ? saved.jobId
-      : null;
+    // Reutilizamos el jobId guardado SOLO si es reciente (< PENDING_JOB_TTL_MS). yttowav purga jobs tras unas horas, por lo
+    // que un record 'converting' heredado de una importación de ayer o de hace un rato produce un 404 inmediato en /api/status
+    // («La conversión ya no está disponible»). Eso disparaba el cortacircuitos antes de que ninguna pista nueva avanzara —
+    // reporte típico: «0 WAV preparados / 273 errores» (ampliado ADR-0044, 2026-11-25).
+    const pendingJobFresh = saved?.state === 'converting'
+      && typeof saved.jobId === 'string'
+      && Number.isFinite(saved.updatedAt)
+      && Date.now() - saved.updatedAt < PENDING_JOB_TTL_MS;
+    const pendingJob = pendingJobFresh ? saved.jobId : null;
+    if (saved?.state === 'converting' && !pendingJobFresh) {
+      saveImportRecord(videoId, { state: 'retry', jobId: null });
+    }
     const traceId = pendingJob && typeof saved.traceId === 'string'
       ? saved.traceId
       : globalThis.crypto.randomUUID();
     const deadline = Date.now() + CONFIG.jobTimeout;
     const cached = await readCachedWav(videoId);
-    const blob = cached?.blob || await (async () => {
-      const jobId = pendingJob || await crearJob(
-        item.url,
-        item.title,
-        signal,
-        deadline,
-        onRetry,
-        traceId,
-        (createdJobId) => {
-          if (!saveImportRecord(videoId, {
-            title: item.title,
-            state: 'converting',
-            jobId: createdJobId,
-            traceId
-          })) {
-            throw new Error(
-              'La conversión se creó, pero no se pudo guardar su seguimiento. No vuelvas a iniciarla todavía.'
-            );
-          }
+    const createFreshJob = () => crearJob(
+      item.url,
+      item.title,
+      signal,
+      deadline,
+      onRetry,
+      traceId,
+      (createdJobId) => {
+        if (!saveImportRecord(videoId, {
+          title: item.title,
+          state: 'converting',
+          jobId: createdJobId,
+          traceId
+        })) {
+          throw new Error(
+            'La conversión se creó, pero no se pudo guardar su seguimiento. No vuelvas a iniciarla todavía.'
+          );
         }
-      );
+      }
+    );
+    const blob = cached?.blob || await (async () => {
+      const jobId = pendingJob || await createFreshJob();
       if (pendingJob) {
         onStatus?.({ status: 'resuming' });
       }
-      return esperarYDescargar(jobId, signal, deadline, onStatus, traceId, videoId);
+      try {
+        return await esperarYDescargar(jobId, signal, deadline, onStatus, traceId, videoId);
+      } catch (error) {
+        // Rescate: si reutilizando el jobId guardado la primera consulta devuelve 404 (yttowav lo purgó),
+        // creamos uno nuevo y seguimos. Sin esto, cada pista con un `pendingJob` viejo contamina el cortacircuitos.
+        if (pendingJob && error?.status === 404 && !signal?.aborted) {
+          const freshJobId = await createFreshJob();
+          return esperarYDescargar(freshJobId, signal, Date.now() + CONFIG.jobTimeout, onStatus, traceId, videoId);
+        }
+        throw error;
+      }
     })();
 
     const filename =
