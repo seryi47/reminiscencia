@@ -29,15 +29,30 @@ export async function getWebPlayerToken({ fetchImpl = globalThis.fetch, now = ()
       credentials: 'include',
       headers: { Accept: 'application/json' },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn('[transferir/webplayer] get_access_token HTTP', res.status, '— el navegador bloquea cookies third-party o Spotify no responde.');
+      return null;
+    }
     const data = await res.json().catch(() => null);
-    if (!data?.accessToken) return null;
+    if (!data?.accessToken) {
+      console.warn('[transferir/webplayer] get_access_token sin accessToken en la respuesta.');
+      return null;
+    }
     // Un token anónimo (sin sesión del usuario) tiene las mismas limitaciones que el token de nuestra app.
-    if (data.isAnonymous === true) return null;
+    if (data.isAnonymous === true) {
+      console.warn('[transferir/webplayer] token ANÓNIMO: el navegador no ha mandado las cookies de spotify.com '
+        + '(third-party cookies bloqueadas en Opera GX/Safari/Firefox por defecto). '
+        + 'Solución: usa la APK, o permite cookies de spotify.com en el navegador, o solicita Extended Quota.');
+      return null;
+    }
     const expiresAt = Number(data.accessTokenExpirationTimestampMs) || (now() + 55 * 60_000);
     cachedToken = { accessToken: data.accessToken, expiresAt };
+    console.info('[transferir/webplayer] token conseguido; leeremos la playlist entera.');
     return cachedToken.accessToken;
-  } catch { return null; }
+  } catch (error) {
+    console.warn('[transferir/webplayer] error pidiendo token:', error?.message ?? error);
+    return null;
+  }
 }
 
 /**

@@ -440,8 +440,15 @@ function transferPanel(ctx) {
         if (entries.length === 0) return;
         result.alternatives = entries;
         result.best = result.best || entries[0];
+        // ADR-0044 ampliado 2026-11-25: una vez el rescate ha encontrado candidato, la fila pasa a estar INCLUIDA
+        // (antes se quedaba excluded del render inicial y el usuario veía el candidato en el desplegable pero el
+        // checkbox desmarcado y «Transferir 1 canciones» en vez de las que tocan).
+        collection.excluded.delete(result.index);
         const cell = node.querySelector(`.transferir-row[data-index="${result.index}"] .transferir-match`);
         if (cell) paintMatch(collection, cell, result, chosenEntry(collection, result));
+        const cb = node.querySelector(`.transferir-row[data-index="${result.index}"] [data-testid="transferir-include"]`);
+        if (cb) cb.checked = true;
+        node._refreshCount?.();
       });
     }
     const select = el('select', { class: 'input transferir-alt', 'data-testid': 'transferir-alt', 'data-index': String(result.index) });
