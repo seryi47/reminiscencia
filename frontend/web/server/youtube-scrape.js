@@ -175,25 +175,81 @@ function findTitle(node, depth = 0) {
  * ampliado 2026-11-25). Fallback cuando yt-dlp de Vercel/Netlify está caído. Solo `fetch`.
  * Devuelve `{ items: [{url, title}], title: string }` o `null` si falla.
  */
+/** Saca el primer `continuationCommand.token` para seguir la paginación de la playlist. */
+function findContinuationToken(data) {
+  let found = null;
+  const walk = (node, depth) => {
+    if (!node || typeof node !== 'object' || depth > 40 || found) return;
+    if (Array.isArray(node)) { for (const child of node) walk(child, depth + 1); return; }
+    const cmd = node.continuationCommand;
+    if (cmd && typeof cmd.token === 'string' && cmd.token.length > 0) { found = cmd.token; return; }
+    for (const value of Object.values(node)) walk(value, depth + 1);
+  };
+  walk(data, 0);
+  return found;
+}
+
+/**
+ * Lee las pistas de una playlist pública de YouTube (ADR-0038 ampliado 2026-11-25). Siguiendo yt-dlp:
+ * 1) GET `youtube.com/playlist?list=<ID>` con cookie `CONSENT` para saltar GDPR → `ytInitialData` con 100 items y
+ *    `ytcfg` con `INNERTUBE_API_KEY` + `INNERTUBE_CLIENT_VERSION`.
+ * 2) Si queda `continuationCommand.token`, POST a `/youtubei/v1/browse?key=…` con el token → siguientes 100.
+ *    Se repite hasta agotar. Así una playlist de 300 trae las 300 enteras, no las 100 iniciales.
+ */
 export async function scrapeYoutubePlaylist(playlistId, { fetchImpl = globalThis.fetch } = {}) {
   try {
-    const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}&hl=en&gl=US`;
-    // Cookie `CONSENT` para saltar el redirect a consent.youtube.com (GDPR): sin ella, YouTube devuelve
-    // una página en blanco de 0 bytes para cualquier user-agent europeo. Lo mismo hacen yt-dlp y los clientes
-    // oficiales en primer arranque. Un valor plausible basta porque YouTube solo comprueba presencia.
-    const response = await fetchWithTimeout(fetchImpl, url, {
-      headers: {
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'User-Agent': USER_AGENT,
-        Cookie: 'CONSENT=YES+cb.20210328-17-p0.en+FX+667; SOCS=CAESHAgDEhJnd3NfMjAyNDAxMjQtMF9SQzAaAmVuIAEaBgiAw5OtBg',
-      },
-    }, TIMEOUT_MS);
+    const firstUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}&hl=en&gl=US`;
+    const headers = {
+      Accept: 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'User-Agent': USER_AGENT,
+      Cookie: 'CONSENT=YES+cb.20210328-17-p0.en+FX+667; SOCS=CAESHAgDEhJnd3NfMjAyNDAxMjQtMF9SQzAaAmVuIAEaBgiAw5OtBg',
+    };
+    const response = await fetchWithTimeout(fetchImpl, firstUrl, { headers }, TIMEOUT_MS);
     if (!response.ok) return null;
     const html = await response.text();
     const data = parseInitialData(html);
     if (!data) return null;
-    return { items: extractPlaylistVideos(data), title: readPlaylistTitle(data) };
+    const items = extractPlaylistVideos(data);
+    const title = readPlaylistTitle(data);
+    // ytcfg: INNERTUBE_API_KEY y client version para los posts de continuation.
+    const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
+    const clientVerMatch = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/);
+    let continuation = findContinuationToken(data);
+    if (apiKeyMatch && clientVerMatch && continuation) {
+      const apiKey = apiKeyMatch[1];
+      const clientVersion = clientVerMatch[1];
+      const seen = new Set(items.map((i) => i.url));
+      for (let pages = 0; pages < 30 && continuation; pages += 1) {
+        const browseUrl = `https://www.youtube.com/youtubei/v1/browse?key=${encodeURIComponent(apiKey)}&prettyPrint=false`;
+        let res;
+        try {
+          res = await fetchWithTimeout(fetchImpl, browseUrl, {
+            method: 'POST',
+            headers: { ...headers, 'Content-Type': 'application/json', Origin: 'https://www.youtube.com' },
+            body: JSON.stringify({
+              context: { client: { clientName: 'WEB', clientVersion, hl: 'en', gl: 'US' } },
+              continuation,
+            }),
+          }, TIMEOUT_MS);
+        } catch { break; }
+        if (!res.ok) break;
+        const pageData = await res.json().catch(() => null);
+        if (!pageData) break;
+        const pageItems = extractPlaylistVideos(pageData);
+        let added = 0;
+        for (const item of pageItems) {
+          if (seen.has(item.url)) continue;
+          seen.add(item.url);
+          items.push(item);
+          added += 1;
+        }
+        const nextCont = findContinuationToken(pageData);
+        if (!nextCont || nextCont === continuation || added === 0) break;
+        continuation = nextCont;
+      }
+    }
+    return { items, title };
   } catch { return null; }
 }
 
