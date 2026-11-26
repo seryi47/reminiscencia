@@ -30,6 +30,12 @@ const String kAuthPreferenceKey = 'reminiscenciaAuthPassword';
 /// Valor fijo que viaja en `X-Actor` para que el Worker lo escriba en cada evento del historial.
 const String kApkActor = 'apk';
 
+/// Contraseña inyectada en el binario por el CI (`--dart-define=AUTH_PASSWORD=...`). Si viene no
+/// vacía, el usuario NUNCA ve la pantalla de contraseña: la APK sale ya autenticada desde la
+/// release firmada (android.yml). Si no viene (compilación local sin flag), se cae al flujo
+/// de SharedPreferences + prompt.
+const String kBuiltInAuthPassword = String.fromEnvironment('AUTH_PASSWORD', defaultValue: '');
+
 class SharedPreferencesAuthStore implements AuthStore {
   SharedPreferencesAuthStore([Future<SharedPreferences> Function()? loader])
     : _loader = loader ?? SharedPreferences.getInstance;
@@ -38,6 +44,10 @@ class SharedPreferencesAuthStore implements AuthStore {
 
   @override
   Future<String> read() async {
+    // Prioridad: la contraseña inyectada en el build gana sobre la guardada por el usuario.
+    // Así una APK firmada por el CI sale ya autenticada sin pasar por AuthPromptScreen.
+    final builtIn = kBuiltInAuthPassword.trim();
+    if (builtIn.isNotEmpty) return builtIn;
     final prefs = await _loader();
     return (prefs.getString(kAuthPreferenceKey) ?? '').trim();
   }

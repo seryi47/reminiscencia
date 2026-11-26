@@ -216,7 +216,12 @@ jobs:
       - name: Compilar APK de producción (uno por arquitectura)
         if: steps.secretos.outputs.listo == 'true'
         working-directory: mobile
-        run: flutter build apk --release --split-per-abi
+        env:
+          AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
+        # ADR-0052: inyectamos AUTH_PASSWORD como constante de compilación (`--dart-define`). Así la APK firmada
+        # sale ya autenticada contra el Worker y el usuario nunca ve la pantalla de contraseña. Si el secret no
+        # está configurado, Flutter compila con la constante vacía y la APK cae al flujo antiguo de SharedPreferences.
+        run: flutter build apk --release --split-per-abi --dart-define=AUTH_PASSWORD="$AUTH_PASSWORD"
 
       # Universal con los 3 ABIs. CRÍTICO para el updater de la app (ADR-0047, update_check.dart:29): si el usuario tiene
       # instalado el universal y la nueva release solo publica splits, Android rechaza la instalación como «no compatible»
@@ -225,7 +230,9 @@ jobs:
       - name: Compilar APK universal de producción (los 3 ABIs en un solo APK)
         if: steps.secretos.outputs.listo == 'true'
         working-directory: mobile
-        run: flutter build apk --release
+        env:
+          AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
+        run: flutter build apk --release --dart-define=AUTH_PASSWORD="$AUTH_PASSWORD"
 
       - name: Verificar firma de cada APK de producción
         if: steps.secretos.outputs.listo == 'true'
