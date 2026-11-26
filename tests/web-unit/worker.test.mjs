@@ -1399,6 +1399,130 @@ describe('catálogo en R2 (ADR-0052)', () => {
     const expose = response.headers.get('Access-Control-Expose-Headers') ?? '';
     assert.match(expose, /ETag/, 'ETag debe estar en Expose-Headers para que clientes cross-origin lean el ETag');
   });
+
+  // ─── Endpoints de snapshot (descarga como backup) y feed Atom ─────────────
+  test('GET /api/catalogo/snapshot/latest sin catálogo → 404', async () => {
+    const { call } = callCat();
+    const response = await call('/api/catalogo/snapshot/latest');
+    assert.equal(response.status, 404);
+    const data = await response.json();
+    assert.match(data.error, /catálogo/i);
+  });
+
+  test('GET /api/catalogo/snapshot/latest con catálogo devuelve JSON adjunto con el nombre por versión', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    // Guarda la snapshot by-version para que el handler la encuentre.
+    publicBucket.seed('snapshots/by-version/v7.json', JSON.stringify(seededCatalog()), { contentType: 'application/json; charset=utf-8' });
+    const response = await call('/api/catalogo/snapshot/latest');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+    assert.match(response.headers.get('content-disposition'), /reminiscencia-catalogo-v7\.json/);
+    assert.match(response.headers.get('cache-control'), /max-age=86400/);
+    const data = await response.json();
+    assert.equal(data.version, 7);
+    assert.equal(data.songs.length, 2);
+  });
+
+  test('GET /api/catalogo/snapshot/v<N> con versión inexistente → 404 con mensaje claro', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/snapshot/v999');
+    assert.equal(response.status, 404);
+    const data = await response.json();
+    assert.match(data.error, /999/);
+  });
+
+  test('GET /api/catalogo/snapshot/v<N> con versión existente devuelve JSON inmutable', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    publicBucket.seed('snapshots/by-version/v3.json', JSON.stringify({ version: 3, folders: [], songs: [] }), { contentType: 'application/json; charset=utf-8' });
+    const response = await call('/api/catalogo/snapshot/v3');
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-disposition'), /v3/);
+    assert.match(response.headers.get('cache-control'), /immutable/);
+    assert.equal(response.headers.get('etag'), '"v3"');
+    const data = await response.json();
+    assert.equal(data.version, 3);
+  });
+
+  test('GET /api/catalogo/feed.atom devuelve atom:feed válido con al menos una entry', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    // Semilla de latest.jsonl con dos eventos.
+    const line1 = JSON.stringify({ id: '01ABCDEFGHJKMNPQRSTVWXYZ01', at: '2026-11-26T10:00:00Z', kind: 'rename_song', new_title: 'Noche sin ti', by: 'web', version_before: 1, version_after: 2 });
+    const line2 = JSON.stringify({ id: '01ABCDEFGHJKMNPQRSTVWXYZ02', at: '2026-11-26T11:00:00Z', kind: 'create_folder', name: 'Jazz', by: 'apk', version_before: 2, version_after: 3 });
+    publicBucket.seed('history/latest.jsonl', `${line1}\n${line2}\n`, { contentType: 'application/x-ndjson; charset=utf-8' });
+    const response = await call('/api/catalogo/feed.atom');
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /application\/atom\+xml/);
+    assert.match(response.headers.get('cache-control'), /max-age=300/);
+    const text = await response.text();
+    assert.match(text, /<feed xmlns="http:\/\/www\.w3\.org\/2005\/Atom">/);
+    assert.match(text, /<title>Reminiscencia · Cambios en el catálogo<\/title>/);
+    assert.match(text, /<link rel="self" href="https:\/\/reminiscencia\.cometia\.es\/api\/catalogo\/feed\.atom"\/>/);
+    assert.match(text, /<entry>/);
+    assert.match(text, /Canción renombrada: Noche sin ti/);
+    assert.match(text, /Álbum creado: Jazz/);
+    assert.match(text, /urn:ulid:01ABCDEFGHJKMNPQRSTVWXYZ01/);
+  });
+});
+
+describe('poda de snapshots por versión (ADR-0052: snapshots-gc)', async () => {
+  const { pruneOldVersionSnapshots, versionFromKey } = await import('../../worker/src/snapshots-gc.js');
+  const seedMany = (bucket, versions) => {
+    for (const v of versions) {
+      bucket.seed(`snapshots/by-version/v${v}.json`, JSON.stringify({ version: v }), { contentType: 'application/json' });
+    }
+  };
+
+  test('versionFromKey parsea las claves esperadas', () => {
+    assert.equal(versionFromKey('snapshots/by-version/v0.json'), 0);
+    assert.equal(versionFromKey('snapshots/by-version/v123.json'), 123);
+    assert.equal(versionFromKey('snapshots/by-version/latest.json'), null);
+    assert.equal(versionFromKey('history/latest.jsonl'), null);
+  });
+
+  test('con menos versiones que keepLatest no borra nada', async () => {
+    const bucket = fakeR2();
+    seedMany(bucket, [1, 2, 3, 4, 5]);
+    const { kept, pruned } = await pruneOldVersionSnapshots(bucket, { keepLatest: 50, snapshotEveryN: 10 });
+    assert.deepEqual(pruned, []);
+    assert.deepEqual(kept, [1, 2, 3, 4, 5]);
+  });
+
+  test('mantiene las últimas keepLatest + los milestones múltiplo de snapshotEveryN + v0; borra el resto', async () => {
+    const bucket = fakeR2();
+    seedMany(bucket, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]);
+    const { kept, pruned } = await pruneOldVersionSnapshots(bucket, { keepLatest: 5, snapshotEveryN: 10 });
+    // Últimas 5: 21, 22, 23, 24, 25. Milestones (<21, múltiplos de 10): 10, 20. v0 siempre. Total kept: [0, 10, 20, 21, 22, 23, 24, 25].
+    assert.deepEqual(kept, [0, 10, 20, 21, 22, 23, 24, 25]);
+    assert.deepEqual(pruned, [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+    // Bucket refleja la poda:
+    for (const v of pruned) assert.equal(bucket.has(`snapshots/by-version/v${v}.json`), false);
+    for (const v of kept) assert.equal(bucket.has(`snapshots/by-version/v${v}.json`), true);
+  });
+
+  test('idempotente: una segunda pasada no borra nada', async () => {
+    const bucket = fakeR2();
+    seedMany(bucket, [10, 11, 12, 13, 14, 15]);
+    await pruneOldVersionSnapshots(bucket, { keepLatest: 3, snapshotEveryN: 10 });
+    const { kept, pruned } = await pruneOldVersionSnapshots(bucket, { keepLatest: 3, snapshotEveryN: 10 });
+    assert.deepEqual(pruned, []);
+    assert.deepEqual(kept, [10, 13, 14, 15]);
+  });
+
+  test('nunca toca catalog/catalog.json ni catalog/VERSION.txt ni history/', async () => {
+    const bucket = fakeR2();
+    bucket.seed('catalog/catalog.json', '{}', { contentType: 'application/json' });
+    bucket.seed('catalog/VERSION.txt', '42', { contentType: 'text/plain' });
+    bucket.seed('history/latest.jsonl', 'x\n', { contentType: 'application/x-ndjson' });
+    seedMany(bucket, [1, 2, 3, 4, 5]);
+    await pruneOldVersionSnapshots(bucket, { keepLatest: 2, snapshotEveryN: 10 });
+    assert.equal(bucket.has('catalog/catalog.json'), true);
+    assert.equal(bucket.has('catalog/VERSION.txt'), true);
+    assert.equal(bucket.has('history/latest.jsonl'), true);
+  });
 });
 
 describe('/api/subir con AUTH_PASSWORD no dispara repository_dispatch (ADR-0052)', () => {

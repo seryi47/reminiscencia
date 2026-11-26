@@ -135,3 +135,29 @@ El seed inicial del catálogo (`v1`) se subió desde `audio-library/indexes/cata
 ## Riesgo documentado — `sha256` squatting
 
 `addBuzonSongs` rechaza con 409 cualquier canción cuyo `sha256` ya exista en el catálogo (deduplicación legítima). Un cliente con `AUTH_PASSWORD` válida puede, en teoría, publicar una canción sintética con un `sha256` cualquiera y bloquear futuras subidas legítimas con ese mismo `sha256` (DoS a la inversa). El riesgo está contenido por el modelo: la contraseña sólo la tienen el usuario, su Mac y Claude; no hay más actores. Mitigación futura: si se abre a más actores, migrar a JWT por usuario y permitir que un operador con rol admin pueda forzar un `set_sha256` sobre una canción existente.
+
+## Ampliación 2026-11-26 — endpoints de snapshot y feed Atom + cron de poda
+
+Se añaden tres rutas de lectura al Worker:
+
+- `GET /api/catalogo/snapshot/latest` → devuelve el catálogo actual como adjunto (`Content-Disposition: attachment; filename="reminiscencia-catalogo-v<N>.json"`) con `Cache-Control: public, max-age=86400, must-revalidate`. Útil como backup descargable desde la UI o para pegarlo en un ticket de incidencia.
+- `GET /api/catalogo/snapshot/v<N>` → lo mismo pero para una versión arbitraria. La clave `snapshots/by-version/v<N>.json` es inmutable por diseño, así que el handler devuelve `Cache-Control: public, max-age=31536000, immutable`. 404 si no existe.
+- `GET /api/catalogo/feed.atom` → convierte las últimas 50 líneas de `history/latest.jsonl` en un feed Atom 1.0 (`application/atom+xml`, cacheable 5 min). Cada entry tiene título humano (`Canción renombrada: …`, `Álbum creado: …`, `Resync a 674 canciones`, `Rollback a la versión N`), `<author><name>by</name></author>`, `<updated>at</updated>` y un `<content type="html">` con una tabla de todos los campos del evento. El feed `<id>` apunta al propio endpoint; `<link rel="self">` igual; `<link>` sin rel apunta a `https://reminiscencia.cometia.es/`. Suscribible desde Feedly, Thunderbird o cualquier lector de RSS/Atom.
+
+Además, se configura un cron semanal del Worker (`[triggers] crons = ["0 3 * * 0"]`, domingo 3 AM UTC) que llama a `pruneOldVersionSnapshots(env.PUBLIC_BUCKET)` (`worker/src/snapshots-gc.js`). La poda mantiene las últimas 50 versiones completas y, de las más antiguas, conserva una cada 10 como "milestones" (v10, v20, v30, …) para rollback a época. `v0` y `catalog/catalog.json` nunca se tocan. Idempotente. Hoy no tiene nada que podar (versión actual ≤ 50), pero entra en juego cuando el catálogo acumule cientos de ediciones.
+
+## Políticas de retención de R2 (aplicar en el panel de Cloudflare)
+
+El cron del Worker se encarga de las snapshots por versión, pero el resto del crecimiento (eventos del historial sueltos, snapshots diarias, residuos del flujo antiguo de `entrada/`) se poda mejor con Lifecycle Rules de R2, que van a nivel de bucket y no cuestan Workers CPU. Cloudflare no las expone todavía via `wrangler` CLI, así que se aplican en **Cloudflare dashboard → R2 → `reminiscencia-audio` → Settings → Object Lifecycle Rules**:
+
+| Prefijo | Acción | Después de |
+|---|---|---|
+| `history/` | Transition to Infrequent Access | 30 días |
+| `history/` | Delete | 2 años (730 días) |
+| `snapshots/by-version/` | Transition to Infrequent Access | 60 días |
+| `snapshots/` (prefijo plano, snapshots diarias `YYYY-MM-DD.json`) | Delete | 365 días |
+| `entrada/` (residuos del flujo viejo de `/api/subir` pre-ADR-0024) | Delete | 7 días |
+
+Las reglas son sólo lectura/retención; no afectan a objetos que se vuelvan a escribir después (R2 reinicia el reloj al `put`). `catalog/catalog.json` y `catalog/VERSION.txt` quedan fuera de cualquier regla (prefijo distinto). El bucket `reminiscencia-audio-privado` (audio del buzón privado) no necesita reglas mientras siga activa la retención por canción pública/privada que gestiona el Worker.
+
+Verificación periódica: `npx --yes wrangler@4.151.3 r2 bucket info reminiscencia-audio` muestra `object_count` y `bucket_size`; con las reglas aplicadas, el crecimiento debería estabilizarse en unas pocas decenas de MB para catálogo+historial+snapshots (el grueso sigue siendo audio, ajeno a esto).

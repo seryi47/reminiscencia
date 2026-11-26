@@ -97,6 +97,10 @@ export function fakeR2({ pageSize = 1000, failOn = null } = {}) {
       const entry = objects.get(key);
       return entry ? new TextDecoder().decode(entry.bytes) : null;
     },
+    /** Comprueba si una clave existe sin añadir una llamada al registro. Útil para asserts tras GC. */
+    has(key) {
+      return objects.has(key);
+    },
     async get(key, options = {}) {
       calls.push({ op: 'get', key, options });
       fail('get', key);

@@ -518,8 +518,27 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
   return finish(response, origin);
 }
 
+import { pruneOldVersionSnapshots } from './snapshots-gc.js';
+
+/** Handler del cron `[triggers] crons` (ADR-0052). Poda snapshots viejas semanalmente. */
+export async function handleScheduled(event, env, ctx) {
+  if (!env?.PUBLIC_BUCKET) return;
+  const work = pruneOldVersionSnapshots(env.PUBLIC_BUCKET)
+    .then(({ kept, pruned }) => {
+      console.log(`snapshots-gc: kept=${kept.length} pruned=${pruned.length}`);
+    })
+    .catch((error) => {
+      console.error('snapshots-gc: fallo', error?.message ?? error);
+    });
+  if (ctx?.waitUntil) ctx.waitUntil(work);
+  else await work;
+}
+
 export default {
   fetch(request, env) {
     return handleRequest(request, env);
+  },
+  scheduled(event, env, ctx) {
+    return handleScheduled(event, env, ctx);
   },
 };

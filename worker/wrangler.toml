@@ -90,4 +90,4 @@ YOUTUBE_UPSTREAMS = "https://reminiscencia.vercel.app,https://reminiscencia.netl
 # ADR-0052: Cron del Worker para poda de snapshots viejas (domingos 3 AM UTC).
 # El handler scheduled() de src/index.js llama a pruneOldVersionSnapshots(bucket) con los defaults.
 [triggers]
-crons = ["0 3 * * 0"]
+crons = ["0 3 * * SUN"]
