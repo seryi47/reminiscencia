@@ -1,5 +1,7 @@
 # CLAUDE.md: instrucciones permanentes
 
+> **Nota de estado (2026-11-26, ADR-0052).** El catálogo (`catalog/catalog.json`) y el historial (`history/latest.jsonl` + `snapshots/`) viven ahora en el bucket R2 `reminiscencia-audio`. El Worker de Cloudflare (`https://reminiscencia.cometia.es`) es el único escritor, mediante `POST /api/catalogo/edit` y `POST /api/buzon/publish` con cabecera `X-Auth: <AUTH_PASSWORD>`. La lectura es `GET /api/catalogo/latest` (pública, con ETag). Los workflows `biblioteca.yml`, `buzon.yml` y `r2.yml` quedaron **retirados**, y `/api/editar` del Worker responde 410 Gone. Donde el resto del documento diga que la APK o la web leen `data/songs.json` o que las ediciones pasan por `/api/editar`, la referencia es histórica: el flujo activo es el del ADR-0052.
+
 ## Objetivo
 Proyecto doctoral sobre música, memoria y Alzheimer, con una plataforma que sirve para estudiar las hipótesis. La investigación y el desarrollo avanzan en paralelo. Ver [PROJECT_MASTER.md](PROJECT_MASTER.md).
 
