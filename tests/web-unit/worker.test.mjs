@@ -1298,6 +1298,107 @@ describe('catálogo en R2 (ADR-0052)', () => {
     assert.equal(nuevo.length, 1);
     assert.equal(JSON.parse(nuevo[0]).kind, 'rename_song');
   });
+
+  // ── Hardenings auditoría (2026-11-26 cierre findings) ─────────────────────
+  test('buzon.publish con 500 canciones (cap) pasa; con 501 devuelve 400 claro', async () => {
+    const mkSong = (i) => ({
+      sha256: 'f'.repeat(63) + (i % 10),
+      title: `t${i}`,
+      duration_s: 180,
+      size_bytes: 1000,
+      codec: 'opus',
+      license: 'x',
+    });
+    // 501 → rechazado
+    const { call: callExc, publicBucket: bExc } = callCat();
+    seed(bExc, seededCatalog());
+    const tooMany = Array.from({ length: 501 }, (_, i) => mkSong(i));
+    const rExc = await callExc('/api/buzon/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH },
+      body: JSON.stringify({ songs: tooMany, if_match: 7 }),
+    });
+    assert.equal(rExc.status, 400);
+    const dExc = await rExc.json();
+    assert.match(dExc.error ?? '', /máximo es 500|demasiadas/i);
+
+    // 500 con sha256 únicos → aceptado
+    const { call: callOk, publicBucket: bOk } = callCat();
+    seed(bOk, seededCatalog());
+    const exact = Array.from({ length: 500 }, (_, i) => ({
+      ...mkSong(i),
+      sha256: i.toString(16).padStart(64, '0'),
+    }));
+    const rOk = await callOk('/api/buzon/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH },
+      body: JSON.stringify({ songs: exact, if_match: 7 }),
+    });
+    assert.equal(rOk.status, 200);
+  });
+
+  test('set_cover escribe en song.cover (no cover_id) y acepta rutas "covers/Sxxx.jpg"', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH },
+      body: JSON.stringify({
+        action: 'set_cover',
+        params: { song_id: 'S0000000000000010', cover: 'covers/S0000000000000010.jpg' },
+        if_match: 7,
+      }),
+    });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.event.kind, 'set_cover');
+    assert.equal(data.event.cover, 'covers/S0000000000000010.jpg');
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    const song = catalog.songs.find((s) => s.id === 'S0000000000000010');
+    assert.equal(song.cover, 'covers/S0000000000000010.jpg', 'escribe song.cover');
+    assert.equal(song.cover_id, undefined, 'NO escribe song.cover_id');
+  });
+
+  test('set_cover acepta base64url (+, /, =) y rechaza caracteres fuera de la regex', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const r1 = await call('/api/catalogo/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH },
+      body: JSON.stringify({
+        action: 'set_cover',
+        params: { song_id: 'S0000000000000010', cover: 'abcABC+/=._-123' },
+        if_match: 7,
+      }),
+    });
+    assert.equal(r1.status, 200);
+
+    const { call: call2, publicBucket: b2 } = callCat();
+    seed(b2, seededCatalog());
+    const r2 = await call2('/api/catalogo/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH },
+      body: JSON.stringify({
+        action: 'set_cover',
+        params: { song_id: 'S0000000000000010', cover: 'bad cover con espacios' },
+        if_match: 7,
+      }),
+    });
+    assert.equal(r2.status, 400);
+    const d2 = await r2.json();
+    assert.match(d2.error ?? '', /no válido/i);
+  });
+
+  test('CORS: /api/catalogo/latest incluye ETag en Access-Control-Expose-Headers', async () => {
+    const { call, publicBucket } = callCat({ ALLOWED_ORIGINS: 'https://reminiscencia.netlify.app' });
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/latest', {
+      method: 'GET',
+      headers: { Origin: 'https://reminiscencia.netlify.app' },
+    });
+    const expose = response.headers.get('Access-Control-Expose-Headers') ?? '';
+    assert.match(expose, /ETag/, 'ETag debe estar en Expose-Headers para que clientes cross-origin lean el ETag');
+  });
 });
 
 describe('/api/subir con AUTH_PASSWORD no dispara repository_dispatch (ADR-0052)', () => {

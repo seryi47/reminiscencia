@@ -86,14 +86,18 @@ const ACTIONS = {
     return { kind: 'move_folder', folder_id: folder.id, parent_id: parentId };
   },
   set_cover(catalog, params) {
-    const song = findSong(catalog, params?.song_id);
-    const coverId = typeof params?.cover_id === 'string' ? params.cover_id : null;
-    // Validación mínima del cover_id: 64 chars hex (sha256) o 1-128 chars sin separadores raros. null borra la portada.
-    if (coverId !== null && !/^[A-Za-z0-9_.-]{1,128}$/.test(coverId)) {
-      throw new ActionError(400, 'set_cover: cover_id no válido.');
+    // El resto de clientes (web catalog.js, player.js; mobile song.dart) leen `song.cover`, no `song.cover_id`:
+    // es una ruta de R2 tipo "covers/Sxxx.jpg" (ADR-0016). Si escribiéramos cover_id la UI no vería el cambio.
+    // Aceptamos `cover` (canónico) y `cover_id` (compat con el payload antiguo de edit-remote.js).
+    const raw = typeof params?.cover === 'string' ? params.cover
+      : typeof params?.cover_id === 'string' ? params.cover_id : null;
+    // Validación: rutas de covers ("covers/Sxxx.jpg"), tokens base64 y hex (sha256). `/`, `+`, `=` y `.` admitidos.
+    if (raw !== null && !/^[A-Za-z0-9_+/=.-]{1,256}$/.test(raw)) {
+      throw new ActionError(400, 'set_cover: valor de portada no válido.');
     }
-    song.cover_id = coverId;
-    return { kind: 'set_cover', song_id: song.id, cover_id: coverId };
+    const song = findSong(catalog, params?.song_id);
+    song.cover = raw;
+    return { kind: 'set_cover', song_id: song.id, cover: raw };
   },
   delete_song(catalog, params) {
     const song = findSong(catalog, params?.song_id);
@@ -248,8 +252,9 @@ export function supportedActions() {
 /** Añade una serie de canciones del buzón al catálogo. Rechaza duplicados por sha256. */
 /** Tope duro de canciones por petición al buzón (ADR-0052). Un payload más grande probablemente es un error del
  * cliente o un abuso, y escribirlo haría crecer el catálogo a muchos MB en una sola transacción. El Worker rechaza
- * con 400 claro; la UI debería subir en lotes más pequeños si de verdad necesita publicar tanto. */
-const BUZON_MAX_SONGS_PER_CALL = 250;
+ * con 400 claro; la UI debería subir en lotes más pequeños si de verdad necesita publicar tanto.
+ * 500 da margen al batching de Spotify transfer (ADR-0044 habla de lotes hasta 300).  */
+const BUZON_MAX_SONGS_PER_CALL = 500;
 
 export function addBuzonSongs(catalog, songs) {
   if (!Array.isArray(songs) || songs.length === 0) throw new ActionError(400, 'buzon: falta la lista de canciones.');

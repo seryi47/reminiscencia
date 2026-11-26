@@ -122,6 +122,10 @@ function finish(response, origin, expose = []) {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+// GITHUB_TOKEN: tras ADR-0052 solo se usa en el ramal legacy de `/api/subir` (clientes sin AUTH_PASSWORD) para
+// dispatchear `buzon.yml`, que ya está RETIRADO. Esto significa que ese ramal legacy no completa aunque el
+// Worker lo intente. Cuando no queden APK pre-1.4.25+49 instaladas, borrar el ramal del `if (dispatchEnabled)`
+// de abajo y el secreto `wrangler secret delete GITHUB_TOKEN`. Mientras tanto el secreto se mantiene.
 const token = (env) => (typeof env.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '');
 
 function saveCoverWith(env) {
@@ -473,7 +477,9 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
   if (audio) return finish(audio, origin, AUDIO_EXPOSE_HEADERS);
   // Rutas del catálogo en R2 (ADR-0052): lectura pública + escritura con X-Auth.
   if (isCatalogRoute(path)) {
-    return finish(await handleCatalogRoute(path, request, env), origin);
+    // Expone ETag para que un cliente cross-origin (p. ej. reminiscencia.netlify.app) pueda leerlo y mandar
+    // If-None-Match en la siguiente carga; sin esto la respuesta 304 nunca llega a reusar su catálogo local.
+    return finish(await handleCatalogRoute(path, request, env), origin, ['ETag']);
   }
   let response;
   switch (path) {

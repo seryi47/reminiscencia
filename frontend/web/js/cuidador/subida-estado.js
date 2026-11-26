@@ -1,5 +1,5 @@
 // Estado de cada subida de «Subir canciones» (ADR-0017), de principio a fin, como en Spotify: cada archivo pasa por
-// En cola → Convirtiendo a Opus… → Subiendo… 45 % (por trozos) → Guardada en GitHub → Publicándose… → Publicada, o
+// En cola → Convirtiendo a Opus… → Subiendo… 45 % (por trozos) → Guardada en R2 → Publicándose… → Publicada, o
 // acaba en «Error: <motivo>» (con Reintentar) o, si tarda más de 10 minutos, queda pendiente de aparecer y se revisa
 // cada minuto hasta reconocerla en el catálogo. Las pistas ya existentes se reconocen solo si coinciden playlist,
 // título y artista.
@@ -179,8 +179,8 @@ export function statusText(item) {
       const percent = Math.round(clamp01(item.fraction) * 100);
       return percent > 0 ? `Subiendo… ${percent}${NBSP}%` : 'Subiendo…';
     }
-    case S.SAVED: return 'Guardada en GitHub';
-    case S.PUBLISHING: return 'Publicándose… (suele tardar 2–3 minutos)';
+    case S.SAVED: return 'Guardada en R2';
+    case S.PUBLISHING: return 'Publicándose…';
     case S.PUBLISHED: return item.alreadyPresent ? 'Ya estaba en la biblioteca' : 'Publicada';
     case S.SLOW: return 'Aún no aparece en la biblioteca; seguiremos comprobando';
     case S.ERROR: return `Error: ${item.error ?? 'No se ha podido subir este archivo.'}`;

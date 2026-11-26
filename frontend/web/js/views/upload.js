@@ -3,7 +3,7 @@
 //   (js/cuidador/subida-estado.js), que lo convierte a Opus en este navegador, guarda una copia para que se pueda
 //   escuchar ya, lo envía por trozos a la función del propio origen /api/subir (js/cuidador/subida-publica.js) y
 //   comprueba /data/songs.json hasta que la canción está publicada. La hoja solo pinta ese estado: una fila por archivo
-//   con su paso («Convirtiendo a Opus…», «Subiendo… 45 %», «Guardada en GitHub», «Publicándose…», «Publicada» con
+//   con su paso («Convirtiendo a Opus…», «Subiendo… 45 %», «Guardada en R2», «Publicándose…», «Publicada» con
 //   «Reproducir», o «Error: <motivo>» con «Reintentar») y un resumen arriba («2 de 3 publicadas»). Al cerrar la hoja,
 //   las subidas siguen. Ni esta hoja ni la web conocen ningún token.
 // - ZIP: la app saca del ZIP sus canciones de audio (subida-zip.js y zip.js) y la hoja las pinta en un grupo, con la

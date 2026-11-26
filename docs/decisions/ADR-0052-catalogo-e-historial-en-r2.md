@@ -115,3 +115,23 @@ Auditoría adversarial posterior al despliegue. Fixes críticos aplicados en com
 El campo `by` del historial (y la cabecera `X-Actor` que lo alimenta) **NO está autenticado**. Cualquier portador de `AUTH_PASSWORD` puede escribir cualquier valor en `X-Actor` y, por tanto, en el `by` del evento. El modelo actual asume una contraseña compartida entre dispositivos autorizados; el `by` sirve para distinguir quién editó cuándo cuando el operador se identifica honestamente (p. ej. la web deja `web`, la APK `apk`, la Mac `migration-ops`), pero no vale para auditoría forense: una contraseña comprometida permite forjar cualquier `by`.
 
 Si se necesita auditoría por usuario real, hace falta emitir tokens por usuario (JWT firmado por el Worker, con `sub` fijado en la emisión) y derivar `by` del token verificado, no del header del cliente. Queda **fuera del alcance de este ADR**; se registrará como ADR aparte cuando alguien pida la capacidad.
+
+## Ampliación 2026-11-26 — APK con `AUTH_PASSWORD` embebida en el build
+
+La APK oficial de producción (firmada por `android.yml`) **no pide la contraseña del Worker al usuario**. Se inyecta como constante de compilación mediante `--dart-define=AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}` en los dos pasos de release (`split-per-abi` y `universal`). `mobile/lib/auth_store.dart` expone la constante `kBuiltInAuthPassword` (`String.fromEnvironment('AUTH_PASSWORD', defaultValue: '')`) y `read()` la devuelve primero si viene no vacía; sólo cae al valor de `SharedPreferences` (y a la pantalla `AuthPromptScreen`) cuando la APK se compila en local sin el flag.
+
+El valor viaja embebido en el binario Dart; `kBuiltInAuthPassword` es `const` y no se escribe a logs ni a `crash reports` (no hay rutina en runtime que la exfiltre más allá de las peticiones autorizadas al Worker). Riesgo: una APK descompilada expone la constante. Mitigaciones:
+
+- La APK no es un asset público; se publica como release del repo privado.
+- Cualquier `AUTH_PASSWORD` comprometida se rota en el llavero de la Mac, en el secret del repo y con `wrangler secret put AUTH_PASSWORD`; el siguiente release firmado la incorpora y las APK antiguas dejan de poder escribir.
+- Si en algún momento se abre la APK a actores no confiables, migrar al modelo JWT por usuario (ver nota sobre `X-Actor` arriba).
+
+## Resync `v4 → v5` (2026-11-26)
+
+El seed inicial del catálogo (`v1`) se subió desde `audio-library/indexes/catalog.json`, que contenía 116 canciones de prueba residuales por debajo del umbral de 90 s de ADR-0046 (tonos de prueba, ZIPs de ejemplo, etc.) — un descuido del operador en el momento de la migración. Las versiones 2 y 3 fueron pruebas en caliente (`create_folder` / `delete_folder` del smoke test), y `v4` fue un resync al estado real de `main` tras rebasar commits que llegaron durante la migración.
+
+`v5` es el resync limpio desde `frontend/web/data/songs.json` (filtrado por `backend/sonidos/publish.py`), con 674 canciones. El evento `resync_clean` queda registrado en el historial append-only con la razón; la snapshot `snapshots/by-version/v5.json` existe y las anteriores (`v1` a `v4`) se conservan. Desde aquí, el flujo normal (Worker con `/api/catalogo/edit` + `/api/buzon/publish`) mantiene la invariante — cualquier futura edición pasa por el Worker y queda registrada.
+
+## Riesgo documentado — `sha256` squatting
+
+`addBuzonSongs` rechaza con 409 cualquier canción cuyo `sha256` ya exista en el catálogo (deduplicación legítima). Un cliente con `AUTH_PASSWORD` válida puede, en teoría, publicar una canción sintética con un `sha256` cualquiera y bloquear futuras subidas legítimas con ese mismo `sha256` (DoS a la inversa). El riesgo está contenido por el modelo: la contraseña sólo la tienen el usuario, su Mac y Claude; no hay más actores. Mitigación futura: si se abre a más actores, migrar a JWT por usuario y permitir que un operador con rol admin pueda forzar un `set_sha256` sobre una canción existente.

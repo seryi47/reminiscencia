@@ -61,8 +61,8 @@ describe('máquina de estados', () => {
       // Convertida, a la espera de hueco para enviarse (ADR-0030 y ADR-0033).
       'Esperando para subir',
       `Subiendo… 45${NBSP}%`,
-      'Guardada en GitHub',
-      'Publicándose… (suele tardar 2–3 minutos)',
+      'Guardada en R2',
+      'Publicándose…',
       'Publicada',
     ]);
     assert.equal(item.songId, 'S2');
@@ -389,7 +389,7 @@ describe('gestor de subidas', () => {
       `Tono de prueba.wav:Subiendo… 33${NBSP}%`,
       `Tono de prueba.wav:Subiendo… 67${NBSP}%`,
       `Tono de prueba.wav:Subiendo… 100${NBSP}%`,
-      'Tono de prueba.wav:Guardada en GitHub',
+      'Tono de prueba.wav:Guardada en R2',
     ]);
     assert.equal(calls.copies.length, 1, 'la copia local se guarda en cuanto termina la conversión');
     assert.equal(tracker.items()[0].localId, calls.copies[0].id);
