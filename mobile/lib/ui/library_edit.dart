@@ -154,68 +154,69 @@ Future<void> addSongToAlbumFlow(
   final folders = services.library.folders;
   final request = await showDialog<LibraryRequest>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Añadir a un álbum'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const _WriteAccessNote(),
-            if (folders.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  'Todavía no hay álbumes. Crea uno con «Crear álbum».',
-                ),
-              ),
-            for (final folder in folders)
-              ListTile(
-                leading: CoverArt(
-                  seed: FolderRef(folder.id).key,
-                  size: 40,
-                  icon: Icons.album_rounded,
-                  image: services.covers.imageFor(folder.cover),
-                ),
-                title: Text(
-                  folder.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: folder.artist.isEmpty ? null : Text(folder.artist),
-                trailing: song.folderId == folder.id
-                    ? Icon(
-                        Icons.check_circle_rounded,
-                        color: Theme.of(dialogContext).colorScheme.primary,
-                        semanticLabel: 'Ya está en este álbum',
-                      )
-                    : null,
-                onTap: () => Navigator.of(dialogContext).pop(
-                  LibraryRequest.moveSong(
-                    songId: song.id,
-                    folderId: folder.id,
-                    albumName: folder.name,
-                  ),
-                ),
-              ),
-            if (song.folderId != null)
-              ListTile(
-                leading: const Icon(Icons.remove_circle_outline_rounded),
-                title: const Text('Sacar del álbum'),
-                onTap: () => Navigator.of(
-                  dialogContext,
-                ).pop(LibraryRequest.moveSong(songId: song.id, folderId: null)),
-              ),
-          ],
+    builder: (dialogContext) {
+      // Lista virtualizada (ADR-0052): construimos los items y los pasamos a ListView.builder,
+      // así solo se layoutean las filas visibles aunque el usuario tenga muchos álbumes.
+      final items = <Widget>[const _WriteAccessNote()];
+      if (folders.isEmpty) {
+        items.add(const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text('Todavía no hay álbumes. Crea uno con «Crear álbum».'),
+        ));
+      }
+      for (final folder in folders) {
+        items.add(ListTile(
+          leading: CoverArt(
+            seed: FolderRef(folder.id).key,
+            size: 40,
+            icon: Icons.album_rounded,
+            image: services.covers.imageFor(folder.cover),
+          ),
+          title: Text(folder.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: folder.artist.isEmpty ? null : Text(folder.artist),
+          trailing: song.folderId == folder.id
+              ? Icon(
+                  Icons.check_circle_rounded,
+                  color: Theme.of(dialogContext).colorScheme.primary,
+                  semanticLabel: 'Ya está en este álbum',
+                )
+              : null,
+          onTap: () => Navigator.of(dialogContext).pop(
+            LibraryRequest.moveSong(
+              songId: song.id,
+              folderId: folder.id,
+              albumName: folder.name,
+            ),
+          ),
+        ));
+      }
+      if (song.folderId != null) {
+        items.add(ListTile(
+          leading: const Icon(Icons.remove_circle_outline_rounded),
+          title: const Text('Sacar del álbum'),
+          onTap: () => Navigator.of(
+            dialogContext,
+          ).pop(LibraryRequest.moveSong(songId: song.id, folderId: null)),
+        ));
+      }
+      return AlertDialog(
+        title: const Text('Añadir a un álbum'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: items.length,
+            itemBuilder: (_, i) => items[i],
+          ),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancelar'),
-        ),
-      ],
-    ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      );
+    },
   );
   if (request == null || !context.mounted) return;
   await openLibraryRequest(context, services, request);
@@ -337,48 +338,48 @@ Future<bool> moveSongsToAlbumFlow(
   final what = count == 1 ? '1 canción' : '$count canciones';
   final picked = await showDialog<Folder>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text('Mover $what a otro álbum'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const _WriteAccessNote(),
-            if (targets.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  'No hay otros álbumes. Crea uno con «Crear álbum».',
-                ),
-              ),
-            for (final target in targets)
-              ListTile(
-                key: ValueKey('album-move-target-${target.id}'),
-                leading: CoverArt(
-                  seed: FolderRef(target.id).key,
-                  size: 40,
-                  icon: Icons.album_rounded,
-                  image: services.covers.imageFor(target.cover),
-                ),
-                title: Text(
-                  target.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: target.artist.isEmpty ? null : Text(target.artist),
-                onTap: () => Navigator.of(dialogContext).pop(target),
-              ),
-          ],
+    builder: (dialogContext) {
+      // Lista virtualizada (ADR-0052): construimos los items y usamos ListView.builder,
+      // así solo se layoutean las filas visibles aunque haya muchos álbumes de destino.
+      final items = <Widget>[const _WriteAccessNote()];
+      if (targets.isEmpty) {
+        items.add(const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text('No hay otros álbumes. Crea uno con «Crear álbum».'),
+        ));
+      }
+      for (final target in targets) {
+        items.add(ListTile(
+          key: ValueKey('album-move-target-${target.id}'),
+          leading: CoverArt(
+            seed: FolderRef(target.id).key,
+            size: 40,
+            icon: Icons.album_rounded,
+            image: services.covers.imageFor(target.cover),
+          ),
+          title: Text(target.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: target.artist.isEmpty ? null : Text(target.artist),
+          onTap: () => Navigator.of(dialogContext).pop(target),
+        ));
+      }
+      return AlertDialog(
+        title: Text('Mover $what a otro álbum'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: items.length,
+            itemBuilder: (_, i) => items[i],
+          ),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancelar'),
-        ),
-      ],
-    ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      );
+    },
   );
   if (picked == null || !context.mounted) return false;
   final LibraryRequest request;

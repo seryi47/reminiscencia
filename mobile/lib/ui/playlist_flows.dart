@@ -269,42 +269,45 @@ class _AddToPlaylistDialog extends StatelessWidget {
         builder: (context, _) {
           final lists = collections.data.playlists;
           final loadError = collections.loadError;
+          // Lista virtualizada (ADR-0052): construimos los items y pasamos a ListView.builder,
+          // así solo se layoutean las filas visibles aunque el usuario tenga muchas playlists.
+          final items = <Widget>[];
+          if (loadError != null) items.add(InlineBanner(icon: Icons.error_outline, message: loadError));
+          items.add(ListTile(
+            leading: const Icon(Icons.add_rounded),
+            title: const Text('Nueva lista…'),
+            onTap: () => _createAndAdd(context),
+          ));
+          for (final playlist in lists) {
+            items.add(ListTile(
+              leading: CoverArt(
+                seed: PlaylistRef(playlist.id).key,
+                size: 40,
+                icon: Icons.queue_music_rounded,
+                image: _playlistImage(collections, playlist),
+              ),
+              title: Text(
+                playlist.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(songCountLabel(playlist.songIds.length)),
+              trailing: playlist.songIds.contains(song.id)
+                  ? Icon(
+                      Icons.check_circle_rounded,
+                      color: Theme.of(context).colorScheme.primary,
+                      semanticLabel: 'Ya está en la lista',
+                    )
+                  : null,
+              onTap: () => _addTo(context, playlist),
+            ));
+          }
           return SizedBox(
             width: double.maxFinite,
-            child: ListView(
+            child: ListView.builder(
               shrinkWrap: true,
-              children: [
-                if (loadError != null)
-                  InlineBanner(icon: Icons.error_outline, message: loadError),
-                ListTile(
-                  leading: const Icon(Icons.add_rounded),
-                  title: const Text('Nueva lista…'),
-                  onTap: () => _createAndAdd(context),
-                ),
-                for (final playlist in lists)
-                  ListTile(
-                    leading: CoverArt(
-                      seed: PlaylistRef(playlist.id).key,
-                      size: 40,
-                      icon: Icons.queue_music_rounded,
-                      image: _playlistImage(collections, playlist),
-                    ),
-                    title: Text(
-                      playlist.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(songCountLabel(playlist.songIds.length)),
-                    trailing: playlist.songIds.contains(song.id)
-                        ? Icon(
-                            Icons.check_circle_rounded,
-                            color: Theme.of(context).colorScheme.primary,
-                            semanticLabel: 'Ya está en la lista',
-                          )
-                        : null,
-                    onTap: () => _addTo(context, playlist),
-                  ),
-              ],
+              itemCount: items.length,
+              itemBuilder: (_, i) => items[i],
             ),
           );
         },

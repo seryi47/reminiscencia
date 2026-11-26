@@ -457,43 +457,51 @@ class _TransferirSheetState extends State<_TransferirSheet> {
     if (lib == null) return const Center(child: CircularProgressIndicator());
     final query = _search.text.trim().toLowerCase();
     final playlists = lib.playlists.where((p) => query.isEmpty || p.name.toLowerCase().contains(query)).toList();
+    // Las playlists de Spotify pueden ser miles: se renderiza como ListView.builder (virtualización nativa)
+    // para no pagar coste de layout por todas las filas al abrir la hoja (ADR-0052 · listas virtualizadas).
+    final browseItems = <Widget>[];
+    if (lib.liked > 0) {
+      browseItems.add(Builder(builder: (_) {
+        _ensureCount('liked', {'source': 'liked'}); // recuento automático al abrir (ADR-0046)
+        return CheckboxListTile(
+          key: const Key('transferir-source-liked'),
+          value: _selected.contains('liked'),
+          onChanged: (v) => setState(() => v == true ? _selected.add('liked') : _selected.remove('liked')),
+          title: const Text('Canciones favoritas'),
+          subtitle: Text(_countText('liked') ?? '${lib.liked} canciones'),
+          secondary: const Icon(Icons.favorite_rounded),
+        );
+      }));
+    }
+    browseItems.add(Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text('Tus playlists (${lib.playlists.length})', style: theme.textTheme.labelLarge)));
+    browseItems.add(Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(controller: _search, decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search), hintText: 'Buscar playlists'), onChanged: (_) => setState(() {}))));
+    for (final p in playlists) {
+      browseItems.add(Builder(builder: (_) {
+        // Recuento automático solo de las listas PROPIAS (las ajenas no dan contenido en modo desarrollo).
+        if (p.mine != false) _ensureCount('pl:${p.id}', {'ref': {'type': 'playlist', 'id': p.id}});
+        final count = _countText('pl:${p.id}');
+        return CheckboxListTile(
+          key: Key('transferir-source-pl-${p.id}'),
+          value: _selected.contains('pl:${p.id}'),
+          onChanged: (v) => setState(() => v == true ? _selected.add('pl:${p.id}') : _selected.remove('pl:${p.id}')),
+          title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          // En Dev Mode, Spotify topa a 100 pistas la lectura de listas ajenas (ADR-0044); la UI avisa al revisar.
+          subtitle: Text(
+            p.mine == false
+                ? '${p.total} canciones · no es tuya (de ${p.ownerName ?? 'otra cuenta'})'
+                : (count ?? '${p.total} canciones'),
+            maxLines: 2, overflow: TextOverflow.ellipsis),
+        );
+      }));
+    }
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text('Elige qué traer. Las playlists mantienen su nombre y su orden. (En modo desarrollo, Spotify solo da el contenido de tus propias listas.)', style: theme.textTheme.bodySmall),
       const SizedBox(height: 8),
-      Flexible(child: ListView(shrinkWrap: true, children: [
-        if (lib.liked > 0)
-          Builder(builder: (_) {
-            _ensureCount('liked', {'source': 'liked'}); // recuento automático al abrir (ADR-0046)
-            return CheckboxListTile(
-              key: const Key('transferir-source-liked'),
-              value: _selected.contains('liked'),
-              onChanged: (v) => setState(() => v == true ? _selected.add('liked') : _selected.remove('liked')),
-              title: const Text('Canciones favoritas'),
-              subtitle: Text(_countText('liked') ?? '${lib.liked} canciones'),
-              secondary: const Icon(Icons.favorite_rounded),
-            );
-          }),
-        Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text('Tus playlists (${lib.playlists.length})', style: theme.textTheme.labelLarge)),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(controller: _search, decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search), hintText: 'Buscar playlists'), onChanged: (_) => setState(() {}))),
-        for (final p in playlists)
-          Builder(builder: (_) {
-            // Recuento automático solo de las listas PROPIAS (las ajenas no dan contenido en modo desarrollo).
-            if (p.mine != false) _ensureCount('pl:${p.id}', {'ref': {'type': 'playlist', 'id': p.id}});
-            final count = _countText('pl:${p.id}');
-            return CheckboxListTile(
-              key: Key('transferir-source-pl-${p.id}'),
-              value: _selected.contains('pl:${p.id}'),
-              onChanged: (v) => setState(() => v == true ? _selected.add('pl:${p.id}') : _selected.remove('pl:${p.id}')),
-              title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              // En Dev Mode, Spotify topa a 100 pistas la lectura de listas ajenas (ADR-0044); la UI avisa al revisar.
-              subtitle: Text(
-                p.mine == false
-                    ? '${p.total} canciones · no es tuya (de ${p.ownerName ?? 'otra cuenta'})'
-                    : (count ?? '${p.total} canciones'),
-                maxLines: 2, overflow: TextOverflow.ellipsis),
-            );
-          }),
-      ])),
+      Flexible(child: ListView.builder(
+        shrinkWrap: true,
+        itemCount: browseItems.length,
+        itemBuilder: (_, i) => browseItems[i],
+      )),
       const SizedBox(height: 8),
       Row(children: [
         Expanded(child: TextField(controller: _link, keyboardType: TextInputType.url, decoration: const InputDecoration(isDense: true, hintText: 'o pega un enlace (álbum/canción)'))),
@@ -556,7 +564,8 @@ class _TransferirSheetState extends State<_TransferirSheet> {
         Text('Ya tienes en tu biblioteca todas las canciones de lo que elegiste (${haveKeys.length}). No hay nada nuevo que importar.',
             key: const Key('transferir-nada-nuevo'), style: theme.textTheme.bodyMedium),
         const SizedBox(height: 8),
-        Flexible(child: ListView(shrinkWrap: true, children: children)),
+        // ListView.builder: virtualización nativa para listas largas (ADR-0052).
+        Flexible(child: ListView.builder(shrinkWrap: true, itemCount: children.length, itemBuilder: (_, i) => children[i])),
         const SizedBox(height: 12),
         FilledButton(onPressed: () => setState(() => _stage = _Stage.browse), child: const Text('Elegir otra cosa')),
       ]);
@@ -567,7 +576,8 @@ class _TransferirSheetState extends State<_TransferirSheet> {
           '${anyReview ? 'Abajo solo lo que conviene revisar (ya hay una versión elegida).' : 'Todo identificado automáticamente. Dale a «Transferir».'}',
           style: theme.textTheme.bodySmall),
       const SizedBox(height: 8),
-      Flexible(child: ListView(shrinkWrap: true, children: children)),
+      // ListView.builder: virtualización nativa para listas largas (ADR-0052).
+      Flexible(child: ListView.builder(shrinkWrap: true, itemCount: children.length, itemBuilder: (_, i) => children[i])),
       const SizedBox(height: 12),
       FilledButton.icon(key: const Key('transferir-go'), onPressed: _transfer, icon: const Icon(Icons.download_rounded), label: Text('Transferir $_selectedCount canciones')),
       TextButton(onPressed: () => setState(() => _stage = _Stage.browse), child: const Text('Elegir otra cosa')),
@@ -697,9 +707,18 @@ class _ManualSearchState extends State<_ManualSearch> {
       if (results.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sin resultados en YouTube.'))); return; }
       final picked = await showModalBottomSheet<TransferCandidate>(
         context: context,
-        builder: (_) => ListView(children: [
-          for (final c in results) ListTile(title: Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis), subtitle: Text('${_fmt(c.durationS)} · ${_sourceLabel(c.source)}'), onTap: () => Navigator.of(context).pop(c)),
-        ]),
+        // ListView.builder: virtualización nativa para resultados largos de YouTube (ADR-0052).
+        builder: (_) => ListView.builder(
+          itemCount: results.length,
+          itemBuilder: (_, i) {
+            final c = results[i];
+            return ListTile(
+              title: Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${_fmt(c.durationS)} · ${_sourceLabel(c.source)}'),
+              onTap: () => Navigator.of(context).pop(c),
+            );
+          },
+        ),
       );
       if (picked != null) widget.onPicked(picked);
     } catch (_) {
