@@ -135,6 +135,11 @@ export function fakeR2({ pageSize = 1000, failOn = null } = {}) {
         ...(truncated ? { cursor: String(start + limit) } : {}),
       };
     },
+    async delete(key) {
+      calls.push({ op: 'delete', key });
+      fail('delete', key);
+      objects.delete(key);
+    },
   };
   return bucket;
 }

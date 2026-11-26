@@ -223,7 +223,7 @@ void main() {
       await tester.tap(find.text('Editar detalles'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('sin pasar por GitHub'), findsOneWidget);
+      expect(find.textContaining('al momento en el catálogo'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('request-field-0')), '   ');
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();

@@ -26,7 +26,7 @@ export const BRANCH = 'main';
 export const COVERS_DIRECTORY = 'audio-library/buzon/portadas';
 export const MAX_COVER_BYTES = 1024 * 1024;
 export const ALLOWED_OPS = Object.freeze(['create_folder', 'edit_folder', 'rename_folder', 'delete_folder', 'edit_song', 'unpublish_song', 'move_songs', 'order_album', 'clean_titles']);
-export const DONE_MESSAGE = 'Guardado: llegará a todos en un par de minutos.';
+export const DONE_MESSAGE = 'Guardado al momento en el catálogo.';
 export const ERROR_LABEL = 'error';
 export const EDIT_STATES = Object.freeze({ OPEN: 'abierta', CLOSED: 'cerrada', ERROR: 'error' });
 // Número de incidencia: entero positivo sin ceros a la izquierda, como mucho 9 cifras.

@@ -2,18 +2,21 @@
 // candado optimista (if_match contra la versión actual + lock de 15 s) + snapshot pre-versión + append al historial.
 //
 // Rutas:
-//   GET  /api/catalogo/latest     → el catálogo actual con ETag W/"v<version>" y Cache-Control: no-store.
-//   POST /api/catalogo/edit       → aplica una acción declarativa (rename, move, delete, set_*, create_folder).
-//   POST /api/buzon/publish       → añade al catálogo las canciones publicadas por el buzón.
-//   POST /api/catalogo/rollback   → vuelve a una versión anterior (lee snapshots/by-version/v<N>.json).
-//   GET  /api/catalogo/historial  → últimas N líneas de history/latest.jsonl (por defecto 100).
+//   GET  /api/catalogo/latest           → el catálogo actual con ETag W/"v<version>" y Cache-Control: no-store.
+//   POST /api/catalogo/edit             → aplica una acción declarativa (rename, move, delete, set_*, create_folder).
+//   POST /api/buzon/publish             → añade al catálogo las canciones publicadas por el buzón.
+//   POST /api/catalogo/rollback         → vuelve a una versión anterior (lee snapshots/by-version/v<N>.json).
+//   GET  /api/catalogo/historial        → últimas N líneas de history/latest.jsonl (por defecto 100).
+//   GET  /api/catalogo/snapshot/latest  → descarga del catálogo actual como backup (Content-Disposition).
+//   GET  /api/catalogo/snapshot/v<N>    → descarga de una versión arbitraria (inmutable, cacheable 1 año).
+//   GET  /api/catalogo/feed.atom        → feed Atom 1.0 con las últimas 50 ediciones (consumible desde Feedly, etc.).
 
 import { isAuthorized } from './auth.js';
 import { CATALOG_KEY, emptyCatalog, readCatalog, writeCatalog } from './catalog.js';
 import { ActionError, addBuzonSongs, applyAction } from './catalog-actions.js';
 import { acquireLock, releaseLock } from './catalog-lock.js';
 import { appendEvent, readLatest } from './history.js';
-import { ensureDailySnapshot, ensureVersionSnapshot, readVersionSnapshot } from './snapshots.js';
+import { ensureDailySnapshot, ensureVersionSnapshot, readVersionSnapshot, VERSION_SNAPSHOT_PREFIX } from './snapshots.js';
 
 const jsonResponse = (status, payload, extraHeaders = {}) => new Response(JSON.stringify(payload), {
   status,
@@ -202,13 +205,153 @@ export async function handleCatalogHistorial(request, env) {
   return jsonResponse(200, { ok: true, events, limit });
 }
 
+/** GET /api/catalogo/snapshot/latest — descarga el catálogo actual como adjunto (backup). */
+export async function handleSnapshotLatest(request, env) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return jsonResponse(405, { ok: false, error: 'Solo se admite GET.' });
+  }
+  if (!env?.PUBLIC_BUCKET) return catalogBucketMissing();
+  const current = await readCatalog(env.PUBLIC_BUCKET);
+  if (!current) return jsonResponse(404, { ok: false, error: 'No hay catálogo todavía.' });
+  // Preferimos la snapshot by-version si existe (idéntica al catálogo actual pero fijada por versión); si no, servimos
+  // el catálogo vivo. En producción la snapshot debería existir siempre tras withLockedWrite.
+  const snapshot = await readVersionSnapshot(env.PUBLIC_BUCKET, current.version);
+  const body = JSON.stringify(snapshot ?? current);
+  const filename = `reminiscencia-catalogo-v${current.version}.json`;
+  return new Response(request.method === 'HEAD' ? null : body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      // Idempotente por versión; si cambia la versión cambia el nombre, así que 24h con revalidación es seguro.
+      'Cache-Control': 'public, max-age=86400, must-revalidate',
+      ETag: `W/"v${current.version}"`,
+    },
+  });
+}
+
+/** GET /api/catalogo/snapshot/v<N> — descarga una versión arbitraria del catálogo (inmutable). */
+export async function handleSnapshotByVersion(path, request, env) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return jsonResponse(405, { ok: false, error: 'Solo se admite GET.' });
+  }
+  if (!env?.PUBLIC_BUCKET) return catalogBucketMissing();
+  const match = /^\/api\/catalogo\/snapshot\/v(\d+)$/.exec(path);
+  if (!match) return jsonResponse(400, { ok: false, error: 'Ruta no válida: usa /api/catalogo/snapshot/v<N>.' });
+  const version = Number(match[1]);
+  const snapshot = await readVersionSnapshot(env.PUBLIC_BUCKET, version);
+  if (!snapshot) return jsonResponse(404, { ok: false, error: `No hay snapshot para la versión ${version}.` });
+  const body = JSON.stringify(snapshot);
+  const filename = `reminiscencia-catalogo-v${version}.json`;
+  return new Response(request.method === 'HEAD' ? null : body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      // Una versión concreta nunca cambia (clave distinta por N): cacheable para siempre.
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      ETag: `"v${version}"`,
+    },
+  });
+}
+
+/** Escapa cuatro caracteres XML sensibles. Suficiente para texto en <title>, <content> y <author>. */
+function escapeXml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Devuelve un título humano corto para un evento del historial. */
+function titleForEvent(event) {
+  const kind = event?.kind ?? 'cambio';
+  switch (kind) {
+    case 'rename_song': return `Canción renombrada: ${event.new_title ?? ''}`;
+    case 'rename_folder': return `Álbum renombrado: ${event.new_name ?? ''}`;
+    case 'move_song': return 'Canción movida de álbum';
+    case 'move_folder': return 'Álbum movido';
+    case 'set_cover': return 'Portada actualizada';
+    case 'set_year': return 'Año actualizado';
+    case 'set_artist': return 'Artista actualizado';
+    case 'set_tags': return 'Etiquetas actualizadas';
+    case 'set_song_fields': return 'Campos de canción actualizados';
+    case 'set_track_index': return 'Orden de pista actualizado';
+    case 'reorder_folder': return 'Álbum reordenado';
+    case 'delete_song': return 'Canción eliminada';
+    case 'delete_folder': return 'Álbum eliminado';
+    case 'unpublish_song': return 'Canción despublicada';
+    case 'create_folder': return `Álbum creado: ${event.name ?? ''}`;
+    case 'migration_initial': return `Migración inicial · ${event.songs_count ?? '?'} canciones`;
+    case 'resync_clean':
+    case 'resync_from_main': return `Resync a ${event.songs_count ?? '?'} canciones`;
+    case 'rollback': return `Rollback a la versión ${event.to_version ?? '?'}`;
+    case 'buzon_publish': return `Buzón: ${event.count ?? 'canciones'} publicadas`;
+    default: return `Cambio: ${kind}`;
+  }
+}
+
+/** Convierte un evento en HTML para el <content> del feed. */
+function contentForEvent(event) {
+  const rows = Object.entries(event)
+    .filter(([k]) => !['raw'].includes(k))
+    .map(([k, v]) => `<tr><th>${escapeXml(k)}</th><td>${escapeXml(typeof v === 'object' ? JSON.stringify(v) : v)}</td></tr>`)
+    .join('');
+  return `<table>${rows}</table>`;
+}
+
+/** GET /api/catalogo/feed.atom — feed Atom 1.0 con las últimas 50 ediciones del catálogo. */
+export async function handleFeedAtom(request, env) {
+  if (request.method !== 'GET') return jsonResponse(405, { ok: false, error: 'Solo se admite GET.' });
+  if (!env?.PUBLIC_BUCKET) return catalogBucketMissing();
+  const events = await readLatest(env.PUBLIC_BUCKET, 50);
+  const feedUpdated = events[0]?.at ?? new Date().toISOString();
+  const selfUrl = 'https://reminiscencia.cometia.es/api/catalogo/feed.atom';
+  const siteUrl = 'https://reminiscencia.cometia.es/';
+  const entries = events.map((event) => {
+    const id = event.id ?? event.at ?? String(Math.random());
+    const title = titleForEvent(event);
+    const updated = event.at ?? feedUpdated;
+    const author = event.by ?? 'anon';
+    const content = contentForEvent(event);
+    return `  <entry>
+    <id>urn:ulid:${escapeXml(id)}</id>
+    <title>${escapeXml(title)}</title>
+    <updated>${escapeXml(updated)}</updated>
+    <author><name>${escapeXml(author)}</name></author>
+    <content type="html">${escapeXml(content)}</content>
+  </entry>`;
+  }).join('\n');
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>${selfUrl}</id>
+  <title>Reminiscencia · Cambios en el catálogo</title>
+  <updated>${escapeXml(feedUpdated)}</updated>
+  <link rel="self" href="${selfUrl}"/>
+  <link href="${siteUrl}"/>
+${entries}
+</feed>
+`;
+  return new Response(xml, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/atom+xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+    },
+  });
+}
+
 /** Devuelve true si la ruta es una de las nuevas del catálogo (para router). */
 export function isCatalogRoute(path) {
   return path === '/api/catalogo/latest'
     || path === '/api/catalogo/edit'
     || path === '/api/catalogo/rollback'
     || path === '/api/catalogo/historial'
-    || path === '/api/buzon/publish';
+    || path === '/api/buzon/publish'
+    || path === '/api/catalogo/snapshot/latest'
+    || path === '/api/catalogo/feed.atom'
+    || /^\/api\/catalogo\/snapshot\/v\d+$/.test(path);
 }
 
 /** Despacha una ruta del catálogo al handler correspondiente. */
@@ -219,8 +362,12 @@ export async function handleCatalogRoute(path, request, env) {
     case '/api/catalogo/rollback': return handleCatalogRollback(request, env);
     case '/api/catalogo/historial': return handleCatalogHistorial(request, env);
     case '/api/buzon/publish': return handleBuzonPublish(request, env);
-    default: return jsonResponse(404, { ok: false, error: 'No existe.' });
+    case '/api/catalogo/snapshot/latest': return handleSnapshotLatest(request, env);
+    case '/api/catalogo/feed.atom': return handleFeedAtom(request, env);
+    default:
+      if (/^\/api\/catalogo\/snapshot\/v\d+$/.test(path)) return handleSnapshotByVersion(path, request, env);
+      return jsonResponse(404, { ok: false, error: 'No existe.' });
   }
 }
 
-export { CATALOG_KEY };
+export { CATALOG_KEY, VERSION_SNAPSHOT_PREFIX };

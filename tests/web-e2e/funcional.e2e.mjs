@@ -58,7 +58,7 @@ async function fakeUploadFunction({ headers, body }) {
     json: {
       ok: true, parte: index, partes: total, completa: complete, repetido: false,
       nombre: complete ? `${name.replace(/\.[^.]*$/, "")}.opus` : null,
-      mensaje: complete ? "Subida: llegará a todos en un par de minutos." : `Trozo ${index + 1} de ${total} recibido.`,
+      mensaje: complete ? "Subida al momento a la biblioteca." : `Trozo ${index + 1} de ${total} recibido.`,
     },
   };
 }
@@ -79,11 +79,11 @@ async function fakeEditFunction({ method, headers, body, query }) {
   const type = headers["content-type"] ?? "";
   if (type.startsWith("image/")) {
     ediciones.push({ kind: "portada", id: headers["x-portada-id"], type, bytes: body.length, jpeg: body[0] === 0xff && body[1] === 0xd8 });
-    return { json: { ok: true, mensaje: "Guardado: llegará a todos en un par de minutos." } };
+    return { json: { ok: true, mensaje: "Guardado al momento en el catálogo." } };
   }
   ediciones.push({ kind: "organizar", ...JSON.parse(body.toString("utf8")) });
   ultimaIncidencia += 1;
-  return { json: { ok: true, incidencia: ultimaIncidencia, mensaje: "Guardado: llegará a todos en un par de minutos." } };
+  return { json: { ok: true, incidencia: ultimaIncidencia, mensaje: "Guardado al momento en el catálogo." } };
 }
 fakeEditFunction.acceptsGet = true;
 
@@ -669,7 +669,7 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       for (const opcion of ["Editar detalles", "Añadir a un álbum", "Cambiar portada", "Ir al álbum"]) assert.ok(opciones.includes(opcion), opciones.join(", "));
       await pickMenu(page, "menu-edit-song");
       await waitVisible(page, "edit-song");
-      assert.match(await textOf(page, "edit-note"), /sin pasar por GitHub.*par de minutos/);
+      assert.match(await textOf(page, "edit-note"), /al momento en el catálogo/);
       assert.equal(await page.$eval('[data-testid="edit-song-save"]', (b) => b.getAttribute("aria-disabled")), "true", "Sin cambios no hay petición.");
       await fillField(await waitVisible(page, "edit-song-title"), "Charleston nuevo");
       await fillField(await waitVisible(page, "edit-song-artist"), "Orquesta ficticia");
@@ -757,7 +757,7 @@ describe("Editar canciones y álbumes (se guardan por /api/editar, sin GitHub)",
       await waitVisible(page, "cover-sheet");
       assert.equal(await page.$eval('[data-testid="cover-save"]', (b) => b.getAttribute("aria-disabled")), "true", "Sin imagen no se guarda.");
       const reglas = await textOf(page, "cover-rules");
-      for (const regla of [/JPG, PNG o WebP/, /640 × 640/, /par de minutos/]) assert.match(reglas, regla);
+      for (const regla of [/JPG, PNG o WebP/, /640 × 640/, /al momento en el catálogo/]) assert.match(reglas, regla);
       const dir = await mkdtemp(join(tmpdir(), "reminiscencia-e2e-"));
       const foto = join(dir, "portada-prueba.png");
       await writeFile(foto, pngImage(900, 600));
@@ -1259,12 +1259,12 @@ describe("Subir canciones", () => {
       }
       await waitState(page, "Mi canción.wav", "publicandose");
       assert.deepEqual(await filas(page), [
-        ["publicandose", "Tono de prueba.wav", "Publicándose… (suele tardar 2–3 minutos)"],
-        ["publicandose", "Mi canción.wav", "Publicándose… (suele tardar 2–3 minutos)"],
+        ["publicandose", "Tono de prueba.wav", "Publicándose…"],
+        ["publicandose", "Mi canción.wav", "Publicándose…"],
       ]);
       assert.equal(await textOf(page, "upload-summary"), "0 de 2 publicadas");
       const estados = await page.evaluate(() => window.__estados.filter((text) => text.startsWith("Tono de prueba.wav")));
-      for (const paso of ["En cola", "Convirtiendo a Opus…", "Guardada en GitHub", "Publicándose… (suele tardar 2–3 minutos)"]) {
+      for (const paso of ["En cola", "Convirtiendo a Opus…", "Guardada en GitHub", "Publicándose…"]) {
         assert.ok(estados.includes(`Tono de prueba.wav: ${paso}`), `pasa por «${paso}»: ${estados.join(" | ")}`);
       }
       assert.ok(estados.some((text) => /^Tono de prueba\.wav: Subiendo… \d+\u00a0%$/.test(text)), `pasa por «Subiendo… N %»: ${estados.join(" | ")}`);
@@ -1372,7 +1372,7 @@ describe("Subir canciones", () => {
       await waitState(page, "Este sube.wav", "publicandose");
       assert.deepEqual(await filas(page), [
         ["error", "Este se cae una-vez.wav", "Error: El archivo no es Ogg Opus."],
-        ["publicandose", "Este sube.wav", "Publicándose… (suele tardar 2–3 minutos)"],
+        ["publicandose", "Este sube.wav", "Publicándose…"],
       ]);
       assert.equal(await textOf(page, "upload-summary"), "0 de 2 publicadas · 1 con error");
       assert.equal(await page.$eval('[data-testid="upload-live"]', (node) => node.getAttribute("aria-live")), "polite");

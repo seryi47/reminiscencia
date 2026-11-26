@@ -34,7 +34,7 @@ const vercel = [];
 async function fakeVercel({ method, headers, body }) {
   vercel.push({ method, type: headers["content-type"] ?? "", id: headers["x-portada-id"] ?? null, bytes: body.length });
   if (method === "GET") return { json: { ok: true, incidencia: 1, estado: "abierta" } };
-  return { json: { ok: true, mensaje: "Guardado: llegará a todos en un par de minutos.", parte: 0, partes: 1, completa: true, repetido: false, nombre: "x.opus" } };
+  return { json: { ok: true, mensaje: "Guardado al momento en el catálogo.", parte: 0, partes: 1, completa: true, repetido: false, nombre: "x.opus" } };
 }
 fakeVercel.acceptsGet = true;
 

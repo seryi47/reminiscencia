@@ -33,7 +33,7 @@ export const MANIFEST_NAME = 'manifiesto.json';
 export const VERCEL_MAX_CHUNK_BYTES = VERCEL_CHUNK_BYTES;
 export const WORKER_MAX_CHUNK_BYTES = WORKER_CHUNK_BYTES;
 export const MAX_PARTS = 1000;
-export const DONE_MESSAGE = 'Subida: llegará a todos en un par de minutos.';
+export const DONE_MESSAGE = 'Subida al momento a la biblioteca.';
 // El buzón admite hasta 200 caracteres y 255 bytes por nombre; se deja sitio para « (NN)» y «.opus».
 export const MAX_STEM_CHARS = 150;
 export const MAX_STEM_BYTES = 180;
