@@ -10,9 +10,17 @@ import 'package:path_provider/path_provider.dart';
 
 import 'api_config.dart';
 import 'app_error.dart';
+import 'auth_store.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
+import 'presigned_upload.dart';
 import 'zip_audio.dart';
+
+/// Activar/desactivar presigned-first en la APK (ADR-0052 ampliación 2026-11-26). Cuando está `true` y el
+/// `authStore` tiene contraseña, el `SharedUploader` intenta subir directo a R2 con URL firmada. Si el Worker
+/// responde 503 (secretos R2 no configurados), 401 (auth) o el PUT directo a R2 falla por red, se cae al flujo
+/// clásico por trozos (`/api/subir`) y la subida sigue adelante sin que el usuario lo note.
+const bool kFeaturePresignedUpload = true;
 
 /// Subida «para todos»: cada archivo se convierte a Ogg Opus en el teléfono y se envía, en trozos, a la función
 /// de la web (`/api/subir`), que lo guarda en el buzón del repositorio con el token del servidor. La app no guarda
@@ -268,18 +276,27 @@ class SharedUploader {
     this.maxParallelSends = kMaxParallelSends,
     Random? random,
     OrderedUploadIds? uploadIds,
+    this.authStore,
+    PresignedUploader? presignedUploader,
     // ignore: prefer_initializing_formals
   }) : _endpoint = endpoint,
        // ignore: prefer_initializing_formals
        _chunkBytes = chunkBytes,
        _workDir = workDir ?? _tempDir,
        _random = random ?? Random.secure(),
-       _uploadIds = uploadIds ?? OrderedUploadIds(random: random);
+       _uploadIds = uploadIds ?? OrderedUploadIds(random: random),
+       _presignedUploader = presignedUploader;
 
   final http.Client client;
   final AudioConverter converter;
   final ConnectionCheck hasConnection;
   final Uri? _endpoint;
+
+  /// Si está configurado con una contraseña del Worker, el uploader intenta primero subir el Opus directo a R2
+  /// con URL firmada (ADR-0052) antes de caer al flujo clásico por trozos. Puede ser `null` en pruebas o
+  /// cuando la APK todavía no está autenticada contra el Worker.
+  final AuthStore? authStore;
+  PresignedUploader? _presignedUploader;
 
   /// Destino de las subidas (Worker o Vercel, ADR-0029). Lo pone UploadTracker antes de cada tanda, nunca a mitad de
   /// un archivo: los trozos de 32 MB del Worker no caben en Vercel.
@@ -729,6 +746,11 @@ class SharedUploader {
     if (length == 0) {
       throw const AppException('el audio convertido está vacío.');
     }
+    // Rama presigned-first (ADR-0052): si el Worker nos permite firmar una URL, el PUT va directo a R2 y nos
+    // ahorra trozos + bandwidth del Worker. Si cae con 503/auth/net/put, seguimos con el flujo clásico sin
+    // molestar al usuario. La publicación en el catálogo (`/api/buzon/publish`) la hace el UploadTracker
+    // después con los metadatos ya expuestos en `UploadItemResult`.
+    if (await _trySendPresigned(opus, name, onPart)) return;
     final parts = (length + chunkBytes - 1) ~/ chunkBytes;
     final id = uploadId;
     final reader = await opus.open();
@@ -755,6 +777,52 @@ class SharedUploader {
       }
     } finally {
       await reader.close();
+    }
+  }
+
+  /// Intenta subir el Opus directo a R2 con URL firmada. Devuelve `true` si todo fue bien; `false` si hay que
+  /// caer al flujo chunked clásico. Nunca lanza: los errores se tragan aquí para que la subida siga adelante.
+  Future<bool> _trySendPresigned(
+    File opus,
+    String name,
+    void Function(int part, int parts) onPart,
+  ) async {
+    if (!kFeaturePresignedUpload) return false;
+    final store = authStore;
+    if (store == null) return false;
+    final auth = await store.read();
+    if (auth.isEmpty) return false;
+    final uploader = _presignedUploader ??= PresignedUploader(
+      baseUrl: Uri.parse(kLibraryBase),
+      authStore: store,
+      httpClient: client,
+    );
+    try {
+      // Progreso: no sabemos cuándo R2 recibió cada byte sin TransferProgress. Marcamos "una parte" al terminar
+      // para que la barra se complete; el UploadTracker ya pinta "Publicándose…" al pasar al siguiente estado.
+      onPart(0, 1);
+      await uploader.upload(opus, fileName: name);
+      onPart(0, 1);
+      return true;
+    } on PresignedUploadException catch (error) {
+      final phase = error.phase;
+      // Fallback silencioso al flujo clásico para errores transitorios o de configuración.
+      final retryable = phase.endsWith('-503')
+          || phase.endsWith('-auth')
+          || phase.endsWith('-network')
+          || phase.startsWith('put-')
+          || phase == 'presign-parse'
+          || phase == 'presign-shape';
+      if (retryable) {
+        debugPrint('subida: presigned falló en $phase; caigo al flujo clásico.');
+        return false;
+      }
+      // Errores no transitorios (p.ej. HTTP 400): también caemos al clásico, pero lo marcamos.
+      debugPrint('subida: presigned falló en $phase (${error.statusCode}); caigo al flujo clásico.');
+      return false;
+    } catch (error) {
+      debugPrint('subida: presigned lanzó inesperadamente ($error); caigo al flujo clásico.');
+      return false;
     }
   }
 

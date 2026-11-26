@@ -107,6 +107,7 @@ Future<void> _bootstrap(ErrorLog? errorLog) async {
             client: client,
             converter: const FfmpegOpusConverter(enforceLimits: false),
             hasConnection: hasAnyConnection,
+            authStore: authStore,
           ),
           // Tras subir: se mira songs.json cada 20 s, solo en primer plano, hasta que aparece (máx. 10 min).
           published: HttpPublishedSongs(client: client),

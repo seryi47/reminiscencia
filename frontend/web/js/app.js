@@ -46,7 +46,7 @@ import {
   readLocalBytes,
   saveUploadCopy,
 } from './cuidador/subida-local.js';
-import { sendOpus } from './cuidador/subida-publica.js';
+import { sendOpusSmart } from './cuidador/subida-publica.js';
 import { expandSelection } from './cuidador/subida-zip.js';
 import { duplicateMessage, findUploadDuplicates } from './duplicates.js';
 import { applyPendingEdits, createEditTracker, indicatorText as editsIndicatorText, STATES as EDIT_STATES } from './edit-pending.js';
@@ -1416,18 +1416,19 @@ async function applyPublished(found, songs) {
   toast(publishedNotice(found.map(({ song }) => song.title)), { ms: 6000 });
 }
 
-function createUploads() {
+function createUploads({ authFetch = null } = {}) {
   return createUploadTracker({
     convert: (file, { onProgress }) => convertToOpus(file, { limits: false, checkStorage: false, onProgress }),
     saveCopy: (data) => saveUploadCopy(data),
     readCopy: (id) => readLocalBytes(id),
-    // Cada archivo entero por el mismo sitio: el Worker (trozos de 32 MB) si responde, si no Vercel (4 MB). ADR-0029.
-    // uploadId: UUID v7 en el orden de la cola (ADR-0030); el gestor envía hasta dos archivos a la vez.
+    // Camino preferido (ADR-0052): sendOpusSmart intenta primero PUT directo a R2 con URL firmada (sin pasar por el
+    // Worker) y, si no está configurado o el PUT falla, cae al flujo clásico por trozos (/api/subir, ADR-0029). El
+    // uploadId es UUID v7 en el orden de la cola (ADR-0030); el gestor envía hasta dos archivos a la vez.
     send: async (bytes, { fileName, uploadId, album, artist, onChunk }) => {
       const target = await api.uploadTarget();
-      return sendOpus(bytes, {
+      return sendOpusSmart(bytes, {
         fileName, uploadId: uploadId ?? crypto.randomUUID(), album, artist, onChunk,
-        fetchImpl: target.fetch, chunkBytes: target.chunkBytes,
+        authFetch, fetchImpl: target.fetch, chunkBytes: target.chunkBytes,
       });
     },
     fetchSongs: FEATURE_CATALOGO_R2
@@ -1732,7 +1733,8 @@ async function start() {
   const indicator = createUploadIndicator();
   dom.uploadIndicator = indicator.button;
   dom.uploadIndicatorText = indicator.text;
-  uploads = createUploads();
+  // El uploader recibe `authFetch` para intentar el flujo presigned (ADR-0052); sin él cae siempre al chunked clásico.
+  uploads = createUploads({ authFetch: auth.authorizedFetch((path, init) => api.fetch(path, init)) });
   uploads.subscribe(onUploadsChange);
   downloads = createDownloads();
   edits = createEdits();

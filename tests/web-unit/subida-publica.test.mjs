@@ -9,9 +9,11 @@ import {
   CHUNK_BYTES,
   chunkHeaders,
   DONE_TEXT,
+  FEATURE_PRESIGNED_UPLOAD,
   PUBLIC_AUDIO_ACCEPT,
   RIGHTS_TEXT,
   sendOpus,
+  sendOpusSmart,
   splitChunks,
   UPLOAD_ENDPOINT,
   uploadFiles,
@@ -179,5 +181,122 @@ describe('varios archivos', () => {
     const server = fakeServer();
     await assert.rejects(uploadFiles([file('a.mp3')], { env: fakeEnv({ supported: false }), fetchImpl: server.fetchImpl, convert: fakeConvert().convert }), /no puede convertir audio a Opus/);
     assert.equal(server.calls.length, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sendOpusSmart: ADR-0052 ampliación. Intenta primero presigned-first y cae a chunked clásico si el Worker no
+// está preparado (503), la auth no coincide (401) o el PUT directo a R2 falla. El tracker usa este wrapper.
+// ---------------------------------------------------------------------------
+describe('sendOpusSmart (presigned-first + fallback chunked)', () => {
+  const okJson = (body) => ({ ok: true, status: 200, json: async () => body, headers: { get: () => null } });
+  const errJson = (status, body = {}) => ({ ok: false, status, json: async () => body, headers: { get: () => null } });
+  const subtleDigest = {
+    digest: async (_alg, buf) => {
+      // Devuelve algo determinista: primeros 32 bytes (o padding con 0) del propio buffer, como ArrayBuffer.
+      const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer || buf);
+      const out = new Uint8Array(32);
+      out.set(bytes.subarray(0, Math.min(32, bytes.length)));
+      return out.buffer;
+    },
+  };
+  // globalThis.crypto es solo-getter en Node >=20. Redefinir con Object.defineProperty para tener un sandbox limpio.
+  function withFakeCrypto(fn) {
+    const prev = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', { value: { subtle: subtleDigest }, configurable: true });
+    const restore = () => {
+      if (prev) Object.defineProperty(globalThis, 'crypto', prev);
+      else delete globalThis.crypto;
+    };
+    return Promise.resolve(fn()).finally(restore);
+  }
+
+  test('el flag está activado por defecto (ADR-0052)', () => {
+    assert.equal(FEATURE_PRESIGNED_UPLOAD, true);
+  });
+
+  test('happy path: presign + PUT + complete + resultado con via=presigned', async () => {
+    await withFakeCrypto(async () => {
+      const calls = [];
+      const authFetch = async (path, init) => {
+        calls.push({ path, method: init?.method, body: init?.body ? JSON.parse(init.body) : null });
+        if (path === '/api/upload/presign') {
+          return okJson({ ok: true, mode: 'simple', uploadUrl: 'https://r2.example/u', r2Key: 'entrada/x/a.opus' });
+        }
+        if (path === '/api/upload/complete') {
+          return okJson({ ok: true, r2Key: 'entrada/x/a.opus' });
+        }
+        throw new Error(`authFetch inesperado a ${path}`);
+      };
+      const fetchImpl = async (url, init) => {
+        calls.push({ path: url, method: init?.method });
+        if (url === 'https://r2.example/u' && init?.method === 'PUT') return okJson({});
+        throw new Error(`PUT inesperado a ${url}`);
+      };
+      const bytes = new Uint8Array(1024);
+      const result = await sendOpusSmart(bytes, { fileName: 'a.opus', uploadId: 'u1', authFetch, fetchImpl });
+      assert.equal(result.via, 'presigned');
+      assert.equal(result.r2Key, 'entrada/x/a.opus');
+      assert.equal(result.ok, true);
+      assert.equal(calls.filter((c) => c.path === '/api/upload/presign').length, 1);
+      assert.equal(calls.filter((c) => c.path === 'https://r2.example/u').length, 1);
+      assert.equal(calls.filter((c) => c.path === '/api/upload/complete').length, 1);
+    });
+  });
+
+  test('503 en presign: fallback automático al flujo chunked', async () => {
+    await withFakeCrypto(async () => {
+      const authCalls = [];
+      const chunkCalls = [];
+      const authFetch = async (path) => {
+        authCalls.push(path);
+        if (path === '/api/upload/presign') return errJson(503, { error: 'Subida directa no configurada.' });
+        throw new Error(`authFetch inesperado a ${path}`);
+      };
+      const fetchImpl = async (url, init) => {
+        chunkCalls.push({ url, method: init?.method });
+        return okJson({ ok: true, mensaje: 'chunked ok', completa: true });
+      };
+      const bytes = new Uint8Array(100);
+      const result = await sendOpusSmart(bytes, { fileName: 'a.opus', uploadId: 'u1', authFetch, fetchImpl });
+      assert.equal(result.via, 'chunked');
+      assert.equal(result.ok, true);
+      assert.equal(authCalls.length, 1);
+      assert.ok(chunkCalls.length >= 1, 'el fallback debe mandar al menos un trozo');
+      assert.equal(chunkCalls[0].url, '/api/subir');
+    });
+  });
+
+  test('PUT 403 (URL caducada): fallback automático al flujo chunked', async () => {
+    await withFakeCrypto(async () => {
+      const authFetch = async (path) => {
+        if (path === '/api/upload/presign') {
+          return okJson({ ok: true, mode: 'simple', uploadUrl: 'https://r2.example/u', r2Key: 'entrada/x/a.opus' });
+        }
+        if (path === '/api/upload/complete') return okJson({ ok: true });
+        throw new Error(`inesperado ${path}`);
+      };
+      let putCalled = 0;
+      const chunkCalled = [];
+      const fetchImpl = async (url, init) => {
+        if (url === 'https://r2.example/u') { putCalled += 1; return errJson(403); }
+        chunkCalled.push(url);
+        return okJson({ ok: true, mensaje: 'chunked tras put 403', completa: true });
+      };
+      const bytes = new Uint8Array(50);
+      const result = await sendOpusSmart(bytes, { fileName: 'a.opus', uploadId: 'u1', authFetch, fetchImpl });
+      assert.equal(putCalled, 1);
+      assert.equal(result.via, 'chunked');
+      assert.ok(chunkCalled.length >= 1);
+    });
+  });
+
+  test('sin authFetch: va directo al chunked, nunca intenta presign', async () => {
+    const touched = [];
+    const fetchImpl = async (url) => { touched.push(url); return okJson({ ok: true, mensaje: 'ok', completa: true }); };
+    const bytes = new Uint8Array(10);
+    const result = await sendOpusSmart(bytes, { fileName: 'a.opus', uploadId: 'u1', fetchImpl });
+    assert.equal(result.via, 'chunked');
+    assert.equal(touched.every((u) => u === '/api/subir'), true);
   });
 });

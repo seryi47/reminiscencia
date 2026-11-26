@@ -11,6 +11,7 @@
 
 import { convertToOpus, LocalAudioError, opusSupport, titleFromFileName, UNSUPPORTED_TEXT } from './subida-local.js';
 import { VERCEL_CHUNK_BYTES, WORKER_CHUNK_BYTES } from '../api-config.js';
+import { PresignedUploadError, sendOpusPresigned } from './subida-presigned.js';
 
 /** Ruta del contrato; la base (Worker o el propio origen) la pone el fetchImpl de js/api-config.js. */
 export const UPLOAD_ENDPOINT = '/api/subir';
@@ -20,6 +21,10 @@ export { WORKER_CHUNK_BYTES };
 export const PUBLIC_AUDIO_ACCEPT = 'audio/*,.wav,.mp3,.m4a,.flac,.ogg,.opus';
 export const RIGHTS_TEXT = 'Al subir, declaras que tienes derecho a publicar estos archivos.';
 export const DONE_TEXT = 'Subida al momento a la biblioteca.';
+
+/** Activar/desactivar presigned-first. true por defecto desde ADR-0052 (2026-11-26) cuando el Worker tiene los
+ *  secretos R2_* configurados. Si `false`, se usa siempre el flujo clásico de trozos por /api/subir. */
+export const FEATURE_PRESIGNED_UPLOAD = true;
 export const PUBLIC_UNSUPPORTED_TEXT = UNSUPPORTED_TEXT;
 const NETWORK_TEXT = 'No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.';
 const RETRIES = 2; // reintentos de un trozo ante un fallo de red o un error temporal del servidor
@@ -105,6 +110,67 @@ export async function sendOpus(bytes, {
     onChunk({ index, total: chunks.length });
   }
   return last;
+}
+
+/**
+ * Sube el Opus intentando primero el flujo presigned directo a R2 (ADR-0052). Si falla por 503 (secretos no
+ * configurados), 401 (auth) o fallo de red en cualquier paso presigned, cae al flujo clásico `sendOpus` por
+ * trozos. Si `FEATURE_PRESIGNED_UPLOAD` está desactivado o no hay `authFetch`, va directo al clásico.
+ * Devuelve el mismo contrato que `sendOpus` (un objeto `{ok:true, mensaje, …}`).
+ */
+export async function sendOpusSmart(bytes, {
+  fileName,
+  uploadId,
+  album,
+  artist,
+  authFetch = null,
+  fetchImpl = globalThis.fetch,
+  chunkBytes = CHUNK_BYTES,
+  onChunk = () => {},
+} = {}) {
+  const canPresign = FEATURE_PRESIGNED_UPLOAD && typeof authFetch === 'function';
+  if (canPresign) {
+    try {
+      const result = await sendOpusPresigned(bytes, {
+        fileName,
+        authFetch,
+        fetchImpl,
+        onProgress: ({ loaded, total }) => {
+          // La máquina de estados espera { index, total } con index 0-based al terminar cada trozo. Simulamos
+          // "un trozo = el 100 %" al acabar, y progreso intermedio para mostrar la barra avanzando.
+          const totalParts = Math.max(1, Math.ceil(total / Math.max(1, chunkBytes)));
+          const partsDone = Math.min(totalParts, Math.max(0, Math.floor((loaded / Math.max(1, total)) * totalParts)));
+          onChunk({ index: Math.max(0, partsDone - 1), total: totalParts });
+        },
+      });
+      return {
+        ok: true,
+        mensaje: result.mensaje,
+        completa: true,
+        repetido: false,
+        nombre: fileName,
+        r2Key: result.r2Key,
+        sha256: result.sha256,
+        tamanio: result.sizeBytes,
+        via: 'presigned',
+      };
+    } catch (error) {
+      const phase = error?.phase || '';
+      const retryable = error instanceof PresignedUploadError && (
+        phase === 'presign-503'
+        || phase === 'presign-auth'
+        || phase === 'presign-network'
+        || phase === 'put-simple'
+        || phase === 'put-multipart'
+        || phase === 'put-multipart-etag'
+        || phase === 'complete-network'
+      );
+      if (!retryable) throw error;
+      // Fallback silencioso al flujo viejo. El caller no se entera; la subida sigue.
+    }
+  }
+  const last = await sendOpus(bytes, { fileName, uploadId, album, artist, fetchImpl, chunkBytes, onChunk });
+  return { ...(last ?? {}), via: 'chunked' };
 }
 
 function newUploadId(env) {
