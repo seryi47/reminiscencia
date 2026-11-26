@@ -277,15 +277,13 @@ class SharedUploader {
     Random? random,
     OrderedUploadIds? uploadIds,
     this.authStore,
-    PresignedUploader? presignedUploader,
-    // ignore: prefer_initializing_formals
+    this._presignedUploader,
   }) : _endpoint = endpoint,
        // ignore: prefer_initializing_formals
        _chunkBytes = chunkBytes,
        _workDir = workDir ?? _tempDir,
        _random = random ?? Random.secure(),
-       _uploadIds = uploadIds ?? OrderedUploadIds(random: random),
-       _presignedUploader = presignedUploader;
+       _uploadIds = uploadIds ?? OrderedUploadIds(random: random);
 
   final http.Client client;
   final AudioConverter converter;
