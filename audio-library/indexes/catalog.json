@@ -13789,6 +13789,22 @@
       "size_bytes": 780703,
       "added_at": "2026-11-26T09:37:42+00:00",
       "public": true
+    },
+    {
+      "id": "S6024c39c6a435c9e",
+      "title": "No Way (from the Studio Cast Recording)",
+      "artist": "SIX the Musical (featuring Renée Lamb)",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "6024c39c6a435c9e451609e679f839e6b07093b5368fca4b4797d9dba3d375e0",
+      "duration_s": 243.008,
+      "codec": "opus",
+      "size_bytes": 1484649,
+      "added_at": "2026-11-26T09:40:27+00:00",
+      "public": true
     }
   ]
 }
