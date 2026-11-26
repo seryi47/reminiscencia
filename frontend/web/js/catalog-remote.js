@@ -1,0 +1,260 @@
+// Cliente del catálogo en R2 (ADR-0052): lee del Worker el catálogo actual y manda ediciones, publicaciones del buzón y
+// rollbacks. El Worker guarda cada escritura con `If-Match` (versión actual del catálogo) y el historial append-only en
+// R2. Si otro cambia el catálogo entre el fetch y el POST, el Worker responde 412 y este cliente vuelve a leer y
+// reintenta una vez. Si otra operación tiene el lock, responde 423 con Retry-After y espera ese tiempo (máximo 15 s).
+//
+// Módulo puro: fetchImpl y authHeaders se inyectan en las pruebas (tests/web-unit/edit-flow.test.mjs y
+// catalog-fetch.test.mjs). El diseño del Worker vive en docs/decisions/ADR-0052.
+
+import { api } from './api-config.js';
+
+export const CATALOG_PATH = '/api/catalogo/latest';
+export const EDIT_PATH = '/api/catalogo/edit';
+export const BUZON_PATH = '/api/buzon/publish';
+export const HISTORIAL_PATH = '/api/catalogo/historial';
+export const ROLLBACK_PATH = '/api/catalogo/rollback';
+export const ETAG_STORAGE_KEY = 'reminiscencia.catalog.etag';
+
+/** Interruptor general del camino nuevo (ADR-0052). true = la web lee y escribe contra el Worker/R2; false = camino
+ *  viejo por /data/*.json + /api/editar + GitHub Actions. Si en producción algo no cuadra, basta con poner
+ *  window.FEATURE_CATALOGO_R2 = false en la consola o fijarlo aquí a false y redeployar. */
+export const FEATURE_CATALOGO_R2 = (() => {
+  try {
+    if (typeof globalThis !== 'undefined' && 'FEATURE_CATALOGO_R2' in globalThis) {
+      return globalThis.FEATURE_CATALOGO_R2 !== false;
+    }
+  } catch {
+    // Sin acceso a globalThis: por defecto encendido.
+  }
+  return true;
+})();
+try {
+  if (typeof globalThis !== 'undefined' && !('FEATURE_CATALOGO_R2' in globalThis)) {
+    globalThis.FEATURE_CATALOGO_R2 = FEATURE_CATALOGO_R2;
+  }
+} catch {
+  // Sandbox restringido: no se expone.
+}
+
+export const SAVED_TEXT = 'Guardado al momento en el catálogo.';
+const NETWORK_TEXT = 'No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.';
+const CONFLICT_TEXT = 'El catálogo lo editó otra persona justo ahora. Vuelve a probar.';
+const AUTH_TEXT = 'La contraseña del catálogo no vale. Vuelve a ponerla.';
+
+const apiFetch = (path, init) => api.fetch(path, init);
+
+/** ¿Es un ETag débil con la forma W/"v<N>"? Devuelve N o null. */
+export function parseVersionEtag(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^W\/"v(\d+)"$/.exec(value.trim());
+  if (!match) return null;
+  const version = Number(match[1]);
+  return Number.isInteger(version) && version >= 0 ? version : null;
+}
+
+/** Lee el catálogo actual (versión + songs + folders + updated_at). Devuelve { catalog, etag, status, fromCache }. */
+export async function fetchLatestCatalog({
+  fetchImpl = apiFetch,
+  etag = null,
+  signal = undefined,
+} = {}) {
+  const headers = {};
+  if (typeof etag === 'string' && etag !== '') headers['If-None-Match'] = etag;
+  let response;
+  try {
+    response = await fetchImpl(CATALOG_PATH, { cache: 'no-store', headers, ...(signal ? { signal } : {}) });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    throw new Error(NETWORK_TEXT);
+  }
+  if (response.status === 304) {
+    return { catalog: null, etag: response.headers?.get?.('ETag') ?? etag, status: 304, notModified: true };
+  }
+  if (response.status === 503) {
+    // Catálogo aún no migrado (el Worker lo dice): vista vacía hasta que se migre.
+    return { catalog: { version: 0, folders: [], songs: [], updated_at: null }, etag: null, status: 503, notMigrated: true };
+  }
+  if (!response.ok) throw new Error(`El catálogo no se ha podido leer (código ${response.status}).`);
+  const data = await response.json();
+  if (!data || !Array.isArray(data.folders) || !Array.isArray(data.songs)) {
+    throw new Error('El catálogo recibido no tiene el formato esperado.');
+  }
+  return { catalog: data, etag: response.headers?.get?.('ETag') ?? null, status: 200 };
+}
+
+/** Lee el ETag guardado en localStorage (útil para 304 en la siguiente visita). */
+export function readStoredEtag(storage = (() => { try { return globalThis.localStorage; } catch { return null; } })()) {
+  if (!storage) return null;
+  try { return storage.getItem(ETAG_STORAGE_KEY); } catch { return null; }
+}
+
+/** Guarda el ETag en localStorage; null o '' lo borra. */
+export function writeStoredEtag(etag, storage = (() => { try { return globalThis.localStorage; } catch { return null; } })()) {
+  if (!storage) return;
+  try {
+    if (etag === null || etag === '' || etag === undefined) storage.removeItem(ETAG_STORAGE_KEY);
+    else storage.setItem(ETAG_STORAGE_KEY, String(etag));
+  } catch {
+    // Almacenamiento bloqueado: no pasa nada.
+  }
+}
+
+/** Interpreta el 'Retry-After' (segundos entero o fecha) y lo convierte a ms. Máximo 15 s. */
+function retryAfterMs(response) {
+  const raw = response?.headers?.get?.('Retry-After');
+  if (typeof raw !== 'string' || raw === '') return 1000;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(15_000, Math.max(0, Math.floor(seconds * 1000)));
+  const when = Date.parse(raw);
+  if (Number.isFinite(when)) return Math.min(15_000, Math.max(0, when - Date.now()));
+  return 1000;
+}
+
+/**
+ * POST genérico al Worker con auth, if_match, 412/423/401 manejados.
+ * Opciones:
+ * - authorizedFetch(path, init): fetch con X-Auth + X-Actor añadidos (createAuthClient().authorizedFetch(fetchImpl)).
+ * - reloadLatest(): lee el catálogo actual para recalcular if_match en un 412, devuelve { version } o null si no se puede.
+ * - adjustBody(previous, latest): opcional, ajusta el cuerpo con los datos nuevos (por defecto cambia solo if_match).
+ * - sleep(ms): para esperar Retry-After en 423 (inyectable en pruebas).
+ * - maxRetries: reintentos ante 412 (por defecto 1) y 423 (por defecto 2).
+ */
+async function postWithIfMatch(path, {
+  body,
+  authorizedFetch,
+  reloadLatest,
+  adjustBody = (previous, latest) => ({ ...previous, if_match: latest.version }),
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  maxConflictRetries = 1,
+  maxLockRetries = 2,
+}) {
+  let currentBody = body;
+  let conflicts = 0;
+  let locks = 0;
+  while (true) {
+    let response;
+    try {
+      response = await authorizedFetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentBody),
+      });
+    } catch (error) {
+      throw new Error(NETWORK_TEXT);
+    }
+    if (response.status === 401) throw Object.assign(new Error(AUTH_TEXT), { name: 'AuthError', status: 401 });
+    if (response.status === 423) {
+      if (locks >= maxLockRetries) throw new Error('El catálogo está siendo editado por otra persona.');
+      locks += 1;
+      await sleep(retryAfterMs(response));
+      continue;
+    }
+    if (response.status === 412) {
+      if (conflicts >= maxConflictRetries) {
+        throw Object.assign(new Error(CONFLICT_TEXT), { name: 'ConflictError', status: 412 });
+      }
+      conflicts += 1;
+      const latest = typeof reloadLatest === 'function' ? await reloadLatest() : null;
+      if (!latest || !Number.isInteger(latest.version)) throw new Error(CONFLICT_TEXT);
+      currentBody = adjustBody(currentBody, latest);
+      continue;
+    }
+    let data = null;
+    try { data = await response.json(); } catch { data = null; }
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(typeof data?.error === 'string' && data.error ? data.error : `El servidor no ha aceptado el cambio (código ${response.status}).`);
+    }
+    return { version: Number.isInteger(data.version) ? data.version : null, event: data.event ?? null };
+  }
+}
+
+/** Envía una acción simple (ADR-0052). action + params + if_match (versión actual del catálogo). */
+export async function sendCatalogEdit({ action, params, ifMatch }, deps = {}) {
+  return postWithIfMatch(EDIT_PATH, {
+    body: { action, params: params ?? {}, if_match: ifMatch },
+    ...deps,
+  });
+}
+
+/** Publica canciones del buzón (ya subidas a R2) en una sola operación. */
+export async function sendBuzonPublish({ songs, ifMatch }, deps = {}) {
+  return postWithIfMatch(BUZON_PATH, {
+    body: { songs: Array.isArray(songs) ? songs : [], if_match: ifMatch },
+    ...deps,
+  });
+}
+
+/** Rollback del catálogo a una versión anterior (lee la snapshot por versión). */
+export async function sendRollback({ toVersion }, deps = {}) {
+  return postWithIfMatch(ROLLBACK_PATH, {
+    body: { to_version: toVersion },
+    ...deps,
+  });
+}
+
+/** Lee el historial append-only del Worker. limit: hasta 1000. */
+export async function fetchHistorial({ fetchImpl = apiFetch, limit = 100, signal } = {}) {
+  const url = `${HISTORIAL_PATH}?limit=${encodeURIComponent(Number.isInteger(limit) && limit > 0 ? Math.min(limit, 1000) : 100)}`;
+  let response;
+  try {
+    response = await fetchImpl(url, { cache: 'no-store', ...(signal ? { signal } : {}) });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    throw new Error(NETWORK_TEXT);
+  }
+  if (!response.ok) throw new Error(`No se ha podido leer el historial (código ${response.status}).`);
+  const data = await response.json();
+  if (!data || !Array.isArray(data.events)) throw new Error('El historial no tiene el formato esperado.');
+  return { events: data.events, limit: Number.isInteger(data.limit) ? data.limit : limit };
+}
+
+// ---------------------------------------------------------------------------
+// Adaptador: operaciones de la UI (ADR-0027) → acciones del Worker (ADR-0052)
+// ---------------------------------------------------------------------------
+
+/**
+ * Reparte un payload de edición de la UI en una o varias acciones del Worker (que son atómicas por campo). Cada acción
+ * es { action, params }. Devuelve [] si el payload no tiene sitio en el Worker (por ejemplo, order_album, que no hay
+ * acción equivalente; esos pasan por el camino viejo).
+ */
+export function payloadToActions(payload) {
+  if (!payload || typeof payload !== 'object') return [];
+  switch (payload.op) {
+    case 'edit_song': {
+      const actions = [];
+      if (typeof payload.title === 'string') actions.push({ action: 'rename_song', params: { song_id: payload.song_id, title: payload.title } });
+      if ('artist' in payload) actions.push({ action: 'set_artist', params: { song_id: payload.song_id, artist: payload.artist ?? '' } });
+      if ('year' in payload) actions.push({ action: 'set_year', params: { song_id: payload.song_id, year: payload.year } });
+      if ('tags' in payload) actions.push({ action: 'set_tags', params: { song_id: payload.song_id, tags: Array.isArray(payload.tags) ? payload.tags : [] } });
+      if ('folder_id' in payload) actions.push({ action: 'move_song', params: { song_id: payload.song_id, folder_id: payload.folder_id ?? null } });
+      return actions;
+    }
+    case 'unpublish_song':
+      return [{ action: 'delete_song', params: { song_id: payload.song_id } }];
+    case 'edit_folder':
+    case 'rename_folder': {
+      const actions = [];
+      if ('name' in payload) actions.push({ action: 'rename_folder', params: { folder_id: payload.folder_id, name: payload.name } });
+      if ('artist' in payload) actions.push({ action: 'set_artist', params: { folder_id: payload.folder_id, artist: payload.artist ?? '' } });
+      return actions;
+    }
+    case 'delete_folder':
+      return [{ action: 'delete_folder', params: { folder_id: payload.folder_id } }];
+    case 'move_songs':
+      return (Array.isArray(payload.song_ids) ? payload.song_ids : []).map((id) => ({
+        action: 'move_song',
+        params: { song_id: id, folder_id: payload.folder_id ?? null },
+      }));
+    case 'create_folder':
+      return [{ action: 'create_folder', params: {
+        name: payload.name,
+        ...(payload.artist ? { artist: payload.artist } : {}),
+        ...(payload.parent_id ? { parent_id: payload.parent_id } : {}),
+      } }];
+    case 'order_album':
+      // El Worker no tiene acción para reordenar pistas de un álbum: se delega al camino viejo.
+      return [];
+    default:
+      return [];
+  }
+}

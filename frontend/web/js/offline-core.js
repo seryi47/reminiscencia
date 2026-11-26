@@ -8,7 +8,7 @@ import { normalizeApiBase, WORKER_API_BASE } from './api-config.js';
 /** Versión del shell (HTML, CSS, JS, fuentes, datos e iconos). Súbela cuando cambie el shell
  *  de forma que las copias guardadas dejen de servir: el service worker crea una
  *  caché nueva y borra las versiones anteriores al activarse. */
-export const SHELL_VERSION = 73;
+export const SHELL_VERSION = 74;
 
 /** Origen público del bucket de audio en Cloudflare R2 por r2.dev (ADR-0020): las portadas y, desde ADR-0031, el
  *  respaldo del audio. Debe coincidir con media-src, connect-src e img-src de vercel.json y _headers. */
@@ -68,6 +68,7 @@ const SHELL_PATTERNS = [
   /^\/icons\/[^/]+\.png$/,
 ];
 const DATA_PATTERN = /^\/data\/[^/]+\.json$/;
+const CATALOG_PATTERN = /^\/api\/catalogo\/(latest|historial)(?:$|\?)/;
 const AUDIO_PATTERN = /^\/audio\/[^/]+\.opus$/;
 const LOCAL_AUDIO_PATTERN = /^\/audio\/(L[0-9a-f]{16})\.opus$/;
 const COVER_PATTERN = /^\/covers\/[A-Za-z0-9_-]{1,64}\.jpg$/;
@@ -90,7 +91,9 @@ export const SHELL_ASSETS = Object.freeze([
   '/fonts/figtree-800.woff2',
   '/js/app.js',
   '/js/api-config.js',
+  '/js/auth.js',
   '/js/catalog.js',
+  '/js/catalog-remote.js',
   '/js/youtube-search.js',
   '/js/cover-color.js',
   '/js/cover-image.js',
@@ -190,6 +193,16 @@ export function isShellRequest(url) {
 export function isDataRequest(url) {
   const path = pathOf(url);
   return path !== null && DATA_PATTERN.test(path);
+}
+
+/** ¿Es una lectura del catálogo o el historial del Worker (ADR-0052)? Se trata como /data/*.json:
+ *  network-first con caché de respaldo para quien esté sin conexión. */
+export function isCatalogApiRequest(url) {
+  if (typeof url !== 'string') url = String(url ?? '');
+  const path = pathOf(url) ?? '';
+  // El Worker expone `/api/catalogo/latest` y `/api/catalogo/historial`; dejamos fuera las escrituras.
+  if (!CATALOG_PATTERN.test(path)) return false;
+  return true;
 }
 
 /** Identificador de una canción subida a este navegador si la ruta es /audio/L<16 hex>.opus (la sirve el service

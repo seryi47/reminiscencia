@@ -50,8 +50,10 @@ import { sendOpus } from './cuidador/subida-publica.js';
 import { expandSelection } from './cuidador/subida-zip.js';
 import { duplicateMessage, findUploadDuplicates } from './duplicates.js';
 import { applyPendingEdits, createEditTracker, indicatorText as editsIndicatorText, STATES as EDIT_STATES } from './edit-pending.js';
-import { dataUrlToBytes, fetchEditStatus, sendCover, sendOrganize } from './edit-remote.js';
+import { bindCatalogWorker, dataUrlToBytes, fetchEditStatus, publishBuzon, sendCover, sendOrganize } from './edit-remote.js';
 import { api } from './api-config.js';
+import { createAuthClient, openAuthDialog } from './auth.js';
+import { fetchLatestCatalog, FEATURE_CATALOGO_R2, readStoredEtag, writeStoredEtag, fetchHistorial } from './catalog-remote.js';
 import { applyCoverIndex, fetchCoverIndex } from './cover-index.js';
 import {
   activeCount,
@@ -92,6 +94,7 @@ const lazyOpenRecognize = (ctx) => import('./views/recognize.js').then((m) => m.
 const lazyOpenTransferir = (ctx) => import('./views/transferir.js').then((m) => m.openTransferirSheet(ctx));
 
 const DATA_URLS = Object.freeze({ songs: 'data/songs.json', folders: 'data/folders.json' });
+const CATALOG_URL = '/api/catalogo/latest';
 const PLAYER_PREFS_KEY = 'reminiscencia.reproductor';
 const RECENTS_KEY = 'reminiscencia.recientes';
 const LIBRARY_PREFS_KEY = 'reminiscencia.biblioteca';
@@ -131,6 +134,9 @@ const libraryPrefs = readJson(LIBRARY_PREFS_KEY);
 const state = {
   publicSongs: [],
   publicFolders: [],
+  // Versión actual del catálogo en R2 (ADR-0052): 0 si no se ha cargado nunca o si el Worker aún no lo ha migrado.
+  catalogVersion: 0,
+  catalogEtag: null,
   // Índice de portadas de R2 (id → fichero; js/cover-index.js, ADR-0029): manda sobre el «cover» del catálogo.
   coverIndex: new Map(),
   localSongs: [],
@@ -874,7 +880,7 @@ function parseRoute(hash) {
   } catch {
     id = null;
   }
-  const simple = { '': 'inicio', buscar: 'buscar', biblioteca: 'biblioteca', 'me-gusta': 'me-gusta', canciones: 'canciones', locales: 'locales', subidas: 'subidas' };
+  const simple = { '': 'inicio', buscar: 'buscar', biblioteca: 'biblioteca', 'me-gusta': 'me-gusta', canciones: 'canciones', locales: 'locales', subidas: 'subidas', historial: 'historial' };
   if (name in simple) return { name: simple[name], id: null };
   // #/carpeta/<id> es la ruta anterior de un álbum: se conserva para los enlaces guardados.
   if ((name === 'album' || name === 'carpeta') && id) return { name: 'album', id };
@@ -941,9 +947,57 @@ function pageTitle() {
   const { name } = state.route;
   if (name === 'buscar') return 'Buscar';
   if (name === 'biblioteca') return 'Tu biblioteca';
+  if (name === 'historial') return 'Historial de cambios';
   if (name === 'seccion') return document.querySelector('#view h1')?.textContent ?? 'Inicio';
   const context = getContext(activeContextId());
   return context ? context.title : 'Inicio';
+}
+
+/**
+ * Historial del catálogo (ADR-0052): últimas 200 líneas del `history/latest.jsonl` que lleva el Worker. Cada evento
+ * trae fecha, actor, acción y qué cambió. Vista sencilla (una fila por evento) para auditar y poder revertir.
+ */
+function renderHistorial(view) {
+  const h1 = el('h1', { class: 'page-title', tabindex: '-1' }, 'Historial de cambios');
+  const status = el('p', { class: 'empty-text', 'data-testid': 'historial-status', role: 'status' }, 'Cargando el historial…');
+  const list = el('ul', { class: 'historial-list', 'data-testid': 'historial-list' });
+  const page = el('section', { class: 'page page-historial' }, h1, status, list);
+  view.replaceChildren(page);
+  if (!FEATURE_CATALOGO_R2) {
+    status.textContent = 'El historial en R2 no está activo todavía.';
+    return;
+  }
+  fetchHistorial({ limit: 200 })
+    .then(({ events }) => {
+      list.replaceChildren();
+      if (!events || events.length === 0) {
+        status.textContent = 'No hay cambios registrados todavía.';
+        return;
+      }
+      status.textContent = `${events.length} ${events.length === 1 ? 'cambio' : 'cambios'} registrados`;
+      // Más reciente arriba (el Worker ya los da así; refuerzo por si cambia).
+      const ordered = [...events].sort((a, b) => (b?.ts ?? 0) - (a?.ts ?? 0));
+      for (const evento of ordered) {
+        const when = typeof evento?.ts === 'number' ? new Date(evento.ts).toLocaleString('es-ES') : '';
+        const by = typeof evento?.by === 'string' ? evento.by : '';
+        const kind = typeof evento?.kind === 'string' ? evento.kind : (evento?.action ?? 'cambio');
+        const before = Number.isInteger(evento?.version_before) ? evento.version_before : null;
+        const after = Number.isInteger(evento?.version_after) ? evento.version_after : null;
+        const summary = el('summary', { class: 'historial-row-head' },
+          el('span', { class: 'historial-when' }, when),
+          el('span', { class: 'historial-kind' }, kind),
+          el('span', { class: 'historial-actor' }, by || 'desconocido'),
+          before !== null && after !== null ? el('span', { class: 'historial-version' }, `v${before} → v${after}`) : null,
+        );
+        const detalle = el('pre', { class: 'historial-json' }, JSON.stringify(evento, null, 2));
+        const details = el('details', { class: 'historial-row', 'data-testid': 'historial-item' }, summary, detalle);
+        list.appendChild(details);
+      }
+    })
+    .catch((error) => {
+      console.error('Reminiscencia: no se ha podido cargar el historial.', error);
+      status.textContent = 'No se ha podido cargar el historial.';
+    });
 }
 
 /** Marca la cabecera de las tablas cuando se queda fija arriba (fondo y borde, como en Spotify). */
@@ -988,7 +1042,8 @@ function render({ routeChanged = false } = {}) {
     loading.setAttribute('role', 'status');
     loading.textContent = 'Cargando la biblioteca…';
     dom.view.replaceChildren(loading);
-  } else if (name === 'buscar') renderSearch(dom.view, ctx);
+  } else if (name === 'historial') renderHistorial(dom.view);
+  else if (name === 'buscar') renderSearch(dom.view, ctx);
   else if (name === 'biblioteca') renderLibraryPage(dom.view, ctx);
   else if (name === 'seccion') {
     if (!renderSection(dom.view, ctx, id)) renderHome(dom.view, ctx);
@@ -1321,11 +1376,21 @@ function deleteRetiredCopies() {
  */
 async function applyPublished(found, songs) {
   if (Array.isArray(songs)) state.publicSongs = songs;
-  try {
-    const folders = await fetchJson(DATA_URLS.folders, { cache: 'no-store' });
-    if (Array.isArray(folders)) state.publicFolders = folders;
-  } catch {
-    // Sin carpetas nuevas: valen las de antes.
+  // ADR-0052: tras publicar, refrescamos el catálogo entero de una vez (incluye folders). Si está apagado, caemos a
+  // /data/folders.json como antes.
+  if (FEATURE_CATALOGO_R2) {
+    try {
+      await loadPublicCatalog();
+    } catch {
+      // Si falla, valen las carpetas de antes.
+    }
+  } else {
+    try {
+      const folders = await fetchJson(DATA_URLS.folders, { cache: 'no-store' });
+      if (Array.isArray(folders)) state.publicFolders = folders;
+    } catch {
+      // Sin carpetas nuevas: valen las de antes.
+    }
   }
   const replaced = [];
   for (const { item, song } of found) {
@@ -1365,7 +1430,16 @@ function createUploads() {
         fetchImpl: target.fetch, chunkBytes: target.chunkBytes,
       });
     },
-    fetchSongs: songsFetcher((url, init) => fetch(url, init), DATA_URLS.songs),
+    fetchSongs: FEATURE_CATALOGO_R2
+      // Camino nuevo: lee /api/catalogo/latest (del Worker), devuelve solo el array songs; mismo contrato que tenía
+      // songsFetcher (lista plana de canciones) para que la máquina de estados del buzón no cambie.
+      ? (async () => {
+          const { catalog, notMigrated } = await fetchLatestCatalog({ etag: null });
+          if (notMigrated) return [];
+          state.catalogVersion = Number.isInteger(catalog?.version) ? catalog.version : state.catalogVersion;
+          return Array.isArray(catalog?.songs) ? catalog.songs : [];
+        })
+      : songsFetcher((url, init) => fetch(url, init), DATA_URLS.songs),
     currentIds: () => state.publicSongs.map((song) => song?.id),
     onCopy: (song) => {
       // La canción sale ya en la biblioteca, con la etiqueta «Publicándose…», y se puede escuchar.
@@ -1460,6 +1534,13 @@ function createEdits() {
     fetchStatus: (issue) => fetchEditStatus(issue),
     // El catálogo con el índice de portadas encima: así una portada enviada por el Worker se confirma en segundos.
     fetchCatalog: async () => {
+      if (FEATURE_CATALOGO_R2) {
+        const { catalog } = await fetchLatestCatalog({ etag: null });
+        await loadCoverIndex();
+        if (!catalog) throw new Error('El catálogo no es una lista.');
+        state.catalogVersion = Number.isInteger(catalog.version) ? catalog.version : state.catalogVersion;
+        return applyCoverIndex(catalog.songs ?? [], catalog.folders ?? [], state.coverIndex);
+      }
       const [songs, folders] = await Promise.all([
         fetchJson(DATA_URLS.songs, { cache: 'no-store' }),
         fetchJson(DATA_URLS.folders, { cache: 'no-store' }),
@@ -1577,6 +1658,42 @@ async function fetchJson(url, init = undefined) {
 }
 
 async function loadPublicCatalog() {
+  // Camino nuevo (ADR-0052): el catálogo entero en un GET al Worker, con ETag para 304.
+  if (FEATURE_CATALOGO_R2) {
+    try {
+      const { catalog, etag, notModified, notMigrated } = await fetchLatestCatalog({
+        etag: readStoredEtag() ?? state.catalogEtag,
+      });
+      if (notModified) {
+        // 304: no cambió; mantenemos lo que ya hay. El ETag lo refrescamos por si el servidor lo renumeró.
+        if (typeof etag === 'string' && etag !== '') {
+          state.catalogEtag = etag;
+          writeStoredEtag(etag);
+        }
+        state.loadError = null;
+        return;
+      }
+      if (notMigrated) {
+        // El Worker aún no tiene el catálogo: esto es temporal, mientras corre la migración one-shot.
+        state.publicSongs = [];
+        state.publicFolders = [];
+        state.catalogVersion = 0;
+        state.catalogEtag = null;
+        state.loadError = 'La biblioteca está pasándose al Worker. Vuelve en unos minutos.';
+        return;
+      }
+      state.publicSongs = Array.isArray(catalog?.songs) ? catalog.songs : [];
+      state.publicFolders = Array.isArray(catalog?.folders) ? catalog.folders : [];
+      state.catalogVersion = Number.isInteger(catalog?.version) ? catalog.version : 0;
+      state.catalogEtag = typeof etag === 'string' ? etag : null;
+      writeStoredEtag(state.catalogEtag);
+      state.loadError = null;
+      return;
+    } catch (error) {
+      console.warn('Reminiscencia: catálogo del Worker no disponible, caigo a /data/*.json.', error);
+      // Fallback al camino viejo si el Worker no responde (Vercel sigue sirviendo /data/songs.json).
+    }
+  }
   const [songs, folders] = await Promise.allSettled([fetchJson(DATA_URLS.songs, { cache: 'no-cache' }), fetchJson(DATA_URLS.folders, { cache: 'no-cache' })]);
   state.publicSongs = songs.status === 'fulfilled' && Array.isArray(songs.value) ? songs.value : [];
   state.publicFolders = folders.status === 'fulfilled' && Array.isArray(folders.value) ? folders.value : [];
@@ -1592,6 +1709,23 @@ async function start() {
   dom.offline = document.getElementById('offline-banner');
   dom.topInput = document.getElementById('top-search-input');
   dom.topClear = document.getElementById('top-search-clear');
+  // ADR-0052: cliente de autorización del Worker. Lee ?auth=<base64> si viene (provisionamiento desde la Mac).
+  const auth = createAuthClient({
+    locationLike: typeof window !== 'undefined' ? window.location : null,
+    replaceUrl: (clean) => { try { history.replaceState(null, '', clean); } catch { /* sandbox */ } },
+    promptPassword: () => openAuthDialog(),
+  });
+  // Enlace al Worker para edit-remote.js: authorizedFetch añade X-Auth; reloadLatest se usa para reintentos en 412.
+  if (FEATURE_CATALOGO_R2) {
+    bindCatalogWorker({
+      authorizedFetch: auth.authorizedFetch((path, init) => api.fetch(path, init)),
+      getVersion: () => state.catalogVersion,
+      reloadLatest: async () => {
+        await loadPublicCatalog();
+        return { version: state.catalogVersion };
+      },
+    });
+  }
   const indicator = createUploadIndicator();
   dom.uploadIndicator = indicator.button;
   dom.uploadIndicatorText = indicator.text;

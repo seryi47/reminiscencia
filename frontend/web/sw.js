@@ -6,6 +6,7 @@ import {
   audioCacheName,
   coverCacheName,
   isAudioRequest,
+  isCatalogApiRequest,
   isCoverRequest,
   isDataRequest,
   isShellRequest,
@@ -84,7 +85,9 @@ self.addEventListener('fetch', (event) => {
     // ADR-0050: miniaturas (/thumbs/) y portadas (/covers/) comparten caché — son derivadas del mismo contenido
     // inmutable, no justifica una caché separada ni un contador de LRU aparte.
     event.respondWith(staleWhileRevalidate(event, COVER_CACHE));
-  } else if (isDataRequest(url.pathname)) {
+  } else if (isDataRequest(url.pathname) || isCatalogApiRequest(url.pathname + url.search)) {
+    // ADR-0052: la lectura del catálogo (/api/catalogo/latest) y del historial se trata igual que /data/*.json:
+    // network-first con la copia guardada como respaldo cuando no hay red.
     event.respondWith(networkFirst(event));
   } else if (isShellRequest(url.pathname)) {
     event.respondWith(staleWhileRevalidate(event));
