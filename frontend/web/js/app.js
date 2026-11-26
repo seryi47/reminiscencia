@@ -1637,7 +1637,7 @@ function openPendingEditsSheet() {
       paint(edits.items());
       unsubscribe = edits.subscribe(paint);
       body.append(
-        el('p', { class: 'dialog-text' }, 'Los cambios enviados desde aquí se ven al momento y llegan a todos en un par de minutos. Esta lista se pone al día sola.'),
+        el('p', { class: 'dialog-text' }, 'Los cambios se guardan al momento en el catálogo y se ven en toda la biblioteca. Esta lista se pone al día sola.'),
         list,
         status);
     },

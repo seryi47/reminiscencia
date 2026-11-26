@@ -422,7 +422,7 @@ void main() {
       final result = await uploader.upload([picked('A.mp3'), picked('B.mp3')]);
       expect(
         describeUploadResult(result),
-        'Subidas 2 canciones: llegarán a todos en un par de minutos.',
+        'Subidas 2 canciones al momento a la biblioteca.',
       );
     });
   });

@@ -131,7 +131,7 @@ function saveAction(testid, close, save, label = 'Guardar') {
 
 function editNote() {
   return el('p', { class: 'edit-note', 'data-testid': 'edit-note' },
-    'El cambio se guarda desde aquí, sin pasar por GitHub, y llega a todos en un par de minutos.');
+    'El cambio se guarda al momento en el catálogo y se ve en toda la biblioteca.');
 }
 
 /**
@@ -632,7 +632,7 @@ export function openCoverSheet(ctx, { kind, id, name }) {
           el('ul', { class: 'upload-rules', 'data-testid': 'cover-rules' },
             el('li', {}, `${COVER_RULES.formats}.`),
             el('li', {}, `Se recorta al centro y se reduce a ${COVER_RULES.size} × ${COVER_RULES.size} px.`),
-            el('li', {}, 'El cambio llega a todos en un par de minutos.'))),
+            el('li', {}, 'El cambio se guarda al momento en el catálogo.'))),
         el('div', { class: 'dialog-actions' }, submit.status, submit.button));
     },
     initialFocus: (dialog) => dialog.querySelector('[data-testid="cover-choose"]'),

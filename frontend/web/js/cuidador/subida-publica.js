@@ -19,7 +19,7 @@ export const CHUNK_BYTES = VERCEL_CHUNK_BYTES;
 export { WORKER_CHUNK_BYTES };
 export const PUBLIC_AUDIO_ACCEPT = 'audio/*,.wav,.mp3,.m4a,.flac,.ogg,.opus';
 export const RIGHTS_TEXT = 'Al subir, declaras que tienes derecho a publicar estos archivos.';
-export const DONE_TEXT = 'Subida: llegará a todos en un par de minutos.';
+export const DONE_TEXT = 'Subida al momento a la biblioteca.';
 export const PUBLIC_UNSUPPORTED_TEXT = UNSUPPORTED_TEXT;
 const NETWORK_TEXT = 'No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.';
 const RETRIES = 2; // reintentos de un trozo ante un fallo de red o un error temporal del servidor

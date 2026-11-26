@@ -21,7 +21,7 @@ export const ISSUE_LABEL = 'biblioteca';
 // Aviso de la hoja: quién procesa las incidencias.
 export const PROCESSING_NOTE = 'Se abrirá GitHub para que confirmes la incidencia. Solo la procesan las cuentas con permiso de escritura en el repositorio.';
 // Aviso de las hojas de edición (detalles, álbum y portada).
-export const EDIT_NOTE = 'Hace falta permiso de escritura en el repositorio. El cambio llega a todos en un par de minutos.';
+export const EDIT_NOTE = 'Hace falta la contraseña del Worker. El cambio se guarda al momento en el catálogo.';
 // Buzón de portadas: la imagen se sube con el ID de la canción o del álbum como nombre de archivo.
 export const COVER_UPLOAD_URL = `https://github.com/seryi47/reminiscencia/upload/main/audio-library/buzon/portadas`;
 export const COVER_RULES = Object.freeze({ formats: 'JPG, PNG o WebP', maxMb: 10, size: 640 });

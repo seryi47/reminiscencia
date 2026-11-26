@@ -44,7 +44,7 @@ const String kUploadArtistHeader = 'X-Artista-Cancion';
 const String kUploadRightsNotice =
     'Al subir, declaras que tienes derecho a publicar estos archivos.';
 
-const String kUploadedMessage = 'Subida: llegará a todos en un par de minutos.';
+const String kUploadedMessage = 'Subida al momento a la biblioteca.';
 
 const String kOfflineMessage =
     'No hay conexión a internet. Conéctate y vuelve a intentarlo; no se ha subido nada.';
@@ -233,7 +233,7 @@ String describeUploadResult(SharedUploadResult result) {
   if (done == total) {
     return total == 1
         ? kUploadedMessage
-        : 'Subidas $total canciones: llegarán a todos en un par de minutos.';
+        : 'Subidas $total canciones al momento a la biblioteca.';
   }
   if (done == 0) {
     return total == 1

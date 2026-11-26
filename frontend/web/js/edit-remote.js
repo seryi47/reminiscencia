@@ -23,7 +23,7 @@ import {
 export const EDIT_ENDPOINT = '/api/editar';
 export const COVER_ENDPOINT = '/api/portada';
 const apiFetch = (...args) => api.fetch(...args);
-export const SAVED_TEXT = 'Guardado: llegará a todos en un par de minutos.';
+export const SAVED_TEXT = 'Guardado al momento en el catálogo.';
 export const SAVED_TEXT_FAST = 'Guardado al momento en el catálogo.';
 const NETWORK_TEXT = 'No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.';
 

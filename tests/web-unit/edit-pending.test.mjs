@@ -240,11 +240,11 @@ function harness({ storage = memoryStorage(), songs, folders } = {}) {
       if (world.sendError) throw new Error(world.sendError);
       world.sent.push(payload);
       world.issue += 1;
-      return { message: 'Guardado: llegará a todos en un par de minutos.', issue: world.issue };
+      return { message: 'Guardado al momento en el catálogo.', issue: world.issue };
     },
     sendCover: async (id, bytes) => {
       world.covers.push({ id, bytes });
-      return { message: 'Guardado: llegará a todos en un par de minutos.', issue: null, ...(world.coverKey ? { cover: world.coverKey(id) } : {}) };
+      return { message: 'Guardado al momento en el catálogo.', issue: null, ...(world.coverKey ? { cover: world.coverKey(id) } : {}) };
     },
     fetchStatus: async (issue) => {
       if (!world.statuses.has(issue)) throw new Error('sin conexión');
@@ -277,7 +277,7 @@ describe('gestor', () => {
   test('al enviar, queda pendiente con su incidencia, se guarda y se revisa a los 20 s', async () => {
     const { tracker, world, storage, pendingTimers } = harness();
     const message = await tracker.submit({ op: 'edit_song', song_id: S1, title: 'Uno nuevo', artist: 'Artista' });
-    assert.equal(message, 'Guardado: llegará a todos en un par de minutos.');
+    assert.equal(message, 'Guardado al momento en el catálogo.');
     const [item] = tracker.items();
     assert.deepEqual([item.state, item.issue, item.label, item.action], ['pendiente', 101, 'Uno nuevo', 'Detalles de la canción']);
     assert.ok(storage.data.get(STORAGE_KEY).includes('Uno nuevo'));
@@ -493,7 +493,7 @@ describe('edit-remote: recibo y estado', () => {
 
   test('sendOrganize devuelve el mensaje y el número de incidencia; sendCover, sin número', async () => {
     assert.deepEqual(await sendOrganize({ op: 'create_folder', name: 'A' }, reply(200, { ok: true, incidencia: 42, mensaje: 'Hecho.' })), { message: 'Hecho.', issue: 42, cover: null });
-    assert.deepEqual(await sendOrganize({ op: 'create_folder', name: 'A' }, reply(200, { ok: true, incidencia: 'x' })), { message: 'Guardado: llegará a todos en un par de minutos.', issue: null, cover: null });
+    assert.deepEqual(await sendOrganize({ op: 'create_folder', name: 'A' }, reply(200, { ok: true, incidencia: 'x' })), { message: 'Guardado al momento en el catálogo.', issue: null, cover: null });
     assert.deepEqual(await sendCover('S0000000000000001', new Uint8Array([1]), reply(200, { ok: true, mensaje: 'Hecho.' })), { message: 'Hecho.', issue: null, cover: null });
     // Por el Worker: el fichero de R2, solo si es de esa portada.
     const key = 'portadas/S0000000000000001-0123456789abcdef.jpg';

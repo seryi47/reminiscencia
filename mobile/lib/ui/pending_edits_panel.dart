@@ -172,7 +172,7 @@ class _PendingEditsSheet extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: Text(
-                    'Llegan a todos en un par de minutos. Mientras tanto se ven ya con la marca «Pendiente».',
+                    'Se guardan al momento en el catálogo. Mientras tanto se ven ya con la marca «Pendiente».',
                     style: theme.textTheme.bodySmall,
                   ),
                 ),

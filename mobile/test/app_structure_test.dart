@@ -547,7 +547,7 @@ void main() {
         });
         await settle(tester);
         expect(
-          find.text('Publicándose… (suele tardar 2–3 minutos)'),
+          find.text('Publicándose…'),
           findsNWidgets(2),
         );
 

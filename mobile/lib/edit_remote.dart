@@ -39,7 +39,7 @@ const Set<String> kEditStatuses = {'abierta', 'cerrada', 'error'};
 const String kEditPath = '/api/editar';
 final Uri kEditEndpoint = Uri.parse('${kLibraryBase}api/editar');
 
-const String kEditSavedText = 'Guardado. Llegará a todos en un par de minutos.';
+const String kEditSavedText = 'Guardado al momento en el catálogo.';
 
 /// Implementación real de [EditSubmitter].
 Future<EditReceipt> submitLibraryEdit(

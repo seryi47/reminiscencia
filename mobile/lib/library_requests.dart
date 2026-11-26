@@ -30,7 +30,7 @@ const int kMaxOrderSongs = 190;
 
 /// Aviso común: los cambios se guardan desde la app.
 const String kWriteAccessNote =
-    'El cambio se guarda desde aquí, sin pasar por GitHub, y llega a todos en un par de minutos.';
+    'El cambio se guarda al momento en el catálogo y se ve en toda la biblioteca.';
 
 final RegExp _songId = RegExp(r'^S[0-9a-f]{16}$');
 // Álbumes: los nuevos llevan «F» y 16 hexadecimales; los antiguos, 10 hexadecimales. Se aceptan los dos.

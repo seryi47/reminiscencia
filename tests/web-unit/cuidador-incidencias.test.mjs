@@ -355,9 +355,9 @@ describe('edición de canciones y álbumes', () => {
     assert.equal(isFolderId(FOLDER), true);
   });
 
-  test('el aviso de las hojas pide permiso de escritura y dice cuándo llega el cambio', () => {
-    assert.match(EDIT_NOTE, /permiso de escritura en el repositorio/);
-    assert.match(EDIT_NOTE, /llega a todos en un par de minutos/);
+  test('el aviso de las hojas pide la contraseña del Worker y promete guardado inmediato', () => {
+    assert.match(EDIT_NOTE, /contraseña del Worker/);
+    assert.match(EDIT_NOTE, /al momento/);
   });
 });
 

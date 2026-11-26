@@ -388,7 +388,7 @@ void main() {
       expect(entry.statusText, 'Subiendo… 45 %');
       expect(entry.progress, closeTo(0.45, 1e-9));
       entry.stage = UploadStage.publishing;
-      expect(entry.statusText, 'Publicándose… (suele tardar 2–3 minutos)');
+      expect(entry.statusText, 'Publicándose…');
       expect(entry.progress, isNull, reason: 'barra indeterminada');
       entry.stage = UploadStage.published;
       expect(entry.statusText, 'Publicada');

@@ -236,7 +236,7 @@ class UploadEntry {
           ? 'Subiendo… $percent %'
           : 'Subiendo…',
     UploadStage.saved => 'Guardada en GitHub',
-    UploadStage.publishing => 'Publicándose… (suele tardar 2–3 minutos)',
+    UploadStage.publishing => 'Publicándose…',
     UploadStage.published =>
       alreadyPresent ? kAlreadyPublishedLabel : 'Publicada',
     UploadStage.slow => kSlowPublishMessage,
