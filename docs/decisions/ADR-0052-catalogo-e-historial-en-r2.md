@@ -160,7 +160,16 @@ El cron del Worker se encarga de las snapshots por versión, pero el resto del c
 
 Las reglas son sólo lectura/retención; no afectan a objetos que se vuelvan a escribir después (R2 reinicia el reloj al `put`). `catalog/catalog.json` y `catalog/VERSION.txt` quedan fuera de cualquier regla (prefijo distinto). El bucket `reminiscencia-audio-privado` (audio del buzón privado) no necesita reglas mientras siga activa la retención por canción pública/privada que gestiona el Worker.
 
-Verificación periódica: `npx --yes wrangler@4.151.3 r2 bucket info reminiscencia-audio` muestra `object_count` y `bucket_size`; con las reglas aplicadas, el crecimiento debería estabilizarse en unas pocas decenas de MB para catálogo+historial+snapshots (el grueso sigue siendo audio, ajeno a esto).
+Verificación periódica: `npx --yes wrangler@4.151.3 r2 bucket info reminiscencia-audio` muestra `object_count` y `bucket_size`; con las reglas aplicadas, el crecimiento debería estabilizarse en unas pocas decenas de MB para catálogo+historial+snapshots (el grueso sigue siendo audio, ajeno a esto). Para un informe más detallado por prefijo, el endpoint autenticado `GET /api/catalogo/storage-report` devuelve tamaño y conteo de objetos para cada uno: catalog/, history/, snapshots/, youtube-cache/, covers/ y audio/, con el porcentaje usado del plan gratuito (10 GB).
+
+### Ampliación 2026-11-26 — compresión gzip + compactación
+
+Dos palancas adicionales, aplicadas automáticamente por el Worker (no requieren tocar panel):
+
+- **Rotación gzipeada de `history/latest.jsonl`**: cuando `appendEvent` supera 1000 líneas, la copia histórica `history/latest-rotado-<ulid>` se escribe ya **comprimida como `.jsonl.gz`** con `Content-Encoding: gzip`. El historial completo suele repetir mucho (actor, kind, timestamps similares), con gzip ocupa ~30 % de lo plano. Los consumidores HTTP decompresan transparentemente.
+- **Compresión diferida de snapshots por versión**: el cron semanal (`snapshots-gc.js::gzipOldVersionSnapshots`) comprime a `.json.gz` las snapshots `snapshots/by-version/v<N>.json` cuyo `uploaded` sea mayor que `GZIP_OLDER_THAN_DAYS` (30 días). `readVersionSnapshot` prueba primero `.json` (snapshots recientes) y si no existe prueba `.json.gz` (snapshots antiguas). Ratio ~70-80 % en catálogos con muchas canciones. Idempotente: el `.json` plano se borra tras comprimir.
+- **Compactación del catálogo** (`scripts/compactar_catalogo.py`, uso puntual): elimina del JSON campos redundantes/derivables — `codec` cuando vale `"opus"` (95 %+ de casos), `size_bytes` (derivable del HEAD de R2), `added_at` sin hora. Ahorro medido contra el catálogo real (790 canciones): **27.9 KB (7.7 %)**. El script no aplica cambios automáticamente; deja el resultado en `~/Desktop/catalogo-compacto.json` para revisar antes de pisar el oficial.
+- **Auditoría de portadas** (`scripts/audit_portadas.py`): intenta listar `covers/` del bucket con `wrangler` (hoy no soportado; fallback al endpoint `storage-report`) y estima ahorro potencial al convertir JPEG a WebP (ratio ~30 %).
 
 ## Ampliación 2026-11-26 — subida presigned directa a R2 + lectura edge-cached
 

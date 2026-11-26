@@ -1728,3 +1728,93 @@ describe('/api/upload/presign y /api/upload/complete (ADR-0052)', () => {
     assert.equal(response.status, 400);
   });
 });
+
+describe('optimización de espacio en R2 (ADR-0052)', () => {
+  test('rotación de latest.jsonl se guarda gzipeada con .jsonl.gz y Content-Encoding gzip', async () => {
+    const { appendEvent, LATEST_JSONL_KEY, LATEST_ROTATED_PREFIX } = await import('../../worker/src/history.js');
+    const bucket = fakeR2();
+    // Rellenamos latest.jsonl con 1000 líneas falsas a pelo para que el próximo evento rote.
+    const previous = Array.from({ length: 1000 }, (_, i) => JSON.stringify({ at: `t${i}`, kind: 'noise' })).join('\n');
+    await bucket.put(LATEST_JSONL_KEY, `${previous}\n`, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
+    await appendEvent(bucket, { kind: 'rename_song', song_id: 'S1' });
+    const keys = [];
+    let cursor;
+    do {
+      const page = await bucket.list({ prefix: 'history/', cursor });
+      for (const o of page.objects) keys.push(o.key);
+      cursor = page.truncated ? page.cursor : null;
+    } while (cursor);
+    const rotated = keys.find((k) => k.startsWith(LATEST_ROTATED_PREFIX));
+    assert.ok(rotated, 'debe existir una clave rotada');
+    assert.ok(rotated.endsWith('.jsonl.gz'), 'la rotación se escribe gzipeada');
+    const rotatedObj = await bucket.get(rotated);
+    assert.equal(rotatedObj.httpMetadata.contentEncoding, 'gzip');
+    assert.ok(rotatedObj.size < previous.length, 'debe ocupar menos que el jsonl plano');
+  });
+
+  test('readVersionSnapshot encuentra snapshots antiguas comprimidas (.json.gz)', async () => {
+    const { ensureVersionSnapshot, readVersionSnapshot, gzipVersionSnapshot } = await import('../../worker/src/snapshots.js');
+    const bucket = fakeR2();
+    // Catálogo repetitivo para que gzip rinda de verdad (los objetos pequeños crecen por el header).
+    const songs = Array.from({ length: 50 }, (_, i) => ({
+      id: `S${i}`, title: 'cancion-repetida-para-que-gzip-funcione-bien', artist: 'repetido', sha256: 'a'.repeat(64),
+    }));
+    const catalog = { version: 5, songs, folders: [] };
+    await ensureVersionSnapshot(bucket, catalog);
+    const res = await gzipVersionSnapshot(bucket, 5);
+    assert.equal(res.ok, true);
+    assert.ok(res.compressedBytes < res.originalBytes, `compress ${res.compressedBytes} < orig ${res.originalBytes}`);
+    const plainAfter = await bucket.head('snapshots/by-version/v5.json');
+    assert.equal(plainAfter, null, 'el .json plano se borra tras comprimir');
+    const read = await readVersionSnapshot(bucket, 5);
+    assert.deepEqual(read, catalog);
+  });
+
+  test('gzipOldVersionSnapshots solo toca las de >30 días', async () => {
+    const { ensureVersionSnapshot } = await import('../../worker/src/snapshots.js');
+    const { gzipOldVersionSnapshots } = await import('../../worker/src/snapshots-gc.js');
+    const bucket = fakeR2();
+    // v1 con uploaded antiguo, v2 reciente; ensureVersionSnapshot usa Date.now por defecto → forzamos put a mano.
+    const old = { version: 1, songs: [{ id: 'S1' }], folders: [] };
+    const recent = { version: 2, songs: [{ id: 'S2' }], folders: [] };
+    const now = Date.now();
+    await bucket.put('snapshots/by-version/v1.json', JSON.stringify(old), {
+      httpMetadata: { contentType: 'application/json; charset=utf-8' },
+      uploaded: now - 60 * 24 * 60 * 60 * 1000,
+    });
+    await bucket.put('snapshots/by-version/v2.json', JSON.stringify(recent), {
+      httpMetadata: { contentType: 'application/json; charset=utf-8' },
+      uploaded: now - 5 * 24 * 60 * 60 * 1000,
+    });
+    const out = await gzipOldVersionSnapshots(bucket, { olderThanDays: 30, now });
+    assert.deepEqual(out.compressed, [1]);
+    const gz = await bucket.head('snapshots/by-version/v1.json.gz');
+    assert.ok(gz, 'v1 debe tener su .gz');
+    const plainV2 = await bucket.head('snapshots/by-version/v2.json');
+    assert.ok(plainV2, 'v2 no se toca');
+  });
+
+  test('/api/catalogo/storage-report requiere X-Auth y responde JSON agregado', async () => {
+    const env = {
+      AUTH_PASSWORD: 'secreta',
+      PUBLIC_BUCKET: fakeR2(),
+      ALLOWED_ORIGINS: SITE_ORIGIN,
+    };
+    await env.PUBLIC_BUCKET.put('catalog/catalog.json', '{"version":1}', { httpMetadata: { contentType: 'application/json' } });
+    await env.PUBLIC_BUCKET.put('history/latest.jsonl', 'a\nb\n', { httpMetadata: { contentType: 'application/x-ndjson' } });
+    await env.PUBLIC_BUCKET.put('audio/S1.opus', new Uint8Array(1024));
+    const noAuth = await handleRequest(new Request(`${SITE_ORIGIN}/api/catalogo/storage-report`), env);
+    assert.equal(noAuth.status, 401);
+    const ok = await handleRequest(new Request(`${SITE_ORIGIN}/api/catalogo/storage-report`, {
+      headers: { 'X-Auth': 'secreta' },
+    }), env);
+    assert.equal(ok.status, 200);
+    const data = await ok.json();
+    assert.equal(typeof data.total_r2_bytes, 'number');
+    assert.ok(data.total_r2_bytes > 0);
+    assert.equal(data.catalog_size_bytes, '{"version":1}'.length);
+    assert.equal(data.audio_total_size_bytes, 1024);
+    assert.ok(data.limits.percent_used >= 0);
+    assert.ok(data.object_counts['catalog/'] === 1);
+  });
+});

@@ -20,6 +20,7 @@ function metaOf(key, entry) {
     etag: entry.etag,
     httpEtag: `"${entry.etag}"`,
     httpMetadata: { ...entry.httpMetadata },
+    uploaded: entry.uploaded,
   };
 }
 
@@ -122,7 +123,12 @@ export function fakeR2({ pageSize = 1000, failOn = null } = {}) {
       const current = objects.get(key) ?? null;
       if (!conditionHolds(options.onlyIf, current)) return null;
       version += 1;
-      const entry = { bytes: toBytes(value), etag: `v${version}`, httpMetadata: { ...(options.httpMetadata ?? {}) } };
+      const entry = {
+        bytes: toBytes(value),
+        etag: `v${version}`,
+        httpMetadata: { ...(options.httpMetadata ?? {}) },
+        uploaded: options.uploaded ? new Date(options.uploaded).toISOString() : new Date().toISOString(),
+      };
       objects.set(key, entry);
       return objectOf(key, entry);
     },
