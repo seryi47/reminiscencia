@@ -161,3 +161,119 @@ El cron del Worker se encarga de las snapshots por versión, pero el resto del c
 Las reglas son sólo lectura/retención; no afectan a objetos que se vuelvan a escribir después (R2 reinicia el reloj al `put`). `catalog/catalog.json` y `catalog/VERSION.txt` quedan fuera de cualquier regla (prefijo distinto). El bucket `reminiscencia-audio-privado` (audio del buzón privado) no necesita reglas mientras siga activa la retención por canción pública/privada que gestiona el Worker.
 
 Verificación periódica: `npx --yes wrangler@4.151.3 r2 bucket info reminiscencia-audio` muestra `object_count` y `bucket_size`; con las reglas aplicadas, el crecimiento debería estabilizarse en unas pocas decenas de MB para catálogo+historial+snapshots (el grueso sigue siendo audio, ajeno a esto).
+
+## Ampliación 2026-11-26 — subida presigned directa a R2 + lectura edge-cached
+
+Se añaden tres rutas al Worker para quitar ancho de banda y CPU del plano caliente:
+
+### `POST /api/upload/presign` y `POST /api/upload/complete`
+
+El audio Opus ya **no pasa por el Worker** en subidas: el cliente firma una URL SigV4 contra R2 y hace `PUT` directo al bucket privado `reminiscencia-audio-privado`. El Worker sólo firma la URL y recibe el aviso de "completado" con los metadatos.
+
+- `POST /api/upload/presign` (`X-Auth` obligatorio): body `{filename, sizeBytes, contentType}`. Si `sizeBytes ≤ 100 MB`, devuelve `{mode:'simple', uploadId, r2Key, uploadUrl, expiresAt}` con una URL firmada válida 15 minutos. Si es mayor, inicia un `CreateMultipartUpload` contra R2, devuelve `{mode:'multipart', uploadId, s3UploadId, r2Key, chunkBytes, parts:[{partNumber, uploadUrl, sizeBytes}, ...], expiresAt}`. La key en R2 es `entrada/<uuid>/<filename>.opus`, consistente con el flujo histórico para no tocar el consumidor de `entrada/`.
+- `POST /api/upload/complete` (`X-Auth` obligatorio): body `{r2Key, s3UploadId?, parts?:[{etag, partNumber}, ...]}`. En modo simple no hay `parts`; en multipart, confirma el ensamblaje con R2. Responde `{ok, r2Key}`.
+
+Después de `complete`, el cliente llama a `POST /api/buzon/publish` como siempre con los metadatos (sha256, title, artist, duration_s, size_bytes, codec:'opus', folder_id?, source?).
+
+**Configuración necesaria** (si faltan, los dos endpoints responden `503` con mensaje claro y el cliente debe caer al flujo `/api/subir` clásico):
+
+- `R2_ACCOUNT_ID` — 32 hex, aparece en el panel R2.
+- `R2_ACCESS_KEY_ID` — del API Token de R2 con permiso `Object Read & Write` sobre `reminiscencia-audio-privado` (como mínimo).
+- `R2_SECRET_ACCESS_KEY` — el secret correspondiente.
+
+Crear el API token en: Cloudflare dashboard → R2 → API tokens → Create API token → Bucket-specific → `reminiscencia-audio-privado` → "Object Read & Write" → Create. Añadir los tres secretos al Worker:
+
+```
+cd worker
+npx --yes wrangler@4.151.3 secret put R2_ACCOUNT_ID
+npx --yes wrangler@4.151.3 secret put R2_ACCESS_KEY_ID
+npx --yes wrangler@4.151.3 secret put R2_SECRET_ACCESS_KEY
+```
+
+Firma SigV4 implementada a mano en `worker/src/upload-presign.js` (Web Crypto API, sin SDK), estilo S3 (región `auto`, servicio `s3`, host `<account_id>.r2.cloudflarestorage.com`). `UNSIGNED-PAYLOAD` en la firma (el payload es el audio que el cliente mete en el `PUT`). `X-Amz-Expires=900` (15 minutos). Cubierto por tests en `tests/web-unit/worker.test.mjs` (presign simple, sin auth, sin secretos, inválido, complete).
+
+**Helpers de cliente listos pero sin cablear por defecto** (se activan en una línea cuando los secretos R2 estén puestos):
+
+- Web: `frontend/web/js/cuidador/subida-presigned.js` — `sendOpusPresigned(bytes, {fileName, authFetch, onProgress, fetchImpl})`. Devuelve `{r2Key, sha256, sizeBytes, mensaje}` o lanza `PresignedUploadError` con `phase` concreto para que el caller decida (503/401 → fallback a `sendOpus` chunked).
+- APK: `mobile/lib/presigned_upload.dart` — `PresignedUploader(baseUrl, authStore, httpClient?)` con `uploadBytes(bytes, fileName:)` y `upload(file, fileName:)`. Misma semántica de errores con `PresignedUploadException(phase)`.
+
+Cuando se active, el envoltorio preferido en `frontend/web/js/cuidador/subida-publica.js::uploadFiles` es:
+
+```js
+try {
+  const presigned = await sendOpusPresigned(converted.bytes, { fileName: name, authFetch });
+  await publishBuzonSongs([{...}]);   // metadatos del catálogo
+  // éxito presigned
+} catch (err) {
+  if (err instanceof PresignedUploadError && (err.phase === 'presign-503' || err.phase === 'presign-network')) {
+    // Fallback transparente al flujo clásico:
+    await sendOpus(converted.bytes, { fileName: name, ... });
+  } else {
+    throw err;
+  }
+}
+```
+
+Tests del helper: `tests/web-unit/subida-presigned.test.mjs` (6 tests), `mobile/test/presigned_upload_test.dart` (3 tests).
+
+### `GET /api/catalogo/public.json`
+
+Canal de lectura alternativo al catálogo, pensado para clientes externos (widgets, frontends secundarios, dashboards que no son la app). Responde el mismo cuerpo que `/api/catalogo/latest` pero con `Cache-Control: public, max-age=10, must-revalidate` y **sin ETag**. El edge de Cloudflare cachea 10 segundos; cualquier cambio del catálogo se refleja con hasta 10 segundos de latencia.
+
+La web y la APK oficiales siguen usando `/api/catalogo/latest` (contrato ETag + revalidación por `If-None-Match` + 304 → cambios al instante). `public.json` NO sustituye a `latest`: es un canal adicional para quien priorice ahorro de CPU Worker sobre frescura.
+
+Documentado como contrato estable: tercero puede confiar en que la ruta existe, que entrega JSON con `{version, folders, songs, updated_at}`, y que el cuerpo es como mucho 10 segundos viejo.
+
+## Próxima iteración — notificaciones push event-driven a la APK
+
+**No se implementa en este ADR.** Requiere configuración externa (Firebase Cloud Messaging con `google-services.json` en Android y `firebase_messaging` en Flutter), más infraestructura Cloudflare Queues + R2 Event Notifications.
+
+Esquema previsto para cuando el administrador tenga Firebase provisionado:
+
+1. **R2 Event Notification** sobre el bucket público, prefijo `snapshots/by-version/`, acción `object.create`. Entrega a una **Cloudflare Queue** (`reminiscencia-catalog-events`).
+2. **Worker consumer** de la queue (`queue()` handler en `worker/src/index.js`):
+   - Extrae la versión nueva del nombre del objeto.
+   - Lee la lista de `fcm_tokens` desde una KV namespace (`CATALOG_SUBSCRIBERS`).
+   - Para cada token, envía una notificación FCM con payload `{title: "Catálogo v<N>", body: "Ha habido cambios en la biblioteca", data: {version: N}}`.
+   - El cliente APK recibe, llama a `/api/catalogo/latest` con su ETag persistido, y refresca.
+3. **APK**: registrar `firebase_messaging` al arranque, suscribirse al topic `catalog_v<N>` o enviar el token a `/api/apk/register` (nuevo endpoint que guarda en KV).
+
+Pseudo-código del Worker consumer:
+
+```js
+async function handleQueueMessage(message, env) {
+  const { object } = message.body;  // { key: "snapshots/by-version/v42.json", ... }
+  const match = /^snapshots\/by-version\/v(\d+)\.json$/.exec(object.key);
+  if (!match) return;
+  const version = parseInt(match[1], 10);
+  const tokens = await env.CATALOG_SUBSCRIBERS.list();
+  for (const key of tokens.keys) {
+    await sendFcmNotification(await env.CATALOG_SUBSCRIBERS.get(key.name), { version });
+  }
+}
+```
+
+Pasos para activar:
+
+1. Crear proyecto Firebase, añadir app Android con `com.reminiscencia.app`, bajar `google-services.json` a `mobile/android/app/`.
+2. Añadir `firebase_core` y `firebase_messaging` al `pubspec.yaml`, inicializar en `main.dart`.
+3. Crear queue `wrangler queues create reminiscencia-catalog-events`.
+4. Añadir binding `[[queues.producers]]`/`[[queues.consumers]]` en `wrangler.toml`.
+5. Configurar R2 Event Notification en el panel: bucket `reminiscencia-audio` → Settings → Event Notifications → prefix `snapshots/by-version/` → queue.
+6. Añadir secreto `FCM_SERVER_KEY` al Worker.
+7. Implementar `/api/apk/register` + KV namespace.
+
+Mientras no esté: la APK sigue haciendo polling con ETag + 304 al abrir la pantalla de biblioteca (pequeño coste, aceptable).
+
+## Próxima iteración — panel admin con métricas de R2 Analytics
+
+**No se implementa en este ADR.** Requiere un API token adicional de Cloudflare con scope Analytics Read; ese token no está provisionado hoy en el Worker.
+
+Esquema previsto:
+
+1. Crear API token en Cloudflare dashboard → My Profile → API Tokens → Create Token → permiso "Account Analytics:Read" sobre la cuenta correspondiente.
+2. `wrangler secret put CF_ANALYTICS_TOKEN`.
+3. Endpoint `GET /api/admin/analytics` (auth `X-Auth`): consume la Analytics GraphQL API (`https://api.cloudflare.com/client/v4/graphql`) con el token, devuelve JSON `{classAOps, classBOps, egressBytes, perPrefix: {...}}` para la ventana de tiempo pedida.
+4. Vista web `frontend/web/js/views/admin.js` que lo pinta como dashboard simple (números grandes + un top-5 por prefijo).
+
+Mientras no esté: las métricas se consultan a mano en el dashboard de Cloudflare → R2 → `reminiscencia-audio` → Metrics.

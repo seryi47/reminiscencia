@@ -518,6 +518,7 @@ describe('cobertura de SHELL_ASSETS', () => {
     '/js/cuidador/incidencias.js',
     '/js/cuidador/subida-local.js',
     '/js/cuidador/subida-publica.js',
+    '/js/cuidador/subida-presigned.js',
     '/js/cuidador/subida-estado.js',
     '/js/cuidador/subida-zip.js',
     '/js/cuidador/zip.js',

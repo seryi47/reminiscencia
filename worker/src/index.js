@@ -46,6 +46,7 @@ import { readCoverIndex, saveCoverToBucket } from './portadas.js';
 import { bindingStorage } from './r2-storage.js';
 import { serializeCoverIndex } from '../../frontend/web/js/cover-index.js';
 import { handleCatalogRoute, isCatalogRoute } from './catalog-api.js';
+import { handlePresign, handleComplete } from './upload-presign.js';
 
 export const SERVICE = 'reminiscencia-api';
 export const API_HEADER = 'X-Reminiscencia-Api';
@@ -490,6 +491,14 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
       // En el modo nuevo del catálogo (ADR-0052: AUTH_PASSWORD presente) el Worker ya no dispara
       // repository_dispatch; el cliente llamará a POST /api/buzon/publish tras el último trozo.
       response = await handleSubir(request, env, fetchImpl);
+      break;
+    case '/api/upload/presign':
+      // ADR-0052 ampliación 2026-11-26: subida directa a R2 con URL firmada SigV4, sin pasar el audio por el
+      // Worker. Si faltan los secretos R2_* responde 503 y el cliente cae al flujo /api/subir.
+      response = await handlePresign(request, env, fetchImpl);
+      break;
+    case '/api/upload/complete':
+      response = await handleComplete(request, env, fetchImpl);
       break;
     case '/api/editar':
       // Retirado por los fixes críticos del ADR-0052: antes creaba una incidencia GitHub

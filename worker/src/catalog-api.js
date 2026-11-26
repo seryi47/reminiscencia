@@ -63,6 +63,29 @@ export async function handleCatalogLatest(request, env) {
   });
 }
 
+/** GET /api/catalogo/public.json — lectura pública del catálogo con cache edge de 10 s. A diferencia de /latest,
+ *  esta ruta NO expone ETag ni soporta If-None-Match: su contrato es «última versión conocida, pero puede ir hasta
+ *  10 segundos por detrás». Pensada para integraciones externas (widgets, feeds secundarios) que quieran ahorrar
+ *  invocaciones del Worker apoyándose en el edge cache de Cloudflare. La web y la APK siguen usando /latest. */
+export async function handleCatalogPublic(request, env) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return jsonResponse(405, { ok: false, error: 'Solo se admite GET.' });
+  }
+  if (!env?.PUBLIC_BUCKET) return catalogBucketMissing();
+  const catalog = await readCatalog(env.PUBLIC_BUCKET);
+  if (!catalog) return catalogNotMigrated();
+  const body = request.method === 'HEAD' ? null : JSON.stringify(catalog);
+  return new Response(body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      // 10 s de cache en el edge + el cliente: ganancias de CPU del Worker a cambio de hasta 10 s de latencia
+      // en cambios. No pensado para la UI oficial (que exige ver sus propias ediciones al instante).
+      'Cache-Control': 'public, max-age=10, must-revalidate',
+    },
+  });
+}
+
 /** Núcleo común: autoriza, coge lock, lee catálogo, delega al mutator y escribe. */
 async function withLockedWrite(request, env, mutate) {
   if (!env?.PUBLIC_BUCKET) return catalogBucketMissing();
@@ -345,6 +368,7 @@ ${entries}
 /** Devuelve true si la ruta es una de las nuevas del catálogo (para router). */
 export function isCatalogRoute(path) {
   return path === '/api/catalogo/latest'
+    || path === '/api/catalogo/public.json'
     || path === '/api/catalogo/edit'
     || path === '/api/catalogo/rollback'
     || path === '/api/catalogo/historial'
@@ -358,6 +382,7 @@ export function isCatalogRoute(path) {
 export async function handleCatalogRoute(path, request, env) {
   switch (path) {
     case '/api/catalogo/latest': return handleCatalogLatest(request, env);
+    case '/api/catalogo/public.json': return handleCatalogPublic(request, env);
     case '/api/catalogo/edit': return handleCatalogEdit(request, env);
     case '/api/catalogo/rollback': return handleCatalogRollback(request, env);
     case '/api/catalogo/historial': return handleCatalogHistorial(request, env);

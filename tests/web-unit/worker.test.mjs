@@ -1547,3 +1547,115 @@ describe('/api/subir con AUTH_PASSWORD no dispara repository_dispatch (ADR-0052)
     assert.equal(viejo.github.filter((call) => call.path.endsWith('/dispatches')).length, 1);
   });
 });
+
+// ─── ADR-0052 ampliación: /api/catalogo/public.json (cache edge 10 s) ────────
+describe('/api/catalogo/public.json (cache edge, ADR-0052)', () => {
+  const AUTH = 'pass_de_prueba_para_X_Auth_que_no_sale_a_logs';
+  const seededCatalog = () => ({ version: 3, folders: [], songs: [], updated_at: '2026-11-26T10:00:00.000Z' });
+  const callPublic = (env = {}) => {
+    const publicBucket = fakeR2();
+    const fullEnv = { AUTH_PASSWORD: AUTH, PUBLIC_BUCKET: publicBucket, ALLOW_LOCALHOST: '1', ...env };
+    const call = (path, init = {}) => handleRequest(new Request(`https://reminiscencia-api.prueba.workers.dev${path}`, init), fullEnv);
+    return { call, publicBucket };
+  };
+
+  test('devuelve 200 con Cache-Control: max-age=10 y sin ETag', async () => {
+    const { call, publicBucket } = callPublic();
+    publicBucket.seed('catalog/catalog.json', JSON.stringify(seededCatalog()), { contentType: 'application/json; charset=utf-8' });
+    const response = await call('/api/catalogo/public.json');
+    assert.equal(response.status, 200);
+    const cc = response.headers.get('Cache-Control') ?? '';
+    assert.match(cc, /max-age=10/);
+    assert.match(cc, /public/);
+    assert.equal(response.headers.get('ETag'), null, 'public.json no debe exponer ETag (coste del edge cache)');
+    const data = await response.json();
+    assert.equal(data.version, 3);
+  });
+
+  test('sin catálogo responde 503', async () => {
+    const { call } = callPublic();
+    const response = await call('/api/catalogo/public.json');
+    assert.equal(response.status, 503);
+  });
+});
+
+// ─── ADR-0052 ampliación: /api/upload/presign y /api/upload/complete ──────────
+describe('/api/upload/presign y /api/upload/complete (ADR-0052)', () => {
+  const AUTH = 'pass_de_prueba_para_X_Auth_que_no_sale_a_logs';
+  const R2_CREDS = {
+    R2_ACCOUNT_ID: 'abcdef1234567890abcdef1234567890',
+    R2_ACCESS_KEY_ID: 'AKIAEJEMPLO',
+    R2_SECRET_ACCESS_KEY: 'secretoejemplodeprueba',
+  };
+  const callUpload = (env = {}) => {
+    const publicBucket = fakeR2();
+    const privateBucket = fakeR2();
+    const fullEnv = { AUTH_PASSWORD: AUTH, PUBLIC_BUCKET: publicBucket, PRIVATE_BUCKET: privateBucket, ALLOW_LOCALHOST: '1', ...env };
+    const call = (path, init = {}) => handleRequest(new Request(`https://reminiscencia-api.prueba.workers.dev${path}`, init), fullEnv);
+    return { call };
+  };
+  const authedBody = (payload) => ({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH },
+    body: JSON.stringify(payload),
+  });
+
+  test('sin X-Auth devuelve 401', async () => {
+    const { call } = callUpload(R2_CREDS);
+    const response = await call('/api/upload/presign', { method: 'POST', body: '{}' });
+    assert.equal(response.status, 401);
+  });
+
+  test('con X-Auth mala devuelve 401', async () => {
+    const { call } = callUpload(R2_CREDS);
+    const response = await call('/api/upload/presign', {
+      method: 'POST',
+      headers: { 'X-Auth': 'basura', 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(response.status, 401);
+  });
+
+  test('sin secretos R2 devuelve 503 claro', async () => {
+    const { call } = callUpload(/* sin R2_* */);
+    const response = await call('/api/upload/presign', authedBody({ filename: 'x.opus', sizeBytes: 1024 }));
+    assert.equal(response.status, 503);
+    const data = await response.json();
+    assert.match(data.error, /no configurada/i);
+  });
+
+  test('presign simple <100MB devuelve uploadUrl firmada y expiración', async () => {
+    const { call } = callUpload(R2_CREDS);
+    const response = await call('/api/upload/presign', authedBody({ filename: 'cancion.opus', sizeBytes: 5 * 1024 * 1024 }));
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.ok, true);
+    assert.equal(data.mode, 'simple');
+    assert.match(data.r2Key, /^entrada\/[0-9a-f-]+\/cancion\.opus$/);
+    assert.match(data.uploadUrl, /^https:\/\/abcdef1234567890abcdef1234567890\.r2\.cloudflarestorage\.com\//);
+    assert.match(data.uploadUrl, /X-Amz-Algorithm=AWS4-HMAC-SHA256/);
+    assert.match(data.uploadUrl, /X-Amz-Signature=[0-9a-f]{64}/);
+    assert.ok(data.expiresAt > Math.floor(Date.now() / 1000));
+  });
+
+  test('sizeBytes inválido devuelve 400', async () => {
+    const { call } = callUpload(R2_CREDS);
+    const response = await call('/api/upload/presign', authedBody({ filename: 'x.opus', sizeBytes: -1 }));
+    assert.equal(response.status, 400);
+  });
+
+  test('complete simple (sin partes) devuelve r2Key', async () => {
+    const { call } = callUpload(R2_CREDS);
+    const response = await call('/api/upload/complete', authedBody({ r2Key: 'entrada/abc/cancion.opus' }));
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.ok, true);
+    assert.equal(data.r2Key, 'entrada/abc/cancion.opus');
+  });
+
+  test('complete con r2Key fuera de entrada/ rechaza 400', async () => {
+    const { call } = callUpload(R2_CREDS);
+    const response = await call('/api/upload/complete', authedBody({ r2Key: 'catalog/catalog.json' }));
+    assert.equal(response.status, 400);
+  });
+});
