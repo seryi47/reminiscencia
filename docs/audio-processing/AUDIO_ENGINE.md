@@ -1,6 +1,8 @@
 # Motor de audio de Reminiscencia
 
-> **Nota de estado (2026-11-03).** La parte 2 describe el reproductor de la interfaz única (ADR-0009), **retirado** por [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) (decisión 9): ya no hay modos paciente y cuidador, límite de volumen por perfil, arranque al 60 % con fundido, temporizador, bloqueo de pantalla ni eventos del estudio. El reproductor actual (cola, aleatorio, repetir y volumen) está en [PLAYER.md](../user-experience/PLAYER.md). La parte 1 no describe el buzón (`buzon.yml` y `backend/sonidos/buzon.py`, ADR-0014), que convierte con el mismo perfil `opus-64k`.
+> **Nota de estado (2026-11-26, ADR-0052).** La **parte 1** describe el flujo antiguo de biblioteca/buzón por GitHub Actions. Desde [ADR-0052](../decisions/ADR-0052-catalogo-e-historial-en-r2.md) ese flujo está **retirado**: los workflows `biblioteca.yml`, `buzon.yml` y `r2.yml` ya no existen, y el catálogo + historial viven en R2 con el Worker como único escritor. El motor de audio (perfiles Opus, sondeo, publicación a R2) descrito abajo sigue vigente, pero ahora lo ejecuta el **cliente** (web/APK convierten a Opus en el dispositivo, ADR-0042/0045/0051) en lugar del runner, y el Worker lo añade al catálogo vía `POST /api/catalogo/edit` / `POST /api/buzon/publish`. Ver `docs/arquitectura/ARCHITECTURE.md` para el flujo actual. Las referencias a `biblioteca.yml`/`buzon.yml`/`ADR-0008`/`ADR-0014` en este documento son históricas.
+>
+> **Nota de estado (2026-11-03).** La parte 2 describe el reproductor de la interfaz única (ADR-0009), **retirado** por [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md) (decisión 9): ya no hay modos paciente y cuidador, límite de volumen por perfil, arranque al 60 % con fundido, temporizador, bloqueo de pantalla ni eventos del estudio. El reproductor actual (cola, aleatorio, repetir y volumen) está en [PLAYER.md](../user-experience/PLAYER.md).
 
 Estado: la parte 1 describe `main` (8a19a09), ya fusionado (`main` está ahora en 7f93756, que solo añade `web.yml`, no descrito aquí). La parte 2 describe `frontend/web/js/player.js` de la interfaz única (feat/ui-publica, commit 9d4ae8f; ADR-0009). Las frases de la parte 2 que dicen que el reproductor no está conectado a la interfaz son anteriores a la integración y están pendientes de revisión (ver ROADMAP). La rama feat/gestion-backend (cabeza 22b444a, que incluye 679b11c) cambia el workflow y varios módulos de la parte 1; esos cambios no se describen aquí (ver Pendiente).
 
@@ -15,7 +17,7 @@ Las reglas de producto están en [DESIGN.md](../user-experience/DESIGN.md), secc
 
 | Pieza | Fichero | Rama |
 |---|---|---|
-| Workflow de la biblioteca (`autorizar`, `procesar` y `publicar`; ADR-0008 y ADR-0010) | `.github/workflows/biblioteca.yml` | main |
+| ~~Workflow de la biblioteca~~ (retirado 2026-11-26 por ADR-0052; sustituido por `POST /api/catalogo/edit` del Worker) | ~~`.github/workflows/biblioteca.yml`~~ | — |
 | Punto de entrada del workflow | `scripts/ci_library.py` | main |
 | Pipeline de importación | `backend/sonidos/pipeline.py` | main |
 | Fuentes, descarga, sondeo, perfiles, catálogo, límites y publicación | `backend/sonidos/{sources,intake,probe,compression,catalog,limits,publish}.py` | main |
@@ -125,7 +127,7 @@ Los valores son los que declara `limits.py`, que indica haberlos verificado en d
 | Assets por release | 1000 | `RELEASE_DATA_ASSETS_PER_BATCH = 999`; el restante es `SHA256SUMS.txt` |
 
 - `audit_repository` mira solo los ficheros de `git ls-files`. Como el workflow ejecuta `git add -A` antes, incluye los ficheros nuevos.
-- `scripts/check_repo_limits.py` imprime `AVISO/ERROR:` por cada problema. Sale con código 1 si algún problema contiene «bloquea» o «máximo»; si no, imprime «Límites de GitHub: correcto» y sale con 0. Lo usan `biblioteca.yml` (job `publicar`, antes del commit) y el job `limites-repositorio` de `backend.yml`.
+- `scripts/check_repo_limits.py` imprime `AVISO/ERROR:` por cada problema. Sale con código 1 si algún problema contiene «bloquea» o «máximo»; si no, imprime «Límites de GitHub: correcto» y sale con 0. Lo usa el job `limites-repositorio` de `backend.yml` (antes también `biblioteca.yml`, retirado por ADR-0052).
 - `backend/sonidos/release.py` prepara lotes para GitHub Releases (ADR-0003): tags `<prefijo>-NN`, nombres de asset `<id>_<fichero>` y un manifiesto `SHA256SUMS.txt`. `publish(repo, batches, *, execute)` solo devuelve los comandos `gh`; ejecutarlos exige `execute=True`, y ese argumento no tiene valor por defecto. Ningún workflow de `main` lo invoca; solo lo usan sus pruebas.
 
 ### 1.8 Publicación pública (`backend/sonidos/publish.py`)
