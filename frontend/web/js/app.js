@@ -53,7 +53,7 @@ import { applyPendingEdits, createEditTracker, indicatorText as editsIndicatorTe
 import { bindCatalogWorker, dataUrlToBytes, fetchEditStatus, publishBuzon, sendCover, sendOrganize } from './edit-remote.js';
 import { api } from './api-config.js';
 import { createAuthClient, openAuthDialog } from './auth.js';
-import { fetchLatestCatalog, FEATURE_CATALOGO_R2, readStoredEtag, writeStoredEtag, fetchHistorial } from './catalog-remote.js';
+import { fetchLatestCatalog, FEATURE_CATALOGO_R2, readStoredEtag, writeStoredEtag, fetchHistorial, watchCatalog } from './catalog-remote.js';
 import { applyCoverIndex, fetchCoverIndex } from './cover-index.js';
 import {
   activeCount,
@@ -1839,6 +1839,29 @@ async function start() {
     if (state.ready) render();
   });
   rebuildCatalog();
+  // Tiempo real sin coste (ADR-0052): long-poll al Worker para repintar en cuanto cambie el catálogo en R2.
+  // Se pausa solo cuando la pestaña está en background. Si cae la conexión, backoff y sigue.
+  if (FEATURE_CATALOGO_R2) {
+    watchCatalog({
+      getVersion: () => state.catalogVersion ?? 0,
+      onUpdate: (catalog) => {
+        if (!catalog || !Array.isArray(catalog.songs) || !Array.isArray(catalog.folders)) return;
+        state.publicSongs = catalog.songs;
+        state.publicFolders = catalog.folders;
+        state.catalogVersion = Number.isInteger(catalog.version) ? catalog.version : state.catalogVersion;
+        if (Number.isInteger(catalog.version)) {
+          const etag = `W/"v${catalog.version}"`;
+          state.catalogEtag = etag;
+          writeStoredEtag(etag);
+        }
+        state.loadError = null;
+        try { reconcilePublished(); } catch { /* UI se adapta sola en el siguiente ciclo */ }
+        try { rebuildCatalog(); } catch { /* idem */ }
+        if (state.ready) { try { render(); } catch { /* idem */ } }
+      },
+      onError: () => { /* el backoff lo hace watchCatalog, no mostramos nada en UI */ },
+    });
+  }
   state.playlists = await library.listPlaylists();
   state.likes = await library.listLikes();
   if (!library.persistent) toast('Este navegador no deja guardar las listas: se perderán al cerrar la página.', { ms: 8000 });

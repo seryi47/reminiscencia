@@ -9,11 +9,19 @@
 import { api } from './api-config.js';
 
 export const CATALOG_PATH = '/api/catalogo/latest';
+export const WAIT_PATH = '/api/catalogo/wait';
 export const EDIT_PATH = '/api/catalogo/edit';
 export const BUZON_PATH = '/api/buzon/publish';
 export const HISTORIAL_PATH = '/api/catalogo/historial';
 export const ROLLBACK_PATH = '/api/catalogo/rollback';
 export const ETAG_STORAGE_KEY = 'reminiscencia.catalog.etag';
+
+/** Ventana del long-poll que pedimos al Worker en cada iteración (segundos). 25 s está por debajo del tope del
+ * Worker (30 s) y por debajo de cualquier timeout razonable de proxy intermedio. */
+export const WATCH_WAIT_TIMEOUT_S = 25;
+/** Fallback por si la conexión long-poll se cae sin aviso (ms). Hace un ping con If-None-Match al /latest; la
+ * respuesta 304 pesa ~100 bytes y no gasta CPU del Worker. */
+export const WATCH_FALLBACK_INTERVAL_MS = 60_000;
 
 /** Interruptor general del camino nuevo (ADR-0052). true = la web lee y escribe contra el Worker/R2; false = camino
  *  viejo por /data/*.json + /api/editar + GitHub Actions. Si en producción algo no cuadra, basta con poner
@@ -190,6 +198,146 @@ export async function sendRollback({ toVersion }, deps = {}) {
     body: { to_version: toVersion },
     ...deps,
   });
+}
+
+/**
+ * Long-poll al Worker para enterarse de cambios del catálogo al instante (ADR-0052, tiempo real sin coste).
+ *
+ * Mantiene un bucle `while (!stopped)` que llama a `/api/catalogo/wait?if_version=<v>&timeout=25` con `fetch`
+ * cancelable (AbortController). Si el Worker devuelve 200 → `onUpdate(catalog)`. Si 204 → reintenta sin esperar.
+ * Si hay un error de red → backoff exponencial 1s, 2s, 4s, …, tope 30s.
+ *
+ * Se pausa cuando la pestaña queda en background (`document.visibilityState === 'hidden'`) para no mantener
+ * conexiones abiertas inútiles, y se reanuda al volver. Además, cada [WATCH_FALLBACK_INTERVAL_MS] el bucle hace
+ * un ping con `If-None-Match` a `/latest` por si la conexión long-poll se queda colgada en algún proxy
+ * intermedio (una respuesta 304 pesa ~100 bytes).
+ *
+ * Devuelve un objeto `{ stop() }` para que `start()` pueda detenerlo en shutdown.
+ *
+ * Parámetros inyectables para pruebas: `fetchImpl`, `now`, `sleep`, `doc` (document), `getVersion`.
+ */
+export function watchCatalog({
+  getVersion,
+  onUpdate,
+  onError,
+  fetchImpl = apiFetch,
+  doc = (() => { try { return globalThis.document ?? null; } catch { return null; } })(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now = () => Date.now(),
+  waitTimeoutS = WATCH_WAIT_TIMEOUT_S,
+  fallbackIntervalMs = WATCH_FALLBACK_INTERVAL_MS,
+} = {}) {
+  if (typeof getVersion !== 'function') throw new TypeError('watchCatalog: falta getVersion.');
+  if (typeof onUpdate !== 'function') throw new TypeError('watchCatalog: falta onUpdate.');
+  let stopped = false;
+  let currentController = null;
+  let failures = 0;
+  let paused = false;
+  let wakeResolve = null;
+  let loopDone;
+  const waitForWake = () => new Promise((resolve) => { wakeResolve = resolve; });
+  const wake = () => { if (wakeResolve) { const r = wakeResolve; wakeResolve = null; r(); } };
+  // Yield real al event loop (macrotask) para no monopolizar la CPU cuando fetch y sleep inyectados resuelven inmediato.
+  const yieldMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  // Visibilidad: pausar en background para no mantener conexión.
+  let visibilityHandler = null;
+  if (doc && typeof doc.addEventListener === 'function') {
+    visibilityHandler = () => {
+      const hidden = doc.visibilityState === 'hidden';
+      if (hidden && !paused) {
+        paused = true;
+        if (currentController) currentController.abort();
+      } else if (!hidden && paused) {
+        paused = false;
+        wake();
+      }
+    };
+    doc.addEventListener('visibilitychange', visibilityHandler);
+  }
+
+  const loop = async () => {
+    let lastFallbackAt = now();
+    while (!stopped) {
+      // Yield real al event loop (macrotask) al inicio de cada iteración. Así los setTimeouts externos pueden
+      // dispararse y stop() se puede atender aunque el fetch y sleep inyectados resuelvan inmediato.
+      await yieldMacrotask();
+      if (stopped) break;
+      if (paused) { await waitForWake(); continue; }
+      const version = Math.max(0, Number(getVersion()) || 0);
+      currentController = new AbortController();
+      const url = `${WAIT_PATH}?if_version=${encodeURIComponent(version)}&timeout=${encodeURIComponent(waitTimeoutS)}`;
+      let response;
+      try {
+        response = await fetchImpl(url, { cache: 'no-store', signal: currentController.signal });
+      } catch (error) {
+        if (stopped || paused) continue;
+        if (error?.name === 'AbortError') continue;
+        failures += 1;
+        if (typeof onError === 'function') { try { onError(error); } catch { /* el callback se come sus errores */ } }
+        const backoff = Math.min(30_000, 1000 * Math.pow(2, Math.min(failures - 1, 5)));
+        await sleep(backoff);
+        continue;
+      } finally {
+        currentController = null;
+      }
+      if (response.status === 200) {
+        failures = 0;
+        let catalog;
+        try { catalog = await response.json(); } catch { catalog = null; }
+        if (catalog && Array.isArray(catalog.folders) && Array.isArray(catalog.songs)) {
+          try { await onUpdate(catalog); } catch (error) {
+            if (typeof onError === 'function') { try { onError(error); } catch { /* idem */ } }
+          }
+          lastFallbackAt = now();
+        }
+        continue;
+      }
+      if (response.status === 204) {
+        failures = 0;
+        // Oportunidad: si llevamos más de fallbackIntervalMs sin respuesta real, hacemos un ping /latest para
+        // detectar cambios que el long-poll pudiera estar perdiendo (proxy que cortó el stream sin avisar).
+        if (now() - lastFallbackAt >= fallbackIntervalMs) {
+          lastFallbackAt = now();
+          try {
+            const ping = await fetchImpl(CATALOG_PATH, {
+              cache: 'no-store',
+              headers: { 'If-None-Match': `W/"v${version}"` },
+            });
+            if (ping.status === 200) {
+              let catalog;
+              try { catalog = await ping.json(); } catch { catalog = null; }
+              if (catalog && Array.isArray(catalog.folders) && Array.isArray(catalog.songs)) {
+                try { await onUpdate(catalog); } catch { /* idem */ }
+              }
+            }
+          } catch { /* errores aquí también suben a backoff del bucle principal */ }
+        }
+        continue;
+      }
+      // Otras respuestas (503, 500, …): tratar como error con backoff.
+      failures += 1;
+      if (typeof onError === 'function') {
+        try { onError(new Error(`wait HTTP ${response.status}`)); } catch { /* idem */ }
+      }
+      const backoff = Math.min(30_000, 1000 * Math.pow(2, Math.min(failures - 1, 5)));
+      await sleep(backoff);
+    }
+  };
+
+  loopDone = loop().catch(() => { /* loop ya absorbe */ });
+
+  return {
+    stop() {
+      stopped = true;
+      if (currentController) currentController.abort();
+      if (doc && visibilityHandler && typeof doc.removeEventListener === 'function') {
+        doc.removeEventListener('visibilitychange', visibilityHandler);
+      }
+      wake();
+      return loopDone;
+    },
+  };
 }
 
 /** Lee el historial append-only del Worker. limit: hasta 1000. */

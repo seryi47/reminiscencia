@@ -224,6 +224,140 @@ class WorkerCatalogClient {
 
   /// Aviso de tiempo para el cursor del reloj (lo usan pruebas sin red real).
   DateTime now() => _clock();
+
+  /// Long-poll de `/api/catalogo/wait?if_version=<v>&timeout=<s>`.
+  /// Devuelve el catálogo nuevo (200), null (204 sin cambios), o 503 lanza.
+  Future<CatalogLatest?> waitForUpdate({
+    required int currentVersion,
+    int timeoutSeconds = 25,
+    void Function(http.StreamedResponse)? onResponseStart,
+  }) async {
+    final uri = _api.base.isNotEmpty
+        ? _api.workerUri('/api/catalogo/wait?if_version=$currentVersion&timeout=$timeoutSeconds')
+        : _api.vercelUri('/api/catalogo/wait?if_version=$currentVersion&timeout=$timeoutSeconds');
+    final request = http.Request('GET', uri);
+    // Timeout = timeoutSeconds + 10 s margen para que el Worker nos responda 204 antes de que nosotros matemos la conexión.
+    final streamed = await _client
+        .send(request)
+        .timeout(Duration(seconds: timeoutSeconds + 10));
+    if (onResponseStart != null) onResponseStart(streamed);
+    if (streamed.statusCode == 204) {
+      // Drenamos el stream por si acaso.
+      await streamed.stream.drain<void>();
+      return null;
+    }
+    if (streamed.statusCode == 503) {
+      await streamed.stream.drain<void>();
+      throw const AppException(
+        'El catálogo todavía no se ha migrado al Worker (503).',
+      );
+    }
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode != 200) {
+      throw AppException(
+        'No se pudo leer el catálogo en tiempo real (HTTP ${response.statusCode}).',
+      );
+    }
+    final body = jsonDecode(utf8.decode(response.bodyBytes));
+    if (body is! Map) {
+      throw const AppException('Catálogo con formato inesperado.');
+    }
+    final etag = response.headers['etag'] ?? '';
+    return CatalogLatest(body: body.cast<String, Object?>(), etag: etag);
+  }
+}
+
+/// Watcher del catálogo (ADR-0052): bucle que llama a `/api/catalogo/wait` y publica cada actualización por
+/// `onUpdate`. Se pausa cuando la app pasa a background y se reanuda al volver. Si falla, backoff
+/// exponencial con tope de 30 s.
+class CatalogWatcher {
+  CatalogWatcher({
+    required this.client,
+    required this.getVersion,
+    required this.onUpdate,
+    this.onError,
+    this.waitTimeoutSeconds = 25,
+    Future<void> Function(Duration)? sleep,
+  }) : _sleep = sleep ?? Future<void>.delayed;
+
+  final WorkerCatalogClient client;
+  final int Function() getVersion;
+  final Future<void> Function(CatalogLatest catalog) onUpdate;
+  final void Function(Object error)? onError;
+  final int waitTimeoutSeconds;
+  final Future<void> Function(Duration) _sleep;
+
+  bool _stopped = false;
+  bool _paused = false;
+  Completer<void>? _wake;
+  int _failures = 0;
+  Future<void>? _loop;
+
+  /// Arranca el bucle en background. Idempotente: si ya estaba corriendo, no arranca uno nuevo.
+  void start() {
+    if (_loop != null) return;
+    _stopped = false;
+    _loop = _run();
+  }
+
+  /// Pausa el bucle (p.ej. cuando la app pasa a background). Reanudar con [resume].
+  void pause() {
+    _paused = true;
+  }
+
+  /// Reanuda tras pause().
+  void resume() {
+    if (!_paused) return;
+    _paused = false;
+    final wake = _wake;
+    _wake = null;
+    wake?.complete();
+  }
+
+  /// Detiene el bucle definitivamente.
+  Future<void> stop() async {
+    _stopped = true;
+    final wake = _wake;
+    _wake = null;
+    wake?.complete();
+    final loop = _loop;
+    _loop = null;
+    if (loop != null) {
+      try { await loop; } catch (_) { /* el bucle absorbe sus propios errores */ }
+    }
+  }
+
+  Future<void> _run() async {
+    while (!_stopped) {
+      // Yield real al event loop en cada iteración: evita monopolizar CPU cuando el sleep y el send
+      // inyectados resuelven inmediato (tests), y permite que stop() se atienda.
+      await Future<void>.delayed(Duration.zero);
+      if (_stopped) break;
+      if (_paused) {
+        _wake = Completer<void>();
+        await _wake!.future;
+        continue;
+      }
+      try {
+        final version = getVersion();
+        final catalog = await client.waitForUpdate(
+          currentVersion: version,
+          timeoutSeconds: waitTimeoutSeconds,
+        );
+        if (_stopped) break;
+        if (catalog != null) {
+          _failures = 0;
+          try { await onUpdate(catalog); } catch (e) { onError?.call(e); }
+        }
+      } catch (e) {
+        if (_stopped) break;
+        _failures++;
+        onError?.call(e);
+        final seconds = (1 << (_failures - 1).clamp(0, 5)).clamp(1, 30);
+        await _sleep(Duration(seconds: seconds));
+      }
+    }
+  }
 }
 
 class CatalogLatest {

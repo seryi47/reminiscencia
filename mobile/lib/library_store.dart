@@ -202,6 +202,21 @@ class LibraryStore implements LibrarySource {
     return _parseCatalog(jsonText, fromNetwork: true);
   }
 
+  /// Aplica un catálogo recibido del Worker (p.ej. del watcher long-poll, ADR-0052): guarda el JSON como
+  /// copia local y persiste el ETag de la versión nueva para que la próxima lectura sea 304 si no cambia.
+  /// Devuelve `LibraryData` listo para publicar por el stream del controller.
+  Future<LibraryData> applyRemote(CatalogLatest catalog) async {
+    final dir = await _dir();
+    final catalogFile = File('${dir.path}/catalog.json');
+    final jsonText = jsonEncode(catalog.body);
+    await catalogFile.writeAsString(jsonText, flush: true);
+    if (catalog.etag.isNotEmpty) {
+      final prefs = await _prefsLoader();
+      await prefs.setString(kCatalogEtagPreferenceKey, catalog.etag);
+    }
+    return _parseCatalog(jsonText, fromNetwork: true);
+  }
+
   LibraryData _parseCatalog(String body, {required bool fromNetwork}) {
     final json = jsonDecode(body);
     if (json is! Map) {

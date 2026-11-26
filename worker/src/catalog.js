@@ -37,3 +37,15 @@ export async function writeCatalog(bucket, catalog) {
 export function emptyCatalog() {
   return { version: 0, folders: [], songs: [], updated_at: new Date(0).toISOString() };
 }
+
+/** Lectura barata de la versión actual: GET a catalog/VERSION.txt (6 bytes). Devuelve null si no existe,
+ * un entero si parsea bien. Lo usa el long-poll de /api/catalogo/wait para no leer todo el catálogo cada
+ * segundo (ADR-0052, tiempo real sin coste). */
+export async function readVersion(bucket) {
+  if (!bucket) return null;
+  const object = await bucket.get(VERSION_KEY);
+  if (!object) return null;
+  const text = (await object.text()).trim();
+  const n = Number.parseInt(text, 10);
+  return Number.isFinite(n) ? n : null;
+}

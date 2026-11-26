@@ -11,6 +11,7 @@ import 'collections_store.dart';
 import 'covers.dart';
 import 'edit_remote.dart';
 import 'error_log.dart';
+import 'fcm_integration.dart';
 import 'library_controller.dart';
 import 'library_store.dart';
 import 'local_audio.dart';
@@ -90,31 +91,53 @@ Future<void> _bootstrap(ErrorLog? errorLog) async {
     fallback: (request) => submitLibraryEdit(request, client: client),
   );
   await Future.wait([settings.load(), collections.load()]);
+  final libraryController = LibraryController(
+    source: libraryStore,
+    playback: handler,
+    local: LocalAudioLibrary(
+      store: LocalAudioStore(),
+      converter: const FfmpegOpusConverter(),
+    ),
+    offline: SharedPrefsOfflineChoice(),
+    covers: covers,
+    // Subida para todos: la función de la web guarda en el buzón; la app no tiene ningún token.
+    uploader: SharedUploader(
+      client: client,
+      converter: const FfmpegOpusConverter(enforceLimits: false),
+      hasConnection: hasAnyConnection,
+      authStore: authStore,
+    ),
+    // Tras subir: se mira songs.json cada 20 s, solo en primer plano, hasta que aparece (máx. 10 min).
+    published: HttpPublishedSongs(client: client),
+    uploadsStore: UploadsStore(),
+    // Con el Worker cableado (ADR-0052), tras cada canción subida se publica al instante en el catálogo R2.
+    workerCatalog: workerCatalog,
+  );
+  // Tiempo real sin coste (ADR-0052): long-poll a /api/catalogo/wait → applyRemoteCatalog cada vez que el
+  // Worker nos avisa de un cambio. Se pausa solo cuando la app pasa a background con AppLifecycleListener.
+  final catalogWatcher = CatalogWatcher(
+    client: workerCatalog,
+    getVersion: () => libraryController.catalogVersion,
+    onUpdate: (catalog) async {
+      final data = await libraryStore.applyRemote(catalog);
+      libraryController.applyRemoteCatalog(data);
+    },
+    onError: (error) => debugPrint('catálogo watcher: $error'),
+  )..start();
+  AppLifecycleListener(
+    onHide: catalogWatcher.pause,
+    onShow: catalogWatcher.resume,
+  );
+  // Push FCM (ADR-0052): sin coste. Instalación idempotente y silenciosa; si falla (teléfono sin Play
+  // Services, red cortada), el long-poll sigue cubriendo la UX. No retrasa el runApp — se instala en paralelo.
+  final fcm = FcmIntegration(
+    onCatalogUpdate: () => libraryController.refresh(),
+  );
+  unawaited(fcm.install().then((_) => fcm.applyPending()));
   runApp(
     ReminiscenciaApp(
       services: AppServices(
-        library: LibraryController(
-          source: libraryStore,
-          playback: handler,
-          local: LocalAudioLibrary(
-            store: LocalAudioStore(),
-            converter: const FfmpegOpusConverter(),
-          ),
-          offline: SharedPrefsOfflineChoice(),
-          covers: covers,
-          // Subida para todos: la función de la web guarda en el buzón; la app no tiene ningún token.
-          uploader: SharedUploader(
-            client: client,
-            converter: const FfmpegOpusConverter(enforceLimits: false),
-            hasConnection: hasAnyConnection,
-            authStore: authStore,
-          ),
-          // Tras subir: se mira songs.json cada 20 s, solo en primer plano, hasta que aparece (máx. 10 min).
-          published: HttpPublishedSongs(client: client),
-          uploadsStore: UploadsStore(),
-          // Con el Worker cableado (ADR-0052), tras cada canción subida se publica al instante en el catálogo R2.
-          workerCatalog: workerCatalog,
-        ),
+        library: libraryController,
         playback: handler,
         covers: covers,
         collections: collections,

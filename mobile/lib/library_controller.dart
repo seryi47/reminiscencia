@@ -313,6 +313,31 @@ class LibraryController extends ChangeNotifier {
     });
   }
 
+  /// Aplica un catálogo recibido directamente del Worker en tiempo real (long-poll de
+  /// `/api/catalogo/wait`, ADR-0052). No recarga toda la biblioteca: solo actualiza `_catalog` y repinta.
+  /// Es idempotente: si ya tenemos la misma versión se descarta.
+  void applyRemoteCatalog(LibraryData data) {
+    if (data.version != 0 && _version != 0 && data.version <= _version) return;
+    _catalogKnown = true;
+    _catalog = data.songs;
+    _catalogFolders = data.folders;
+    if (data.version > 0) _version = data.version;
+    edits.reconcile(data.songs, data.folders);
+    _online = true;
+    _lastSync = _clock();
+    _rebuildSongs();
+    _loading = false;
+    _loadError = null;
+    notifyListeners();
+    // Reconciliación ligera de subidas pendientes (como hace _sync).
+    uploads.reconcile(data.songs);
+  }
+
+  int _version = 0;
+
+  /// Última versión conocida del catálogo (ADR-0052); 0 si aún no se ha cargado nada.
+  int get catalogVersion => _version;
+
   /// Refresco a mano (deslizar hacia abajo): sincroniza y, con la web disponible, pregunta si cambiaron
   /// las portadas ya guardadas. Es la única vía de comprobar portadas guardadas: nunca se sondea.
   Future<void> refresh() async {
@@ -370,6 +395,7 @@ class LibraryController extends ChangeNotifier {
     _catalogKnown = true;
     _catalog = data.songs;
     _catalogFolders = data.folders;
+    if (data.version > 0) _version = data.version;
     // Lo que ya está en el catálogo deja de verse como pendiente.
     if (data.fromNetwork) edits.reconcile(data.songs, data.folders);
     _online = data.fromNetwork;

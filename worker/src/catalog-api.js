@@ -12,7 +12,7 @@
 //   GET  /api/catalogo/feed.atom        → feed Atom 1.0 con las últimas 50 ediciones (consumible desde Feedly, etc.).
 
 import { isAuthorized } from './auth.js';
-import { CATALOG_KEY, emptyCatalog, readCatalog, writeCatalog } from './catalog.js';
+import { CATALOG_KEY, emptyCatalog, readCatalog, readVersion, writeCatalog } from './catalog.js';
 import { ActionError, addBuzonSongs, applyAction } from './catalog-actions.js';
 import { acquireLock, releaseLock } from './catalog-lock.js';
 import { appendEvent, readLatest } from './history.js';
@@ -365,10 +365,89 @@ ${entries}
   });
 }
 
+/** GET /api/catalogo/wait?if_version=<N>&timeout=<s> — long-poll barato para tiempo real sin FCM/Queues.
+ *
+ * Contrato:
+ *  - current.version > N → 200 con el catálogo nuevo (JSON completo).
+ *  - current.version === N → espera hasta `timeout` segundos (cap 30) sondeando VERSION.txt cada 1 s. Si cambia, 200
+ *    con el catálogo nuevo. Si no, 204 No Content.
+ *  - N > current.version (p.ej. tras rollback) → 200 con el catálogo actual tal cual.
+ *
+ * No requiere auth. El sondeo a VERSION.txt es de 6 bytes y lo cachea el edge: coste efectivamente 0.
+ * Si el cliente aborta la conexión, el bucle se para por `signal.aborted` para no consumir CPU.
+ */
+const WAIT_MAX_TIMEOUT_S = 30;
+const WAIT_DEFAULT_TIMEOUT_S = 25;
+const WAIT_POLL_INTERVAL_MS = 1000;
+
+export async function handleCatalogWait(request, env) {
+  if (request.method !== 'GET') return jsonResponse(405, { ok: false, error: 'Solo se admite GET.' });
+  if (!env?.PUBLIC_BUCKET) return catalogBucketMissing();
+  const url = new URL(request.url);
+  const ifVersionRaw = Number(url.searchParams.get('if_version') ?? 0);
+  const ifVersion = Number.isFinite(ifVersionRaw) ? Math.max(0, Math.floor(ifVersionRaw)) : 0;
+  const timeoutRaw = Number(url.searchParams.get('timeout') ?? WAIT_DEFAULT_TIMEOUT_S);
+  const timeoutS = Number.isFinite(timeoutRaw)
+    ? Math.min(WAIT_MAX_TIMEOUT_S, Math.max(0, timeoutRaw))
+    : WAIT_DEFAULT_TIMEOUT_S;
+  const signal = request.signal;
+  const deadline = Date.now() + timeoutS * 1000;
+
+  // Helper: lee la versión actual barata (VERSION.txt, 6 bytes). Si no existe (migración vieja o mock de tests que
+  // no la sembró), cae a leer catalog.json y usa su campo `version`. Null = catálogo no migrado.
+  const currentVersion = async () => {
+    const quick = await readVersion(env.PUBLIC_BUCKET);
+    if (quick !== null) return quick;
+    const fallback = await readCatalog(env.PUBLIC_BUCKET);
+    return fallback ? fallback.version : null;
+  };
+
+  // Sondeo inicial: si ya cambió (o si el cliente viene de una versión mayor y queremos devolverle el estado actual).
+  const first = await currentVersion();
+  if (first === null) return catalogNotMigrated();
+  if (first !== ifVersion) {
+    const catalog = await readCatalog(env.PUBLIC_BUCKET);
+    if (!catalog) return catalogNotMigrated();
+    const etag = `W/"v${catalog.version}"`;
+    return new Response(JSON.stringify(catalog), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        ETag: etag,
+      },
+    });
+  }
+
+  // Long-poll: esperar cambios o abort. Si timeout=0 pedido explícitamente, 204 directo.
+  while (!signal?.aborted && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, WAIT_POLL_INTERVAL_MS));
+    if (signal?.aborted) break;
+    const now = await currentVersion();
+    if (now !== null && now !== ifVersion) {
+      const catalog = await readCatalog(env.PUBLIC_BUCKET);
+      if (!catalog) return catalogNotMigrated();
+      const etag = `W/"v${catalog.version}"`;
+      return new Response(JSON.stringify(catalog), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+          ETag: etag,
+        },
+      });
+    }
+  }
+
+  // Sin cambios durante la ventana (o el cliente abortó).
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+}
+
 /** Devuelve true si la ruta es una de las nuevas del catálogo (para router). */
 export function isCatalogRoute(path) {
   return path === '/api/catalogo/latest'
     || path === '/api/catalogo/public.json'
+    || path === '/api/catalogo/wait'
     || path === '/api/catalogo/edit'
     || path === '/api/catalogo/rollback'
     || path === '/api/catalogo/historial'
@@ -383,6 +462,7 @@ export async function handleCatalogRoute(path, request, env) {
   switch (path) {
     case '/api/catalogo/latest': return handleCatalogLatest(request, env);
     case '/api/catalogo/public.json': return handleCatalogPublic(request, env);
+    case '/api/catalogo/wait': return handleCatalogWait(request, env);
     case '/api/catalogo/edit': return handleCatalogEdit(request, env);
     case '/api/catalogo/rollback': return handleCatalogRollback(request, env);
     case '/api/catalogo/historial': return handleCatalogHistorial(request, env);

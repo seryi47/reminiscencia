@@ -1079,6 +1079,75 @@ describe('catálogo en R2 (ADR-0052)', () => {
     assert.equal(data.event.to_version, 7);
   });
 
+  // ── Tiempo real sin coste (long-poll ADR-0052) ─────────────────────────────
+
+  test('GET /api/catalogo/wait con catálogo no migrado devuelve 503', async () => {
+    const { call } = callCat();
+    const response = await call('/api/catalogo/wait?if_version=0');
+    assert.equal(response.status, 503);
+  });
+
+  test('GET /api/catalogo/wait?if_version=0 con catálogo en v7 devuelve 200 inmediato con el catálogo', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const t0 = Date.now();
+    const response = await call('/api/catalogo/wait?if_version=0&timeout=5');
+    const elapsed = Date.now() - t0;
+    assert.equal(response.status, 200);
+    assert.ok(elapsed < 500, `debía ser inmediato, tardó ${elapsed}ms`);
+    const body = await response.json();
+    assert.equal(body.version, 7);
+    assert.equal(response.headers.get('ETag'), 'W/"v7"');
+  });
+
+  test('GET /api/catalogo/wait?if_version=7&timeout=0 sin cambios devuelve 204 directo', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/wait?if_version=7&timeout=0');
+    assert.equal(response.status, 204);
+  });
+
+  test('GET /api/catalogo/wait responde 200 con v8 cuando llega un edit mientras espera', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    // Lanza wait con 3 s de ventana y, tras 1.2 s, dispara un edit en paralelo.
+    const waitPromise = call('/api/catalogo/wait?if_version=7&timeout=3');
+    const editPromise = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      return call('/api/catalogo/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH },
+        body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'Z' }, if_match: 7 }),
+      });
+    })();
+    const [waitResp, editResp] = await Promise.all([waitPromise, editPromise]);
+    assert.equal(editResp.status, 200);
+    assert.equal(waitResp.status, 200);
+    const body = await waitResp.json();
+    assert.equal(body.version, 8);
+  });
+
+  test('GET /api/catalogo/wait aborta cuando el cliente cancela y responde sin esperar al deadline', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const controller = new AbortController();
+    const promise = (async () => {
+      try {
+        return await handleRequest(new Request('https://reminiscencia-api.prueba.workers.dev/api/catalogo/wait?if_version=7&timeout=10', { signal: controller.signal }), { AUTH_PASSWORD: AUTH, GITHUB_TOKEN: TOKEN, PRIVATE_BUCKET: fakeR2(), PUBLIC_BUCKET: publicBucket, ALLOW_LOCALHOST: '1' });
+      } catch (err) {
+        return err;
+      }
+    })();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const t0 = Date.now();
+    controller.abort();
+    const result = await promise;
+    const elapsed = Date.now() - t0;
+    assert.ok(elapsed < 1500, `debía parar pronto tras abort, tardó ${elapsed}ms`);
+    // Result puede ser un Response (204) o una excepción AbortError, ambas aceptables.
+    if (result instanceof Response) assert.equal(result.status, 204);
+  });
+
   test('GET /api/catalogo/historial?limit=50 devuelve los últimos eventos', async () => {
     const { call, publicBucket } = callCat();
     seed(publicBucket, seededCatalog());
