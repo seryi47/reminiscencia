@@ -4,6 +4,9 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // Firebase Cloud Messaging (ADR-0052): lee mobile/android/app/google-services.json y conecta la app con
+    // el proyecto reminiscencia-music para recibir los push del topic catalog-changes.
+    id("com.google.gms.google-services")
 }
 
 android {

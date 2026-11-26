@@ -21,6 +21,9 @@ plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "9.0.1" apply false
     id("org.jetbrains.kotlin.android") version "2.3.20" apply false
+    // Firebase Cloud Messaging (ADR-0052): el plugin lee google-services.json de mobile/android/app/
+    // y genera el init automático de Firebase. Debe declararse aquí y aplicarse en app/build.gradle.kts.
+    id("com.google.gms.google-services") version "4.6.0" apply false
 }
 
 include(":app")

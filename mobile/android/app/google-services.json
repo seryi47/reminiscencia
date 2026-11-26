@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "186566614582",
+    "project_id": "reminiscencia-music",
+    "storage_bucket": "reminiscencia-music.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:186566614582:android:330f15e544d9ccc6a54297",
+        "android_client_info": {
+          "package_name": "es.orbitalabs.reminiscencia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVwO0aX8HDfZrZVGOtNdLNVcjGyUJyMt8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

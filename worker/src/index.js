@@ -47,6 +47,8 @@ import { bindingStorage } from './r2-storage.js';
 import { serializeCoverIndex } from '../../frontend/web/js/cover-index.js';
 import { handleCatalogRoute, isCatalogRoute } from './catalog-api.js';
 import { handlePresign, handleComplete } from './upload-presign.js';
+import { handlePushRoute, isPushRoute } from './push-api.js';
+import { notifyCatalogChange } from './fcm.js';
 
 export const SERVICE = 'reminiscencia-api';
 export const API_HEADER = 'X-Reminiscencia-Api';
@@ -85,6 +87,14 @@ export function youtubeUpstreams(env = {}) {
 }
 
 /** Solo para pruebas: olvida el estado de salud memorizado de los upstreams, para que cada caso empiece limpio. */
+/** Rutas del catálogo que son escritura (y por tanto deben disparar push). */
+export function isCatalogWriteRoute(path, method) {
+  if (method !== 'POST') return false;
+  return path === '/api/catalogo/edit'
+      || path === '/api/catalogo/rollback'
+      || path === '/api/buzon/publish';
+}
+
 export function resetYoutubeUpstreamHealth() {
   youtubeDown.clear();
 }
@@ -441,7 +451,7 @@ async function handleSubir(request, env, fetchImpl) {
   });
 }
 
-export async function handleRequest(request, env = {}, { fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
+export async function handleRequest(request, env = {}, { fetchImpl = (...args) => globalThis.fetch(...args), ctx = null } = {}) {
   const origin = request.headers.get('origin');
   const path = new URL(request.url).pathname;
   // La web estática no pasa por CORS ni por las rutas del API: la sirve el binding ASSETS (ADR-0034).
@@ -476,11 +486,34 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
   }
   const audio = await handleAudioRequest(request, env.PUBLIC_BUCKET);
   if (audio) return finish(audio, origin, AUDIO_EXPOSE_HEADERS);
+  // Rutas push FCM (ADR-0052): /api/push/health público, /api/push/test con X-Auth.
+  if (isPushRoute(path)) {
+    return finish(await handlePushRoute(path, request, env), origin);
+  }
   // Rutas del catálogo en R2 (ADR-0052): lectura pública + escritura con X-Auth.
   if (isCatalogRoute(path)) {
     // Expone ETag para que un cliente cross-origin (p. ej. reminiscencia.netlify.app) pueda leerlo y mandar
     // If-None-Match en la siguiente carga; sin esto la respuesta 304 nunca llega a reusar su catálogo local.
-    return finish(await handleCatalogRoute(path, request, env), origin, ['ETag']);
+    const catalogResponse = await handleCatalogRoute(path, request, env);
+    // Enganche push FCM (ADR-0052): si la ruta era una escritura y devolvió 200 con nueva versión, avisamos
+    // al topic. Fire-and-forget con ctx.waitUntil para no retrasar la respuesta; si FCM falla, la APK refresca
+    // igualmente al próximo `GET /latest` o por long-poll.
+    if (catalogResponse.status === 200 && isCatalogWriteRoute(path, request.method)
+        && env.FCM_SERVICE_ACCOUNT && env.FCM_PROJECT_ID) {
+      const work = (async () => {
+        try {
+          const clone = catalogResponse.clone();
+          const data = await clone.json();
+          if (Number.isInteger(data?.version)) {
+            await notifyCatalogChange(env, data.version, data.event);
+          }
+        } catch (err) {
+          console.error('fcm notify failed', err?.message ?? err);
+        }
+      })();
+      if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
+    }
+    return finish(catalogResponse, origin, ['ETag']);
   }
   let response;
   switch (path) {
@@ -544,8 +577,8 @@ export async function handleScheduled(event, env, ctx) {
 }
 
 export default {
-  fetch(request, env) {
-    return handleRequest(request, env);
+  fetch(request, env, ctx) {
+    return handleRequest(request, env, { ctx });
   },
   scheduled(event, env, ctx) {
     return handleScheduled(event, env, ctx);
