@@ -5289,7 +5289,7 @@
       "codec": "opus",
       "size_bytes": 1484591,
       "added_at": "2026-11-05T21:25:19+00:00",
-      "public": true,
+      "public": false,
       "track": 13,
       "gain_db": -5.8
     },
