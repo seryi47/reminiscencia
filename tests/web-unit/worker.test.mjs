@@ -1100,4 +1100,115 @@ describe('catálogo en R2 (ADR-0052)', () => {
     assert.equal(data.events[0].version_after, 9);
     assert.equal(data.events[1].version_after, 8);
   });
+
+  // ── Acciones de orden y bulk (ADR-0052 ampliación 2026-11-26) ──────────────
+  const seededConTresEnAlbum = () => ({
+    version: 7,
+    folders: [{ id: 'F0000000000000001', name: 'Álbum 1', parent_id: null }],
+    songs: [
+      { id: 'S0000000000000010', title: 'Primera', artist: 'A1', year: 2000, tags: [], folder_id: 'F0000000000000001', sha256: 'sha_a' },
+      { id: 'S0000000000000020', title: 'Segunda', artist: 'A1', year: 2001, tags: [], folder_id: 'F0000000000000001', sha256: 'sha_b' },
+      { id: 'S0000000000000030', title: 'Tercera', artist: 'A1', year: 2002, tags: [], folder_id: 'F0000000000000001', sha256: 'sha_c' },
+    ],
+    updated_at: '2026-11-25T10:00:00.000Z',
+  });
+
+  test('set_track_index válido mueve la canción y reasigna índices', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededConTresEnAlbum());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'set_track_index', params: { song_id: 'S0000000000000030', index: 0 }, if_match: 7 }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.event.kind, 'set_track_index');
+    assert.equal(data.event.to, 0);
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    const byId = Object.fromEntries(catalog.songs.map((s) => [s.id, s.track_index]));
+    assert.equal(byId['S0000000000000030'], 0);
+    assert.equal(byId['S0000000000000010'], 1);
+    assert.equal(byId['S0000000000000020'], 2);
+  });
+
+  test('set_track_index con song_id fuera de folders devuelve 400 con mensaje claro', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'set_track_index', params: { song_id: 'S0000000000000011', index: 0 }, if_match: 7 }) });
+    assert.equal(response.status, 400);
+    const data = await response.json();
+    assert.match(data.error, /no pertenece a un álbum/);
+  });
+
+  test('reorder_folder con todos los ids correctos aplica orden y sube versión', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededConTresEnAlbum());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({
+      action: 'reorder_folder',
+      params: { folder_id: 'F0000000000000001', order: ['S0000000000000030', 'S0000000000000010', 'S0000000000000020'] },
+      if_match: 7,
+    }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.version, 8);
+    assert.equal(data.event.kind, 'reorder_folder');
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    const byId = Object.fromEntries(catalog.songs.map((s) => [s.id, s.track_index]));
+    assert.equal(byId['S0000000000000030'], 0);
+    assert.equal(byId['S0000000000000010'], 1);
+    assert.equal(byId['S0000000000000020'], 2);
+  });
+
+  test('reorder_folder con un id sobrante devuelve 400', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededConTresEnAlbum());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({
+      action: 'reorder_folder',
+      params: { folder_id: 'F0000000000000001', order: ['S0000000000000030', 'S0000000000000010', 'S0000000000000020', 'S0000000000000099'] },
+      if_match: 7,
+    }) });
+    assert.equal(response.status, 400);
+    const data = await response.json();
+    assert.match(data.error, /order no coincide/);
+  });
+
+  test('set_song_fields con {title, year} actualiza solo esos campos', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({
+      action: 'set_song_fields',
+      params: { song_id: 'S0000000000000010', fields: { title: 'Nuevo título', year: 1999 } },
+      if_match: 7,
+    }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.event.kind, 'set_song_fields');
+    assert.deepEqual(data.event.changes, { title: 'Nuevo título', year: 1999 });
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    const song = catalog.songs.find((s) => s.id === 'S0000000000000010');
+    assert.equal(song.title, 'Nuevo título');
+    assert.equal(song.year, 1999);
+    assert.equal(song.artist, 'A1', 'el artista no debe haber cambiado');
+    assert.deepEqual(song.tags, []);
+  });
+});
+
+describe('/api/subir con AUTH_PASSWORD no dispara repository_dispatch (ADR-0052)', () => {
+  test('con AUTH_PASSWORD presente responde song_ready y no habla con GitHub; sin AUTH_PASSWORD sí dispara', async () => {
+    const AUTH = 'pass_de_prueba_para_X_Auth_que_no_sale_a_logs';
+    // Modo nuevo: AUTH_PASSWORD presente → no dispatch
+    const nuevo = setup({ env: { AUTH_PASSWORD: AUTH } });
+    const rNuevo = await nuevo.call('/api/subir', chunkInit({ index: 0, total: 1, body: OPUS }));
+    assert.equal(rNuevo.status, 200);
+    const dataNuevo = await rNuevo.json();
+    assert.equal(dataNuevo.ok, true);
+    assert.equal(dataNuevo.song_ready, true);
+    assert.equal(dataNuevo.upload_id, ID);
+    assert.match(dataNuevo.next_step, /api\/buzon\/publish/);
+    assert.deepEqual(nuevo.github.filter((call) => call.path.endsWith('/dispatches')), []);
+    // Modo legacy: sin AUTH_PASSWORD → sí dispara dispatch
+    const viejo = setup();
+    const rViejo = await viejo.call('/api/subir', chunkInit({ index: 0, total: 1, body: OPUS }));
+    assert.equal(rViejo.status, 200);
+    const dataViejo = await rViejo.json();
+    assert.equal(dataViejo.completa, true);
+    assert.equal(viejo.github.filter((call) => call.path.endsWith('/dispatches')).length, 1);
+  });
 });

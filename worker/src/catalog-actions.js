@@ -129,7 +129,88 @@ const ACTIONS = {
     song.tags = tags;
     return { kind: 'set_tags', song_id: song.id, tags };
   },
+  set_track_index(catalog, params) {
+    const song = findSong(catalog, params?.song_id);
+    if (song.folder_id === null || song.folder_id === undefined) {
+      throw new ActionError(400, 'La canción no pertenece a un álbum');
+    }
+    const rawIndex = Number(params?.index);
+    if (!Number.isInteger(rawIndex)) throw new ActionError(400, 'set_track_index: index debe ser un entero.');
+    const siblings = catalog.songs.filter((s) => s.folder_id === song.folder_id);
+    const siblingIds = siblings.map((s) => s.id);
+    const currentPos = siblingIds.indexOf(song.id);
+    const maxIndex = siblings.length - 1;
+    const targetIndex = Math.max(0, Math.min(rawIndex, maxIndex));
+    const ordered = siblingIds.filter((id) => id !== song.id);
+    ordered.splice(targetIndex, 0, song.id);
+    for (let pos = 0; pos < ordered.length; pos += 1) {
+      const target = catalog.songs.find((s) => s.id === ordered[pos]);
+      target.track_index = pos;
+    }
+    return {
+      kind: 'set_track_index',
+      song_id: song.id,
+      folder_id: song.folder_id,
+      from: currentPos,
+      to: targetIndex,
+    };
+  },
+  reorder_folder(catalog, params) {
+    const folder = findFolder(catalog, params?.folder_id);
+    if (!Array.isArray(params?.order)) throw new ActionError(400, 'reorder_folder: order debe ser una lista de ids.');
+    const order = params.order;
+    const actual = catalog.songs.filter((s) => s.folder_id === folder.id).map((s) => s.id);
+    if (order.length !== actual.length || !sameSet(order, actual)) {
+      throw new ActionError(400, 'order no coincide con las canciones del álbum');
+    }
+    for (let pos = 0; pos < order.length; pos += 1) {
+      const target = catalog.songs.find((s) => s.id === order[pos]);
+      target.track_index = pos;
+    }
+    return { kind: 'reorder_folder', folder_id: folder.id, order: [...order] };
+  },
+  set_song_fields(catalog, params) {
+    const song = findSong(catalog, params?.song_id);
+    const fields = params?.fields;
+    if (!fields || typeof fields !== 'object') throw new ActionError(400, 'set_song_fields: falta fields.');
+    const changes = {};
+    if ('title' in fields) {
+      const title = trimmed(fields.title);
+      if (!title) throw new ActionError(400, 'set_song_fields: title no puede estar vacío.');
+      song.title = title;
+      changes.title = title;
+    }
+    if ('artist' in fields) {
+      const artist = trimmed(fields.artist);
+      if (!artist) throw new ActionError(400, 'set_song_fields: artist no puede estar vacío.');
+      song.artist = artist;
+      changes.artist = artist;
+    }
+    if ('year' in fields) {
+      const year = Number(fields.year);
+      if (!Number.isInteger(year) || year < 1800 || year > 2200) {
+        throw new ActionError(400, 'set_song_fields: año fuera de rango.');
+      }
+      song.year = year;
+      changes.year = year;
+    }
+    if ('tags' in fields) {
+      if (!Array.isArray(fields.tags)) throw new ActionError(400, 'set_song_fields: tags debe ser una lista.');
+      const tags = fields.tags.map((t) => trimmed(t)).filter(Boolean);
+      song.tags = tags;
+      changes.tags = tags;
+    }
+    if (Object.keys(changes).length === 0) throw new ActionError(400, 'set_song_fields: no hay campos que actualizar.');
+    return { kind: 'set_song_fields', song_id: song.id, changes };
+  },
 };
+
+function sameSet(left, right) {
+  if (left.length !== right.length) return false;
+  const seen = new Set(left);
+  for (const id of right) if (!seen.has(id)) return false;
+  return true;
+}
 
 /** Aplica una acción a una copia del catálogo. Devuelve { catalog: nuevo, event }. No muta la entrada. */
 export function applyAction(catalog, action, params) {

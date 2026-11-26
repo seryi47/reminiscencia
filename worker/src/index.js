@@ -388,6 +388,54 @@ export async function isRateLimited(request, env) {
   }
 }
 
+/** Atiende /api/subir con el ramal ADR-0052: si hay AUTH_PASSWORD, no se llama a api.github.com/dispatches
+ *  (la publicación la hará el cliente con POST /api/buzon/publish). Fallback a la ruta histórica si no. */
+async function handleSubir(request, env, fetchImpl) {
+  const dispatchEnabled = !env?.AUTH_PASSWORD;
+  const wrappedFetch = dispatchEnabled
+    ? fetchImpl
+    : async (url, init) => {
+        try {
+          const target = new URL(url);
+          if (target.hostname === 'api.github.com' && target.pathname.endsWith('/dispatches')) {
+            return new Response(null, { status: 204 });
+          }
+        } catch (_) { /* url inválida: lo trata el fetch real */ }
+        return fetchImpl(url, init);
+      };
+  const response = await handleUploadRequest(request, {
+    fetchImpl: wrappedFetch,
+    maxChunkBytes: WORKER_MAX_CHUNK_BYTES,
+    config: () => {
+      if (!env?.PRIVATE_BUCKET) {
+        console.error('subir: falta el binding PRIVATE_BUCKET');
+        throw new UploadError(500, NOT_CONFIGURED_UPLOAD);
+      }
+      if (dispatchEnabled && !token(env)) {
+        console.error('subir: falta el secreto GITHUB_TOKEN y el Worker está en modo legacy (sin AUTH_PASSWORD)');
+        throw new UploadError(500, NOT_CONFIGURED_UPLOAD);
+      }
+      return { token: token(env) ?? '', storage: bindingStorage(env.PRIVATE_BUCKET) };
+    },
+  });
+  if (dispatchEnabled || response.status !== 200) return response;
+  let payload;
+  try { payload = await response.clone().json(); } catch { return response; }
+  if (payload?.completa !== true) return response;
+  const uploadId = request.headers.get('x-subida-id') ?? request.headers.get('X-Subida-Id') ?? null;
+  const nextBody = {
+    ok: true,
+    song_ready: true,
+    upload_id: uploadId,
+    nombre: payload.nombre ?? null,
+    next_step: 'POST /api/buzon/publish con if_match',
+  };
+  return new Response(JSON.stringify(nextBody), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
+
 export async function handleRequest(request, env = {}, { fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
   const origin = request.headers.get('origin');
   const path = new URL(request.url).pathname;
@@ -433,17 +481,9 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
       response = jsonResponse(200, { ok: true, servicio: SERVICE, trozoMaximo: WORKER_MAX_CHUNK_BYTES });
       break;
     case '/api/subir':
-      response = await handleUploadRequest(request, {
-        fetchImpl,
-        maxChunkBytes: WORKER_MAX_CHUNK_BYTES,
-        config: () => {
-          if (!token(env) || !env.PRIVATE_BUCKET) {
-            console.error('subir: falta el secreto GITHUB_TOKEN o el binding PRIVATE_BUCKET');
-            throw new UploadError(500, NOT_CONFIGURED_UPLOAD);
-          }
-          return { token: token(env), storage: bindingStorage(env.PRIVATE_BUCKET) };
-        },
-      });
+      // En el modo nuevo del catálogo (ADR-0052: AUTH_PASSWORD presente) el Worker ya no dispara
+      // repository_dispatch; el cliente llamará a POST /api/buzon/publish tras el último trozo.
+      response = await handleSubir(request, env, fetchImpl);
       break;
     case '/api/editar':
       response = await handleEditRequest(request, { token: token(env), fetchImpl, saveCover: saveCoverWith(env) });
