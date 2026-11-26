@@ -269,19 +269,16 @@ class SharedUploader {
     required this.converter,
     required this.hasConnection,
     Future<Directory> Function()? workDir,
-    Uri? endpoint,
+    this._endpoint,
     this.retryDelay = const Duration(seconds: 3),
     this.timeout = kUploadTimeout,
-    int? chunkBytes,
+    this._chunkBytes,
     this.maxParallelSends = kMaxParallelSends,
     Random? random,
     OrderedUploadIds? uploadIds,
     this.authStore,
     this._presignedUploader,
-  }) : _endpoint = endpoint,
-       // ignore: prefer_initializing_formals
-       _chunkBytes = chunkBytes,
-       _workDir = workDir ?? _tempDir,
+  }) : _workDir = workDir ?? _tempDir,
        _random = random ?? Random.secure(),
        _uploadIds = uploadIds ?? OrderedUploadIds(random: random);
 
