@@ -2,6 +2,7 @@
 import { summaryText } from '../cuidador/subida-estado.js';
 import { el, openDialog } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
+import { filterYoutubePlaylist } from '../youtube-dedup.js';
 
 // ==================================================
 // CONFIGURACIÓN
@@ -257,6 +258,41 @@ function conversionStatusLabel({ status, queuePosition, queueLength, progress } 
   }
   if (status === 'completed' || status === 'done') return 'preparando la descarga WAV';
   return status || 'estado desconocido';
+}
+
+// Diálogo que resume cuántas canciones de la playlist ya están en la biblioteca y ofrece descargar solo las nuevas
+// o todas igualmente (ADR-0019 ampliado). Devuelve 'new' | 'all' | 'cancel'.
+async function askPlaylistDedupChoice(dedup) {
+  const result = await openDialog({
+    title: 'Esta playlist se solapa con tu biblioteca',
+    testid: 'playlist-dedup',
+    render: (body, close) => {
+      body.append(
+        el('p', { class: 'dialog-text' },
+          `${dedup.total} canciones en la playlist · ${dedup.alreadyCount} ya las tienes · ${dedup.newCount} nuevas por descargar.`,
+        ),
+        el('p', { class: 'dialog-text' },
+          'Puedes saltarte las que ya tienes o descargarlas igual (por si quieres otra versión).',
+        ),
+        el('div', { class: 'dialog-actions' },
+          el('button', {
+            type: 'button', class: 'button button-secondary', 'data-testid': 'playlist-dedup-cancel',
+            on: { click: () => close('cancel') },
+          }, 'Cancelar'),
+          el('button', {
+            type: 'button', class: 'button button-secondary', 'data-testid': 'playlist-dedup-all',
+            on: { click: () => close('all') },
+          }, 'Descargar todas de todos modos'),
+          el('button', {
+            type: 'button', class: 'button button-primary', 'data-testid': 'playlist-dedup-new',
+            on: { click: () => close('new') },
+          }, `Descargar solo nuevas (${dedup.newCount})`),
+        ),
+      );
+    },
+    initialFocus: (dialog) => dialog.querySelector('[data-testid="playlist-dedup-new"]'),
+  });
+  return result ?? 'cancel';
 }
 
 async function listarPlaylist(playlistUrl, signal) {
@@ -1054,11 +1090,28 @@ function homeostasiaPanel(ctx, close) {
         );
       }
 
+      // Dedup contra la biblioteca ANTES de convertir (ADR-0019 ampliado + ADR-0046): si parte de la playlist ya la
+      // tienes, preguntamos si saltamos lo que coincide o lo bajamos igual (para una versión alterna).
+      const dedup = filterYoutubePlaylist(items, ctx.librarySongs?.() ?? []);
+      let itemsToConvert = dedup.toDownload;
+      if (dedup.alreadyCount > 0 && dedup.newCount < dedup.total) {
+        const choice = await askPlaylistDedupChoice(dedup);
+        if (choice === 'cancel') {
+          status.textContent = 'Importación cancelada.';
+          return;
+        }
+        itemsToConvert = choice === 'all' ? dedup.all : dedup.toDownload;
+      }
+      if (itemsToConvert.length === 0) {
+        status.textContent = 'Nada nuevo que descargar: la playlist ya está en tu biblioteca.';
+        return;
+      }
+
       status.textContent =
-        `Se han encontrado ${items.length} canciones. Iniciando conversiones…`;
+        `Se han encontrado ${items.length} canciones (${itemsToConvert.length} nuevas). Iniciando conversiones…`;
 
       const result = await convertirPlaylist(
-        items,
+        itemsToConvert,
         ({
           processed,
           total,

@@ -5,6 +5,7 @@ import '../local_audio.dart';
 import '../services.dart';
 import '../shared_upload.dart';
 import '../theme.dart';
+import '../youtube_dedup.dart';
 import '../youtube_importer.dart';
 import 'common.dart';
 
@@ -174,8 +175,29 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
     });
     List<YoutubeImportedAudio>? imported;
     try {
-      imported = await importer.importPlaylist(
-        youtubeUrl,
+      // Dedup con la biblioteca ANTES de convertir: al proxy de playlist le pedimos la lista, cruzamos con lo que ya
+      // tienes por `library_match` (ADR-0046) y, si hay solape, preguntamos qué quieres descargar. Ahorra tiempo,
+      // tráfico y cupo diario del conversor (ADR-0045).
+      final listed = await importer.listPlaylist(youtubeUrl, cancellation: cancellation);
+      cancellation.throwIfCancelled();
+      if (!mounted) return;
+      final dedup = filterYoutubePlaylist(listed, widget.services.library.catalogSongs);
+      List<YoutubeTrack> selected = dedup.toDownload;
+      if (dedup.alreadyCount > 0 && dedup.newCount < dedup.total) {
+        final choice = await _askPlaylistDedupChoice(dedup);
+        if (choice == null) {
+          _show('Importación cancelada.');
+          return;
+        }
+        selected = choice == _PlaylistChoice.downloadAll ? dedup.all : dedup.toDownload;
+      }
+      if (selected.isEmpty) {
+        _show('Nada nuevo que descargar: la playlist ya está en tu biblioteca.');
+        return;
+      }
+      setState(() => _status = 'Convirtiendo ${selected.length} canciones…');
+      imported = await importer.importTracks(
+        selected,
         cancellation: cancellation,
         onProgress: (progress) {
           if (mounted && !cancellation.isCancelled) _show(progress.message);
@@ -225,6 +247,41 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
   void _show(String message) {
     if (!mounted) return;
     setState(() => _status = message);
+  }
+
+  /// Pregunta al usuario si quiere saltar las canciones de la playlist que ya están en su biblioteca.
+  Future<_PlaylistChoice?> _askPlaylistDedupChoice(YoutubeDedupResult dedup) async {
+    final palette = paletteOf(context);
+    return showDialog<_PlaylistChoice>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Esta playlist se solapa con tu biblioteca'),
+        content: Text(
+          '${dedup.total} canciones en la playlist · '
+          '${dedup.alreadyCount} ya las tienes · '
+          '${dedup.newCount} nuevas por descargar.\n\n'
+          'Puedes ahorrarte descargar las que ya tienes, o bajarlas igual si quieres otra versión.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('playlist-dedup-cancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            key: const Key('playlist-dedup-all'),
+            onPressed: () => Navigator.of(dialogContext).pop(_PlaylistChoice.downloadAll),
+            child: const Text('Descargar todas de todos modos'),
+          ),
+          FilledButton(
+            key: const Key('playlist-dedup-new'),
+            onPressed: () => Navigator.of(dialogContext).pop(_PlaylistChoice.downloadNew),
+            style: FilledButton.styleFrom(backgroundColor: palette.accent),
+            child: Text('Descargar solo nuevas (${dedup.newCount})'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -377,3 +434,6 @@ class _HomeostasiaSheetState extends State<_HomeostasiaSheet> {
     );
   }
 }
+
+/// Elección del usuario en el diálogo de dedup de playlist YouTube.
+enum _PlaylistChoice { downloadNew, downloadAll }
