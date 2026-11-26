@@ -82,17 +82,19 @@ def _iso(dt: datetime) -> str:
 
 
 def _event(prev_version: int, new_version: int, *, now: datetime, event_id: str,
-           catalog_source: str) -> dict[str, Any]:
+           catalog_source: str, songs_count: int, folders_count: int) -> dict[str, Any]:
+    # Esquema del Worker (worker/src/history.js::appendEvent): {id, at, kind, by, version_before, version_after, ...}.
+    # El evento inicial de la migración es compatible con los consumidores del historial (API y UI).
     return {
         "id": event_id,
-        "ts": _iso(now),
-        "actor": "migration",
-        "action": "migration_initial",
-        "target": None,
-        "changes": {"before": None, "after": None},
-        "prev_version": prev_version,
-        "new_version": new_version,
+        "at": _iso(now),
+        "kind": "migration_initial",
+        "by": "migration",
+        "version_before": prev_version,
+        "version_after": new_version,
         "source": catalog_source,
+        "songs_count": songs_count,
+        "folders_count": folders_count,
     }
 
 
@@ -139,7 +141,9 @@ def _plan(catalog_path: Path, *, now: datetime, event_id: str) -> dict[str, tupl
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     body = _build_catalog_body(catalog, version=INITIAL_VERSION, updated_at=now)
     event = _event(prev_version=0, new_version=INITIAL_VERSION, now=now, event_id=event_id,
-                   catalog_source=_source_label(catalog_path))
+                   catalog_source=_source_label(catalog_path),
+                   songs_count=len(catalog.get("songs", []) or []),
+                   folders_count=len(catalog.get("folders", []) or []))
     event_bytes = (json.dumps(event, ensure_ascii=False, sort_keys=False) + "\n").encode("utf-8")
     event_key = f"history/{now:%Y}/{now:%m}/{event_id}.json"
     snapshot_key = f"snapshots/{now:%Y-%m-%d}.json"

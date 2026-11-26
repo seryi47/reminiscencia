@@ -5,6 +5,7 @@ import { describe, test } from 'node:test';
 
 import {
   ACTOR_KEY,
+  AUTH_URL_HASH,
   AUTH_URL_PARAM,
   DEFAULT_ACTOR,
   STORAGE_KEY,
@@ -41,14 +42,33 @@ describe('auth', () => {
     assert.equal(decodeAuth(e), p);
   });
 
-  test('readParamAuth extrae ?auth=... y devuelve una URL limpia sin ese parámetro', () => {
+  test('readParamAuth extrae #auth=... del fragmento (canal oficial) y devuelve una URL limpia', () => {
+    const encoded = encodeAuth('passABC123');
+    const { auth, cleanUrl } = readParamAuth({ href: `https://x.test/path?foo=1#${AUTH_URL_HASH}=${encoded}` });
+    assert.equal(auth, 'passABC123');
+    assert.equal(cleanUrl, 'https://x.test/path?foo=1');
+  });
+
+  test('readParamAuth conserva otros parámetros del fragmento al limpiar #auth=', () => {
+    const encoded = encodeAuth('pwdABC123');
+    const { auth, cleanUrl } = readParamAuth({ href: `https://x.test/path#tab=1&${AUTH_URL_HASH}=${encoded}&x=2` });
+    assert.equal(auth, 'pwdABC123');
+    assert.equal(cleanUrl, 'https://x.test/path#tab=1&x=2');
+  });
+
+  test('readParamAuth sigue aceptando ?auth=... legacy pero prefiere el fragmento si están los dos', () => {
     const encoded = encodeAuth('passABC123');
     const { auth, cleanUrl } = readParamAuth({ href: `https://x.test/path?${AUTH_URL_PARAM}=${encoded}&foo=1#frag` });
     assert.equal(auth, 'passABC123');
     assert.equal(cleanUrl, 'https://x.test/path?foo=1#frag');
+
+    const encA = encodeAuth('pwdHASH999');
+    const encB = encodeAuth('pwdQUERY111');
+    const mixed = readParamAuth({ href: `https://x.test/path?${AUTH_URL_PARAM}=${encB}#${AUTH_URL_HASH}=${encA}` });
+    assert.equal(mixed.auth, 'pwdHASH999');
   });
 
-  test('readParamAuth con una URL sin ?auth devuelve auth=\'\' y cleanUrl=null', () => {
+  test('readParamAuth con una URL sin auth devuelve auth=\'\' y cleanUrl=null', () => {
     const { auth, cleanUrl } = readParamAuth({ href: 'https://x.test/path' });
     assert.equal(auth, '');
     assert.equal(cleanUrl, null);

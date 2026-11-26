@@ -119,8 +119,17 @@ function resetEnvironment() {
     },
   };
   globalThis.fetch = async (input, init = {}) => {
-    // Se apunta cada petición con su modo de caché HTTP (el del init o el de la Request).
-    env.requests.push({ url: urlOf(input), cache: init.cache ?? (typeof input === 'string' ? 'default' : input.cache) });
+    // Se apunta cada petición con su modo de caché HTTP (el del init o el de la Request) y las cabeceras que llegaron
+    // (ADR-0052 cierre de findings: networkFirst debe pasar el Request entero para que If-None-Match alcance al Worker).
+    const headers = typeof input === 'string'
+      ? Object.fromEntries(new Headers(init.headers ?? {}).entries())
+      : Object.fromEntries(input.headers.entries());
+    env.requests.push({
+      url: urlOf(input),
+      cache: init.cache ?? (typeof input === 'string' ? 'default' : input.cache),
+      inputType: typeof input === 'string' ? 'string' : 'request',
+      headers,
+    });
     if (env.offline) throw new TypeError('Sin conexión');
     const route = env.routes.get(urlOf(input));
     if (!route) return new Response('No encontrado', { status: 404 });
@@ -675,6 +684,22 @@ describe('service worker (sw.js)', () => {
     env.offline = true;
     const offline = dispatchFetch(new Request(`${ORIGIN}data/songs.json`));
     assert.equal(await (await offline.response).text(), 'nueva songs');
+  });
+
+  test('networkFirst pasa el Request entero (If-None-Match llega al Worker para 304, ADR-0052 cierre findings)', async () => {
+    env.routes.set(`${ORIGIN}data/songs.json`, { body: '[]' });
+    env.routes.set(`${ORIGIN}api/catalogo/latest`, { body: '{"version":4,"folders":[],"songs":[]}' });
+    await runLifecycle('install');
+    env.requests = [];
+    const req = new Request(`${ORIGIN}api/catalogo/latest`, { headers: { 'If-None-Match': 'W/"v4"' } });
+    const pending = dispatchFetch(req);
+    await pending.response;
+    await Promise.all(pending.waits);
+    const outgoing = env.requests.filter((r) => r.url === `${ORIGIN}api/catalogo/latest`);
+    assert.equal(outgoing.length, 1, 'una sola petición a la red');
+    assert.equal(outgoing[0].inputType, 'request', 'fetch recibe un Request (no una URL string): si fuera string, los headers del cliente se pierden');
+    assert.equal(outgoing[0].headers['if-none-match'], 'W/"v4"', 'el If-None-Match del cliente llega al Worker');
+    assert.equal(outgoing[0].cache, 'no-store', 'sigue con cache: no-store');
   });
 
   test('un error del servidor en los datos no se guarda como copia de respaldo', async () => {

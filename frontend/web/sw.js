@@ -142,12 +142,13 @@ async function staleWhileRevalidate(event, cacheName = SHELL_CACHE) {
 
 /** Datos (data/songs.json, folders.json y catalog.json): siempre a la red primero y sin la caché HTTP del navegador
  *  (cache: 'no-store'), para que una canción recién publicada se vea al recargar; la copia guardada solo responde
- *  si no hay red. */
+ *  si no hay red. Pasa el Request entero (no sólo la URL) para no perder los headers del cliente — en particular
+ *  `If-None-Match`, que el Worker usa para responder 304 al catálogo (ADR-0052, cerraje de findings 2026-11-26). */
 async function networkFirst(event) {
   const key = shellKey(event.request.url);
   const cache = await caches.open(SHELL_CACHE);
   try {
-    const response = await fetch(event.request.url, { cache: 'no-store', credentials: 'same-origin' });
+    const response = await fetch(event.request, { cache: 'no-store' });
     if (isCacheable(response)) event.waitUntil(cache.put(key, response.clone()).catch(() => {}));
     return response;
   } catch (error) {

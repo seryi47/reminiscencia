@@ -31,7 +31,18 @@ function eventKey(now) {
   return `history/${yyyy}/${mm}/${ulid(now)}.json`;
 }
 
-/** Añade un evento al historial: guarda el fichero YYYY/MM/<ulid>.json y actualiza latest.jsonl. Rota si supera 1000. */
+/** Añade un evento al historial: guarda el fichero YYYY/MM/<ulid>.json y actualiza latest.jsonl. Rota si supera 1000.
+ *
+ * Orden de escrituras pensado para que, si el isolate muere a medias, el estado observable sea consistente:
+ *   1) history/YYYY/MM/<ulid>.json — fuente de verdad del historial (auditoría completa).
+ *   2) history/latest.jsonl — rollup rotativo con la línea nueva ya incluida (lo que GET /historial lee).
+ *   3) (solo al rotar) history/latest-rotado-<ulid>.jsonl — copia histórica del rollup anterior.
+ *
+ * Si muere entre (2) y (3), latest.jsonl ya tiene la línea nueva; como mucho se pierde la copia histórica rotada,
+ * pero los eventos de ese tramo siguen vivos en history/YYYY/MM/. Si en lugar de esto rotáramos antes del PUT de
+ * latest.jsonl, la línea nueva podría quedar fuera del rollup aunque sí estuviera en YYYY/MM/ (ADR-0052 cierre de
+ * findings 2026-11-26).
+ */
 export async function appendEvent(bucket, event, { now = Date.now() } = {}) {
   const enriched = { at: new Date(now).toISOString(), ...event };
   const serialized = JSON.stringify(enriched);
@@ -42,10 +53,12 @@ export async function appendEvent(bucket, event, { now = Date.now() } = {}) {
   const previousText = existing ? await existing.text() : '';
   const lines = previousText ? previousText.split('\n').filter(Boolean) : [];
   lines.push(serialized);
-  if (lines.length > LATEST_MAX_LINES) {
+  const rotating = lines.length > LATEST_MAX_LINES;
+  if (rotating) {
+    // Al rotar, latest.jsonl arranca vacío + línea nueva; la copia histórica se escribe DESPUÉS.
+    await bucket.put(LATEST_JSONL_KEY, `${serialized}\n`, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
     const rotatedKey = `${LATEST_ROTATED_PREFIX}${ulid(now)}.jsonl`;
     await bucket.put(rotatedKey, previousText, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
-    await bucket.put(LATEST_JSONL_KEY, `${serialized}\n`, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
   } else {
     await bucket.put(LATEST_JSONL_KEY, `${lines.join('\n')}\n`, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
   }

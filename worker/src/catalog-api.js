@@ -101,15 +101,26 @@ async function withLockedWrite(request, env, mutate) {
     await ensureVersionSnapshot(env.PUBLIC_BUCKET, latest);
     next.version = latest.version + 1;
     next.updated_at = new Date(now).toISOString();
-    await writeCatalog(env.PUBLIC_BUCKET, next);
-    const snapshotKey = await ensureDailySnapshot(env.PUBLIC_BUCKET, next, { now });
+    // Orden pensado para fallos a medias (ADR-0052, cierre de findings 2026-11-26):
+    //  (1) appendEvent PRIMERO con el version_after de la escritura que vamos a hacer:
+    //      si el isolate muere aquí, el historial deja una entrada "huérfana" (evento sin writeCatalog hecho)
+    //      — detectable con verificación de salud al comparar último evento con catalog.version.
+    //  (2) writeCatalog: materializa la versión nueva.
+    //  (3) ensureVersionSnapshot(next): garantiza que la versión nueva tenga snapshot propia (sin esto, rollback
+    //      a next.version solo existiría tras la SIGUIENTE edición — hueco de O(1) de rollback).
+    //  (4) ensureDailySnapshot(next) con la foto más reciente del día.
+    // Mal menor elegido: historial con transición registrada pero catálogo rezagado (recuperable al reaplicar),
+    // frente al orden antiguo (writeCatalog primero + appendEvent después) que podía dejar versiones sin registro.
+    const snapshotKeyDaily = await ensureDailySnapshot(env.PUBLIC_BUCKET, next, { now });
     const { event: stored } = await appendEvent(env.PUBLIC_BUCKET, {
       ...event,
       by: actorOf(request),
       version_before: latest.version,
       version_after: next.version,
-      ...(snapshotKey ? { daily_snapshot: snapshotKey } : {}),
+      ...(snapshotKeyDaily ? { daily_snapshot: snapshotKeyDaily } : {}),
     }, { now });
+    await writeCatalog(env.PUBLIC_BUCKET, next);
+    await ensureVersionSnapshot(env.PUBLIC_BUCKET, next);
     return jsonResponse(200, { ok: true, version: next.version, event: stored }, { ETag: `W/"v${next.version}"` });
   } finally {
     await releaseLock(env.PUBLIC_BUCKET, lock.token);
@@ -162,7 +173,7 @@ export async function handleCatalogRollback(request, env) {
       version: latest.version + 1,
       updated_at: new Date(now).toISOString(),
     };
-    await writeCatalog(env.PUBLIC_BUCKET, restored);
+    // Mismo orden que withLockedWrite (ADR-0052): appendEvent → writeCatalog → ensureVersionSnapshot(next).
     const snapshotKey = await ensureDailySnapshot(env.PUBLIC_BUCKET, restored, { now });
     const { event } = await appendEvent(env.PUBLIC_BUCKET, {
       kind: 'rollback',
@@ -172,6 +183,8 @@ export async function handleCatalogRollback(request, env) {
       version_after: restored.version,
       ...(snapshotKey ? { daily_snapshot: snapshotKey } : {}),
     }, { now });
+    await writeCatalog(env.PUBLIC_BUCKET, restored);
+    await ensureVersionSnapshot(env.PUBLIC_BUCKET, restored);
     return jsonResponse(200, { ok: true, version: restored.version, event }, { ETag: `W/"v${restored.version}"` });
   } finally {
     await releaseLock(env.PUBLIC_BUCKET, lock.token);

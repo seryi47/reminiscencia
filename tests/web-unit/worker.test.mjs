@@ -1251,6 +1251,53 @@ describe('catálogo en R2 (ADR-0052)', () => {
     assert.equal(folder.name, 'Álbum nuevo');
     assert.equal(folder.artist, 'Los Nuevos');
   });
+
+  test('withLockedWrite: appendEvent (history) va ANTES que writeCatalog (atomicidad, ADR-0052 cierre findings)', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const before = publicBucket.calls.length;
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'Atomic' }, if_match: 7 }) });
+    assert.equal(response.status, 200);
+    const puts = publicBucket.calls.slice(before).filter((c) => c.op === 'put').map((c) => c.key);
+    const idxHistoryLatest = puts.findIndex((k) => k === 'history/latest.jsonl');
+    const idxWriteCatalog = puts.findIndex((k) => k === 'catalog/catalog.json');
+    assert.ok(idxHistoryLatest >= 0, 'debe haberse escrito history/latest.jsonl');
+    assert.ok(idxWriteCatalog >= 0, 'debe haberse escrito catalog/catalog.json');
+    assert.ok(idxHistoryLatest < idxWriteCatalog, `historial (${idxHistoryLatest}) debe ir antes que el catálogo (${idxWriteCatalog})`);
+  });
+
+  test('withLockedWrite: snapshots/by-version/v<new> existe tras cada edición (rollback O(1))', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'V8' }, if_match: 7 }) });
+    assert.ok(publicBucket.text('snapshots/by-version/v8.json'), 'snapshot de la versión nueva debe existir inmediatamente');
+    const snap = JSON.parse(publicBucket.text('snapshots/by-version/v8.json'));
+    assert.equal(snap.version, 8);
+    // Rollback a v8 funciona ya (sin esperar a la siguiente edición).
+    const roll = await call('/api/catalogo/rollback', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ to_version: 8 }) });
+    assert.equal(roll.status, 200);
+    const rollData = await roll.json();
+    assert.equal(rollData.already_there, true);
+  });
+
+  test('appendEvent: en rotación de latest.jsonl, latest.jsonl se escribe ANTES que la copia rotada', async () => {
+    const { appendEvent, LATEST_JSONL_KEY, LATEST_ROTATED_PREFIX, LATEST_MAX_LINES } = await import('../../worker/src/history.js');
+    const bucket = fakeR2();
+    // Llenamos latest.jsonl con MAX líneas para forzar rotación en la próxima.
+    const seedLines = Array.from({ length: LATEST_MAX_LINES }, (_, i) => JSON.stringify({ kind: 'noop', n: i }));
+    bucket.seed(LATEST_JSONL_KEY, seedLines.join('\n') + '\n', { contentType: 'application/x-ndjson; charset=utf-8' });
+    const before = bucket.calls.length;
+    await appendEvent(bucket, { kind: 'rename_song', song_id: 'S1', version_before: 7, version_after: 8 });
+    const puts = bucket.calls.slice(before).filter((c) => c.op === 'put').map((c) => c.key);
+    const idxLatest = puts.findIndex((k) => k === LATEST_JSONL_KEY);
+    const idxRotated = puts.findIndex((k) => k.startsWith(LATEST_ROTATED_PREFIX));
+    assert.ok(idxLatest >= 0 && idxRotated >= 0, 'deben escribirse latest.jsonl y la copia rotada');
+    assert.ok(idxLatest < idxRotated, `latest.jsonl (${idxLatest}) debe escribirse antes que el rotado (${idxRotated})`);
+    // latest.jsonl queda con SOLO la línea nueva (arranque limpio).
+    const nuevo = bucket.text(LATEST_JSONL_KEY).trim().split('\n');
+    assert.equal(nuevo.length, 1);
+    assert.equal(JSON.parse(nuevo[0]).kind, 'rename_song');
+  });
 });
 
 describe('/api/subir con AUTH_PASSWORD no dispara repository_dispatch (ADR-0052)', () => {

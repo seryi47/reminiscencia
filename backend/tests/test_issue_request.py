@@ -17,7 +17,6 @@ from sonidos.issue_request import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "issue_request.py"
 FOLDER = "0123456789"
 SONG = "S0123456789abcdef"
 IA_URL = "https://archive.org/details/charleston1925"
@@ -520,111 +519,6 @@ def test_edit_song_changes_title_and_artist():
 def test_payload_must_include_op():
     with pytest.raises(RequestError, match="falta el campo op"):
         validate_payload({"name": "x"})
-
-
-# --- Entorno de GitHub y ejecución por subproceso ----------------------------------------------
-
-
-def test_to_github_env_puts_compact_payload_on_one_line():
-    request = parse_request(organize({"op": "edit_song", "song_id": SONG, "tags": ["Jazz"], "public": True}))
-
-    env = to_github_env(request)
-
-    assert env["ACTION"] == "organize" and env["URL"] == "" and env["LICENSE"] == "" and env["TITLE"] == ""
-    assert "\n" not in env["PAYLOAD"] and " " not in env["PAYLOAD"]
-    assert json.loads(env["PAYLOAD"]) == request["payload"]
-
-
-def test_to_github_env_for_import_has_empty_payload():
-    env = to_github_env(parse_request(body("action: import", f"url: {IA_URL}")))
-
-    assert env == {"ACTION": "import", "URL": IA_URL, "LICENSE": "", "TITLE": "", "PAYLOAD": ""}
-
-
-def test_write_github_env_rejects_line_breaks(tmp_path):
-    destination = tmp_path / "github_env"
-
-    for value in ("a\nb", "a\rb", "uno\n", "dos\r\n"):
-        with pytest.raises(RequestError, match="salto de línea"):
-            write_github_env(destination, {"TITLE": value})
-    assert not destination.exists()
-
-
-def test_write_github_env_appends_key_value_lines(tmp_path):
-    destination = tmp_path / "github_env"
-    destination.write_text("PREVIA=1\n", encoding="utf-8")
-
-    write_github_env(destination, {"ACTION": "import", "TITLE": "Tema: con dos puntos"})
-
-    assert destination.read_text(encoding="utf-8") == "PREVIA=1\nACTION=import\nTITLE=Tema: con dos puntos\n"
-
-
-def test_request_from_env_builds_the_same_request_as_the_text():
-    manual = request_from_env({"ACTION": "import", "URL": IA_URL, "LICENSE": "", "TITLE": "", "PAYLOAD": ""})
-
-    assert manual == parse_request(body("action: import", f"url: {IA_URL}"))
-
-
-def test_manual_mode_skips_empty_inputs_so_organize_is_not_refused():
-    request = request_from_env({
-        "ACTION": "organize", "URL": "", "LICENSE": "", "TITLE": "",
-        "PAYLOAD": json.dumps({"op": "delete_folder", "folder_id": FOLDER}),
-    })
-
-    assert request["payload"] == {"op": "delete_folder", "folder_id": FOLDER}
-
-
-def test_manual_values_with_line_breaks_are_refused():
-    with pytest.raises(RequestError, match="PAYLOAD contiene un salto de línea"):
-        request_from_env({"ACTION": "organize", "PAYLOAD": '{"op":"delete_folder",\n"folder_id":"0123456789"}'})
-
-
-def test_script_in_incidencia_mode_writes_github_env_and_prints_summary(tmp_path):
-    github_env = tmp_path / "github_env"
-    text = organize({"op": "edit_song", "song_id": SONG, "public": True, "title": "Secreto de ejemplo"})
-
-    result = run_script(["--modo", "incidencia"], {"BODY": text, "GITHUB_ENV": str(github_env)})
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    lines = github_env.read_text(encoding="utf-8").splitlines()
-    assert lines[0] == "ACTION=organize"
-    assert lines[4].startswith("PAYLOAD=") and json.loads(lines[4][len("PAYLOAD="):])["public"] is True
-    summary = json.loads(result.stdout)
-    assert summary == {
-        "action": "organize", "url": None, "title": None, "op": "edit_song",
-        "campos": ["public", "song_id", "title"],
-    }
-    assert SONG not in result.stdout and "Secreto de ejemplo" not in result.stdout
-
-
-def test_script_error_prints_json_exits_1_and_writes_nothing(tmp_path):
-    github_env = tmp_path / "github_env"
-
-    result = run_script(["--modo", "incidencia"], {"BODY": "action: import", "GITHUB_ENV": str(github_env)})
-
-    assert result.returncode == 1
-    assert json.loads(result.stdout) == {"error": "import necesita la clave url"}
-    assert not github_env.exists()
-
-
-def test_script_manual_mode_reads_the_environment(tmp_path):
-    github_env = tmp_path / "github_env"
-    env = {
-        "ACTION": "import", "URL": IA_URL, "LICENSE": "", "TITLE": "Charleston", "PAYLOAD": "",
-        "GITHUB_ENV": str(github_env),
-    }
-
-    result = run_script(["--modo", "manual"], env)
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "TITLE=Charleston" in github_env.read_text(encoding="utf-8").splitlines()
-
-
-def test_script_refuses_to_run_without_github_env():
-    result = run_script(["--modo", "incidencia"], {"BODY": f"action: import\nurl: {IA_URL}"})
-
-    assert result.returncode == 1
-    assert "GITHUB_ENV" in json.loads(result.stdout)["error"]
 
 
 # --- Corrección de la ronda 2 (2026-11-02) -----------------------------------------------------

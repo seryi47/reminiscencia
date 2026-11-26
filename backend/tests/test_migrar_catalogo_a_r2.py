@@ -132,10 +132,16 @@ def test_primera_ejecucion_sube_catalogo_historial_y_snapshot(tmp_path):
     lineas = [json.loads(linea) for linea in latest.splitlines() if linea.strip()]
     assert len(lineas) == 1
     evento = lineas[0]
-    assert evento["action"] == "migration_initial"
-    assert evento["actor"] == "migration"
-    assert evento["prev_version"] == 0 and evento["new_version"] == 1
+    # Esquema del Worker (worker/src/history.js): kind, by, at, version_before, version_after.
+    assert evento["kind"] == "migration_initial"
+    assert evento["by"] == "migration"
+    assert evento["version_before"] == 0 and evento["version_after"] == 1
     assert evento["id"] == FIXED_ULID
+    assert isinstance(evento["at"], str) and evento["at"].startswith("2026-11-26T")
+    assert "songs_count" in evento and "folders_count" in evento
+    # El esquema viejo NO debe aparecer: evita regresión silenciosa si alguien reintroduce las claves antiguas.
+    for clave_vieja in ("ts", "actor", "action", "target", "changes", "prev_version", "new_version"):
+        assert clave_vieja not in evento, f"clave vieja del esquema previo no debe estar: {clave_vieja}"
     assert "x-ndjson" in latest_ct and latest_cache == "no-store"
 
     # Evento inmutable: el mismo contenido en history/YYYY/MM/<ulid>.json con cache larga.

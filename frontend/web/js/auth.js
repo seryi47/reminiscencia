@@ -1,7 +1,10 @@
 // AUTH_PASSWORD del Worker (ADR-0052): se guarda una vez en localStorage y se añade como cabecera X-Auth a cada
-// petición que escribe el catálogo. El usuario NO la escribe a mano: se provisiona por URL con ?auth=<base64> (desde
-// la Mac) o se pega desde el portapapeles cuando falta. El actor (X-Actor) identifica quién manda el cambio en el
-// historial.
+// petición que escribe el catálogo. El usuario NO la escribe a mano: se provisiona por URL (desde la Mac) o se pega
+// desde el portapapeles cuando falta. El actor (X-Actor) identifica quién manda el cambio en el historial.
+//
+// Canal oficial de provisionado: #auth=<base64> (fragmento, NUNCA viaja al servidor). Compat: si llega ?auth=<base64>
+// en la query, lo consumimos igual y limpiamos la URL (ya quedó en logs CF, por eso se desaconseja). El fragmento se
+// elige porque los navegadores NO lo envían en la petición HTTP; sólo vive en el cliente.
 //
 // No usa el DOM directamente en su lógica pura (readParamAuth, encodeAuth, decodeAuth, buildHeaders): se prueban en
 // node (tests/web-unit/auth.test.mjs). La parte interactiva (dialog y clipboard) vive en ensureAuth().
@@ -9,6 +12,7 @@
 export const STORAGE_KEY = 'reminiscencia.auth';
 export const ACTOR_KEY = 'reminiscencia.actor';
 export const AUTH_URL_PARAM = 'auth';
+export const AUTH_URL_HASH = 'auth';
 export const DEFAULT_ACTOR = 'web';
 const MAX_LEN = 200;
 
@@ -41,21 +45,43 @@ export function isValidAuth(value) {
     && /^[!-~]+$/.test(value);
 }
 
-/** Codifica la contraseña para pegarla en ?auth=... (base64url, sin padding). */
+/** Codifica la contraseña para pegarla en #auth=... (base64url, sin padding). */
 export function encodeAuth(password) {
   return base64url(String(password ?? ''));
 }
 
-/** Lee ?auth=<base64> de una URL (string o URL). Devuelve la contraseña decodificada o ''. */
+/** Lee ?auth= o #auth= de una URL (string o URL). Devuelve la contraseña decodificada o ''. */
 export function decodeAuth(encoded) {
   const text = decodeBase64url(String(encoded ?? ''));
   return isValidAuth(text) ? text : '';
 }
 
-/** Mira la URL por ?auth=<base64>; si trae una contraseña válida, la devuelve + una URL limpia. */
+function readHashParam(hash, key) {
+  if (typeof hash !== 'string' || hash === '') return { value: null, rest: '' };
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash;
+  // Soporta #auth=X y #auth=X&otro=Y (como query sin '?')
+  const params = new URLSearchParams(raw.includes('=') ? raw : '');
+  const value = params.get(key);
+  if (value === null) return { value: null, rest: hash };
+  params.delete(key);
+  const rest = params.toString();
+  return { value, rest: rest ? `#${rest}` : '' };
+}
+
+/** Mira la URL por #auth=<base64> (canal oficial) o ?auth=<base64> (legacy, deja huella en logs CF).
+ *  Devuelve la contraseña + una URL limpia sin el token. */
 export function readParamAuth(location) {
   try {
     const url = new URL(String(location?.href ?? location ?? ''));
+    // 1) Canal oficial: fragmento #auth=<b64>. No viaja al servidor.
+    const fromHash = readHashParam(url.hash, AUTH_URL_HASH);
+    if (fromHash.value !== null) {
+      const auth = decodeAuth(fromHash.value);
+      const search = url.searchParams.toString();
+      const cleanUrl = `${url.origin}${url.pathname}${search ? `?${search}` : ''}${fromHash.rest}`;
+      return { auth, cleanUrl };
+    }
+    // 2) Compat: ?auth=<b64>. Ya quedó en logs CF, limpiamos la URL igualmente.
     const raw = url.searchParams.get(AUTH_URL_PARAM);
     if (raw === null) return { auth: '', cleanUrl: null };
     const auth = decodeAuth(raw);
@@ -122,7 +148,7 @@ export function createAuthClient({
   let actor = readFrom(storage, ACTOR_KEY);
   actor = typeof actor === 'string' && actor !== '' ? actor : DEFAULT_ACTOR;
 
-  // Provisionado: ?auth=<base64> en la URL manda sobre lo guardado.
+  // Provisionado: #auth=<base64> (fragmento, oficial) o ?auth=<base64> (legacy) en la URL manda sobre lo guardado.
   if (locationLike) {
     const { auth: fromUrl, cleanUrl } = readParamAuth(locationLike);
     if (isValidAuth(fromUrl)) {

@@ -97,3 +97,21 @@ Las fases posteriores añadirán:
 - Migración idempotente: tests que ya existen en esta fase se mantienen.
 
 La suite backend sigue verde con las pruebas añadidas (se correrá al cierre de la fase).
+
+## Cierre de findings (2026-11-26)
+
+Auditoría adversarial posterior al despliegue. Fixes críticos aplicados en commit anterior (unpublish, params `new_*`, `/api/editar` → 410, fallbacks cerrados). Estos son los medium/low cerrados aquí:
+
+- **Canal oficial de provisionado: `#auth=<base64>` (fragmento, no `?auth=`).** El fragmento NO viaja al servidor, no queda en logs de Cloudflare. `?auth=` se mantiene por compatibilidad (la primera vez que se ha usado ya quedó en logs; consumirlo no lo reintroduce). Documentado en `frontend/web/js/auth.js`.
+- **Orden de escrituras en `withLockedWrite` (atomicidad).** Primero `appendEvent`, después `writeCatalog`, después `ensureVersionSnapshot(next)`. Si el *isolate* muere a medias, el historial deja una entrada "huérfana" detectable al comparar `catalog.version` con `version_after` del último evento; la recuperación es reaplicar el cambio del evento huérfano. Mal menor sobre el orden antiguo (que dejaba versiones sin registro).
+- **Snapshot `by-version/v<new>` por cada edición.** Sin esta llamada, el *rollback* a la versión actual era 404 hasta la siguiente edición. Hoy es idempotente (HEAD + PUT por escritura).
+- **Rotación de `history/latest.jsonl` atómica.** Primero se escribe el `latest.jsonl` con la línea nueva, después la copia histórica `latest-rotado-<ulid>.jsonl`. Si muere entre ambos, la línea nueva ya está en el rollup; como mucho se pierde la copia histórica (los eventos siguen en `history/YYYY/MM/`).
+- **SW reenvía `If-None-Match`.** `networkFirst` pasa el `Request` entero (antes pasaba sólo la URL y descartaba las cabeceras). El Worker devuelve 304 cuando el cliente ya tiene la versión actual del catálogo.
+- **Esquema del evento del script de migración alineado con el Worker** (`{id, at, kind, by, version_before, version_after, ...}`). La UI del historial ya no ve `undefined` si se vuelve a correr `scripts/migrar_catalogo_a_r2.py` (p. ej. en un entorno nuevo).
+- **Deadcode retirado.** `scripts/` y `backend/sonidos/` que solo disparaban los workflows `biblioteca.yml` / `buzon.yml` / `r2.yml` ya no están, junto con sus tests. Lista exacta en el commit.
+
+### Nota sobre `X-Actor` / `by` (no autenticado, informativo)
+
+El campo `by` del historial (y la cabecera `X-Actor` que lo alimenta) **NO está autenticado**. Cualquier portador de `AUTH_PASSWORD` puede escribir cualquier valor en `X-Actor` y, por tanto, en el `by` del evento. El modelo actual asume una contraseña compartida entre dispositivos autorizados; el `by` sirve para distinguir quién editó cuándo cuando el operador se identifica honestamente (p. ej. la web deja `web`, la APK `apk`, la Mac `migration-ops`), pero no vale para auditoría forense: una contraseña comprometida permite forjar cualquier `by`.
+
+Si se necesita auditoría por usuario real, hace falta emitir tokens por usuario (JWT firmado por el Worker, con `sub` fijado en la emisión) y derivar `by` del token verificado, no del header del cliente. Queda **fuera del alcance de este ADR**; se registrará como ADR aparte cuando alguien pida la capacidad.
