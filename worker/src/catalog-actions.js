@@ -88,6 +88,10 @@ const ACTIONS = {
   set_cover(catalog, params) {
     const song = findSong(catalog, params?.song_id);
     const coverId = typeof params?.cover_id === 'string' ? params.cover_id : null;
+    // Validación mínima del cover_id: 64 chars hex (sha256) o 1-128 chars sin separadores raros. null borra la portada.
+    if (coverId !== null && !/^[A-Za-z0-9_.-]{1,128}$/.test(coverId)) {
+      throw new ActionError(400, 'set_cover: cover_id no válido.');
+    }
     song.cover_id = coverId;
     return { kind: 'set_cover', song_id: song.id, cover_id: coverId };
   },
@@ -242,8 +246,16 @@ export function supportedActions() {
 }
 
 /** Añade una serie de canciones del buzón al catálogo. Rechaza duplicados por sha256. */
+/** Tope duro de canciones por petición al buzón (ADR-0052). Un payload más grande probablemente es un error del
+ * cliente o un abuso, y escribirlo haría crecer el catálogo a muchos MB en una sola transacción. El Worker rechaza
+ * con 400 claro; la UI debería subir en lotes más pequeños si de verdad necesita publicar tanto. */
+const BUZON_MAX_SONGS_PER_CALL = 250;
+
 export function addBuzonSongs(catalog, songs) {
   if (!Array.isArray(songs) || songs.length === 0) throw new ActionError(400, 'buzon: falta la lista de canciones.');
+  if (songs.length > BUZON_MAX_SONGS_PER_CALL) {
+    throw new ActionError(400, `buzon: demasiadas canciones en una sola llamada (${songs.length}); el máximo es ${BUZON_MAX_SONGS_PER_CALL}.`);
+  }
   const next = cloneCatalog(catalog);
   const existingBySha = new Map(next.songs.filter((s) => s.sha256).map((s) => [s.sha256, s.id]));
   const added = [];

@@ -1,5 +1,7 @@
 # ROADMAP
 
+> **Nota de estado (2026-11-26, ADR-0052).** La fase de migración del catálogo + historial a R2 con el Worker como único escritor queda **cerrada**. Los workflows `biblioteca.yml`, `buzon.yml` y `r2.yml` han sido retirados. El resto del roadmap conserva su redacción original; las referencias a esos workflows son históricas.
+
 Cada fase tiene un criterio de cierre. Una fase sólo se marca como terminada cuando sus pruebas pasan y la documentación está al día. La investigación y el desarrollo avanzan en paralelo.
 
 Estado a 2026-11-03, según `main`: web y APK sin usuarios y con el aspecto de Spotify ([ADR-0015](docs/decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md)), que sustituye en parte a la interfaz única de [ADR-0009](docs/decisions/ADR-0009-interfaz-unica-y-datos-locales.md); portadas y álbumes ([ADR-0016](docs/decisions/ADR-0016-portadas-y-albumes.md)); artista y año importados de Internet Archive; y «Subir canciones» para todos en la web y la APK por la función de Vercel `/api/subir` ([ADR-0017](docs/decisions/ADR-0017-subida-directa-github-web-publica.md)), probada en producción el 2026-11-03.

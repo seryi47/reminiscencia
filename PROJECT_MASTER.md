@@ -1,5 +1,7 @@
 # PROJECT_MASTER
 
+> **Nota de estado (2026-11-26, ADR-0052).** El catálogo y el historial viven ahora en R2, con el Worker de Cloudflare como único escritor. Los workflows `biblioteca.yml`, `buzon.yml` y `r2.yml` quedaron retirados. Las ediciones y las subidas se hacen vía `POST /api/catalogo/edit` y `POST /api/buzon/publish` del Worker (`X-Auth`). Donde este documento mencione más abajo esos workflows o `/api/editar`, la referencia es histórica salvo que se diga lo contrario.
+
 Documento central de estado. Se actualiza cuando cambia una decisión o el estado de un módulo.
 
 Última actualización: 2026-11-04.
