@@ -9,15 +9,13 @@ import 'worker_catalog_client.dart';
 /// delega automáticamente al submitter antiguo (`/api/editar`). Esto permite ir retirando
 /// workflows de GitHub pieza a pieza sin perder funcionalidad por el camino.
 ///
-/// Las acciones soportadas HOY por el Worker (16355f5): `rename_song`, `rename_folder`,
-/// `move_song`, `move_folder`, `set_cover`, `delete_song`, `delete_folder`, `create_folder`,
-/// `set_year`, `set_artist`, `set_tags`, `set_track_index`, `reorder_folder`, `set_song_fields`.
-///
-/// Peticiones que todavía bajan por legacy (sin acción equivalente en el Worker):
-///   - `unpublish_song` (despublicar: ADR-0041; el `delete_song` del Worker tiene semántica
-///     distinta — borra del catálogo sin conservar el audio para republicar).
-///   - `edit_folder` con cambio de `artist` y `create_folder` con `artist` (`rename_folder`
-///     y `create_folder` del Worker no aceptan campo `artist` en el modelo actual).
+/// Las acciones soportadas HOY por el Worker (fixes críticos ADR-0052): `rename_song`,
+/// `rename_folder` (con `artist` opcional), `move_song`, `move_folder`, `set_cover`,
+/// `delete_song`, `delete_folder`, `create_folder` (con `artist` opcional), `set_year`,
+/// `set_artist`, `set_tags`, `set_track_index`, `reorder_folder`, `set_song_fields` y
+/// `unpublish_song`. Todas las operaciones del backend antiguo ya tienen equivalente nativo
+/// en el Worker; el fallback a `/api/editar` queda sólo como salvavidas por si el Worker
+/// no está disponible (401, error de red), ya que `/api/editar` responde 410 Gone.
 class WorkerBackedEditSubmitter {
   WorkerBackedEditSubmitter({
     required this.worker,
@@ -76,27 +74,24 @@ class WorkerBackedEditSubmitter {
           }),
         ];
       case 'create_folder':
-        if (payload['artist'] is String &&
-            (payload['artist'] as String).trim().isNotEmpty) {
-          return null; // artist en create_folder no cabe en el Worker todavía.
-        }
+        if (payload['name'] is! String) return null;
         return [
           _WorkerStep('create_folder', {
             'name': payload['name'],
+            if (payload['artist'] is String &&
+                (payload['artist'] as String).trim().isNotEmpty)
+              'artist': payload['artist'],
             if (payload['parent_id'] is String)
               'parent_id': payload['parent_id'],
           }),
         ];
       case 'edit_folder':
-        if (payload['artist'] is String &&
-            (payload['artist'] as String).trim().isNotEmpty) {
-          return null; // artist en rename_folder no cabe en el Worker todavía.
-        }
         if (payload['name'] is! String) return null;
         return [
           _WorkerStep('rename_folder', {
             'folder_id': payload['folder_id'],
-            'name': payload['name'],
+            'new_name': payload['name'],
+            if (payload['artist'] is String) 'artist': payload['artist'],
           }),
         ];
       case 'delete_folder':
@@ -106,9 +101,12 @@ class WorkerBackedEditSubmitter {
           }),
         ];
       case 'unpublish_song':
-        // ADR-0041: despublicar conserva el audio en el bucket privado para republicar.
-        // El `delete_song` del Worker borra del catálogo sin esa semántica. Legacy.
-        return null;
+        if (payload['song_id'] is! String) return null;
+        return [
+          _WorkerStep('unpublish_song', {
+            'song_id': payload['song_id'],
+          }),
+        ];
     }
     return null;
   }

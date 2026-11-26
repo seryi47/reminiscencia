@@ -214,29 +214,44 @@ export async function fetchHistorial({ fetchImpl = apiFetch, limit = 100, signal
 
 /**
  * Reparte un payload de edición de la UI en una o varias acciones del Worker (que son atómicas por campo). Cada acción
- * es { action, params }. Devuelve [] si el payload no tiene sitio en el Worker (por ejemplo, order_album, que no hay
- * acción equivalente; esos pasan por el camino viejo).
+ * es { action, params }. Devuelve [] si el payload no tiene sitio en el Worker (ninguna rama cae a legacy desde el
+ * commit de fixes críticos del ADR-0052: /api/editar devuelve 410).
+ *
+ * Nombres de params: el Worker exige `new_title` (rename_song), `new_name` (rename_folder) y `name` (create_folder).
+ * Para `edit_song` se usa `set_song_fields` atómico: un único POST que aplica title/artist/year/tags a la vez; así se
+ * evita el problema de "primer campo aplicado, segundo 412 persistente, UI inconsistente".
  */
 export function payloadToActions(payload) {
   if (!payload || typeof payload !== 'object') return [];
   switch (payload.op) {
     case 'edit_song': {
+      const songId = payload.song_id;
+      const fields = {};
+      if ('title' in payload) fields.title = payload.title;
+      if ('artist' in payload) fields.artist = payload.artist;
+      if ('year' in payload) fields.year = payload.year;
+      if ('tags' in payload) fields.tags = Array.isArray(payload.tags) ? payload.tags : [];
       const actions = [];
-      if (typeof payload.title === 'string') actions.push({ action: 'rename_song', params: { song_id: payload.song_id, title: payload.title } });
-      if ('artist' in payload) actions.push({ action: 'set_artist', params: { song_id: payload.song_id, artist: payload.artist ?? '' } });
-      if ('year' in payload) actions.push({ action: 'set_year', params: { song_id: payload.song_id, year: payload.year } });
-      if ('tags' in payload) actions.push({ action: 'set_tags', params: { song_id: payload.song_id, tags: Array.isArray(payload.tags) ? payload.tags : [] } });
-      if ('folder_id' in payload) actions.push({ action: 'move_song', params: { song_id: payload.song_id, folder_id: payload.folder_id ?? null } });
+      if (Object.keys(fields).length > 0) {
+        actions.push({ action: 'set_song_fields', params: { song_id: songId, fields } });
+      }
+      if ('folder_id' in payload) {
+        actions.push({ action: 'move_song', params: { song_id: songId, folder_id: payload.folder_id ?? null } });
+      }
       return actions;
     }
     case 'unpublish_song':
-      return [{ action: 'delete_song', params: { song_id: payload.song_id } }];
+      return [{ action: 'unpublish_song', params: { song_id: payload.song_id } }];
     case 'edit_folder':
     case 'rename_folder': {
-      const actions = [];
-      if ('name' in payload) actions.push({ action: 'rename_folder', params: { folder_id: payload.folder_id, name: payload.name } });
-      if ('artist' in payload) actions.push({ action: 'set_artist', params: { folder_id: payload.folder_id, artist: payload.artist ?? '' } });
-      return actions;
+      // rename_folder del Worker (ADR-0052) acepta `new_name` obligatorio + `artist` opcional en el mismo paso.
+      // Si solo se cambia el artist (sin renombrar), se emite con el nombre actual para no violar la validación: no
+      // ocurre hoy desde la UI (edit_folder siempre trae nombre), pero si pasara, se cae a [] y la UI avisa.
+      const params = { folder_id: payload.folder_id };
+      if ('name' in payload) params.new_name = payload.name;
+      if ('artist' in payload) params.artist = payload.artist ?? '';
+      if (!('new_name' in params)) return [];
+      return [{ action: 'rename_folder', params }];
     }
     case 'delete_folder':
       return [{ action: 'delete_folder', params: { folder_id: payload.folder_id } }];
@@ -252,8 +267,7 @@ export function payloadToActions(payload) {
         ...(payload.parent_id ? { parent_id: payload.parent_id } : {}),
       } }];
     case 'order_album':
-      // El Worker no tiene acción para reordenar pistas de un álbum: se delega al camino viejo.
-      return [];
+      return [{ action: 'reorder_folder', params: { folder_id: payload.folder_id, order: Array.isArray(payload.song_ids) ? payload.song_ids : [] } }];
     default:
       return [];
   }

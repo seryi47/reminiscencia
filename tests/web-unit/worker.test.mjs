@@ -209,33 +209,35 @@ describe('subida por el Worker', () => {
   });
 });
 
-describe('ediciones por el Worker', () => {
-  test('organizar abre la incidencia en GitHub y el estado se consulta igual que en Vercel', async () => {
+describe('/api/editar retirado (fixes críticos ADR-0052)', () => {
+  test('POST organize responde 410 con mensaje claro y no toca GitHub', async () => {
     const { call, github } = setup();
     const response = await call('/api/editar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: WEB_ORIGIN },
       body: JSON.stringify({ action: 'organize', payload: { op: 'edit_song', song_id: SONG, title: 'Nuevo' } }),
     });
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 410);
     const reply = await response.json();
-    assert.deepEqual([reply.ok, reply.incidencia], [true, 77]);
-    assert.equal(github[0].path, '/repos/seryi47/reminiscencia/issues');
-    assert.deepEqual(github[0].body.labels, ['biblioteca']);
-    const state = await call('/api/editar?incidencia=77', { headers: { Origin: WEB_ORIGIN } });
-    assert.deepEqual(await state.json(), { ok: true, incidencia: 77, estado: 'cerrada' });
-    assert.equal((await call('/api/editar?incidencia=07')).status, 400);
+    assert.equal(reply.ok, false);
+    assert.match(reply.error, /ADR-0052/);
+    assert.match(reply.error, /\/api\/catalogo\/edit/);
+    assert.equal(github.length, 0);
   });
 
-  test('la validación es la de incidencias.js: publicar se rechaza', async () => {
+  test('GET ?incidencia=N también responde 410, no abre GitHub', async () => {
     const { call, github } = setup();
-    const response = await call('/api/editar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'organize', payload: { op: 'edit_song', song_id: SONG, public: true } }),
-    });
-    assert.equal(response.status, 400);
+    const response = await call('/api/editar?incidencia=77', { headers: { Origin: WEB_ORIGIN } });
+    assert.equal(response.status, 410);
     assert.equal(github.length, 0);
+  });
+
+  test('portada por /api/editar también responde 410 (usar /api/portada)', async () => {
+    const { call, publicBucket, github } = setup({ env: { GITHUB_TOKEN: '' } });
+    const response = await call('/api/editar', coverInit(jpeg(4), FOLDER));
+    assert.equal(response.status, 410);
+    assert.equal(github.length, 0);
+    assert.equal(publicBucket.calls.filter((item) => item.op === 'put').length, 0);
   });
 });
 
@@ -304,16 +306,6 @@ describe('portadas al instante', () => {
       (error) => error.status === 503,
     );
     assert.equal(sleeps.length, 3);
-  });
-
-  test('la portada por /api/editar (como en Vercel) va también al bucket, sin GitHub ni token', async () => {
-    const { call, publicBucket, github } = setup({ env: { GITHUB_TOKEN: '' } });
-    const response = await call('/api/editar', coverInit(jpeg(4), FOLDER));
-    assert.equal(response.status, 200);
-    const reply = await response.json();
-    assert.match(reply.portada, new RegExp(`^portadas/${FOLDER}-[0-9a-f]{16}\\.jpg$`));
-    assert.equal(parseCoverIndex(publicBucket.text(COVER_INDEX_KEY)).get(FOLDER), reply.portada);
-    assert.equal(github.length, 0);
   });
 
   test('rechazos de portada: no JPEG, id no válido, más de 1 MB, otro tipo, GET', async () => {

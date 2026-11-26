@@ -28,7 +28,7 @@
 // Bindings y secretos (worker/wrangler.toml): PRIVATE_BUCKET (reminiscencia-audio-privado), PUBLIC_BUCKET
 // (reminiscencia-audio) y el secreto GITHUB_TOKEN (wrangler secret put GITHUB_TOKEN; Contents e Issues en escritura).
 
-import { EditError, handleEditRequest, jsonResponse, readCover } from '../../frontend/web/server/edit-core.js';
+import { EditError, jsonResponse, readCover } from '../../frontend/web/server/edit-core.js';
 import { handleUploadRequest, UploadError, WORKER_MAX_CHUNK_BYTES } from '../../frontend/web/server/upload-core.js';
 import { handleConvert } from '../../frontend/web/server/youtube-convert.js';
 import { handleStatus } from '../../frontend/web/server/youtube-status.js';
@@ -486,7 +486,13 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
       response = await handleSubir(request, env, fetchImpl);
       break;
     case '/api/editar':
-      response = await handleEditRequest(request, { token: token(env), fetchImpl, saveCover: saveCoverWith(env) });
+      // Retirado por los fixes críticos del ADR-0052: antes creaba una incidencia GitHub
+      // con etiqueta `biblioteca`, pero el workflow `biblioteca.yml` ya no existe, así que
+      // las peticiones quedaban silenciosamente sin aplicar (UI decía "enviada").
+      response = jsonResponse(410, {
+        ok: false,
+        error: '/api/editar retirado (ADR-0052). Usa POST /api/catalogo/edit con X-Auth.',
+      });
       break;
     case '/api/portada':
       response = await handleCover(request, env);

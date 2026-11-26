@@ -144,31 +144,8 @@ void main() {
     expect(params['order'], [_songId, 'S3333333333333333']);
   });
 
-  test('unpublish_song cae al submitter antiguo (no soportado en Worker)', () async {
-    var legacyCalled = false;
-    final client = MockClient((_) async => fail('no debería llamar al Worker'));
-    final worker = WorkerCatalogClient(
-      auth: _authStoreWith('s'),
-      client: client,
-      routes: _fakeRoutes,
-    );
-    final adapter = WorkerBackedEditSubmitter(
-      worker: worker,
-      fallback: (request) async {
-        legacyCalled = true;
-        expect(request.payload['op'], 'unpublish_song');
-        return const EditReceipt(message: 'legacy ok');
-      },
-    );
-    final receipt = await adapter.submit(
-      LibraryRequest.unpublishSong(songId: _songId),
-    );
-    expect(legacyCalled, isTrue);
-    expect(receipt.message, 'legacy ok');
-  });
-
-  test('create_folder con artist cae a legacy; sin artist va al Worker', () async {
-    final clientHits = <String>[];
+  test('unpublish_song va al Worker con acción unpublish_song (no cae a legacy)', () async {
+    final posts = <Map<String, Object?>>[];
     final client = MockClient((request) async {
       if (request.method == 'GET') {
         return http.Response(
@@ -177,7 +154,8 @@ void main() {
           headers: {'etag': 'W/"v1"'},
         );
       }
-      clientHits.add(request.url.path);
+      final body = jsonDecode(request.body) as Map<String, Object?>;
+      posts.add(body);
       return http.Response(
         jsonEncode({'ok': true, 'version': 2, 'event': {}}),
         200,
@@ -188,26 +166,89 @@ void main() {
       client: client,
       routes: _fakeRoutes,
     );
-    var legacyHits = 0;
     final adapter = WorkerBackedEditSubmitter(
       worker: worker,
-      fallback: (_) async {
-        legacyHits++;
-        return const EditReceipt(message: 'legacy');
-      },
+      fallback: (_) async => fail('no debería caer en legacy'),
     );
-    // Con artista → legacy
+    await adapter.submit(LibraryRequest.unpublishSong(songId: _songId));
+    expect(posts, hasLength(1));
+    expect(posts.single['action'], 'unpublish_song');
+    expect((posts.single['params'] as Map)['song_id'], _songId);
+  });
+
+  test('create_folder con artist va al Worker en un único paso (artist opcional, no legacy)', () async {
+    final posts = <Map<String, Object?>>[];
+    final client = MockClient((request) async {
+      if (request.method == 'GET') {
+        return http.Response(
+          jsonEncode({'version': 1, 'folders': [], 'songs': []}),
+          200,
+          headers: {'etag': 'W/"v1"'},
+        );
+      }
+      final body = jsonDecode(request.body) as Map<String, Object?>;
+      posts.add(body);
+      return http.Response(
+        jsonEncode({'ok': true, 'version': 2, 'event': {}}),
+        200,
+      );
+    });
+    final worker = WorkerCatalogClient(
+      auth: _authStoreWith('s'),
+      client: client,
+      routes: _fakeRoutes,
+    );
+    final adapter = WorkerBackedEditSubmitter(
+      worker: worker,
+      fallback: (_) async => fail('no debería caer en legacy'),
+    );
+    await adapter.submit(LibraryRequest.createAlbum(name: 'Álbum', artist: 'Pepe'));
+    expect(posts, hasLength(1));
+    expect(posts.single['action'], 'create_folder');
+    final params = posts.single['params'] as Map;
+    expect(params['name'], 'Álbum');
+    expect(params['artist'], 'Pepe');
+  });
+
+  test('edit_folder con name+artist usa rename_folder con new_name + artist en un POST', () async {
+    final posts = <Map<String, Object?>>[];
+    final client = MockClient((request) async {
+      if (request.method == 'GET') {
+        return http.Response(
+          jsonEncode({
+            'version': 5,
+            'folders': [{'id': _folderId, 'name': 'Rock', 'parent_id': null}],
+            'songs': [],
+          }),
+          200,
+          headers: {'etag': 'W/"v5"'},
+        );
+      }
+      final body = jsonDecode(request.body) as Map<String, Object?>;
+      posts.add(body);
+      return http.Response(
+        jsonEncode({'ok': true, 'version': 6, 'event': {}}),
+        200,
+      );
+    });
+    final worker = WorkerCatalogClient(
+      auth: _authStoreWith('s'),
+      client: client,
+      routes: _fakeRoutes,
+    );
+    final adapter = WorkerBackedEditSubmitter(
+      worker: worker,
+      fallback: (_) async => fail('no debería caer en legacy'),
+    );
     await adapter.submit(
-      LibraryRequest.createAlbum(name: 'Álbum', artist: 'Pepe'),
+      LibraryRequest.editAlbum(folderId: _folderId, name: 'Rock & Roll', artist: 'VV.AA.'),
     );
-    expect(legacyHits, 1);
-    expect(clientHits, isEmpty);
-    // Sin artista → Worker
-    await adapter.submit(
-      LibraryRequest.createAlbum(name: 'Otro', artist: ''),
-    );
-    expect(legacyHits, 1); // sigue siendo 1
-    expect(clientHits, ['/api/catalogo/edit']);
+    expect(posts, hasLength(1));
+    expect(posts.single['action'], 'rename_folder');
+    final params = posts.single['params'] as Map;
+    expect(params['folder_id'], _folderId);
+    expect(params['new_name'], 'Rock & Roll');
+    expect(params['artist'], 'VV.AA.');
   });
 
   test('401 del Worker propaga AuthRequiredException', () async {
