@@ -112,4 +112,55 @@ void main() {
       expect(info.notes.length, lessThanOrEqualTo(400));
     });
   });
+
+  group('checkForUpdateWithStatus (ADR-0047, botón manual de Ajustes)', () {
+    test('release más nueva → hasUpdate con el UpdateInfo dentro', () async {
+      final result = await checkForUpdateWithStatus(
+        client: _client(_release()),
+        currentVersion: '1.3.4',
+      );
+      expect(result.hasUpdate, isTrue);
+      expect(result.upToDate, isFalse);
+      expect(result.failed, isFalse);
+      expect(result.info!.version, '1.3.5');
+    });
+
+    test('misma versión → upToDate, NO failed', () async {
+      final result = await checkForUpdateWithStatus(
+        client: _client(_release(tag: 'android-v1.3.4')),
+        currentVersion: '1.3.4',
+      );
+      expect(result.upToDate, isTrue);
+      expect(result.failed, isFalse);
+      expect(result.hasUpdate, isFalse);
+    });
+
+    test('respuesta no 200 → failed (distinguible de upToDate)', () async {
+      final result = await checkForUpdateWithStatus(
+        client: _client('{}', status: 500),
+        currentVersion: '1.3.4',
+      );
+      expect(result.failed, isTrue);
+      expect(result.upToDate, isFalse);
+    });
+
+    test('cuerpo no JSON → failed', () async {
+      final result = await checkForUpdateWithStatus(
+        client: _client('no es json'),
+        currentVersion: '1.3.4',
+      );
+      expect(result.failed, isTrue);
+    });
+
+    test('sin APK aceptable → upToDate (no instalable desde la app, no un error)', () async {
+      final result = await checkForUpdateWithStatus(
+        client: _client(_release(assets: const [
+          {'name': 'otra-cosa.txt', 'browser_download_url': 'https://x/otra.txt'},
+        ])),
+        currentVersion: '1.3.4',
+      );
+      expect(result.upToDate, isTrue);
+      expect(result.failed, isFalse);
+    });
+  });
 }

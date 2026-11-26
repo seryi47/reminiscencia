@@ -43,6 +43,25 @@ class UpdateInfo {
   final String notes;
 }
 
+/// Resultado del chequeo con tres estados distinguibles (ADR-0047): hay actualización, estás al día, o la red/API ha
+/// fallado. [checkForUpdate] colapsa los dos últimos a `null` por compatibilidad con el flujo del arranque; el
+/// botón manual de Ajustes necesita distinguirlos para avisar en condiciones.
+class CheckUpdateResult {
+  const CheckUpdateResult.available(UpdateInfo this.info) : failed = false;
+  const CheckUpdateResult.upToDate()
+      : info = null,
+        failed = false;
+  const CheckUpdateResult.failed()
+      : info = null,
+        failed = true;
+
+  final UpdateInfo? info;
+  final bool failed;
+
+  bool get hasUpdate => info != null;
+  bool get upToDate => info == null && !failed;
+}
+
 /// ¿`remote` (X.Y.Z) es una versión mayor que `current`? Compara campo a campo como números; los que falten cuentan 0.
 bool isNewerVersion(String remote, String current) {
   final a = _parts(remote);
@@ -68,7 +87,25 @@ List<int> _parts(String version) {
 
 /// Mira la última release y devuelve la info de actualización si hay una más nueva que [currentVersion] (por defecto, la
 /// de la app). Devuelve null si no hay actualización o si algo falla (sin red, respuesta rara, etc.): nunca lanza.
+///
+/// Compat: envuelve [checkForUpdateWithStatus] y descarta la distinción al día/error. El flujo del arranque
+/// (`home_shell`) se basa en este: si no hay actualización instalable, sea por lo que sea, se queda callado.
 Future<UpdateInfo?> checkForUpdate({
+  http.Client? client,
+  String currentVersion = kAppVersionName,
+  Uri? endpoint,
+}) async {
+  final result = await checkForUpdateWithStatus(
+    client: client,
+    currentVersion: currentVersion,
+    endpoint: endpoint,
+  );
+  return result.info;
+}
+
+/// Igual que [checkForUpdate] pero distingue «al día» de «ha fallado la consulta» (ADR-0047). Lo usa el botón manual
+/// de Ajustes para poder mostrar «estás al día» o «sin conexión» por separado. Nunca lanza.
+Future<CheckUpdateResult> checkForUpdateWithStatus({
   http.Client? client,
   String currentVersion = kAppVersionName,
   Uri? endpoint,
@@ -81,16 +118,16 @@ Future<UpdateInfo?> checkForUpdate({
           'User-Agent': 'reminiscencia-app',
         })
         .timeout(const Duration(seconds: 10));
-    if (response.statusCode != 200) return null;
+    if (response.statusCode != 200) return const CheckUpdateResult.failed();
     final data = jsonDecode(response.body);
-    if (data is! Map<String, dynamic>) return null;
+    if (data is! Map<String, dynamic>) return const CheckUpdateResult.failed();
     final tag = data['tag_name'];
-    if (tag is! String || tag.isEmpty) return null;
+    if (tag is! String || tag.isEmpty) return const CheckUpdateResult.failed();
     final version = tag.replaceFirst(RegExp(r'^android-v', caseSensitive: false), '');
-    if (!isNewerVersion(version, currentVersion)) return null;
+    if (!isNewerVersion(version, currentVersion)) return const CheckUpdateResult.upToDate();
 
     // Enlace de descarga: recorremos las preferencias (universal primero, ADR-0047) y nos quedamos con el PRIMER APK que
-    // cuadre. Si no hay ninguno, no hay actualización «instalable» desde la app: devolvemos null (no caemos al navegador).
+    // cuadre. Si no hay ninguno, no hay actualización «instalable» desde la app: devolvemos upToDate (no caemos al navegador).
     String url = '';
     final assets = data['assets'];
     if (assets is List) {
@@ -107,15 +144,15 @@ Future<UpdateInfo?> checkForUpdate({
         if (url.isNotEmpty) break;
       }
     }
-    if (url.isEmpty) return null;
+    if (url.isEmpty) return const CheckUpdateResult.upToDate();
 
     // Decisión del usuario (2026-11-21): el diálogo de actualización NO muestra «qué se ha arreglado»
     // (el body técnico de la release). En su lugar, enseña un verso de poesía romántica aleatorio con su
     // autor, de la lista de `versos_romanticos.dart`. Un verso distinto cada vez que el diálogo aparece.
     final notes = versosRomanticos[Random().nextInt(versosRomanticos.length)];
-    return UpdateInfo(version: version, url: url, notes: notes);
+    return CheckUpdateResult.available(UpdateInfo(version: version, url: url, notes: notes));
   } catch (_) {
-    return null;
+    return const CheckUpdateResult.failed();
   } finally {
     if (client == null) own.close();
   }

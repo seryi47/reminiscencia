@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../app_settings.dart';
+import '../app_version.dart';
 import '../offline_downloads.dart';
 import '../services.dart';
 import '../settings_store.dart';
 import '../theme.dart';
+import '../update_check.dart';
 import 'catalog_history_screen.dart';
 import 'common.dart';
 import 'home_page.dart';
+import 'update_flow.dart';
 
 /// Ajustes: texto, alto contraste, animaciones, estado de la biblioteca y licencias.
 /// Son de este teléfono y para cualquiera que lo use: la app no tiene usuarios ni modos.
@@ -151,6 +154,7 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ),
               const _SectionTitle('Acerca de'),
+              const UpdateCheckTile(),
               ListTile(
                 leading: const Icon(Icons.article_outlined),
                 title: const Text('Licencias'),
@@ -177,6 +181,80 @@ class SettingsPage extends StatelessWidget {
       context,
       () => controller.update(next),
       failurePrefix: 'No se pudo aplicar el ajuste',
+    );
+  }
+}
+
+/// Botón manual «Buscar actualización» en Ajustes (ADR-0047). Ignora la memoria «ya avisado» que guarda el chequeo
+/// del arranque: aquí el usuario pulsa EXPLÍCITAMENTE, así que volvemos a preguntar aunque antes dijera «Ahora no».
+/// Mientras espera a GitHub muestra un spinner en el propio tile (no bloquea la pantalla).
+class UpdateCheckTile extends StatefulWidget {
+  const UpdateCheckTile({super.key, this.checker, this.onUpdateAvailable, this.onUpToDate, this.onError});
+
+  /// Para pruebas: permite inyectar un chequeo distinto al real.
+  final Future<CheckUpdateResult> Function()? checker;
+  /// Para pruebas: dispara el flujo de descarga/instalación (por defecto, [promptAndInstallUpdate]).
+  final Future<void> Function(BuildContext context, UpdateInfo info)? onUpdateAvailable;
+  /// Para pruebas: diálogo de «al día» (por defecto, [showNoUpdateDialog]).
+  final Future<void> Function(BuildContext context, String version)? onUpToDate;
+  /// Para pruebas: aviso de error (por defecto, un SnackBar).
+  final void Function(BuildContext context)? onError;
+
+  @override
+  State<UpdateCheckTile> createState() => _UpdateCheckTileState();
+}
+
+class _UpdateCheckTileState extends State<UpdateCheckTile> {
+  bool _loading = false;
+
+  Future<void> _check() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final checker = widget.checker ?? checkForUpdateWithStatus;
+      final result = await checker();
+      if (!mounted) return;
+      if (result.hasUpdate) {
+        final handler = widget.onUpdateAvailable ?? promptAndInstallUpdate;
+        await handler(context, result.info!);
+        return;
+      }
+      if (result.upToDate) {
+        final handler = widget.onUpToDate ?? showNoUpdateDialog;
+        await handler(context, kAppVersionName);
+        return;
+      }
+      // Error de red / HTTP.
+      final onError = widget.onError;
+      if (onError != null) {
+        onError(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se ha podido comprobar la actualización (sin conexión o GitHub no responde).'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      key: const Key('settings-check-update'),
+      leading: _loading
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.system_update_outlined),
+      title: const Text('Buscar actualización'),
+      subtitle: Text('Versión actual: $kAppVersionName'),
+      enabled: !_loading,
+      onTap: _check,
     );
   }
 }
