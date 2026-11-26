@@ -15,8 +15,6 @@ import 'package:reminiscencia/auth_store.dart';
 import 'package:reminiscencia/local_audio.dart';
 import 'package:reminiscencia/shared_upload.dart';
 
-const _kBase = 'https://reminiscencia.cometia.es/';
-
 /// AuthStore de pruebas en memoria.
 class _MemoryAuth implements AuthStore {
   _MemoryAuth(this._value);
@@ -37,9 +35,9 @@ class _MemoryAuth implements AuthStore {
 
 /// Conversor mínimo: escribe un Opus falso de longitud fija.
 class _TinyConverter implements AudioConverter {
-  _TinyConverter({this.bytes = 20, this.durationS = 7});
-  final int bytes;
-  final double durationS;
+  _TinyConverter();
+  final int bytes = 20;
+  final double durationS = 7;
   @override
   Future<ConvertedAudio> convert({
     required String inputPath,
@@ -49,7 +47,12 @@ class _TinyConverter implements AudioConverter {
     final file = File(outputPath);
     await file.parent.create(recursive: true);
     await file.writeAsBytes(List<int>.generate(bytes, (i) => i % 251));
-    return ConvertedAudio(path: outputPath, bytes: bytes, durationS: durationS);
+    return ConvertedAudio(
+      bytes: bytes,
+      durationS: durationS,
+      channels: 2,
+      bitrate: 48000,
+    );
   }
 
   @override
