@@ -2,12 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../app_error.dart';
+import '../auth_store.dart';
 import '../fuzzy_search.dart' show searchRank, songSearchFields;
 import '../library_requests.dart';
 import '../playlist_covers.dart';
 import '../services.dart';
 import '../song.dart';
 import '../theme.dart';
+import '../worker_auth_gate.dart';
 import 'collection_ref.dart';
 import 'common.dart';
 
@@ -25,18 +27,30 @@ Future<void> openLibraryRequest(
   LibraryRequest request,
 ) => _save(
   context,
+  services,
   () => services.library.edits.submit(request, services.submitEdit),
 );
 
 Future<void> _save(
   BuildContext context,
+  AppServices services,
   Future<String> Function() action,
 ) async {
   final messenger = ScaffoldMessenger.of(context);
   messenger.showSnackBar(const SnackBar(content: Text('Guardando…')));
   String text;
   try {
-    text = await action();
+    final store = services.authStore;
+    text = store == null
+        ? await action()
+        : await withAuthRetry<String>(
+            context,
+            store,
+            action,
+            reason: 'Para guardar los cambios hace falta la contraseña del Worker.',
+          );
+  } on AuthRequiredException catch (error) {
+    text = error.message;
   } on AppException catch (error) {
     text = error.message;
   } catch (_) {
@@ -894,6 +908,7 @@ Future<void> changeCatalogCoverFlow(
   final Uint8List image = picked;
   await _save(
     context,
+    services,
     () => services.library.edits.submitCover(
       id,
       resizeCoverImage(image),

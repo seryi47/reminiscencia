@@ -5,6 +5,7 @@ import '../offline_downloads.dart';
 import '../services.dart';
 import '../settings_store.dart';
 import '../theme.dart';
+import 'catalog_history_screen.dart';
 import 'common.dart';
 import 'home_page.dart';
 
@@ -134,6 +135,21 @@ class SettingsPage extends StatelessWidget {
                       : () => downloadForOfflineFlow(context, services),
                 ),
               ),
+              if (services.workerCatalog != null)
+                ListTile(
+                  leading: const Icon(Icons.history_rounded),
+                  title: const Text('Historial de cambios'),
+                  subtitle: const Text(
+                    'Últimos cambios del catálogo (ADR-0052).',
+                  ),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CatalogHistoryScreen(
+                        client: services.workerCatalog!,
+                      ),
+                    ),
+                  ),
+                ),
               const _SectionTitle('Acerca de'),
               ListTile(
                 leading: const Icon(Icons.article_outlined),

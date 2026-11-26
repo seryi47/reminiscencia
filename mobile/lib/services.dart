@@ -1,3 +1,4 @@
+import 'auth_store.dart';
 import 'collections_controller.dart';
 import 'edit_remote.dart';
 import 'covers.dart';
@@ -7,6 +8,7 @@ import 'playback.dart';
 import 'settings_store.dart';
 import 'url_opener.dart';
 import 'spotify_transfer.dart';
+import 'worker_catalog_client.dart';
 import 'youtube_importer.dart';
 import 'youtube_stream.dart';
 
@@ -33,6 +35,8 @@ class AppServices {
     this.youtube,
     this.streamResolver,
     this.spotify,
+    this.authStore,
+    this.workerCatalog,
     this.clock = DateTime.now,
     // El campo es privado: el getter [covers] lo envuelve con las vistas previas pendientes.
     // ignore: prefer_initializing_formals
@@ -77,6 +81,14 @@ class AppServices {
 
   /// Motor de «Transferir música» desde Spotify (ADR-0044). Opcional: si falta, la pantalla crea el suyo.
   final SpotifyTransfer? spotify;
+
+  /// Contraseña del Worker (ADR-0052). Opcional en pruebas; en producción la pone [bootstrapWorkerStack]
+  /// en main.dart. Si falta, `submitEdit` seguirá el camino antiguo (`/api/editar`).
+  final AuthStore? authStore;
+
+  /// Cliente del catálogo del Worker (ADR-0052). Opcional en pruebas; en producción la pone main.dart.
+  /// Lo usa la pantalla del historial y el flujo de ediciones y buzón.
+  final WorkerCatalogClient? workerCatalog;
 
   /// Hora actual (saludo de Inicio). Se sustituye en pruebas.
   final DateTime Function() clock;

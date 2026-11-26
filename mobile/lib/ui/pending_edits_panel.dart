@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../app_error.dart';
+import '../auth_store.dart';
 import '../pending_edits.dart';
 import '../services.dart';
 import '../theme.dart';
+import '../worker_auth_gate.dart';
 
 // Ediciones pendientes en la interfaz (ADR-0027): la marca «Pendiente» de filas y cabeceras, el botón de Tu biblioteca
 // con la lista de cambios y el «Reintentar» de los que fallaron. Igual que la web.
@@ -59,11 +61,22 @@ Future<void> retryPendingEdit(
   final messenger = ScaffoldMessenger.of(context);
   String text;
   try {
-    text = await services.library.edits.retry(
-      key,
-      sendEdit: services.submitEdit,
-      sendCover: services.submitCover,
-    );
+    final store = services.authStore;
+    Future<String> retryOnce() => services.library.edits.retry(
+          key,
+          sendEdit: services.submitEdit,
+          sendCover: services.submitCover,
+        );
+    text = store == null
+        ? await retryOnce()
+        : await withAuthRetry<String>(
+            context,
+            store,
+            retryOnce,
+            reason: 'Para reintentar el cambio hace falta la contraseña del Worker.',
+          );
+  } on AuthRequiredException catch (error) {
+    text = error.message;
   } on AppException catch (error) {
     text = error.message;
   } catch (_) {

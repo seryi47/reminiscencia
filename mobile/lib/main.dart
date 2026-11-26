@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'app.dart';
+import 'auth_store.dart';
 import 'collections_controller.dart';
 import 'collections_store.dart';
 import 'covers.dart';
+import 'edit_remote.dart';
 import 'error_log.dart';
 import 'library_controller.dart';
 import 'library_store.dart';
@@ -21,6 +23,8 @@ import 'settings_store.dart';
 import 'shared_upload.dart';
 import 'sonidos_audio_handler.dart';
 import 'upload_tracker.dart';
+import 'worker_catalog_client.dart';
+import 'worker_edit_submitter.dart';
 import 'youtube_importer.dart';
 import 'youtube_stream.dart';
 
@@ -76,6 +80,15 @@ Future<void> _bootstrap(ErrorLog? errorLog) async {
     repository: FileCollectionsRepository(),
     covers: playlistCovers,
   );
+  // Contraseña del Worker (ADR-0052). La guarda SharedPreferences; se pone una vez con
+  // AuthPromptScreen o la pega Claude Code desde el llavero de la Mac. Nunca se le pide
+  // al usuario «de memoria».
+  final authStore = SharedPreferencesAuthStore();
+  final workerCatalog = WorkerCatalogClient(auth: authStore, client: client);
+  final workerSubmitter = WorkerBackedEditSubmitter(
+    worker: workerCatalog,
+    fallback: (request) => submitLibraryEdit(request, client: client),
+  );
   await Future.wait([settings.load(), collections.load()]);
   runApp(
     ReminiscenciaApp(
@@ -106,6 +119,9 @@ Future<void> _bootstrap(ErrorLog? errorLog) async {
         youtube: YoutubeImporter(client: client),
         streamResolver: ExplodeStreamResolver(),
         probeDuration: probeAudioDurationS,
+        authStore: authStore,
+        workerCatalog: workerCatalog,
+        submitEdit: workerSubmitter.submit,
       ),
     ),
   );
