@@ -45,6 +45,7 @@ import { AUDIO_EXPOSE_HEADERS, handleAudioRequest } from './audio.js';
 import { readCoverIndex, saveCoverToBucket } from './portadas.js';
 import { bindingStorage } from './r2-storage.js';
 import { serializeCoverIndex } from '../../frontend/web/js/cover-index.js';
+import { handleCatalogRoute, isCatalogRoute } from './catalog-api.js';
 
 export const SERVICE = 'reminiscencia-api';
 export const API_HEADER = 'X-Reminiscencia-Api';
@@ -89,6 +90,7 @@ export function resetYoutubeUpstreamHealth() {
 export const ALLOWED_HEADERS = Object.freeze([
   'Content-Type', 'X-Nombre-Archivo', 'X-Subida-Id', 'X-Parte', 'X-Partes', 'X-Album-Id', 'X-Album-Name',
   'X-Artista-Cancion', 'X-Portada-Id', 'Range', 'If-None-Match', 'If-Range',
+  'X-Auth', 'X-Actor', // ADR-0052: cabeceras de las escrituras del catálogo en R2.
 ]);
 const LOCAL_ORIGIN = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d{1,5})?$/;
 export const COVER_DONE_MESSAGE = 'Portada guardada: ya la ven todos.';
@@ -421,6 +423,10 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
   }
   const audio = await handleAudioRequest(request, env.PUBLIC_BUCKET);
   if (audio) return finish(audio, origin, AUDIO_EXPOSE_HEADERS);
+  // Rutas del catálogo en R2 (ADR-0052): lectura pública + escritura con X-Auth.
+  if (isCatalogRoute(path)) {
+    return finish(await handleCatalogRoute(path, request, env), origin);
+  }
   let response;
   switch (path) {
     case '/api/salud':

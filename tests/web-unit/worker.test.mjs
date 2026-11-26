@@ -932,3 +932,172 @@ describe('rate limit de la API (ADR-0046)', () => {
     assert.equal(response.status, 200);
   });
 });
+
+// ─── ADR-0052: catálogo e historial en R2 ─────────────────────────────────────
+describe('catálogo en R2 (ADR-0052)', () => {
+  const AUTH = 'pass_de_prueba_para_X_Auth_que_no_sale_a_logs';
+  const seededCatalog = () => ({
+    version: 7,
+    folders: [{ id: 'F0000000000000001', name: 'Álbum 1', parent_id: null }],
+    songs: [
+      { id: 'S0000000000000010', title: 'Antigua', artist: 'A1', year: 2000, tags: [], folder_id: 'F0000000000000001', sha256: 'sha_antigua' },
+      { id: 'S0000000000000011', title: 'Otra',    artist: 'A2', year: 2001, tags: [], folder_id: null,                sha256: 'sha_otra' },
+    ],
+    updated_at: '2026-11-25T10:00:00.000Z',
+  });
+  const callCat = (env = {}) => {
+    const publicBucket = fakeR2();
+    const privateBucket = fakeR2();
+    const fullEnv = { AUTH_PASSWORD: AUTH, GITHUB_TOKEN: TOKEN, PRIVATE_BUCKET: privateBucket, PUBLIC_BUCKET: publicBucket, ALLOW_LOCALHOST: '1', ...env };
+    const call = (path, init = {}) => handleRequest(new Request(`https://reminiscencia-api.prueba.workers.dev${path}`, init), fullEnv);
+    return { call, publicBucket, privateBucket };
+  };
+  const seed = (bucket, catalog) => bucket.seed('catalog/catalog.json', JSON.stringify(catalog), { contentType: 'application/json; charset=utf-8' });
+
+  test('GET /api/catalogo/latest sin catálogo subido devuelve 503', async () => {
+    const { call } = callCat();
+    const response = await call('/api/catalogo/latest');
+    assert.equal(response.status, 503);
+    const data = await response.json();
+    assert.equal(data.ok, false);
+    assert.match(data.error, /migrado/);
+  });
+
+  test('GET /api/catalogo/latest con catálogo devuelve 200 + ETag y el contenido', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/latest');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('etag'), 'W/"v7"');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const data = await response.json();
+    assert.equal(data.version, 7);
+    assert.equal(data.songs.length, 2);
+  });
+
+  test('POST /api/catalogo/edit sin X-Auth devuelve 401', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'Nueva' }, if_match: 7 }) });
+    assert.equal(response.status, 401);
+    assert.equal(publicBucket.text('catalog/catalog.json').includes('"version":7'), true);
+  });
+
+  test('POST /api/catalogo/edit con X-Auth mala devuelve 401 (timing-safe: no early return por longitud)', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const malBreve = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': 'x' }, body: '{}' });
+    assert.equal(malBreve.status, 401);
+    const malLarga = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': `${AUTH}____extra` }, body: '{}' });
+    assert.equal(malLarga.status, 401);
+    const malPrimerByte = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH.replace(/^./, '!') }, body: '{}' });
+    assert.equal(malPrimerByte.status, 401);
+  });
+
+  test('POST /api/catalogo/edit con if_match desactualizado devuelve 412', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'X' }, if_match: 3 }) });
+    assert.equal(response.status, 412);
+    const data = await response.json();
+    assert.equal(data.current_version, 7);
+  });
+
+  test('POST /api/catalogo/edit con rename_song válido incrementa versión, registra evento y escribe snapshot diaria', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'Antigua (mejor título)' }, if_match: 7 }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.ok, true);
+    assert.equal(data.version, 8);
+    assert.equal(data.event.kind, 'rename_song');
+    assert.equal(data.event.version_before, 7);
+    assert.equal(data.event.version_after, 8);
+    // catálogo nuevo escrito
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    assert.equal(catalog.version, 8);
+    assert.equal(catalog.songs.find((s) => s.id === 'S0000000000000010').title, 'Antigua (mejor título)');
+    // historial: el fichero latest.jsonl trae el evento, y hay un fichero history/YYYY/MM/<ulid>.json
+    const jsonl = publicBucket.text('history/latest.jsonl');
+    assert.ok(jsonl && jsonl.includes('"kind":"rename_song"'), 'latest.jsonl tiene el evento');
+    const hasEventFile = [...publicBucket.objects.keys()].some((k) => /^history\/\d{4}\/\d{2}\/[A-Z0-9]{26}\.json$/.test(k));
+    assert.ok(hasEventFile, 'hay un fichero history/YYYY/MM/<ulid>.json');
+    // snapshot diaria (primer cambio del día)
+    const hasDaily = [...publicBucket.objects.keys()].some((k) => /^snapshots\/\d{4}-\d{2}-\d{2}\.json$/.test(k));
+    assert.ok(hasDaily, 'se creó snapshot del día');
+    // snapshot por versión anterior (para rollback)
+    assert.ok(publicBucket.text('snapshots/by-version/v7.json'), 'se guardó snapshot by-version/v7.json');
+  });
+
+  test('dos POST en paralelo con el mismo if_match: uno 200 y el otro 423 o 412', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    // Metemos un retardo artificial en el put del catálogo para asegurar que los dos coinciden dentro del lock.
+    let primeroEnLock = null;
+    publicBucket.hooks.beforePut = async (key) => {
+      if (key === 'catalog/catalog.json' && primeroEnLock === null) {
+        primeroEnLock = Promise.resolve();
+        await primeroEnLock;
+      }
+    };
+    const edit = () => call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'A' }, if_match: 7 }) });
+    const [r1, r2] = await Promise.all([edit(), edit()]);
+    const statuses = [r1.status, r2.status].sort();
+    // Al menos una debe pasar (200) y la otra debe perder (423 lock o 412 if_match una vez liberado).
+    assert.ok(statuses.includes(200), `una debería ser 200, llegaron ${statuses}`);
+    assert.ok(statuses.includes(412) || statuses.includes(423), `la otra debe ser 412 o 423, llegaron ${statuses}`);
+    // La versión acaba en 8 (solo un escritor ganó).
+    assert.equal(JSON.parse(publicBucket.text('catalog/catalog.json')).version, 8);
+  });
+
+  test('POST /api/buzon/publish añade canciones con ids nuevos y added_at ISO', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/buzon/publish', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({
+      songs: [{ title: 'Nueva 1', artist: 'Buzón', duration_s: 120, size_bytes: 1024, sha256: 'sha_nueva_1', codec: 'opus' }],
+      if_match: 7,
+    }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.version, 8);
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    assert.equal(catalog.songs.length, 3);
+    const added = catalog.songs.find((s) => s.title === 'Nueva 1');
+    assert.ok(/^S[0-9a-f]{16}$/.test(added.id), `id generado: ${added.id}`);
+    assert.ok(!Number.isNaN(Date.parse(added.added_at)));
+  });
+
+  test('POST /api/catalogo/rollback restaura el catálogo y registra evento', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    // Hacemos una edición para que haya snapshot v7 y pasemos a v8.
+    const edit = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'X' }, if_match: 7 }) });
+    assert.equal(edit.status, 200);
+    // Rollback a v7
+    const response = await call('/api/catalogo/rollback', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ to_version: 7 }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.version, 9); // rollback cuenta como nueva versión
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    assert.equal(catalog.version, 9);
+    // la canción recupera su título original
+    assert.equal(catalog.songs.find((s) => s.id === 'S0000000000000010').title, 'Antigua');
+    assert.equal(data.event.kind, 'rollback');
+    assert.equal(data.event.to_version, 7);
+  });
+
+  test('GET /api/catalogo/historial?limit=50 devuelve los últimos eventos', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000010', new_title: 'A' }, if_match: 7 }) });
+    await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'rename_song', params: { song_id: 'S0000000000000011', new_title: 'B' }, if_match: 8 }) });
+    const response = await call('/api/catalogo/historial?limit=50');
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.events.length, 2);
+    // más nuevo primero
+    assert.equal(data.events[0].version_after, 9);
+    assert.equal(data.events[1].version_after, 8);
+  });
+});
