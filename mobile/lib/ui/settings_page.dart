@@ -92,6 +92,32 @@ class SettingsPage extends StatelessWidget {
                   settings.copyWith(reduceMotion: value),
                 ),
               ),
+              SwitchListTile(
+                title: const Text('Negro puro (OLED)'),
+                subtitle: const Text(
+                  'Fondos en #000. En pantallas OLED los píxeles negros no se encienden y se ahorra batería.',
+                ),
+                value: settings.oledTheme,
+                onChanged: (value) => _apply(
+                  context,
+                  controller,
+                  settings.copyWith(oledTheme: value),
+                ),
+              ),
+              const _SectionTitle('Rendimiento'),
+              SwitchListTile(
+                title: const Text('Ahorro de batería'),
+                subtitle: const Text(
+                  'Menos radio activa, sin precarga de la siguiente canción y bitrate más bajo al bajar. '
+                  'Los cambios se ven con unos segundos más de retraso.',
+                ),
+                value: settings.batterySaver,
+                onChanged: (value) => _apply(
+                  context,
+                  controller,
+                  settings.copyWith(batterySaver: value),
+                ),
+              ),
               const _SectionTitle('Biblioteca'),
               ListTile(
                 leading: Icon(

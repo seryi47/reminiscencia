@@ -10,6 +10,8 @@ class SettingsStore {
   static const String keyTextScale = 'ajustes.tamanoTexto';
   static const String keyHighContrast = 'ajustes.altoContraste';
   static const String keyReduceMotion = 'ajustes.reducirAnimaciones';
+  static const String keyBatterySaver = 'reminiscencia.battery_saver';
+  static const String keyOledTheme = 'reminiscencia.oled_theme';
 
   /// Clave del antiguo «modo paciente» (versión 1.1). Ya no se lee.
   static const String legacyKeyPatientMode = 'ajustes.modoPaciente';
@@ -29,6 +31,14 @@ class SettingsStore {
         () => prefs.getBool(keyReduceMotion),
         defaults.reduceMotion,
       ),
+      batterySaver: _safely(
+        () => prefs.getBool(keyBatterySaver),
+        defaults.batterySaver,
+      ),
+      oledTheme: _safely(
+        () => prefs.getBool(keyOledTheme),
+        defaults.oledTheme,
+      ),
     );
   }
 
@@ -42,6 +52,8 @@ class SettingsStore {
       prefs.setDouble(keyTextScale, settings.textScale),
       prefs.setBool(keyHighContrast, settings.highContrast),
       prefs.setBool(keyReduceMotion, settings.reduceMotion),
+      prefs.setBool(keyBatterySaver, settings.batterySaver),
+      prefs.setBool(keyOledTheme, settings.oledTheme),
     ]);
     if (results.contains(false)) {
       throw const AppException('No se pudieron guardar los ajustes.');
