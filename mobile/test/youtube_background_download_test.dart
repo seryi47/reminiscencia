@@ -100,9 +100,16 @@ void main() {
     final downloads = YoutubeDownloads(store: store);
 
     await downloads.start(services, _result);
-    await _tick();
+    // Margen amplio para runners CI lentos (local pasa en <100 ms).
+    for (var i = 0; i < 1500 && downloads.of(_result.id).state != YoutubeDownloadState.error; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
 
     expect(downloads.of(_result.id).state, YoutubeDownloadState.error);
+    // La limpieza del store es asíncrona tras el error; damos otro margen amplio.
+    for (var i = 0; i < 300 && (await store.read()).isNotEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
     expect(await store.read(), isEmpty);
   });
 
