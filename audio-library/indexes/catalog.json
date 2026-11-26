@@ -13773,6 +13773,22 @@
       "added_at": "2026-11-25T17:22:49+00:00",
       "public": true,
       "track": 177
+    },
+    {
+      "id": "Sdd906c1f7235a714",
+      "title": "Haus of Holbein (from the Studio Cast Recording)",
+      "artist": "SIX the Musical",
+      "year": null,
+      "tags": [],
+      "folder_id": null,
+      "license": "Subida desde la web pública; quien la sube declara tener derecho a publicarla",
+      "source": "Subida por seryi47",
+      "sha256": "dd906c1f7235a7145a6463e2cfae0bc0baca1c79b451099c5d7ef53ab773a96d",
+      "duration_s": 128.0,
+      "codec": "opus",
+      "size_bytes": 780703,
+      "added_at": "2026-11-26T09:37:42+00:00",
+      "public": true
     }
   ]
 }
