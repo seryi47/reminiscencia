@@ -61,7 +61,14 @@ const ACTIONS = {
     if (!name) throw new ActionError(400, 'rename_folder: falta new_name.');
     const folder = findFolder(catalog, params?.folder_id);
     folder.name = name;
-    return { kind: 'rename_folder', folder_id: folder.id, new_name: name };
+    const event = { kind: 'rename_folder', folder_id: folder.id, new_name: name };
+    if (typeof params?.artist === 'string') {
+      const artist = params.artist.trim();
+      if (artist) folder.artist = artist;
+      else delete folder.artist;
+      event.artist = artist;
+    }
+    return event;
   },
   move_song(catalog, params) {
     const folderId = params?.folder_id;
@@ -89,6 +96,11 @@ const ACTIONS = {
     catalog.songs = catalog.songs.filter((s) => s.id !== song.id);
     return { kind: 'delete_song', song_id: song.id };
   },
+  unpublish_song(catalog, params) {
+    const song = findSong(catalog, params?.song_id);
+    song.public = false;
+    return { kind: 'unpublish_song', song_id: song.id };
+  },
   delete_folder(catalog, params) {
     const folder = findFolder(catalog, params?.folder_id);
     const hasSongs = catalog.songs.some((s) => s.folder_id === folder.id);
@@ -103,10 +115,13 @@ const ACTIONS = {
     const parentId = params?.parent_id ?? null;
     if (parentId !== null) findFolder(catalog, parentId);
     const folder = { id: nextId('F'), name, parent_id: parentId };
-    if (typeof params?.artist === 'string' && params.artist.trim()) folder.artist = params.artist.trim();
+    const artistParam = typeof params?.artist === 'string' ? params.artist.trim() : undefined;
+    if (artistParam) folder.artist = artistParam;
     if (typeof params?.youtube_playlist_id === 'string') folder.youtube_playlist_id = params.youtube_playlist_id;
     catalog.folders.push(folder);
-    return { kind: 'create_folder', folder_id: folder.id, name: folder.name, parent_id: parentId };
+    const event = { kind: 'create_folder', folder_id: folder.id, name: folder.name, parent_id: parentId };
+    if (artistParam) event.artist = artistParam;
+    return event;
   },
   set_year(catalog, params) {
     const year = Number(params?.year);

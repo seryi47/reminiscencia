@@ -166,6 +166,10 @@ class WorkerCatalogClient {
         await _delay(retryAfter + _retryJitter);
         continue;
       }
+      if (response.statusCode == 409) {
+        // El buzón lo tira cuando una canción ya está en el catálogo por sha256 (ADR-0052).
+        throw BuzonDuplicateException(_errorMessage(response));
+      }
       throw AppException(_errorMessage(response));
     }
   }
@@ -228,6 +232,14 @@ class CatalogLatest {
   final String etag;
 
   int get version => (body['version'] as num?)?.toInt() ?? 0;
+}
+
+/// Se lanza cuando el Worker rechaza una canción del buzón con 409 por sha256 duplicado (ADR-0052).
+class BuzonDuplicateException implements Exception {
+  const BuzonDuplicateException([this.message = 'La canción ya estaba en la biblioteca.']);
+  final String message;
+  @override
+  String toString() => 'BuzonDuplicateException: $message';
 }
 
 class CatalogWriteResult {

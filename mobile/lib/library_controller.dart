@@ -20,6 +20,7 @@ import 'playback_plan.dart';
 import 'shared_upload.dart';
 import 'song.dart';
 import 'upload_tracker.dart';
+import 'worker_catalog_client.dart';
 
 /// Estado de la biblioteca para la interfaz: canciones, álbumes (carpetas en los datos), errores visibles y descargas.
 ///
@@ -40,6 +41,7 @@ class LibraryController extends ChangeNotifier {
     EditStatusFetcher? editStatus,
     PendingEditsStore? editsStore,
     EditTimerFactory? editTimer,
+    this.workerCatalog,
   }) : _clock = clock ?? DateTime.now {
     _lastSongId = playback.nowPlaying.value.songId;
     playback.nowPlaying.addListener(_onNowPlayingChanged);
@@ -50,6 +52,7 @@ class LibraryController extends ChangeNotifier {
       clock: _clock,
       timer: pollTimer,
       knownIds: () => _catalog.map((song) => song.id).toSet(),
+      workerCatalog: workerCatalog,
       // Al publicarse, la biblioteca se sincroniza sola.
       onPublished: (_) => unawaited(load()),
     );
@@ -94,6 +97,9 @@ class LibraryController extends ChangeNotifier {
 
   /// Subida a la biblioteca común por la función de la web. Null si no está disponible.
   final SharedUploader? uploader;
+
+  /// Cliente del catálogo en el Worker (ADR-0052). Pasado al [uploads] para publicar canciones del buzón al instante.
+  final WorkerCatalogClient? workerCatalog;
 
   /// Estado de cada subida hasta que se publica. Sus canciones provisionales están en [songs] y [recentSongs].
   late final UploadTracker uploads;

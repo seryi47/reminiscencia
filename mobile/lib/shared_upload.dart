@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -142,6 +143,14 @@ class UploadItemResult {
     required this.title,
     required this.outcome,
     required this.message,
+    this.sha256,
+    this.durationS,
+    this.sizeBytes,
+    this.uploadId,
+    this.convertedPath,
+    this.artist,
+    this.albumId,
+    this.albumName,
   });
 
   /// Nombre del archivo elegido.
@@ -153,6 +162,18 @@ class UploadItemResult {
 
   /// Mensaje para la persona, en español.
   final String message;
+
+  /// Metadatos que el buzón del Worker (ADR-0052) necesita para `/api/buzon/publish`. Todos opcionales porque las
+  /// subidas antiguas (resend sin sha256, errores antes de convertir, pausas) pueden no tener algún campo. Se rellenan
+  /// cuando el archivo se convirtió y envió completo.
+  final String? sha256;
+  final double? durationS;
+  final int? sizeBytes;
+  final String? uploadId;
+  final String? convertedPath;
+  final String? artist;
+  final String? albumId;
+  final String? albumName;
 }
 
 @immutable
@@ -362,13 +383,21 @@ class SharedUploader {
     var running = 0;
     Completer<void>? sendFinished;
 
-    void add(int index, UploadOutcome outcome, String message) {
+    void add(int index, UploadOutcome outcome, String message, {_ConvertedJob? job}) {
       final file = files[index];
       final item = _item(
         file.name,
         titleFromFileName(file.name),
         outcome,
         message,
+        sha256: job?.sha256,
+        durationS: job?.durationS,
+        sizeBytes: job?.sizeBytes,
+        uploadId: job?.uploadId,
+        convertedPath: job?.output.path,
+        artist: file.artist,
+        albumId: file.youtubePlaylistId,
+        albumName: file.youtubePlaylistName,
       );
       results[index] = item;
       onItemDone?.call(index, item);
@@ -398,7 +427,7 @@ class SharedUploader {
         );
         // Antes de avisar: lo que aún no se ha empezado ya no se intenta.
         if (sent.connectionLost) stopReason ??= _lostConnectionMessage;
-        add(index, sent.item.outcome, sent.item.message);
+        add(index, sent.item.outcome, sent.item.message, job: job);
       } catch (error) {
         add(
           index,
@@ -406,6 +435,7 @@ class SharedUploader {
           error is AppException
               ? error.message
               : 'error inesperado al preparar el archivo.',
+          job: job,
         );
       } finally {
         if (!job.keep) await _deleteQuietly(job.output);
@@ -490,6 +520,20 @@ class SharedUploader {
           // La copia sacada del ZIP ya no hace falta: se borra antes de enviar.
           if (extracted != null) await _deleteQuietly(extracted);
           if (outputFor != null) onConverted?.call(index, output, converted);
+          // sha256 del Opus convertido (ADR-0052): lo manda luego el UploadTracker al Worker en /api/buzon/publish.
+          // Si falla la lectura (raro: el fichero lo acabamos de escribir), se registra como fallo.
+          String digest;
+          try {
+            digest = await sha256OfFile(output);
+          } catch (error) {
+            add(
+              index,
+              UploadOutcome.failed,
+              error is AppException ? error.message : 'no se pudo leer el archivo convertido.',
+            );
+            await _deleteQuietly(output);
+            continue;
+          }
           // El UUID v7 se saca al terminar de convertir, que va en el orden de la cola.
           ready.add(
             _ConvertedJob(
@@ -497,6 +541,9 @@ class SharedUploader {
               output: output,
               keep: outputFor != null,
               uploadId: _uploadIds.next(),
+              sha256: digest,
+              durationS: converted.durationS,
+              sizeBytes: converted.bytes,
             ),
           );
           queued = true;
@@ -532,12 +579,22 @@ class SharedUploader {
     String? albumId,
     String? albumName,
     String artist = '',
+    double? durationS,
     void Function(int part, int parts)? onPart,
   }) async {
     final title = titleFromFileName(name);
     if (!await hasConnection()) {
       return _item(name, title, UploadOutcome.failed, kNoConnectionReason);
     }
+    final uploadId = _uploadIds.next();
+    // sha256 y tamaño del Opus ya convertido: se recalculan antes de enviar para que el UploadTracker pueda publicar
+    // esta canción en el Worker igual que la ruta normal (ADR-0052). Si fallara (archivo borrado entretanto), vamos sin.
+    String? digest;
+    int? sizeBytes;
+    try {
+      digest = await sha256OfFile(opus);
+      sizeBytes = await opus.length();
+    } catch (_) {}
     try {
       final sent = await _sendItem(
         opus,
@@ -546,15 +603,36 @@ class SharedUploader {
         albumId: albumId,
         albumName: albumName,
         artist: artist,
-        uploadId: _uploadIds.next(),
+        uploadId: uploadId,
       );
-      return sent.item;
+      return _item(
+        name,
+        title,
+        sent.item.outcome,
+        sent.item.message,
+        sha256: digest,
+        durationS: durationS,
+        sizeBytes: sizeBytes,
+        uploadId: uploadId,
+        convertedPath: opus.path,
+        artist: artist,
+        albumId: albumId,
+        albumName: albumName,
+      );
     } catch (error) {
       return _item(
         name,
         title,
         UploadOutcome.failed,
         error is AppException ? error.message : 'error inesperado al enviar.',
+        sha256: digest,
+        durationS: durationS,
+        sizeBytes: sizeBytes,
+        uploadId: uploadId,
+        convertedPath: opus.path,
+        artist: artist,
+        albumId: albumId,
+        albumName: albumName,
       );
     }
   }
@@ -596,12 +674,28 @@ class SharedUploader {
     String name,
     String title,
     UploadOutcome outcome,
-    String message,
-  ) => UploadItemResult(
+    String message, {
+    String? sha256,
+    double? durationS,
+    int? sizeBytes,
+    String? uploadId,
+    String? convertedPath,
+    String? artist,
+    String? albumId,
+    String? albumName,
+  }) => UploadItemResult(
     name: name,
     title: title,
     outcome: outcome,
     message: message,
+    sha256: sha256,
+    durationS: durationS,
+    sizeBytes: sizeBytes,
+    uploadId: uploadId,
+    convertedPath: convertedPath,
+    artist: artist,
+    albumId: albumId,
+    albumName: albumName,
   );
 
   static Future<void> _deleteDirQuietly(Directory dir) async {
@@ -727,6 +821,9 @@ class _ConvertedJob {
     required this.output,
     required this.keep,
     required this.uploadId,
+    required this.sha256,
+    required this.durationS,
+    required this.sizeBytes,
   });
 
   final int index;
@@ -735,4 +832,15 @@ class _ConvertedJob {
   /// True si el Opus se conserva al terminar (lo guarda el gestor de subidas).
   final bool keep;
   final String uploadId;
+
+  /// Metadatos del Opus ya convertido, para que el callback los pueda entregar al UploadTracker (ADR-0052).
+  final String sha256;
+  final double durationS;
+  final int sizeBytes;
+}
+
+/// SHA-256 en hex de un archivo, leído en streaming (no carga el archivo en memoria).
+Future<String> sha256OfFile(File file) async {
+  final digest = await crypto.sha256.bind(file.openRead()).first;
+  return digest.toString();
 }

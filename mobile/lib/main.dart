@@ -111,6 +111,8 @@ Future<void> _bootstrap(ErrorLog? errorLog) async {
           // Tras subir: se mira songs.json cada 20 s, solo en primer plano, hasta que aparece (máx. 10 min).
           published: HttpPublishedSongs(client: client),
           uploadsStore: UploadsStore(),
+          // Con el Worker cableado (ADR-0052), tras cada canción subida se publica al instante en el catálogo R2.
+          workerCatalog: workerCatalog,
         ),
         playback: handler,
         covers: covers,

@@ -1188,6 +1188,77 @@ describe('catálogo en R2 (ADR-0052)', () => {
     assert.equal(song.artist, 'A1', 'el artista no debe haber cambiado');
     assert.deepEqual(song.tags, []);
   });
+
+  // ── unpublish_song y folder.artist (ADR-0052 ampliación 2026-11-26 bis) ────
+  test('unpublish_song marca la canción como public:false y crea el evento', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, { ...seededCatalog(), songs: seededCatalog().songs.map((s) => ({ ...s, public: true })) });
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'unpublish_song', params: { song_id: 'S0000000000000010' }, if_match: 7 }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.event.kind, 'unpublish_song');
+    assert.equal(data.event.song_id, 'S0000000000000010');
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    const song = catalog.songs.find((s) => s.id === 'S0000000000000010');
+    assert.equal(song.public, false);
+    const otra = catalog.songs.find((s) => s.id === 'S0000000000000011');
+    assert.equal(otra.public, true, 'solo cambia la canción pedida');
+  });
+
+  test('unpublish_song con song_id inexistente devuelve 404', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({ action: 'unpublish_song', params: { song_id: 'S0000000000099999' }, if_match: 7 }) });
+    assert.equal(response.status, 404);
+    const data = await response.json();
+    assert.match(data.error, /No existe la canción/);
+  });
+
+  test('rename_folder con {artist} graba el artista del álbum', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({
+      action: 'rename_folder',
+      params: { folder_id: 'F0000000000000001', new_name: 'Álbum renombrado', artist: 'Los Nuevos' },
+      if_match: 7,
+    }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.event.kind, 'rename_folder');
+    assert.equal(data.event.artist, 'Los Nuevos');
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    const folder = catalog.folders.find((f) => f.id === 'F0000000000000001');
+    assert.equal(folder.name, 'Álbum renombrado');
+    assert.equal(folder.artist, 'Los Nuevos');
+    // Un string vacío borra el artista del folder
+    const response2 = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({
+      action: 'rename_folder',
+      params: { folder_id: 'F0000000000000001', new_name: 'Álbum renombrado', artist: '' },
+      if_match: 8,
+    }) });
+    assert.equal(response2.status, 200);
+    const catalog2 = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    const folder2 = catalog2.folders.find((f) => f.id === 'F0000000000000001');
+    assert.equal(folder2.artist, undefined, 'artist vacío borra el campo');
+  });
+
+  test('create_folder con {artist} graba el artista en el folder nuevo', async () => {
+    const { call, publicBucket } = callCat();
+    seed(publicBucket, seededCatalog());
+    const response = await call('/api/catalogo/edit', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth': AUTH }, body: JSON.stringify({
+      action: 'create_folder',
+      params: { name: 'Álbum nuevo', artist: 'Los Nuevos' },
+      if_match: 7,
+    }) });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.event.kind, 'create_folder');
+    assert.equal(data.event.artist, 'Los Nuevos');
+    const catalog = JSON.parse(publicBucket.text('catalog/catalog.json'));
+    const folder = catalog.folders.find((f) => f.id === data.event.folder_id);
+    assert.equal(folder.name, 'Álbum nuevo');
+    assert.equal(folder.artist, 'Los Nuevos');
+  });
 });
 
 describe('/api/subir con AUTH_PASSWORD no dispara repository_dispatch (ADR-0052)', () => {

@@ -14,6 +14,7 @@ import 'library_store.dart';
 import 'local_audio.dart';
 import 'shared_upload.dart';
 import 'song.dart';
+import 'worker_catalog_client.dart';
 import 'zip_audio.dart';
 
 /// Seguimiento de cada canción subida para todos, de principio a fin: conversión, subida por trozos,
@@ -492,11 +493,17 @@ class UploadTracker extends ChangeNotifier {
     Set<String> Function()? knownIds,
     this.onPublished,
     ApiRoutes? routes,
+    this.workerCatalog,
   }) : _routes = routes ?? apiRoutes,
        _clock = clock ?? DateTime.now,
        _timerFactory = timer ?? _periodic,
        _random = random ?? Random.secure(),
        _knownIds = knownIds ?? (() => <String>{});
+
+  /// Cliente del catálogo en el Worker (ADR-0052). Si está, la publicación del buzón es síncrona (POST
+  /// /api/buzon/publish tras subir cada canción). Si es null, se cae al flujo antiguo (polling del catálogo
+  /// hasta que buzon.yml lo publique).
+  final WorkerCatalogClient? workerCatalog;
 
   final SharedUploader? uploader;
 
@@ -994,14 +1001,21 @@ class UploadTracker extends ChangeNotifier {
         ..error = null
         ..savedAt = _clock();
       _changed();
-      _inBackground(
-        baseline.then((ids) {
-          entry.baseline = ids;
-          _ensurePolling();
-          return _persist();
-        }),
-      );
-      _ensurePolling();
+      // Si hay Worker catalog y la canción trae metadatos: publicación síncrona (ADR-0052). Si no,
+      // se cae al polling del catálogo antiguo (compat con configuraciones sin Worker).
+      final catalog = workerCatalog;
+      if (catalog != null && item.sha256 != null) {
+        _inBackground(_publishToWorker(catalog, entry, item));
+      } else {
+        _inBackground(
+          baseline.then((ids) {
+            entry.baseline = ids;
+            _ensurePolling();
+            return _persist();
+          }),
+        );
+        _ensurePolling();
+      }
       return;
     }
     entry
@@ -1009,6 +1023,49 @@ class UploadTracker extends ChangeNotifier {
       ..error = failureReason(item.message);
     _changed();
     _inBackground(_persist());
+  }
+
+  /// Publica una canción recién subida a R2 contra el Worker (ADR-0052). 200 → `published` al instante;
+  /// 409 → duplicada; otro error → se cae al polling como red de seguridad.
+  Future<void> _publishToWorker(
+    WorkerCatalogClient catalog,
+    UploadEntry entry,
+    UploadItemResult item,
+  ) async {
+    try {
+      final latest = await catalog.getLatest();
+      final version = latest?.version ?? 0;
+      final song = <String, Object?>{
+        'sha256': item.sha256,
+        'title': item.title,
+        'codec': 'opus',
+        'source': 'apk-buzon',
+        if (item.artist != null && item.artist!.isNotEmpty) 'artist': item.artist,
+        if (item.durationS != null) 'duration_s': item.durationS,
+        if (item.sizeBytes != null) 'size_bytes': item.sizeBytes,
+        if (item.albumId != null) 'folder_id': item.albumId,
+      };
+      await catalog.buzonPublish(songs: [song], ifMatch: version);
+      entry.stage = UploadStage.published;
+      _changed();
+      onPublished?.call(entry);
+      await _persist();
+    } on BuzonDuplicateException catch (error) {
+      entry
+        ..stage = UploadStage.failed
+        ..error = failureReason(error.message);
+      _changed();
+      await _persist();
+    } catch (error) {
+      debugPrint('buzón: publicación por Worker falló, cayendo a polling: $error');
+      _inBackground(() async {
+        final baseline = await _fetchBaseline();
+        entry.baseline = baseline;
+        _ensurePolling();
+        await _persist();
+      }());
+      _ensurePolling();
+    }
   }
 
   /// Ids publicados antes de subir. Si la web no responde, los del catálogo que ya conoce la app.
