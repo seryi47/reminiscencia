@@ -1,8 +1,8 @@
 # Base de datos de Reminiscencia
 
-Estado: 2026-11-03, `main` `6d62aee`, con la interfaz sin usuarios de [ADR-0015](../decisions/ADR-0015-interfaz-sin-usuarios-aspecto-spotify.md), las portadas y álbumes de [ADR-0016](../decisions/ADR-0016-portadas-y-albumes.md) y la subida para todos de [ADR-0017](../decisions/ADR-0017-subida-directa-github-web-publica.md). Revisado con el código de `frontend/web/js/` y `mobile/lib/`.
+Estado: 2026-11-26, con la migración de ADR-0052 (catálogo + historial en R2) ya aplicada. Revisado con el código de `frontend/web/js/`, `mobile/lib/` y `worker/src/`.
 
-Alcance: lo que la web guarda en el navegador (IndexedDB, localStorage y Cache Storage), lo que la app Android guarda en el teléfono y el catálogo público. No hay base de datos en el servidor: la fuente de verdad es `audio-library/indexes/catalog.json` (ADR-0007).
+Alcance: lo que la web guarda en el navegador (IndexedDB, localStorage y Cache Storage), lo que la app Android guarda en el teléfono y el catálogo público. **La fuente de verdad del catálogo ya no es `audio-library/indexes/catalog.json`** (que queda como contrato de tests y punto de arranque de la migración) **sino `catalog/catalog.json` + `catalog/VERSION.txt` en R2, y el historial append-only + snapshots también en R2** (ADR-0052). El Worker (`reminiscencia-api`) es el único escritor; la web y la APK leen por `GET /api/catalogo/latest` y editan por `POST /api/catalogo/edit`.
 
 No hay usuarios ni datos personales. Los perfiles, recuerdos, fotografías, observaciones, el registro del estudio, el PIN y la copia cifrada `.rmc` de ADR-0009 están **retirados** (sección 3).
 
@@ -36,7 +36,9 @@ Fuente: `frontend/web/js/cuidador/subida-local.js` (ADR-0012). Desde ADR-0017 la
 
 - localStorage, clave `reminiscencia.reproductor` (`js/app.js`): `volume`, `shuffle` y `repeat`. Todo acceso va en try/catch; si el navegador no deja guardar, valen durante la visita.
 - localStorage, clave `reminiscencia.descargas` (`js/offline-downloads.js`, ADR-0033): las descargas para escuchar sin conexión que siguen en marcha, `{ version: 1, jobs: [{ contextId, urls: ['audio/<id>.opus', …] }] }`, para continuarlas al volver a abrir la página (lo ya guardado no se vuelve a bajar). Se borra al terminar o cancelar.
-- Cache Storage (`js/offline-core.js`): `reminiscencia-shell-v<N>` (`N` = `SHELL_VERSION` de `js/offline-core.js`) con los archivos de la aplicación y los JSON de `data/`, y `reminiscencia-audio-v1` con el audio descargado para escuchar sin conexión (por carpeta o lista).
+- localStorage, clave `reminiscencia.auth` (`js/auth.js`, ADR-0052): el `AUTH_PASSWORD` del Worker, guardado tras pegarlo la primera vez (o tras `?auth=<base64>` provisionado desde la Mac). Se vacía en 401 y se vuelve a pedir en el próximo intento de escritura. Nunca sale del navegador salvo en el header `X-Auth` del POST al Worker.
+- localStorage, clave `reminiscencia.catalog.etag` (`js/catalog-remote.js`, ADR-0052): el `ETag: W/"v<version>"` del último catálogo leído. Se manda como `If-None-Match` en la siguiente carga para ahorrar tráfico (304).
+- Cache Storage (`js/offline-core.js`): `reminiscencia-shell-v<N>` (`N` = `SHELL_VERSION` de `js/offline-core.js`) con los archivos de la aplicación y, desde ADR-0052, también `/api/catalogo/latest` con *stale-while-revalidate* por ETag; `reminiscencia-audio-v1` con el audio descargado para escuchar sin conexión (por carpeta o lista).
 
 ### 1.4 Diagrama
 
@@ -73,7 +75,8 @@ erDiagram
 
 Fuente: `mobile/lib/`. Todo vive en el almacenamiento privado de la app. Lo único que sale del teléfono es el audio que se elige en «Subir canciones», que va a la biblioteca común por `/api/subir` (ADR-0017, `shared_upload.dart`) y no se guarda en el teléfono.
 
-- Biblioteca: `library_store.dart` descarga `https://reminiscencia.cometia.es/data/songs.json` (ADR-0034) y `data/folders.json`, guarda copias en `<documentos>/biblioteca/` y, si no hay red, usa esas copias. El audio descargado va a `<documentos>/biblioteca/audio/<id>.opus`.
+- Biblioteca: `library_store.dart` pide `GET https://reminiscencia.cometia.es/api/catalogo/latest` con `If-None-Match` persistido en `SharedPreferences` (clave `reminiscencia.catalog.etag`, ADR-0052). Fallback a `data/songs.json` + `data/folders.json` si el Worker responde 503 (catálogo no migrado, ya no debería ocurrir). Guarda copias en `<documentos>/biblioteca/` y, si no hay red, usa esas copias. El audio descargado va a `<documentos>/biblioteca/audio/<id>.opus`.
+- Credencial del Worker: `SharedPreferences` con clave `reminiscenciaAuthPassword` (`auth_store.dart`, ADR-0052). Se pide una sola vez en `AuthPromptScreen` con botón de pegado del portapapeles. En 401, se borra y se vuelve a pedir. Nunca sale del teléfono salvo en `X-Auth` del POST al Worker.
 - `song.dart`: `id`, `title`, `duration_s` y `audio` son obligatorios; `artist`, `year`, `tags`, `folder_id`, `license`, `cover` y `track` (número de pista en su álbum, ADR-0026) son opcionales. En las carpetas, `id` y `name` son obligatorios y `parent_id`, `artist` y `cover` son opcionales.
 - Listas y «Me gusta»: `collections_store.dart` guarda un único `colecciones.json` en el directorio de documentos, con `version` (1), `favorites` (lista de identificadores) y `playlists` (`id`, `name` y `songs`). Escribe en un fichero temporal y lo renombra.
 - Audio subido antes «Solo en este teléfono» (ADR-0013): `biblioteca-local/audio/<id>.opus` y el índice `biblioteca-local/pistas.json`. Ya no se guardan nuevas (ADR-0017); las que existan suenan y se borran. Excluido de la copia automática de Android y del traspaso entre dispositivos (`backup_rules.xml`, `data_extraction_rules.xml`).
@@ -89,19 +92,23 @@ La versión anterior de esta página describía la base `reminiscencia` (versió
 
 ## 4. Catálogo público
 
-### 4.1 Ficheros que sirve la web
+### 4.1 Lo que sirve el Worker
 
-Están en `frontend/web/data/`. Los sirven el Worker de Cloudflare (ADR-0034) y Vercel, que solo publican `frontend/web` (`CLAUDE.md`). Los genera `sync_public` en `backend/sonidos/publish.py`.
+Desde ADR-0052, la fuente de verdad del catálogo vive en R2 bajo `catalog/catalog.json` + `catalog/VERSION.txt` (bucket público `reminiscencia-audio`). El Worker lo sirve en `GET /api/catalogo/latest`:
 
-- `songs.json` (en `main`): solo las canciones públicas, ordenadas por título en minúsculas. Campos: `id`, `title`, `artist`, `year`, `tags` (lista), `folder_id`, `duration_s`, `license`, `audio` (ruta relativa `audio/<id>.opus`) `cover` (`covers/<id>.jpg`) si tiene portada (ADR-0016) y `track` (entero desde 1, su número de pista en el álbum) si lo tiene (ADR-0026).
-- `folders.json` (en `main`): todas las carpetas (álbumes). Campos: `id`, `name` y `parent_id` (null en el nivel superior), y `artist` y `cover` si tienen valor (ADR-0016).
-- `catalog.json` (en `main`, desde ADR-0008): un objeto con `songs` y `folders`. Las canciones son las públicas, con `id`, `title`, `artist`, `year`, `tags`, `folder_id`, `license`, `source`, `duration_s` y `public`, y `cover` y `track` si los tienen. No incluye `audio` ni `sha256`. Orden: título en minúsculas y después `id`.
+- Respuesta 200: `{ version:int, updated_at:ISO, folders:[…], songs:[…] }` con `ETag: W/"v<version>"` y `Cache-Control: no-store`.
+- `If-None-Match: W/"v<version>"` → 304 sin cuerpo.
+- Si R2 no tiene catálogo aún → 503 «catálogo no migrado».
 
-### 4.2 Catálogo privado de origen
+Los campos de `songs` y `folders` son los del catálogo privado (sección 4.2) **menos** los que no deben publicarse (`sha256`, `audio` interno, `youtube_playlist_id`). Las canciones salen ordenadas por título en minúsculas + `id`; las carpetas, por nombre.
 
-`audio-library/indexes/catalog.json`, gestionado por `backend/sonidos/catalog.py`. Es la fuente de verdad.
+Los ficheros estáticos `frontend/web/data/songs.json`, `folders.json` y `catalog.json` siguen existiendo en el repo como punto de arranque y para fallback de emergencia, pero **el Worker ya no los regenera**; la web y la APK pueden ignorarlos.
 
-- Estructura: `version` (1), `folders` (`id`, `name`, `parent_id` y, si tienen valor, `artist` y `cover`; ADR-0016) y `songs` (con `cover` si tiene portada) (`id`, `title`, `artist`, `year`, `tags`, `folder_id`, `license`, `source`, `sha256`, `duration_s`, `codec`, `size_bytes`, `added_at`, `public`). Las canciones con álbum llevan `track`: su número de pista, de 1 a n sin huecos en cada álbum; lo asigna el backend al entrar en el álbum y lo cambia `order_album` (ADR-0026).
+### 4.2 Catálogo privado de origen (contrato de tests y modelo de datos)
+
+`audio-library/indexes/catalog.json`, gestionado por `backend/sonidos/catalog.py`. **Desde ADR-0052 ya no es la fuente de verdad en producción** (lo es `catalog/catalog.json` en R2); se mantiene como contrato de tests del backend y como punto de arranque de la migración one-shot. El modelo de datos es el mismo y vale para describir los dos:
+
+- Estructura: `version` (int monotónico; empezó en 1 con la migración y lo incrementa el Worker a cada escritura), `updated_at` (ISO 8601 UTC, lo pone el Worker), `folders` (`id`, `name`, `parent_id` y, si tienen valor, `artist` y `cover`; ADR-0016) y `songs` (con `cover` si tiene portada) (`id`, `title`, `artist`, `year`, `tags`, `folder_id`, `license`, `source`, `sha256`, `duration_s`, `codec`, `size_bytes`, `added_at`, `public`, `track_index`). `track_index` es un entero asignado por el Worker al mover/reordenar canciones en un álbum (acción `set_track_index`/`reorder_folder`).
 - Identificador de canción: `S` seguido de los 16 primeros caracteres hexadecimales del sha256 del fichero original. Identificador de carpeta: `F` seguida de 16 caracteres hexadecimales en las nuevas (ADR-0016); las anteriores, de 10, siguen valiendo pero no pueden tener portada. Las carpetas creadas por playlists usan `F` + 16 hexadecimales de SHA-256 de `youtube:<playlistId>` para reutilizar el mismo álbum en reintentos (ADR-0019). El `youtube_playlist_id` se conserva solo en el catálogo de origen y no se publica. Portadas: `audio-library/covers/<id>.jpg`, copiadas a `frontend/web/covers/` para las canciones públicas y todas las carpetas.
 - La licencia es obligatoria para importar. Las canciones importadas por incidencia nacen con `public: false`. Las del buzón (ADR-0014) nacen con `public: true` y la licencia de la línea «Licencia: …» del commit, o con `public: false` y la licencia `Sin declarar` (`catalog.LICENSE_UNDECLARED`), que no se puede publicar. Las subidas desde la web o la APK por `/api/subir` (ADR-0017) llevan siempre la licencia fija «Subida desde la web pública; quien la sube declara tener derecho a publicarla», así que nacen públicas. El título de las del buzón es el nombre del archivo sin extensión, limpio con la regla común de `sonidos.titulos` (ADR-0032), que también puede poner el artista; la operación `clean_titles` aplica la misma regla a las que ya están.
 - Las importaciones de Internet Archive toman `artist` del campo «creator» y `year` del principio de «date» o «year» de los metadatos del ítem, ya validados (`sources.py`).
@@ -111,24 +118,31 @@ Están en `frontend/web/data/`. Los sirven el Worker de Cloudflare (ADR-0034) y 
 - `codec`, `size_bytes` y `duration_s` salen de `probe.py`, sobre el fichero original descargado. `duration_s` se redondea a 3 decimales.
 - Audio: `audio/<id>.opus` del bucket privado de R2 (ADR-0024), codificado con el perfil `opus-64k`; el procesado lo genera en `audio-library/audio/<id>.opus` de su copia y el job `publicar` lo sube al bucket privado y, si la canción es pública, al público (ADR-0020).
 
-### 4.3 Quién escribe
+### 4.3 Quién escribe (ADR-0052)
 
-- En `main`: `.github/workflows/biblioteca.yml` ejecuta `scripts/ci_library.py` en el job `procesar` (sin token), que actualiza `audio-library/indexes/catalog.json` y el audio de la biblioteca. En el job `publicar`, `scripts/aplicar_paquete.py` aplica el paquete y regenera `songs.json`, `folders.json` y `catalog.json` con `sync_public` (ADR-0010 y ADR-0011); el commit y el push los hace `publicar`, con el grupo de concurrencia `library-catalog`. `library.yml` está retirado (ADR-0008).
-- `.github/workflows/biblioteca.yml` (ADR-0008) se dispara al abrir una incidencia (`issues`, `opened`) o a mano. Con incidencia, el job `autorizar` exige permiso de escritura en el autor y la etiqueta `biblioteca`. Sustituye a `library.yml`, retirado con la administración web (commit `0fa6ed3`). La parte pública de `frontend/web/data/`, incluido `catalog.json`, la regenera `publicar` (ADR-0011).
-- `frontend/web/api/subir.js` (función de Vercel, ADR-0017 y ADR-0024) escribe solo en `entrada/<id>/` del bucket privado de R2: un objeto por trozo (`<índice>.part`, hasta 4 MiB) y, con el último, `manifiesto.json` (`{"nombre": "<nombre>.opus", "partes": N}`); después lanza `buzon.yml` (`repository_dispatch`, con `GITHUB_TOKEN`). En playlists, el manifiesto incluye también `album: {"id": "<playlistId>", "name": "<título>"}` y `artist` (ADR-0019). No toca el catálogo ni el repositorio.
-- `.github/workflows/buzon.yml` (ADR-0014) se dispara con un push a `main` que toca `audio-library/buzon/**` (salvo los que solo añaden trozos `.partes/**/*.part`), con el `repository_dispatch` de `/api/subir` o a mano. El job `preparar` (ADR-0043) baja del bucket privado las subidas completas de la web (ADR-0024, en un paso con las claves de R2 de solo lectura) y, en otro paso sin secretos, une los trozos de cada una ejecutando `scripts/buzon.py` (`sonidos.buzon.procesar_buzon`), que da de alta las canciones en el catálogo y escribe su audio; cuando hay metadata de playlist, también crea o reutiliza la carpeta/álbum y asigna el mismo `folder_id` a sus canciones. `publicar` (otro runner) aplica el paquete (acción `buzon`, la única que puede borrar archivos del buzón) y regenera la parte pública con el mismo grupo de concurrencia `library-catalog` (ADR-0019).
+Un único escritor: el Worker `reminiscencia-api`. Toda escritura exige `X-Auth` (= secreto `AUTH_PASSWORD` del Worker), `if_match: <version>` optimista y pasa por el candado blando `catalog/LOCK.json` (TTL 15 s).
 
-### 4.4 Quién lee
+- `POST /api/catalogo/edit` aplica una acción declarativa: `rename_song`, `rename_folder`, `move_song`, `move_folder`, `set_cover`, `delete_song`, `delete_folder`, `create_folder` (admite `artist`), `set_year`, `set_artist`, `set_tags`, `set_track_index`, `reorder_folder`, `set_song_fields`, `unpublish_song`. Funciones puras en `worker/src/catalog-actions.js`.
+- `POST /api/buzon/publish` registra canciones ya subidas por `/api/subir` del Worker (que depositó el Opus en `entrada/<id>/` del bucket privado, ADR-0024). El cliente manda `sha256`, `title`, `artist?`, `year?`, `tags?`, `license`, `duration_s`, `size_bytes`, `codec:'opus'`, `folder_id?`, `source?`. 409 si `sha256` ya existe.
+- `POST /api/catalogo/rollback` con `{to_version}` restaura desde `snapshots/by-version/v<N>.json` y registra el evento `rollback`.
+- Cada escritura: sube el `catalog/catalog.json` nuevo con `version += 1`, actualiza `catalog/VERSION.txt`, graba `history/YYYY/MM/<ulid>.json` y añade una línea a `history/latest.jsonl` (rotación al pasar 1000). Snapshot diaria idempotente (`snapshots/<YYYY-MM-DD>.json`) + snapshot por versión (`snapshots/by-version/v<N>.json`) para rollback O(1).
+- La web usa `frontend/web/js/edit-remote.js` + `catalog-remote.js` + `auth.js`; la APK, `mobile/lib/worker_catalog_client.dart` + `worker_edit_submitter.dart` + `upload_tracker.dart` (publish tras subir).
+- 412 (`if_match` desfasado) → el cliente refetchea `/api/catalogo/latest` y reintenta una vez; 423 (lock tomado) → espera `Retry-After` y reintenta.
 
-- `frontend/web/js/app.js` (`loadPublicCatalog`): lee `data/songs.json` y `data/folders.json` y los junta con las canciones guardadas antes en este navegador (`js/catalog.js`). El service worker precarga los tres JSON de `data/` para el uso sin conexión (`SHELL_ASSETS` en `js/offline-core.js`).
-- `mobile/lib/library_store.dart` (la app Android): descarga `https://reminiscencia.cometia.es/data/songs.json` (ADR-0034) y `data/folders.json`, guarda copias en `<documentos>/biblioteca/` y, si no hay red, usa esas copias. Los audios van a `<documentos>/biblioteca/audio/<id>.opus`.
-- `mobile/lib/song.dart`: `id`, `title`, `duration_s` y `audio` son obligatorios; `artist`, `year`, `tags`, `folder_id`, `license`, `cover` y `track` (número de pista en su álbum, ADR-0026) son opcionales. En las carpetas, `id` y `name` son obligatorios y `parent_id`, `artist` y `cover` son opcionales.
-- `catalog.json`: la interfaz no lo lee ni la app tampoco; el service worker lo precarga. Lo comprueban las pruebas del backend (`backend/tests/test_publish.py` y `test_ci_library.py`) y `scripts/smoke_produccion.mjs`, que además compara la web con `audio-library/indexes/catalog.json` para comprobar que no se sirve nada privado.
+El catálogo `audio-library/indexes/catalog.json` del repo **ya no se escribe en el camino caliente**. Solo lo pueden tocar los scripts de migración/portadas/48k puntuales, y como contrato de tests.
+
+### 4.4 Quién lee (ADR-0052)
+
+- `frontend/web/js/app.js` + `js/catalog-remote.js`: `GET /api/catalogo/latest` con `If-None-Match` (localStorage `reminiscencia.catalog.etag`), 304 reusa cache. Junta con las canciones guardadas antes en este navegador. El service worker cachea `/api/catalogo/latest` igual que antes `data/songs.json` (stale-while-revalidate por ETag).
+- `mobile/lib/library_store.dart` (la app Android): `GET https://reminiscencia.cometia.es/api/catalogo/latest` con `If-None-Match` (SharedPreferences). Guarda copia local; si no hay red o el Worker da 503, reusa la copia o cae al fichero estático antiguo.
+- `GET /api/catalogo/historial?limit=N` lo lee el panel de cambios (nuevo) en la web y en la APK, para mostrar el log al usuario.
+- Tests y verificación: `backend/tests/test_publish.py`, `test_ci_library.py` y `backend/tests/test_migrar_catalogo_a_r2.py` siguen leyendo `audio-library/indexes/catalog.json` como contrato. `scripts/smoke_produccion.mjs` compara la respuesta de `/api/catalogo/latest` con el fichero local para detectar fugas de privadas.
 
 ## 5. Pendiente
 
 1. Llevar listas y «Me gusta» a otro navegador: no hay copia ni exportación (ADR-0015, decisión 4; DESIGN §15).
-2. Fechas de alta: `songs.json` no publica `added_at`, así que «Añadidas recientemente» no refleja la fecha real de alta (DESIGN §15).
-3. Lector de `catalog.json`: la interfaz no lo lee. Falta decidir si se usa o se deja de publicar.
-4. Campo `source` publicado: `catalog.json` publica `source` de las canciones públicas. En las importaciones directas incluye el host y el nombre del fichero, y en el buzón, el nombre de la cuenta de GitHub que subió la canción (ADR-0014 lo acepta como dato público).
-5. Canciones locales sin service worker: en la primera visita, o en navegadores sin service worker, la URL de objeto la bloquea la CSP de producción (ADR-0015, decisión 7).
+2. Fechas de alta: `added_at` queda en el catálogo pero la UI no lo muestra en «Añadidas recientemente» (DESIGN §15).
+3. Campo `source` publicado: incluye, en las URL directas, el host y el nombre del fichero; en las subidas por buzón, el actor del `X-Actor` (por defecto `web` o `apk`). No contiene datos personales.
+4. Canciones locales sin service worker: en la primera visita, o en navegadores sin service worker, la URL de objeto la bloquea la CSP de producción (ADR-0015, decisión 7).
+
+**Cambio 2026-11-26 (ADR-0052):** el catálogo pasó a vivir en R2; los workflows `biblioteca.yml`, `buzon.yml` y `r2.yml` se retiraron. El modelo descrito arriba ya es el nuevo.
