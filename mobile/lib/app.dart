@@ -34,6 +34,7 @@ class ReminiscenciaApp extends StatelessWidget {
           theme: buildAppTheme(
             highContrast: settings.highContrast,
             reduceMotion: settings.reduceMotion,
+            oledTheme: settings.oledTheme,
           ),
           builder: (context, child) {
             final media = MediaQuery.of(context);

@@ -48,7 +48,13 @@ import { serializeCoverIndex } from '../../frontend/web/js/cover-index.js';
 import { handleCatalogRoute, isCatalogRoute } from './catalog-api.js';
 import { handlePresign, handleComplete } from './upload-presign.js';
 import { handlePushRoute, isPushRoute } from './push-api.js';
+import { handleStorageReport } from './storage-report.js';
 import { notifyCatalogChange } from './fcm.js';
+import {
+  handleCachedConvert, handleCachedStatus, handleCachedDownload,
+  handleCacheCheck, isCacheCheckRoute,
+} from './youtube-cache-handlers.js';
+import { extractPlaylistId, playlistCacheGet, playlistCachePut } from './youtube-cache.js';
 
 export const SERVICE = 'reminiscencia-api';
 export const API_HEADER = 'X-Reminiscencia-Api';
@@ -180,8 +186,11 @@ async function handleCoverIndex(request, env) {
 }
 
 /** Ejecuta en el propio Worker una función de YouTube que no necesita yt-dlp (convert/status/download) y marca la
- *  respuesta (ADR-0038). El cuerpo (también el flujo del WAV) se transmite tal cual. */
-async function youtubeNative(handler, request, fetchImpl) {
+ *  respuesta (ADR-0038). Cache R2 interceptando convert/status/download por videoId cuando aplique (ADR-0052). */
+async function youtubeNative(name, handler, request, env, fetchImpl) {
+  if (name === 'convert') return handleCachedConvert(request, env, (req, opts) => handler(req, opts), { fetchImpl });
+  if (name === 'status')  return handleCachedStatus(request, env, (req, opts) => handler(req, opts), { fetchImpl });
+  if (name === 'download') return handleCachedDownload(request, env, (req, opts) => handler(req, opts), { fetchImpl });
   return markYoutube(await handler(request, { fetchImpl }));
 }
 
@@ -451,6 +460,37 @@ async function handleSubir(request, env, fetchImpl) {
   });
 }
 
+/** Cache R2 de metadatos de playlist (ADR-0052): HIT inmediato si está dentro de TTL. */
+async function tryPlaylistCache(request, env) {
+  if (request.method !== 'GET' || !env?.PUBLIC_BUCKET) return null;
+  const url = new URL(request.url);
+  const playlistId = url.searchParams.get('list') || extractPlaylistId(url.searchParams.get('url') || '');
+  if (!playlistId) return null;
+  const cached = await playlistCacheGet(env.PUBLIC_BUCKET, playlistId);
+  if (!cached) return null;
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Cache': 'HIT',
+    'X-Reminiscencia-Youtube': '1',
+  };
+  return new Response(JSON.stringify({ items: cached.items, playlistId, cachedAt: cached.fetchedAt }), { status: 200, headers });
+}
+
+/** Guarda el resultado de /api/youtube/playlist en R2 tras un 200 (fire-and-forget). */
+async function savePlaylistCache(request, env, response) {
+  if (!env?.PUBLIC_BUCKET || !response.ok) return;
+  const url = new URL(request.url);
+  const playlistId = url.searchParams.get('list') || extractPlaylistId(url.searchParams.get('url') || '');
+  if (!playlistId) return;
+  try {
+    const data = await response.json();
+    const items = Array.isArray(data?.items) ? data.items : null;
+    if (!items || items.length === 0) return;
+    await playlistCachePut(env.PUBLIC_BUCKET, playlistId, items);
+  } catch { /* nada: ya avisa tryPlaylistCache en la siguiente visita */ }
+}
+
 export async function handleRequest(request, env = {}, { fetchImpl = (...args) => globalThis.fetch(...args), ctx = null } = {}) {
   const origin = request.headers.get('origin');
   const path = new URL(request.url).pathname;
@@ -476,9 +516,22 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
     return finish(jsonResponse(429, { ok: false, error: 'Demasiadas peticiones; espera un momento.' }), origin);
   }
   if (path.startsWith(YOUTUBE_PREFIX)) {
+    // Preflight de cache (ADR-0052): endpoint público para que el cliente sepa qué está ya convertido en R2.
+    if (isCacheCheckRoute(path)) {
+      return finish(await handleCacheCheck(request, env), origin);
+    }
     const name = path.slice(YOUTUBE_PREFIX.length);
     const native = Object.prototype.hasOwnProperty.call(YOUTUBE_NATIVE, name) ? YOUTUBE_NATIVE[name] : null;
-    if (native) return finish(await youtubeNative(native, request, fetchImpl), origin);
+    if (native) return finish(await youtubeNative(name, native, request, env, fetchImpl), origin);
+    // Playlist: antes de reenviar al upstream, intenta devolver desde la cache R2 (TTL 24h).
+    if (name === 'playlist') {
+      const playlistCached = await tryPlaylistCache(request, env);
+      if (playlistCached) return finish(playlistCached, origin);
+      const response = await forwardYoutube(request, env, fetchImpl);
+      // Fire-and-forget: tras un 200, guarda la lista en cache.
+      if (ctx?.waitUntil) ctx.waitUntil(savePlaylistCache(request, env, response.clone()).catch(() => {}));
+      return finish(response, origin);
+    }
     return finish(await forwardYoutube(request, env, fetchImpl), origin);
   }
   if (path.startsWith(SPOTIFY_PREFIX)) {
@@ -489,6 +542,10 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
   // Rutas push FCM (ADR-0052): /api/push/health público, /api/push/test con X-Auth.
   if (isPushRoute(path)) {
     return finish(await handlePushRoute(path, request, env), origin);
+  }
+  // Informe de ocupación en R2 (ADR-0052): agrupa tamaño por prefijo para ver el uso del plan gratuito.
+  if (path === '/api/catalogo/storage-report') {
+    return finish(await handleStorageReport(request, env), origin);
   }
   // Rutas del catálogo en R2 (ADR-0052): lectura pública + escritura con X-Auth.
   if (isCatalogRoute(path)) {

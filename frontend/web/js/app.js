@@ -53,7 +53,7 @@ import { applyPendingEdits, createEditTracker, indicatorText as editsIndicatorTe
 import { bindCatalogWorker, dataUrlToBytes, fetchEditStatus, publishBuzon, sendCover, sendOrganize } from './edit-remote.js';
 import { api } from './api-config.js';
 import { createAuthClient, openAuthDialog } from './auth.js';
-import { fetchLatestCatalog, FEATURE_CATALOGO_R2, readStoredEtag, writeStoredEtag, fetchHistorial, watchCatalog } from './catalog-remote.js';
+import { fetchLatestCatalog, FEATURE_CATALOGO_R2, readStoredEtag, writeStoredEtag, readStoredCatalog, writeStoredCatalog, fetchHistorial, watchCatalog } from './catalog-remote.js';
 import { applyCoverIndex, fetchCoverIndex } from './cover-index.js';
 import {
   activeCount,
@@ -1662,9 +1662,19 @@ async function loadPublicCatalog() {
   // Camino nuevo (ADR-0052): el catálogo entero en un GET al Worker, con ETag para 304.
   if (FEATURE_CATALOGO_R2) {
     try {
+      // Cache-first (ADR-0052): si tenemos catálogo guardado en localStorage de la sesión anterior, lo cargamos ya
+      // en memoria para pintar la biblioteca al instante incluso con red lenta o nula. Luego revalidamos con 304.
+      if (!Array.isArray(state.publicSongs) || state.publicSongs.length === 0) {
+        const stored = readStoredCatalog();
+        if (stored) {
+          state.publicSongs = stored.songs;
+          state.publicFolders = stored.folders;
+          state.catalogVersion = stored.version;
+        }
+      }
       // Solo mandamos If-None-Match si YA tenemos el catálogo en memoria. Un 304 sin catálogo local nos dejaría
-      // la biblioteca a 0 canciones (es lo que pasó en producción: la ETag sobrevive en localStorage entre recargas
-      // pero el array de songs no, así que la primera carga de cada sesión tiene que pedir el cuerpo completo).
+      // la biblioteca a 0 canciones; con el cache-first anterior, el catálogo ya está presente tras la primera
+      // visita, así que el If-None-Match es seguro de aquí en adelante.
       const haveLocal = Array.isArray(state.publicSongs) && state.publicSongs.length > 0;
       const etagForRequest = haveLocal ? (readStoredEtag() ?? state.catalogEtag) : null;
       const { catalog, etag, notModified, notMigrated } = await fetchLatestCatalog({ etag: etagForRequest });
@@ -1691,6 +1701,8 @@ async function loadPublicCatalog() {
       state.catalogVersion = Number.isInteger(catalog?.version) ? catalog.version : 0;
       state.catalogEtag = typeof etag === 'string' ? etag : null;
       writeStoredEtag(state.catalogEtag);
+      // Guardamos también el cuerpo entero para servirlo cache-first en la próxima apertura (apertura instantánea).
+      writeStoredCatalog(catalog);
       state.loadError = null;
       return;
     } catch (error) {
@@ -1854,6 +1866,9 @@ async function start() {
           state.catalogEtag = etag;
           writeStoredEtag(etag);
         }
+        // Mantener el storage del catálogo sincronizado con el long-poll para que el próximo arranque también parta
+        // de la versión más reciente conocida.
+        writeStoredCatalog(catalog);
         state.loadError = null;
         try { reconcilePublished(); } catch { /* UI se adapta sola en el siguiente ciclo */ }
         try { rebuildCatalog(); } catch { /* idem */ }

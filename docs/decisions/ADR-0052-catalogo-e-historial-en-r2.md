@@ -277,3 +277,49 @@ Esquema previsto:
 4. Vista web `frontend/web/js/views/admin.js` que lo pinta como dashboard simple (números grandes + un top-5 por prefijo).
 
 Mientras no esté: las métricas se consultan a mano en el dashboard de Cloudflare → R2 → `reminiscencia-audio` → Metrics.
+
+## Ampliación 2026-11-26 — Cache YouTube→Opus en R2
+
+Para evitar reconvertir el mismo vídeo de YouTube en yttowav cada vez que aparece en varias playlists, el Worker cachea el Opus en R2 y reusa el resultado. Sin coste adicional (Cloudflare R2, mismo bucket público).
+
+### Prefijos en `reminiscencia-audio`
+
+- `youtube-cache/opus/<video_id>.opus` — el Opus convertido (`Content-Type: audio/ogg`, Cache-Control `public, max-age=31536000, immutable`).
+- `youtube-cache/meta/<video_id>.json` — `{videoId, title, duration_s, size_bytes, sha256, convertedAt, source: 'yttowav'}`.
+- `youtube-cache/playlist/<playlist_id>.json` — `{playlistId, items, fetchedAt, ttl}` (TTL por defecto 24 h).
+
+### Flujo con cache
+
+1. `POST /api/youtube/convert {url}` → el Worker extrae `videoId` y comprueba R2.
+   - **HIT**: responde al momento `{jobId:"cached:<videoId>", cached:true, source:"cache", estimated_seconds:0}` sin llamar a yttowav.
+   - **MISS**: delega al handler nativo (yttowav) como siempre; tras `handleDownload` exitoso, el Opus se guarda en cache (fire-and-forget con `ctx.waitUntil`).
+2. `GET /api/youtube/status?jobId=cached:<videoId>` → responde `{status:"completed", cached:true, progress:100}` sin tocar yttowav.
+3. `GET /api/youtube/download?jobId=cached:<videoId>` → stream directo desde R2 con cabeceras `X-Cache: HIT`, `X-Cache-Size-Bytes`, `X-Cache-Duration-S`, `X-Cache-Sha256`.
+4. `POST /api/youtube/cache/check {urls}` → batch HEAD a R2, devuelve `{hits, misses, invalid}` para que el cliente sepa antes de la cola qué está ya.
+5. `GET /api/youtube/playlist?list=<id>` → mira R2 primero (`playlist/<id>.json` con TTL 24 h); si no, delega al scraper y guarda.
+
+### Reglas de cacheo
+
+- Solo se cachean vídeos con `duration_s <= 15*60` (900 s). Lo demás no justifica el espacio.
+- No se cachea si el status != `done` o si la descarga falló.
+- Si el put a R2 falla, no bloquea la respuesta (se registra con `console.warn` y seguimos).
+
+### Lifecycle Rules (añadir en el panel R2)
+
+| Prefijo | Transición / expiración |
+|---|---|
+| `youtube-cache/opus/` | **Borrar** a los **180 días** sin acceso. |
+| `youtube-cache/meta/` | Idem (`youtube-cache/opus/`). |
+| `youtube-cache/playlist/` | **Borrar** a los **7 días** (TTL efectivo de la cache). |
+
+### Cliente
+
+- Web: `frontend/web/js/youtube-cache-client.js` expone `youtubeCacheCheck(urls)` para preflight batch.
+- APK: `mobile/lib/youtube_cache_client.dart` idem. La APK, que va **directa a yttowav** (ADR-0045), puede consultar el preflight y **descargar los hits por el Worker** (`/api/youtube/download?jobId=cached:<id>`) saltando yttowav para esos. Para los miss sigue yendo directa a yttowav como antes.
+- Concurrencia recomendada: 8 para hits (GET a R2), 2 para misses (preserva cupo yttowav de 40/día por IP).
+
+### Ganancia medible
+
+- Primera vez para un vídeo: idéntica (yttowav + espera).
+- **Segunda y posteriores (otro usuario / otra playlist que lo incluye): ~2 s en vez de 10-40 s**.
+- Cupo yttowav: 1 llamada por vídeo único, no por re-importación.

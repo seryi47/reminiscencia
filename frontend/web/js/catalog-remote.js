@@ -15,6 +15,11 @@ export const BUZON_PATH = '/api/buzon/publish';
 export const HISTORIAL_PATH = '/api/catalogo/historial';
 export const ROLLBACK_PATH = '/api/catalogo/rollback';
 export const ETAG_STORAGE_KEY = 'reminiscencia.catalog.etag';
+export const BODY_STORAGE_KEY = 'reminiscencia.catalog.body';
+/** Umbral de tamaño del catálogo guardable en localStorage. Por encima, no se guarda el cuerpo (algunos navegadores
+ *  tienen un tope duro de ~5 MB por origen y guardar un catálogo gigante llenaría el storage e impediría guardar
+ *  otras cosas). El ETag sigue guardándose siempre. */
+const MAX_STORED_BODY_BYTES = 3 * 1024 * 1024;
 
 /** Ventana del long-poll que pedimos al Worker en cada iteración (segundos). 25 s está por debajo del tope del
  * Worker (30 s) y por debajo de cualquier timeout razonable de proxy intermedio. */
@@ -104,6 +109,35 @@ export function writeStoredEtag(etag, storage = (() => { try { return globalThis
     else storage.setItem(ETAG_STORAGE_KEY, String(etag));
   } catch {
     // Almacenamiento bloqueado: no pasa nada.
+  }
+}
+
+/** Lee el catálogo completo guardado en localStorage. Devuelve `{version, folders, songs, updated_at}` o null si no hay o
+ *  no es válido. Sirve para pintar la biblioteca al instante al arrancar antes de que llegue la respuesta del Worker. */
+export function readStoredCatalog(storage = (() => { try { return globalThis.localStorage; } catch { return null; } })()) {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(BODY_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.folders) || !Array.isArray(parsed.songs)) return null;
+    if (typeof parsed.version !== 'number') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Guarda el catálogo completo en localStorage (si cabe). null lo borra. Idempotente: no re-serializa el mismo body. */
+export function writeStoredCatalog(catalog, storage = (() => { try { return globalThis.localStorage; } catch { return null; } })()) {
+  if (!storage) return;
+  try {
+    if (catalog === null || catalog === undefined) { storage.removeItem(BODY_STORAGE_KEY); return; }
+    const body = JSON.stringify(catalog);
+    if (body.length > MAX_STORED_BODY_BYTES) { storage.removeItem(BODY_STORAGE_KEY); return; }
+    storage.setItem(BODY_STORAGE_KEY, body);
+  } catch {
+    // Almacenamiento lleno o bloqueado: no pasa nada, la red seguirá sirviendo.
   }
 }
 

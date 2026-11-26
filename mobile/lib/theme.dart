@@ -68,6 +68,23 @@ class AppPalette {
     error: Color(0xFFF3727F),
   );
 
+  /// OLED: negro puro en los fondos (ADR-0052). Los píxeles en negro no encienden la pantalla
+  /// en paneles OLED (muy común en Android), así que un fondo `#000` ahorra batería sin alterar la UI.
+  static const AppPalette oled = AppPalette(
+    black: Color(0xFF000000),
+    background: Color(0xFF000000),
+    card: Color(0xFF0A0A0A),
+    cardPressed: Color(0xFF1E1E1E),
+    elevated: Color(0xFF0A0A0A),
+    ink: Color(0xFFFFFFFF),
+    inkMuted: Color(0xFFB3B3B3),
+    accent: Color(0xFF1FDF64),
+    onAccent: Color(0xFF000000),
+    track: Color(0xFF727272),
+    outline: Color(0xFF2A2A2A),
+    error: Color(0xFFF3727F),
+  );
+
   /// Alto contraste: negro puro, texto secundario casi blanco y bordes visibles.
   static const AppPalette highContrast = AppPalette(
     black: Color(0xFF000000),
@@ -148,8 +165,13 @@ abstract final class AppTypography {
 ThemeData buildAppTheme({
   bool highContrast = false,
   bool reduceMotion = false,
+  bool oledTheme = false,
 }) {
-  final p = highContrast ? AppPalette.highContrast : AppPalette.standard;
+  // Prioridad: alto contraste > OLED > estándar. Alto contraste ya usa negro puro y
+  // tiene sentido mantenerlo por encima para quien lo necesita.
+  final p = highContrast
+      ? AppPalette.highContrast
+      : (oledTheme ? AppPalette.oled : AppPalette.standard);
   final scheme = ColorScheme(
     brightness: Brightness.dark,
     primary: p.accent,

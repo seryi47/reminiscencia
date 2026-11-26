@@ -8,7 +8,18 @@
 
 export const LATEST_JSONL_KEY = 'history/latest.jsonl';
 export const LATEST_ROTATED_PREFIX = 'history/latest-rotado-';
+export const LATEST_ROTATED_SUFFIX = '.jsonl.gz';
 export const LATEST_MAX_LINES = 1000;
+
+/** Comprime un string a `Uint8Array` con gzip usando `CompressionStream`. Devuelve `null` si el entorno no lo soporta
+ *  (p.ej. runtimes de prueba sin Web Streams); el llamante cae a sin comprimir en ese caso. */
+export async function gzipString(text) {
+  if (typeof CompressionStream !== 'function') return null;
+  try {
+    const stream = new Response(new Blob([text])).body.pipeThrough(new CompressionStream('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  } catch { return null; }
+}
 
 const BASE32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -55,10 +66,19 @@ export async function appendEvent(bucket, event, { now = Date.now() } = {}) {
   lines.push(serialized);
   const rotating = lines.length > LATEST_MAX_LINES;
   if (rotating) {
-    // Al rotar, latest.jsonl arranca vacío + línea nueva; la copia histórica se escribe DESPUÉS.
+    // Al rotar, latest.jsonl arranca vacío + línea nueva; la copia histórica se escribe DESPUÉS, comprimida con gzip.
+    // Ahorra ~70 % de espacio (el jsonl se repite mucho; `gzip` sobre contenido textual es muy eficiente).
     await bucket.put(LATEST_JSONL_KEY, `${serialized}\n`, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
-    const rotatedKey = `${LATEST_ROTATED_PREFIX}${ulid(now)}.jsonl`;
-    await bucket.put(rotatedKey, previousText, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
+    const gz = await gzipString(previousText);
+    if (gz) {
+      const rotatedKey = `${LATEST_ROTATED_PREFIX}${ulid(now)}${LATEST_ROTATED_SUFFIX}`;
+      await bucket.put(rotatedKey, gz, {
+        httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8', contentEncoding: 'gzip' },
+      });
+    } else {
+      const rotatedKey = `${LATEST_ROTATED_PREFIX}${ulid(now)}.jsonl`;
+      await bucket.put(rotatedKey, previousText, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
+    }
   } else {
     await bucket.put(LATEST_JSONL_KEY, `${lines.join('\n')}\n`, { httpMetadata: { contentType: 'application/x-ndjson; charset=utf-8' } });
   }

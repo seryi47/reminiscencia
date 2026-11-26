@@ -235,6 +235,43 @@ export function createPlayer(options = {}) {
   // La cola que se ve («A continuación») solo cambia con la secuencia o la posición, no con el tiempo.
   function queueChanged() {
     cachedUpcoming = null;
+    // Cambió la cola: la URL que íbamos a precachear puede ya no ser la siguiente; cancela cualquier prefetch vivo.
+    cancelNextPrefetch();
+  }
+
+  // Prefetch de la siguiente canción (ADR-0052): cuando la actual alcanza el 80 % de reproducción o quedan <=20 s,
+  // disparamos un fetch silencioso de la URL del siguiente tema. El navegador lo mete en su caché HTTP y al pulsar
+  // «siguiente» el <audio> arranca al instante sin esperar a la red. Idempotente por URL y cancelable.
+  let prefetchedUrl = null;
+  let prefetchController = null;
+  function cancelNextPrefetch() {
+    try { if (prefetchController) prefetchController.abort(); } catch { /* ignora */ }
+    prefetchController = null;
+    prefetchedUrl = null;
+  }
+  function prefetchNextAudio() {
+    if (!sourceLoaded || duration <= 0) return;
+    const ratio = position / duration;
+    const remaining = duration - position;
+    if (ratio < 0.8 && remaining > 20) return;
+    const nextEntry = seq[pos + 1];
+    const url = nextEntry?.track?.audioUrl;
+    if (!url || url === prefetchedUrl) return;
+    const FetchCtor = typeof fetch === 'function' ? fetch : null;
+    const AbortCtor = typeof AbortController === 'function' ? AbortController : null;
+    if (!FetchCtor) return;
+    prefetchedUrl = url;
+    prefetchController = AbortCtor ? new AbortCtor() : null;
+    try {
+      FetchCtor(url, {
+        cache: 'default',
+        priority: 'low',
+        ...(prefetchController ? { signal: prefetchController.signal } : {}),
+      }).catch(() => { /* la cancelación por AbortController o cualquier error no debe romper nada */ });
+    } catch {
+      prefetchController = null;
+      prefetchedUrl = null;
+    }
   }
 
   // Factor de volumen por normalización (ADR-0046): 10^(gainDb/20), recortado a 1 porque audio.volume no sube de 1 (solo se
@@ -260,6 +297,8 @@ export function createPlayer(options = {}) {
     stallRetries = 0;
     sourceOnDevice = onDevice(track);
     sourceLoaded = Boolean(track && track.audioUrl);
+    // Al cambiar de fuente el prefetch anterior queda obsoleto: cancela por si el user saltó manualmente.
+    cancelNextPrefetch();
     try {
       if (sourceLoaded) audio.src = track.audioUrl;
       else {
@@ -793,6 +832,7 @@ export function createPlayer(options = {}) {
     const value = Number(audio.currentTime);
     if (Number.isFinite(value)) position = value;
     noteProgress();
+    prefetchNextAudio(); // ADR-0052: precarga del siguiente tema cuando queda poco del actual.
     notify();
   });
   listen('loadedmetadata', onMetadata);
