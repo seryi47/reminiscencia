@@ -6,12 +6,18 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_config.dart';
+import 'auth_store.dart';
 import 'cover_index.dart';
 import 'local_audio.dart';
 import 'offline_downloads.dart';
 import 'song.dart';
+import 'worker_catalog_client.dart';
+
+/// Clave de SharedPreferences donde se guarda el ETag del catálogo entre arranques (ADR-0052).
+const String kCatalogEtagPreferenceKey = 'reminiscencia.catalog.etag';
 
 /// Origen de la biblioteca. La web es la fuente (desde ADR-0034, en Cloudflare: el mismo Worker sirve la web y el API);
 /// la app guarda copias para usarla sin conexión.
@@ -28,11 +34,16 @@ class LibraryData {
     required this.songs,
     required this.folders,
     required this.fromNetwork,
+    this.version = 0,
   });
 
   final List<Song> songs;
   final List<Folder> folders;
   final bool fromNetwork;
+
+  /// Versión del catálogo del Worker cuando se leyó (ADR-0052). 0 si viene del flujo antiguo
+  /// (`data/songs.json` + `data/folders.json`) o de la copia guardada antes de la migración.
+  final int version;
 }
 
 /// Acceso a la biblioteca. La implementación real usa la web y la copia local; en pruebas se usa una falsa.
@@ -63,10 +74,17 @@ class LibraryStore implements LibrarySource {
     http.Client? client,
     ApiRoutes? routes,
     this.concurrency = kOfflineConcurrency,
+    WorkerCatalogClient? catalogClient,
+    Future<SharedPreferences> Function()? prefs,
+    AuthStore? authStore,
   }) : _resolveRoot = root ?? _documentsRoot,
        _client = client ?? http.Client(),
        // ignore: prefer_initializing_formals
-       _routes = routes;
+       _routes = routes,
+       _authStore = authStore ?? SharedPreferencesAuthStore(prefs),
+       _prefsLoader = prefs ?? SharedPreferences.getInstance,
+       // ignore: prefer_initializing_formals
+       _catalogClient = catalogClient;
 
   /// Canciones que se descargan a la vez (ADR-0033).
   final int concurrency;
@@ -77,7 +95,18 @@ class LibraryStore implements LibrarySource {
   final Future<Directory> Function() _resolveRoot;
   final http.Client _client;
   final ApiRoutes? _routes;
+  final Future<SharedPreferences> Function() _prefsLoader;
+  final AuthStore _authStore;
+  WorkerCatalogClient? _catalogClient;
   Directory? _root;
+
+  /// Cliente del Worker para el catálogo (ADR-0052). Se crea perezoso para que las pruebas
+  /// que no lo inyectan no fallen por no tener SharedPreferences cargado.
+  WorkerCatalogClient get _catalog => _catalogClient ??= WorkerCatalogClient(
+    auth: _authStore,
+    client: _client,
+    routes: _routes,
+  );
 
   /// Rutas del API y del audio: las inyectadas o las comunes (que las pruebas cambian por unas sin Worker).
   ApiRoutes get _api => _routes ?? apiRoutes;
@@ -95,12 +124,22 @@ class LibraryStore implements LibrarySource {
     return root;
   }
 
-  /// Lee la biblioteca de Vercel, con el índice de portadas de R2 encima (ADR-0029). Si no hay conexión, usa la
-  /// última copia guardada. La copia solo se reemplaza cuando la respuesta es válida: un JSON roto no borra la copia
-  /// buena. Si el índice no se puede leer, vale el último guardado (solo crece).
+  /// Lee la biblioteca. Desde ADR-0052 el camino principal es `/api/catalogo/latest` del Worker (fuente de
+  /// verdad en R2, con ETag persistido entre arranques para ahorrar tráfico con `If-None-Match → 304`). Si el
+  /// Worker no responde o aún no está migrado (503), cae al flujo antiguo (`data/songs.json` + `data/folders.json`
+  /// + índice de portadas de R2) para seguir funcionando. La copia local solo se reemplaza cuando la respuesta
+  /// es válida.
   @override
   Future<LibraryData> load() async {
     final dir = await _dir();
+    // Camino nuevo (Worker/R2): si funciona, devolvemos su resultado y actualizamos la copia local.
+    try {
+      final fromWorker = await _loadFromWorker(dir);
+      if (fromWorker != null) return fromWorker;
+    } catch (error) {
+      debugPrint('catalogo: Worker falló, pruebo el flujo antiguo: $error');
+    }
+    // Fallback: el flujo antiguo con songs.json + folders.json + portadas.
     final songsFile = File('${dir.path}/songs.json');
     final foldersFile = File('${dir.path}/folders.json');
     final indexFile = File('${dir.path}/portadas.json');
@@ -142,12 +181,79 @@ class LibraryStore implements LibrarySource {
     }
   }
 
+  /// Lee el catálogo del Worker (ADR-0052): manda `If-None-Match` con el ETag persistido y, si el servidor
+  /// devuelve 304, reusa la copia local sin bajar nada; si devuelve 200 guarda la copia y el ETag nuevos. Null
+  /// cuando no hay copia local y el servidor dice 304 (no debería pasar; el caller cae al flujo antiguo).
+  Future<LibraryData?> _loadFromWorker(Directory dir) async {
+    final catalogFile = File('${dir.path}/catalog.json');
+    final prefs = await _prefsLoader();
+    final storedEtag = prefs.getString(kCatalogEtagPreferenceKey) ?? '';
+    final latest = await _catalog.getLatest(ifNoneMatch: storedEtag);
+    if (latest == null) {
+      // 304: la copia local sigue siendo válida.
+      if (!await catalogFile.exists()) return null;
+      return _parseCatalog(await catalogFile.readAsString(), fromNetwork: true);
+    }
+    final jsonText = jsonEncode(latest.body);
+    await catalogFile.writeAsString(jsonText, flush: true);
+    if (latest.etag.isNotEmpty) {
+      await prefs.setString(kCatalogEtagPreferenceKey, latest.etag);
+    }
+    return _parseCatalog(jsonText, fromNetwork: true);
+  }
+
+  LibraryData _parseCatalog(String body, {required bool fromNetwork}) {
+    final json = jsonDecode(body);
+    if (json is! Map) {
+      throw const FormatException('catálogo con formato inesperado');
+    }
+    final versionRaw = json['version'];
+    final version = versionRaw is num ? versionRaw.toInt() : 0;
+    final songsJson = (json['songs'] as List?) ?? const [];
+    final foldersJson = (json['folders'] as List?) ?? const [];
+    final songs = [
+      for (final entry in songsJson)
+        if (entry is Map)
+          Song.fromJson(_withDefaultAudio(entry.cast<String, dynamic>())),
+    ];
+    final folders = [
+      for (final entry in foldersJson)
+        if (entry is Map) Folder.fromJson(entry.cast<String, dynamic>()),
+    ];
+    return LibraryData(
+      songs: songs,
+      folders: folders,
+      fromNetwork: fromNetwork,
+      version: version,
+    );
+  }
+
+  /// El catálogo del Worker no siempre trae `audio` (la canción vive en R2 bajo `audio/<id>.opus`);
+  /// completarlo aquí evita tocar `Song.fromJson`.
+  Map<String, dynamic> _withDefaultAudio(Map<String, dynamic> raw) {
+    if (raw['audio'] is String && (raw['audio'] as String).isNotEmpty) return raw;
+    final id = raw['id'];
+    if (id is String && id.isNotEmpty) {
+      return {...raw, 'audio': 'audio/$id.opus'};
+    }
+    return raw;
+  }
+
   /// Copia guardada en el teléfono, sin tocar la red, para mostrarla AL INSTANTE al abrir la app (arranque cache-first,
   /// ADR-0036/0046): así no se "piensa" unos segundos esperando a la red. Devuelve null si aún no hay nada guardado
   /// (primera vez). Luego [load] refresca desde la web en segundo plano.
   Future<LibraryData?> loadSaved() async {
     try {
       final dir = await _dir();
+      // Primero la copia del catálogo nuevo (ADR-0052), que trae versión.
+      final catalogFile = File('${dir.path}/catalog.json');
+      if (await catalogFile.exists()) {
+        return _parseCatalog(
+          await catalogFile.readAsString(),
+          fromNetwork: false,
+        );
+      }
+      // Si no, la copia del flujo antiguo.
       final songsFile = File('${dir.path}/songs.json');
       if (!await songsFile.exists()) return null;
       final foldersFile = File('${dir.path}/folders.json');
