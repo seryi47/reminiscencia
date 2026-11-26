@@ -522,6 +522,8 @@ describe('cobertura de SHELL_ASSETS', () => {
     '/js/cuidador/subida-estado.js',
     '/js/cuidador/subida-zip.js',
     '/js/cuidador/zip.js',
+    // Helper del preflight de cache YouTube (ADR-0052): se importa bajo demanda desde homeostasia, no en el shell inicial.
+    '/js/youtube-cache-client.js',
   ]);
 
   test('incluye todas las hojas, fuentes, módulos no-lazy, datos e iconos (los lazy no van al shell)', () => {

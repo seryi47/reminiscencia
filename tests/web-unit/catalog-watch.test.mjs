@@ -103,10 +103,11 @@ describe('watchCatalog (ADR-0052)', () => {
       waitTimeoutS: 1,
       fallbackIntervalMs: 60_000,
     });
-    // Deja que arranque y se quede esperando.
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    doc.set('hidden');
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Deja que arranque y se quede esperando (poll hasta 500 ms para robustez en CI con carga).
+    for (let i = 0; i < 50 && !aborted; i++) {
+      if (i === 10) doc.set('hidden'); // al cabo de ~100 ms, cuando el loop seguro está dentro del fetch.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     assert.equal(aborted, true, 'el fetch en curso debía abortar al ocultarse la pestaña');
     await watcher.stop();
   });

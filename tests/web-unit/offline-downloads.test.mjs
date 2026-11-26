@@ -80,7 +80,9 @@ function fakeNetwork() {
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 async function settle() {
-  for (let i = 0; i < 5; i += 1) await tick();
+  // Ventana amplia (antes 5): en suite completa el event loop está cargado y las microtareas internas del
+  // gestor (start → async IIFE → pump → run) tardan más en resolverse. 30 ticks es sobrado en aislado y robusto en CI.
+  for (let i = 0; i < 30; i += 1) await tick();
 }
 
 function setup({ cached = [], storage = new MemoryStorage(), concurrency, retries = 0 } = {}) {

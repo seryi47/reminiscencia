@@ -84,11 +84,12 @@ import { refreshSearchResults, renderSearch } from './views/search.js';
 import { downloadState, paintDownloadButton, renderCollection } from './views/collection.js';
 import { libraryPanel, renderLibraryPage, renderSection } from './views/library.js';
 import { mountPlayerUi } from './views/player-ui.js';
-import { askDuplicate } from './views/upload.js';
 // Hojas modales cargadas BAJO DEMANDA (ADR-0049): solo se ejecuta la descarga/parse cuando el usuario toca el botón
 // correspondiente. Ahorro de ~37 KB gzip + 4 peticiones en el primer paint. Tras el primer click se queda en caché del
 // service worker y el segundo abrir es instantáneo.
 const lazyOpenUpload = (ctx) => import('./views/upload.js').then((m) => m.openUploadSheet(ctx));
+// askDuplicate vive en views/upload.js (lazy). Se usa bajo demanda en el flujo de subida, por eso import dinámico.
+const askDuplicate = (arg) => import('./views/upload.js').then((m) => m.askDuplicate(arg));
 const lazyOpenHomeostasia = (ctx) => import('./views/homeostasia.js').then((m) => m.openHomeostasiaSheet(ctx));
 const lazyOpenRecognize = (ctx) => import('./views/recognize.js').then((m) => m.openRecognizeSheet(ctx));
 const lazyOpenTransferir = (ctx) => import('./views/transferir.js').then((m) => m.openTransferirSheet(ctx));

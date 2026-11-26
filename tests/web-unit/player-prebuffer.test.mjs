@@ -44,30 +44,32 @@ let abortCalls = 0;
 let originalFetch;
 let originalAbortController;
 
-beforeEach(() => {
-  fetchCalls = [];
-  abortCalls = 0;
-  originalFetch = globalThis.fetch;
-  originalAbortController = globalThis.AbortController;
-  globalThis.AbortController = class {
-    constructor() { this.signal = { aborted: false, parent: this }; }
-    abort() { abortCalls += 1; this.signal.aborted = true; }
-  };
-  globalThis.fetch = (url, init) => {
-    fetchCalls.push({ url, init });
-    return Promise.resolve({ ok: true, status: 200 });
-  };
-});
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-  globalThis.AbortController = originalAbortController;
-});
-
 const A = track('a');
 const B = track('b');
 const C = track('c');
 
 describe('prebuffer de la siguiente canción', () => {
+  // Los hooks SE MOVIERON DENTRO del describe para que solo afecten a este bloque y no contaminen otros
+  // ficheros del test runner cuando se cargan en el mismo proceso (p. ej. tests que usan AbortController real).
+  beforeEach(() => {
+    fetchCalls = [];
+    abortCalls = 0;
+    originalFetch = globalThis.fetch;
+    originalAbortController = globalThis.AbortController;
+    globalThis.AbortController = class {
+      constructor() { this.signal = { aborted: false, parent: this }; }
+      abort() { abortCalls += 1; this.signal.aborted = true; }
+    };
+    globalThis.fetch = (url, init) => {
+      fetchCalls.push({ url, init });
+      return Promise.resolve({ ok: true, status: 200 });
+    };
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    globalThis.AbortController = originalAbortController;
+  });
+
   test('al pasar el 80 % de la actual se precarga la siguiente', () => {
     const { audio, player } = setup();
     player.load([A, B], 0, { autoplay: false });
