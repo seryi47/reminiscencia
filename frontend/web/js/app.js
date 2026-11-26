@@ -1661,9 +1661,12 @@ async function loadPublicCatalog() {
   // Camino nuevo (ADR-0052): el catálogo entero en un GET al Worker, con ETag para 304.
   if (FEATURE_CATALOGO_R2) {
     try {
-      const { catalog, etag, notModified, notMigrated } = await fetchLatestCatalog({
-        etag: readStoredEtag() ?? state.catalogEtag,
-      });
+      // Solo mandamos If-None-Match si YA tenemos el catálogo en memoria. Un 304 sin catálogo local nos dejaría
+      // la biblioteca a 0 canciones (es lo que pasó en producción: la ETag sobrevive en localStorage entre recargas
+      // pero el array de songs no, así que la primera carga de cada sesión tiene que pedir el cuerpo completo).
+      const haveLocal = Array.isArray(state.publicSongs) && state.publicSongs.length > 0;
+      const etagForRequest = haveLocal ? (readStoredEtag() ?? state.catalogEtag) : null;
+      const { catalog, etag, notModified, notMigrated } = await fetchLatestCatalog({ etag: etagForRequest });
       if (notModified) {
         // 304: no cambió; mantenemos lo que ya hay. El ETag lo refrescamos por si el servidor lo renumeró.
         if (typeof etag === 'string' && etag !== '') {

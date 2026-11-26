@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -10,7 +9,6 @@ import 'package:reminiscencia/api_config.dart';
 import 'package:reminiscencia/auth_store.dart';
 import 'package:reminiscencia/local_audio.dart';
 import 'package:reminiscencia/shared_upload.dart';
-import 'package:reminiscencia/song.dart';
 import 'package:reminiscencia/upload_tracker.dart';
 import 'package:reminiscencia/worker_catalog_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,9 +20,9 @@ import 'support/fakes.dart';
 /// reintenta y acaba `published`; sin `workerCatalog` → cae al polling del catálogo antiguo.
 
 class _Converter implements AudioConverter {
-  _Converter({this.bytes = 20, this.durationS = 7});
-  final int bytes;
-  final double durationS;
+  _Converter();
+  final int bytes = 20;
+  final double durationS = 7;
   @override
   Future<ConvertedAudio> convert({
     required String inputPath,
