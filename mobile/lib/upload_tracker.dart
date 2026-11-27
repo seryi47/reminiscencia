@@ -557,6 +557,10 @@ class UploadTracker extends ChangeNotifier {
   bool _disposed = false;
   Timer? _timer;
 
+  /// ADR-0052 cierre de causa raíz (2026-11-27): cola FIFO de publicaciones al catálogo. Solo 1 POST
+  /// /api/buzon/publish en vuelo a la vez para evitar que la ráfaga choque con 412 por if_match stale.
+  Future<void> _publishChain = Future<void>.value();
+
   /// Trabajo lanzado sin esperar (comprobaciones de publicación y escrituras del estado) que no ha terminado.
   final Set<Future<void>> _background = {};
 
@@ -1005,7 +1009,13 @@ class UploadTracker extends ChangeNotifier {
       // se cae al polling del catálogo antiguo (compat con configuraciones sin Worker).
       final catalog = workerCatalog;
       if (catalog != null && item.sha256 != null) {
-        _inBackground(_publishToWorker(catalog, entry, item));
+        // Serializar la publicación: solo 1 POST /api/buzon/publish en vuelo. Entre publicaciones
+        // hay un pequeño respiro (100 ms) para no saturar al Worker con ráfagas.
+        _publishChain = _publishChain.then((_) async {
+          await _publishToWorker(catalog, entry, item);
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        });
+        _inBackground(_publishChain);
       } else {
         _inBackground(
           baseline.then((ids) {

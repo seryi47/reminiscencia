@@ -47,6 +47,7 @@ import {
   saveUploadCopy,
 } from './cuidador/subida-local.js';
 import { sendOpusSmart } from './cuidador/subida-publica.js';
+import { sha256Hex as sha256HexWeb } from './cuidador/subida-presigned.js';
 import { expandSelection } from './cuidador/subida-zip.js';
 import { duplicateMessage, findUploadDuplicates } from './duplicates.js';
 import { applyPendingEdits, createEditTracker, indicatorText as editsIndicatorText, STATES as EDIT_STATES } from './edit-pending.js';
@@ -1432,6 +1433,25 @@ function createUploads({ authFetch = null } = {}) {
         authFetch, fetchImpl: target.fetch, chunkBytes: target.chunkBytes,
       });
     },
+    // ADR-0052 cierre de causa raíz (2026-11-27): tras subir el Opus al bucket, publicamos al catálogo con
+    // POST /api/buzon/publish. Antes lo hacía buzon.yml (retirado). Si falla, el polling actual cubre.
+    publishToCatalog: FEATURE_CATALOGO_R2 && typeof authFetch === 'function'
+      ? async ({ bytes, sha256, sizeBytes, item, converted }) => {
+          const hash = sha256 ?? (bytes ? await sha256HexWeb(bytes) : null);
+          if (!hash) return;
+          const payload = {
+            sha256: hash,
+            title: item.title,
+            duration_s: converted?.durationS ?? null,
+            size_bytes: sizeBytes ?? (bytes?.length ?? null),
+            codec: 'opus',
+            source: 'web-buzon',
+            ...(item.artist ? { artist: item.artist } : {}),
+            ...(item.album?.id ? { folder_id: item.album.id } : {}),
+          };
+          await publishBuzon([payload]);
+        }
+      : null,
     fetchSongs: FEATURE_CATALOGO_R2
       // Camino nuevo: lee /api/catalogo/latest (del Worker), devuelve solo el array songs; mismo contrato que tenía
       // songsFetcher (lista plana de canciones) para que la máquina de estados del buzón no cambie.

@@ -343,3 +343,22 @@ Tras el día grande (6 forks de implementación + 5 de aceleración + limpieza f
 - **Suites**: Worker 107+/+, web-unit 1295/1295, backend 867/867, Flutter 757/757.
 - **Deadcode pendiente**: el ramal legacy de `/api/subir` del Worker sigue ahí porque hay tests que validan su contrato. Retirarlo exige modificar también los tests. **Decisión intencionada** de no tocar hoy, documentada en el comentario de `worker/src/index.js` sobre `GITHUB_TOKEN`.
 - **Pendiente del usuario** (acciones manuales, opcionales, no bloqueantes): tags/releases huérfanos, lifecycle rules en el panel R2, borrar secreto `GITHUB_TOKEN` del Worker. Todo está en `~/Desktop/reminiscencia-limpieza-pendiente-2026-11-27.md` con comandos listos para copiar.
+
+## Cierre de causa raíz — subidas atascadas (2026-11-27)
+
+**Bug**: una ráfaga de 137 subidas de YouTube el 2026-11-26 noche quedaron en el bucket privado `entrada/<uuid>/` sin aparecer en el catálogo. La web mostraba 56 "Publicándose… / tarde" durante horas.
+
+**Por qué**: el camino legacy `/api/subir` del Worker dejaba los chunks en `entrada/` esperando a que `buzon.yml` los publicara al catálogo. Ese workflow se retiró en este mismo ADR, pero el cliente web nunca cableó la llamada equivalente a `POST /api/buzon/publish`. Mientras `/api/subir` siguió aceptando subidas, cualquier upload que no pasara por el camino presigned nuevo quedaba huérfano.
+
+**Rescate puntual**: `scripts/rescatar_subidas_atascadas.py` (commit `2603db1`). Combinó los chunks, calculó sha256, extrajo duración, movió a `audio/<song_id>.opus` del bucket público y publicó una a una contra `/api/buzon/publish` serialmente. 137/137 recuperadas, 0 errores. Catálogo v8 → v9, 674 → 811 canciones.
+
+**Fix de la causa raíz** (commit v1.4.45):
+- `frontend/web/js/cuidador/subida-estado.js::createUploadTracker` acepta un `publishToCatalog(payload)` nuevo. Tras el último trozo exitoso de cada subida (tanto presigned como chunked legacy), el tracker encola la publicación en una **cola FIFO** (`publishChain`): una sola en vuelo, con `publishSpacingMs` (150 ms por defecto) entre publicaciones. Así N subidas concurrentes dejan de chocar con 412 por `if_match` stale.
+- `frontend/web/js/app.js::createUploads` pasa el callback real, usando `publishBuzon` de `edit-remote.js` (ya existente). Calcula el `sha256` con Web Crypto si el camino no lo trae (presigned sí lo trae), y propaga `duration_s/channels/bitrate/title/album/artist`.
+- APK (`mobile/lib/upload_tracker.dart`): ya publicaba contra el Worker desde el día F del ADR, pero lo hacía en paralelo con `_inBackground`. Añadida la misma cola FIFO (`_publishChain`) con espaciado 100 ms. Mismo bug, misma solución.
+
+**Red de seguridad**: si `publishToCatalog` lanza, el polling antiguo del tracker sigue vigente y detecta la canción en cuanto aparezca en el catálogo. Si ni el Worker la ve ni el polling la encuentra, cae a SLOW como antes.
+
+**Herramientas permanentes**: los 3 endpoints admin añadidos por el rescate (`entradas-pendientes`, `rescate/preparar`, `rescate/finalizar` en `worker/src/rescate.js`) quedan como forma de recuperar manualmente cualquier upload que vuelva a quedar huérfano. Autenticados con `X-Auth`.
+
+**Recomendación futura**: retirar entero `/api/subir` del Worker cuando se confirme que ninguna APK anterior a 1.4.31 sigue en uso. El camino presigned + `/api/buzon/publish` es suficiente desde 1.4.31. Esto también permitirá borrar el secreto `GITHUB_TOKEN` del Worker.

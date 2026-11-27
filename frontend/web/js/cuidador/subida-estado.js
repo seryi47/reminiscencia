@@ -476,6 +476,12 @@ export function createUploadTracker(deps = {}) {
     currentIds = () => [],
     onCopy = () => {},
     onPublished = () => {},
+    // ADR-0052 cierre de causa raíz (2026-11-27): tras subir el Opus, el cliente debe llamar a POST
+    // /api/buzon/publish para que el Worker añada la canción al catálogo. Antes lo hacía buzon.yml, retirado.
+    // Si publishToCatalog es null, el tracker se comporta como antes (polling y, si nadie publica, SLOW).
+    // El contrato recibido es { bytes, sha256?, sizeBytes?, item: { title, serverName, album, artist },
+    // converted: { durationS, channels, bitrate } }.
+    publishToCatalog = null,
     storage = null,
     now = () => Date.now(),
     setTimer = (fn, ms) => setTimeout(fn, ms),
@@ -487,7 +493,12 @@ export function createUploadTracker(deps = {}) {
     slowPollMs = SLOW_POLL_MS,
     maxWaitMs = MAX_WAIT_MS,
     savedPauseMs = SAVED_PAUSE_MS,
+    // Pequeño delay entre publicaciones para que no choquen entre sí con 412 cuando hay ráfagas.
+    publishSpacingMs = 150,
   } = deps;
+
+  // Cola FIFO de publicaciones al catálogo. Solo 1 en vuelo a la vez (ADR-0052: evita 412 por if_match stale).
+  let publishChain = Promise.resolve();
 
   const entries = []; // { item, file, bytes, run, uploadId }
   const listeners = new Set();
@@ -593,6 +604,12 @@ export function createUploadTracker(deps = {}) {
         });
         if (!current(entry, run) || entry.item.state !== S.CONVERTING) return false;
         bytes = converted.bytes;
+        // Guardamos los metadatos del Opus para la publicación al catálogo tras el último trozo.
+        entry.converted = {
+          durationS: converted.durationS,
+          channels: converted.channels,
+          bitrate: converted.bitrate,
+        };
         if (!entry.item.localId) {
           try {
             const song = await saveCopy({ title: entry.item.title, ...converted });
@@ -616,7 +633,8 @@ export function createUploadTracker(deps = {}) {
     return dispatch(entry, { type: 'converted', localId: entry.item.localId }) || entry.item.state === S.SENDING;
   }
 
-  /** Envía una subida preparada, trozo a trozo, y la deja «Guardada». */
+  /** Envía una subida preparada, trozo a trozo, y la deja «Guardada». Si hay publishToCatalog, encola la
+   *  publicación al catálogo tras el último trozo (ADR-0052 cierre de causa raíz). */
   async function transmit(entry, run) {
     const result = await send(entry.bytes, {
       fileName: entry.item.name,
@@ -628,11 +646,39 @@ export function createUploadTracker(deps = {}) {
       },
     });
     if (!current(entry, run)) return;
+    // Snapshot de lo necesario para publicar al catálogo antes de soltar bytes.
+    const publishPayload = publishToCatalog ? {
+      bytes: entry.bytes,
+      sha256: result?.sha256 ?? null,
+      sizeBytes: result?.tamanio ?? (entry.bytes?.length ?? null),
+      item: {
+        title: entry.item.title,
+        serverName: result?.nombre ?? entry.item.name,
+        album: entry.item.album,
+        artist: entry.item.artist,
+      },
+      converted: entry.converted,
+    } : null;
     dispatch(entry, { type: 'saved', serverName: result?.nombre, at: now(), knownIds: entry.knownIds });
     // Ya está en el servidor: no hace falta conservar el archivo (ni el ZIP del que sale) ni los bytes.
     entry.file = null;
     entry.bytes = null;
     entry.knownIds = null;
+    if (publishPayload) {
+      // Encolamos la publicación en FIFO: solo 1 en vuelo, con espaciado publishSpacingMs.
+      publishChain = publishChain
+        .then(async () => {
+          try {
+            await publishToCatalog(publishPayload);
+          } catch (error) {
+            // No propagamos: si falla, el polling detectará la canción cuando aparezca o la marcará SLOW.
+            console.warn('Reminiscencia: no se ha podido publicar al catálogo tras subir.', error);
+          }
+          if (publishSpacingMs > 0) {
+            await new Promise((resolve) => setTimer(resolve, publishSpacingMs));
+          }
+        });
+    }
     const timer = setTimer(() => {
       pauseTimers.delete(timer);
       dispatch(entry, { type: 'publishing' });
