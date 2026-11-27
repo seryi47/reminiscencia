@@ -1125,10 +1125,6 @@ function homeostasiaPanel(ctx, close) {
       // Dedup contra la biblioteca ANTES de convertir (ADR-0019 ampliado + ADR-0046): si parte de la playlist ya la
       // tienes, preguntamos si saltamos lo que coincide o lo bajamos igual (para una versión alterna).
       const dedup = filterYoutubePlaylist(items, ctx.librarySongs?.() ?? []);
-      // Records 'queued' huérfanos: si la biblioteca ya no tiene la canción (porque se eliminó después), el store
-      // antiguo hacía que `convertirCancion` lo saltara en silencio (processed=1, files=0, errors=0). Los purgamos
-      // aquí antes de convertir, para que el vídeo vuelva a bajarse como si fuera nuevo.
-      forgetOrphanedQueuedRecords(dedup.toDownload);
       let itemsToConvert = dedup.toDownload;
       if (dedup.alreadyCount > 0 && dedup.newCount < dedup.total) {
         const choice = await askPlaylistDedupChoice(dedup);
@@ -1142,6 +1138,11 @@ function homeostasiaPanel(ctx, close) {
         status.textContent = 'Nada nuevo que descargar: la playlist ya está en tu biblioteca.';
         return;
       }
+      // Records 'queued' huérfanos (2026-11-27): si la biblioteca ya no tiene la canción (se eliminó después)
+      // o el usuario pide re-bajarla ("bajar todo igual"), el store antiguo hacía que `convertirCancion` la
+      // saltara en silencio y reportaba "processed=1, files=0, errors=0". Purgamos los records de TODO lo que
+      // vamos a convertir —independientemente del camino del dedup— para que la descarga arranque de cero.
+      forgetOrphanedQueuedRecords(itemsToConvert);
 
       status.textContent =
         `Se han encontrado ${items.length} canciones (${itemsToConvert.length} nuevas). Iniciando conversiones…`;
