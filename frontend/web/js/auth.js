@@ -232,7 +232,9 @@ export async function openAuthDialog() {
           spellcheck: 'false',
           'aria-label': 'Contraseña del Worker',
         });
-        input.addEventListener('input', () => { value = input.value; });
+        const errorNote = el('p', { class: 'dialog-text', style: 'color:#ff6b6b; display:none;', 'data-testid': 'auth-error' }, '');
+        const setError = (msg) => { errorNote.textContent = msg; errorNote.style.display = msg ? 'block' : 'none'; };
+        input.addEventListener('input', () => { value = input.value.trim(); if (value) setError(''); });
         const pasteButton = el('button', {
           type: 'button',
           class: 'button button-light',
@@ -240,13 +242,16 @@ export async function openAuthDialog() {
         }, 'Pegar desde el portapapeles');
         pasteButton.addEventListener('click', async () => {
           try {
-            const text = await navigator.clipboard.readText();
+            const text = (await navigator.clipboard.readText()).trim();
             if (isValidAuth(text)) {
               input.value = text;
               value = text;
+              setError('');
+            } else {
+              setError('Lo del portapapeles no parece una contraseña válida.');
             }
           } catch {
-            // Sin permiso o sin API de portapapeles: el usuario puede escribirla a mano.
+            setError('Este navegador no deja leer el portapapeles. Pégala a mano con Cmd+V en el campo.');
           }
         });
         const saveButton = el('button', {
@@ -255,7 +260,9 @@ export async function openAuthDialog() {
           'data-testid': 'auth-save',
         }, 'Guardar');
         saveButton.addEventListener('click', () => {
-          if (isValidAuth(value)) resolve(value);
+          const final = (value || input.value || '').trim();
+          if (isValidAuth(final)) { resolve(final); return; }
+          setError(final ? 'La contraseña no tiene el formato esperado.' : 'Pega o escribe la contraseña antes de guardar.');
         });
         const cancelButton = el('button', {
           type: 'button',
@@ -266,6 +273,7 @@ export async function openAuthDialog() {
         body.append(
           el('p', { class: 'dialog-text' }, 'La contraseña del catálogo protege las ediciones y las publicaciones. Se guarda en este navegador y no se te pedirá otra vez.'),
           input,
+          errorNote,
           el('div', { class: 'dialog-actions' }, pasteButton, saveButton, cancelButton),
         );
       },
