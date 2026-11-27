@@ -51,7 +51,7 @@ def read_auth_password() -> str:
 
 
 def read_current_version() -> int:
-    req = urllib.request.Request(CATALOG_URL, headers={"Cache-Control": "no-store"})
+    req = urllib.request.Request(CATALOG_URL, headers={"Cache-Control": "no-store", "User-Agent": "reminiscencia-aplicar-borrado/1.0"})
     with urllib.request.urlopen(req, timeout=15) as response:
         data = json.loads(response.read().decode("utf-8"))
     return int(data["version"])
@@ -72,6 +72,7 @@ def delete_one(song_id: str, auth: str, if_match: int) -> tuple[bool, int, str]:
             "Content-Type": "application/json",
             "X-Auth": auth,
             "X-Actor": "duplicados-cli",
+            "User-Agent": "reminiscencia-aplicar-borrado/1.0",
         },
     )
     try:
