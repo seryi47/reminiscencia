@@ -259,6 +259,30 @@ export async function openLocalLibrary(env = {}) {
         if (list.songIds.includes(songId)) await savePlaylist({ ...list, songIds: removeSongId(list.songIds, songId), updatedAt: now() });
       }
     },
+    /** Purga «Me gusta» y canciones en listas cuya id ya no está en el catálogo (otra sesión/APK la borró). Devuelve
+     *  la cuenta de ids purgados (likes + apariciones en listas). Pensado para llamarse tras cada actualización del
+     *  catálogo (cf. app.js:onCatalog). Si `validIds` es un Set vacío, no hace nada (evita vaciar la biblioteca por
+     *  error en un bootstrap sin catálogo cargado). */
+    async pruneOrphans(validIds) {
+      const valid = validIds instanceof Set ? validIds : new Set(Array.isArray(validIds) ? validIds : []);
+      if (valid.size === 0) return 0;
+      let purged = 0;
+      const likes = await backend.getAll(LIKES);
+      for (const record of likes) {
+        if (record?.songId && !valid.has(record.songId)) {
+          await backend.delete(LIKES, record.songId);
+          purged += 1;
+        }
+      }
+      for (const list of await listPlaylists()) {
+        const next = list.songIds.filter((id) => valid.has(id));
+        if (next.length !== list.songIds.length) {
+          purged += list.songIds.length - next.length;
+          await savePlaylist({ ...list, songIds: next, updatedAt: now() });
+        }
+      }
+      return purged;
+    },
     /**
      * Cambia una canción por otra en «Me gusta» y en las listas, sin repetirla (por ejemplo, la copia local de una
      * subida por la canción pública cuando se publica). Conserva la fecha del «Me gusta» y el orden de las listas.

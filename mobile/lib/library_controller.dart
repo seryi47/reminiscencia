@@ -42,6 +42,7 @@ class LibraryController extends ChangeNotifier {
     PendingEditsStore? editsStore,
     EditTimerFactory? editTimer,
     this.workerCatalog,
+    this.onCatalogRefreshed,
   }) : _clock = clock ?? DateTime.now {
     _lastSongId = playback.nowPlaying.value.songId;
     playback.nowPlaying.addListener(_onNowPlayingChanged);
@@ -100,6 +101,11 @@ class LibraryController extends ChangeNotifier {
 
   /// Cliente del catálogo en el Worker (ADR-0052). Pasado al [uploads] para publicar canciones del buzón al instante.
   final WorkerCatalogClient? workerCatalog;
+
+  /// Callback opcional: se invoca tras cada sincronización REAL (de red) con el conjunto de song.ids válidos.
+  /// Se usa para purgar favoritos y canciones en listas cuyo id ya no está en el catálogo (otra sesión/web la
+  /// eliminó). Idempotente y silencioso; no debe lanzar.
+  final void Function(Set<String> validSongIds)? onCatalogRefreshed;
 
   /// Estado de cada subida hasta que se publica. Sus canciones provisionales están en [songs] y [recentSongs].
   late final UploadTracker uploads;
@@ -331,6 +337,17 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
     // Reconciliación ligera de subidas pendientes (como hace _sync).
     uploads.reconcile(data.songs);
+    // Purga de favoritos y listas (hardening 2026-11-27): el long-poll puede traernos una versión sin X porque
+    // otra sesión la eliminó. Idempotente y silencioso; el tracker de subidas no se purga aquí (su clearPublished
+    // ya lo gestiona manualmente y evitamos colisionar con flujos que publican justo antes de este callback).
+    final callback = onCatalogRefreshed;
+    if (callback != null) {
+      final valid = <String>{
+        ...data.songs.map((song) => song.id),
+        ..._localSongs.map((song) => song.id),
+      };
+      try { callback(valid); } catch (error) { debugPrint('biblioteca: onCatalogRefreshed falló: $error'); }
+    }
   }
 
   int _version = 0;
@@ -412,6 +429,17 @@ class LibraryController extends ChangeNotifier {
       await _pruneAudio();
       await _pruneCovers();
       if (_offlineWanted) await _downloadInBackground();
+      // Purga de huérfanos (hardening 2026-11-27): callback limpia favoritos y listas con el catálogo recién
+      // sincronizado. El tracker de subidas tiene su propio ciclo (clearPublished); no se purga aquí para no
+      // colisionar con el flujo onPublished → load() que trae un catálogo aún sin la nueva canción.
+      final callback = onCatalogRefreshed;
+      if (callback != null) {
+        final valid = <String>{
+          ...data.songs.map((song) => song.id),
+          ..._localSongs.map((song) => song.id),
+        };
+        try { callback(valid); } catch (error) { debugPrint('biblioteca: onCatalogRefreshed falló: $error'); }
+      }
     }
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -244,6 +246,8 @@ Future<void> deleteSongFlow(
     services,
     LibraryRequest.deleteSong(songId: song.id),
   );
+  // Al eliminar, quita su id de favoritos y listas para no dejar referencias rotas (hardening 2026-11-27).
+  unawaited(services.collections.forgetSong(song.id));
 }
 
 /// «Eliminar álbum» (delete_folder): pide confirmación y borra la carpeta. Las canciones NO se borran: quedan sueltas

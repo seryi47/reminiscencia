@@ -112,6 +112,9 @@ Future<void> _bootstrap(ErrorLog? errorLog) async {
     uploadsStore: UploadsStore(),
     // Con el Worker cableado (ADR-0052), tras cada canción subida se publica al instante en el catálogo R2.
     workerCatalog: workerCatalog,
+    // Tras cada sync real, purga favoritos y canciones en listas cuyo id ya no está en el catálogo (otra sesión
+    // o la web la eliminaron). Idempotente y silencioso (hardening 2026-11-27).
+    onCatalogRefreshed: (validIds) => unawaited(collections.pruneOrphans(validIds)),
   );
   // Tiempo real sin coste (ADR-0052): long-poll a /api/catalogo/wait → applyRemoteCatalog cada vez que el
   // Worker nos avisa de un cambio. Se pausa solo cuando la app pasa a background con AppLifecycleListener.

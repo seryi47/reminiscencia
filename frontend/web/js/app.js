@@ -783,9 +783,10 @@ async function deleteSong(song) {
   if (!ok) return false;
   edits.submit({ op: 'delete_song', song_id: song.id });
   if (player.getState().track?.id === song.id) player.load([]);
-  // Limpia el tracker de «Tus subidas» para esta canción (evita el icono "No se ha podido subir" huérfano)
-  // y el record de importación de YouTube (deja que el vídeo pueda re-descargarse).
+  // Limpia el tracker de «Tus subidas» para esta canción (evita el icono "No se ha podido subir" huérfano).
   try { uploads?.forgetBySongIds?.([song.id]); } catch { /* el tracker aún no existe */ }
+  // Purga «Me gusta» y listas locales que apuntaran a esta canción (misma pasada que deleteLocalSong, ADR-0027).
+  try { await library?.forgetSong?.(song.id); } catch { /* biblioteca local aún no cargada */ }
   toast(`Se eliminará «${song.title}» de la biblioteca.`);
   return true;
 }
@@ -1590,6 +1591,12 @@ function createEdits() {
     onCatalog: (songs, folders) => {
       state.publicSongs = songs;
       state.publicFolders = folders;
+      // Purga «Me gusta» y canciones en listas locales cuyo id ya no está en el catálogo (otra sesión/APK la borró).
+      // Sin esto, los stores de IndexedDB iban acumulando referencias rotas. Idempotente y silencioso.
+      if (library && Array.isArray(songs)) {
+        const valid = new Set([...songs.map((s) => s.id), ...state.localSongs.map((s) => s.id)]);
+        library.pruneOrphans(valid).catch(() => { /* silencioso: no bloqueamos el refresco por esto */ });
+      }
     },
     onNotice: ({ type, text }) => toast(text, { ms: type === 'failed' ? 8000 : 4000 }),
     storage: safeLocalStorage(),

@@ -185,6 +185,51 @@ class Collections {
     );
   }
 
+  /// Quita una canción de favoritos y de TODAS las listas (al eliminarla del catálogo). Devuelve la cuenta total
+  /// de apariciones purgadas (favoritos + canciones en listas). No lanza si no aparecía por ningún sitio.
+  int forgetSong(String songId) {
+    var purged = 0;
+    if (_favorites.remove(songId)) purged += 1;
+    for (var i = 0; i < _playlists.length; i++) {
+      final current = _playlists[i];
+      if (!current.songIds.contains(songId)) continue;
+      final next = current.songIds.where((id) => id != songId).toList();
+      purged += current.songIds.length - next.length;
+      _playlists[i] = current.copyWith(songIds: next);
+    }
+    return purged;
+  }
+
+  /// Purga favoritos y canciones en listas cuyo id ya no está en `validIds` (otra sesión/web eliminó la canción).
+  /// Si `validIds` está vacío, no hace nada (evita vaciar la biblioteca por un bootstrap sin catálogo). Devuelve
+  /// la cuenta total de ids purgados. Idempotente.
+  int pruneOrphans(Set<String> validIds) {
+    if (validIds.isEmpty) return 0;
+    var purged = 0;
+    final keepFavs = <String>[];
+    for (final id in _favorites) {
+      if (validIds.contains(id)) {
+        keepFavs.add(id);
+      } else {
+        purged += 1;
+      }
+    }
+    if (keepFavs.length != _favorites.length) {
+      _favorites
+        ..clear()
+        ..addAll(keepFavs);
+    }
+    for (var i = 0; i < _playlists.length; i++) {
+      final current = _playlists[i];
+      final next = current.songIds.where(validIds.contains).toList();
+      if (next.length != current.songIds.length) {
+        purged += current.songIds.length - next.length;
+        _playlists[i] = current.copyWith(songIds: next);
+      }
+    }
+    return purged;
+  }
+
   Map<String, Object> toJson() => {
     'version': 1,
     'favorites': _favorites,

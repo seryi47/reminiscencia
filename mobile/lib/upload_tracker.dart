@@ -1319,6 +1319,24 @@ class UploadTracker extends ChangeNotifier {
     }
   }
 
+  /// Olvida entradas publicadas cuyo publishedId ya no está en el catálogo (otra sesión/web la eliminó). Idempotente:
+  /// si `validIds` está vacío no hace nada (evita vaciar la lista por un bootstrap sin catálogo). Devuelve cuántas.
+  int forgetPublishedNotIn(Set<String> validIds) {
+    if (validIds.isEmpty) return 0;
+    final before = _entries.length;
+    _entries.removeWhere((e) =>
+      e.publishedId != null && !validIds.contains(e.publishedId));
+    final purged = before - _entries.length;
+    if (purged == 0) return 0;
+    final keys = {for (final entry in _entries) entry.key};
+    final groupsInUse = {for (final entry in _entries) ?entry.groupKey};
+    _groups.removeWhere((key, group) => !groupsInUse.contains(key) && group.songs > 0);
+    _layout.removeWhere((key) => !keys.contains(key) && !_groups.containsKey(key));
+    _changed();
+    _inBackground(_persist());
+    return purged;
+  }
+
   /// Quita de la lista las ya publicadas cuya copia local ya se borró.
   void clearPublished() {
     _entries.removeWhere(

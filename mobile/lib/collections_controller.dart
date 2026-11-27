@@ -157,6 +157,34 @@ class CollectionsController extends ChangeNotifier {
   Future<void> removeSong(String playlistId, String songId) =>
       _change(() => _data.removeSong(playlistId, songId));
 
+  /// Al eliminar una canción del catálogo (delete_song / unpublish_song), quita su id de favoritos y de todas las
+  /// listas. Silencioso: no lanza si el controller aún no está cargado o escribible.
+  Future<void> forgetSong(String songId) async {
+    if (!_loaded || !_writable) return;
+    final purged = _data.forgetSong(songId);
+    if (purged == 0) return;
+    notifyListeners();
+    try {
+      await repository.write(_data);
+    } catch (error) {
+      debugPrint('listas: no se pudo guardar tras forgetSong($songId): $error');
+    }
+  }
+
+  /// Purga favoritos y canciones en listas cuyo id ya no está en `validIds`. Pensado para llamarse tras cada
+  /// actualización del catálogo público (otra sesión/web pudo haberla eliminado). Silencioso.
+  Future<void> pruneOrphans(Set<String> validIds) async {
+    if (!_loaded || !_writable || validIds.isEmpty) return;
+    final purged = _data.pruneOrphans(validIds);
+    if (purged == 0) return;
+    notifyListeners();
+    try {
+      await repository.write(_data);
+    } catch (error) {
+      debugPrint('listas: no se pudo guardar tras pruneOrphans: $error');
+    }
+  }
+
   Future<void> _change(void Function() change) async {
     _checkWritable();
     change();
