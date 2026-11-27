@@ -39,7 +39,9 @@ describe("vercel.json: Content-Security-Policy", () => {
     // Spotify: `api.spotify.com` y `open.spotify.com` se añaden para el fallback «Web Player» (ADR-0044 ampliado
     // 2026-11-25): si Spotify topa a 100 pistas una lista ajena, el navegador del usuario (con su sesión de Spotify
     // abierta) pide un token al reproductor web público y lee la lista entera.
-    assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN, WORKERS_DEV, SITE, "https://api.spotify.com", "https://open.spotify.com"]);
+    // r2.cloudflarestorage.com: subida directa con URL firmada (ADR-0052 ampliación 2026-11-26): el cliente firma la
+    // URL en el Worker y hace PUT directo al bucket privado en *.r2.cloudflarestorage.com, sin pasar por el Worker.
+    assert.deepEqual(directives.get("connect-src"), ["'self'", AUDIO_ORIGIN, WORKERS_DEV, SITE, "https://*.r2.cloudflarestorage.com", "https://api.spotify.com", "https://open.spotify.com"]);
     // Las portadas del índice se sirven desde el bucket público.
     assert.deepEqual(directives.get("img-src"), ["'self'", "data:", AUDIO_ORIGIN]);
     assert.deepEqual(directives.get("frame-ancestors"), ["'none'"]);

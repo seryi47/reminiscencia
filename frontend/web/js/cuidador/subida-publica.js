@@ -125,6 +125,10 @@ export async function sendOpusSmart(bytes, {
   artist,
   authFetch = null,
   fetchImpl = globalThis.fetch,
+  // PUT directo a R2 (URL absoluta de r2.cloudflarestorage.com): si no se inyecta, se usa el mismo fetchImpl
+  // (compat con tests que interceptan todo). En app.js se pasa explícitamente globalThis.fetch nativo para que
+  // target.fetch, que prepone WORKER_API_BASE, no corrompa la URL absoluta de R2.
+  putFetchImpl = fetchImpl,
   chunkBytes = CHUNK_BYTES,
   onChunk = () => {},
 } = {}) {
@@ -134,7 +138,10 @@ export async function sendOpusSmart(bytes, {
       const result = await sendOpusPresigned(bytes, {
         fileName,
         authFetch,
-        fetchImpl,
+        // El PUT a R2 va contra una URL ABSOLUTA presigned de r2.cloudflarestorage.com: no puede usar el
+        // fetchImpl del api client (prepone WORKER_API_BASE y rompe la URL). Usamos putFetchImpl, que por
+        // defecto en producción es globalThis.fetch nativo, pero los tests pueden inyectar el suyo.
+        fetchImpl: putFetchImpl,
         onProgress: ({ loaded, total }) => {
           // La máquina de estados espera { index, total } con index 0-based al terminar cada trozo. Simulamos
           // "un trozo = el 100 %" al acabar, y progreso intermedio para mostrar la barra avanzando.

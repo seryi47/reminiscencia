@@ -21,7 +21,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; media-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://reminiscencia.cometia.es; connect-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://*.workers.dev https://reminiscencia.cometia.es https://api.spotify.com https://open.spotify.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev; media-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://reminiscencia.cometia.es; connect-src 'self' https://pub-8a005187082e401abad47cdee4ec88ab.r2.dev https://*.workers.dev https://reminiscencia.cometia.es https://*.r2.cloudflarestorage.com https://api.spotify.com https://open.spotify.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'"
         }
       ]
     }

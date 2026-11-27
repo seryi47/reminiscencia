@@ -1431,6 +1431,9 @@ function createUploads({ authFetch = null } = {}) {
       return sendOpusSmart(bytes, {
         fileName, uploadId: uploadId ?? crypto.randomUUID(), album, artist, onChunk,
         authFetch, fetchImpl: target.fetch, chunkBytes: target.chunkBytes,
+        // target.fetch prepone WORKER_API_BASE: válido para /api/subir (chunks) pero rompe el PUT presigned
+        // a https://*.r2.cloudflarestorage.com (URL absoluta). Para el PUT usamos fetch nativo.
+        putFetchImpl: globalThis.fetch.bind(globalThis),
       });
     },
     // ADR-0052 cierre de causa raíz (2026-11-27): tras subir el Opus al bucket, publicamos al catálogo con
