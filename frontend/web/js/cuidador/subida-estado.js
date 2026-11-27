@@ -840,7 +840,13 @@ export function createUploadTracker(deps = {}) {
    * el buzón ya tenía. Su id sale del contenido: si ya está en songs.json, se da por publicada.
    */
   async function resolveFailed() {
-    const failed = entries.filter((entry) => entry.item.state === S.ERROR && entry.item.localId && entry.item.retryable);
+    // Entries en error que PUEDEN resolverse: las que tienen copia local (recalculan expectedId leyéndola) y las
+    // que ya tienen expectedId guardado (flujo presigned: el bytes ya se soltó, pero el id quedó). Antes solo se
+    // intentaba resolver si había localId; una subida presigned en error (public:false antiguo, timeout, 412)
+    // quedaba atascada aunque la canción apareciera en el catálogo después (2026-11-27).
+    const failed = entries.filter((entry) =>
+      entry.item.state === S.ERROR && entry.item.retryable
+      && (entry.item.localId || entry.item.expectedId));
     if (failed.length === 0) return;
     let songs = null;
     try {
@@ -854,7 +860,7 @@ export function createUploadTracker(deps = {}) {
     for (const entry of failed) {
       if (entry.item.state !== S.ERROR) continue;
       let expectedId = entry.item.expectedId;
-      if (!expectedId) {
+      if (!expectedId && entry.item.localId) {
         const bytes = await readCopy(entry.item.localId).catch(() => null);
         expectedId = bytes ? await expectedSongId(bytes) : null;
       }
