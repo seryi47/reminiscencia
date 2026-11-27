@@ -81,6 +81,38 @@ function saveImportRecord(videoId, record) {
 
 function cachedRecord(videoId) { return importRecords()[videoId] ?? null; }
 
+/** Olvida el record de un vídeo (y su marca en memoria), para que vuelva a ser elegible para convertir. */
+function forgetImport(videoId) {
+  if (!videoId) return;
+  completedVideos.delete(videoId);
+  activeVideos.delete(videoId);
+  try {
+    const records = importRecords();
+    if (videoId in records) {
+      delete records[videoId];
+      globalThis.localStorage?.setItem(IMPORT_STORAGE_KEY, JSON.stringify({ version: IMPORT_STORAGE_VERSION, records }));
+    }
+  } catch (error) {
+    console.warn('Homeostasia: no se pudo olvidar el record de YouTube.', error);
+  }
+}
+
+/** Para la lista de items que la biblioteca da por nuevos (toDownload), descarta cualquier record 'queued' viejo:
+ *  significa que la canción se eliminó más tarde y el record quedó huérfano. Devuelve el número purgado. */
+function forgetOrphanedQueuedRecords(toDownloadItems) {
+  let purged = 0;
+  for (const item of toDownloadItems ?? []) {
+    const videoId = getVideoId(item.url);
+    if (!videoId) continue;
+    const record = cachedRecord(videoId);
+    if (record?.state === 'queued' || completedVideos.has(videoId)) {
+      forgetImport(videoId);
+      purged++;
+    }
+  }
+  return purged;
+}
+
 function openYoutubeDb() {
   if (!globalThis.indexedDB) return Promise.resolve(null);
   return new Promise((resolve, reject) => {
@@ -1093,6 +1125,10 @@ function homeostasiaPanel(ctx, close) {
       // Dedup contra la biblioteca ANTES de convertir (ADR-0019 ampliado + ADR-0046): si parte de la playlist ya la
       // tienes, preguntamos si saltamos lo que coincide o lo bajamos igual (para una versión alterna).
       const dedup = filterYoutubePlaylist(items, ctx.librarySongs?.() ?? []);
+      // Records 'queued' huérfanos: si la biblioteca ya no tiene la canción (porque se eliminó después), el store
+      // antiguo hacía que `convertirCancion` lo saltara en silencio (processed=1, files=0, errors=0). Los purgamos
+      // aquí antes de convertir, para que el vídeo vuelva a bajarse como si fuera nuevo.
+      forgetOrphanedQueuedRecords(dedup.toDownload);
       let itemsToConvert = dedup.toDownload;
       if (dedup.alreadyCount > 0 && dedup.newCount < dedup.total) {
         const choice = await askPlaylistDedupChoice(dedup);
