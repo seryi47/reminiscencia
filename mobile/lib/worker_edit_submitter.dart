@@ -100,6 +100,13 @@ class WorkerBackedEditSubmitter {
             'folder_id': payload['folder_id'],
           }),
         ];
+      case 'delete_song':
+        if (payload['song_id'] is! String) return null;
+        return [
+          _WorkerStep('delete_song', {
+            'song_id': payload['song_id'],
+          }),
+        ];
       case 'unpublish_song':
         if (payload['song_id'] is! String) return null;
         return [

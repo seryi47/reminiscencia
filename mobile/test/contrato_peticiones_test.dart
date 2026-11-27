@@ -45,6 +45,9 @@ String? _factoryFor(Object? payload) {
   if (shape('unpublish_song', ['op', 'song_id']) && strings(['song_id'])) {
     return 'unpublishSong';
   }
+  if (shape('delete_song', ['op', 'song_id']) && strings(['song_id'])) {
+    return 'deleteSong';
+  }
   if (shape('delete_folder', ['op', 'folder_id']) && strings(['folder_id'])) {
     return 'deleteAlbum';
   }
@@ -83,6 +86,9 @@ LibraryRequest _build(String factory, Map<String, dynamic> payload) {
       artist: payload['artist'] as String,
     ),
     'unpublishSong' => LibraryRequest.unpublishSong(
+      songId: payload['song_id'] as String,
+    ),
+    'deleteSong' => LibraryRequest.deleteSong(
       songId: payload['song_id'] as String,
     ),
     'deleteAlbum' => LibraryRequest.deleteAlbum(
@@ -171,6 +177,7 @@ void main() {
       'deleteAlbum',
       'editSong',
       'unpublishSong',
+      'deleteSong',
       'moveSong',
       'moveSongs',
       'orderAlbum',

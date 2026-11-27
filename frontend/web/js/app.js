@@ -781,7 +781,7 @@ async function deleteSong(song) {
     danger: true,
   });
   if (!ok) return false;
-  edits.submit({ op: 'unpublish_song', song_id: song.id });
+  edits.submit({ op: 'delete_song', song_id: song.id });
   if (player.getState().track?.id === song.id) player.load([]);
   toast(`Se eliminará «${song.title}» de la biblioteca.`);
   return true;

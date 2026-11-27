@@ -166,8 +166,10 @@ export function applyPendingEdits(songs, folders, edits) {
         songIds.add(song.id);
         break;
       }
+      case 'delete_song':
       case 'unpublish_song': {
-        // Eliminar = despublicar (ADR-0041): la canción desaparece de la biblioteca al instante.
+        // Eliminar: la canción desaparece de la biblioteca al instante. delete_song la borra del catálogo;
+        // unpublish_song (legacy, ADR-0041) la deja despublicada. Visualmente, lo mismo para la UI.
         songList = songList.filter((item) => item?.id !== payload.song_id);
         break;
       }
@@ -259,8 +261,9 @@ export function isEditReflected(edit, songs, folders) {
       if ('folder_id' in payload && (song.folder_id ?? null) !== (payload.folder_id ?? null)) return false;
       return true;
     }
+    case 'delete_song':
     case 'unpublish_song':
-      // Reflejada cuando la canción ya no está en el catálogo público (se despublicó).
+      // Reflejada cuando la canción ya no está en el catálogo (borrada o despublicada).
       return !songById(payload.song_id);
     case 'delete_folder':
       // Reflejada cuando el álbum ya no existe en el catálogo.

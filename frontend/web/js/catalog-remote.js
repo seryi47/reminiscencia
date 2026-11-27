@@ -459,6 +459,8 @@ export function payloadToActions(payload) {
       }
       return actions;
     }
+    case 'delete_song':
+      return [{ action: 'delete_song', params: { song_id: payload.song_id } }];
     case 'unpublish_song':
       return [{ action: 'unpublish_song', params: { song_id: payload.song_id } }];
     case 'edit_folder':

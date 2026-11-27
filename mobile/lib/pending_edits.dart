@@ -433,8 +433,10 @@ PendingView applyPendingEdits(
           moveInto(index, payload['folder_id'] as String?);
         }
         markedSongs.add(song.id);
+      case 'delete_song':
       case 'unpublish_song':
-        // Eliminar = despublicar (ADR-0041): la canción desaparece de la biblioteca al instante.
+        // Eliminar = borrar la canción del catálogo (delete_song) o despublicar (ADR-0041, legacy).
+        // En ambos casos desaparece de la biblioteca al instante.
         final id = payload['song_id'];
         if (id is String) removedSongs.add(id);
       case 'move_songs':
@@ -570,8 +572,9 @@ bool isEditReflected(PendingEdit edit, List<Song> songs, List<Folder> folders) {
         return false;
       }
       return true;
+    case 'delete_song':
     case 'unpublish_song':
-      // Reflejada cuando la canción ya no está en el catálogo público (se despublicó).
+      // Reflejada cuando la canción ya no está en el catálogo (borrada o despublicada).
       return song(payload['song_id']) == null;
     case 'delete_folder':
       // Reflejada cuando el álbum ya no existe en el catálogo.

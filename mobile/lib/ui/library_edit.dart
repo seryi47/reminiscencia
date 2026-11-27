@@ -242,7 +242,7 @@ Future<void> deleteSongFlow(
   await openLibraryRequest(
     context,
     services,
-    LibraryRequest.unpublishSong(songId: song.id),
+    LibraryRequest.deleteSong(songId: song.id),
   );
 }
 

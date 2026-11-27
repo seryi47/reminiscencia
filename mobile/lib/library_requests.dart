@@ -211,11 +211,22 @@ class LibraryRequest {
     });
   }
 
-  /// «Eliminar de la biblioteca» una canción: la despublica (ADR-0041). Reversible: el audio sigue en el bucket privado
-  /// y se puede volver a publicar.
-  factory LibraryRequest.unpublishSong({required String songId}) {
+  /// «Eliminar de la biblioteca» una canción: la borra del catálogo (`delete_song`). El audio del bucket público
+  /// se recoge en el siguiente repaso de R2. Como borramos canción a canción, no hay riesgo de perder nada.
+  factory LibraryRequest.deleteSong({required String songId}) {
     _checkSong(songId);
     return LibraryRequest._('Eliminar la canción $songId', {
+      'op': 'delete_song',
+      'song_id': songId,
+    });
+  }
+
+  /// Variante legacy «despublicar» (ADR-0041): deja la canción marcada como `public:false` sin borrarla.
+  /// Reversible. Se mantiene por el contrato común pero la UI ya no la usa: el flujo «eliminar» pasa por
+  /// [LibraryRequest.deleteSong].
+  factory LibraryRequest.unpublishSong({required String songId}) {
+    _checkSong(songId);
+    return LibraryRequest._('Despublicar la canción $songId', {
       'op': 'unpublish_song',
       'song_id': songId,
     });
