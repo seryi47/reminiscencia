@@ -1050,6 +1050,9 @@ class UploadTracker extends ChangeNotifier {
         'title': item.title,
         'codec': 'opus',
         'source': 'apk-buzon',
+        // ADR-0052: las subidas por el buzón son públicas por defecto. Sin esta línea entraban como public:false
+        // y no aparecían en la biblioteca hasta editarlas a mano (2026-11-27).
+        'public': true,
         if (item.artist != null && item.artist!.isNotEmpty) 'artist': item.artist,
         if (item.durationS != null) 'duration_s': item.durationS,
         if (item.sizeBytes != null) 'size_bytes': item.sizeBytes,

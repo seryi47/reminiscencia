@@ -1453,6 +1453,9 @@ function createUploads({ authFetch = null } = {}) {
             size_bytes: sizeBytes ?? (bytes?.length ?? null),
             codec: 'opus',
             source: 'web-buzon',
+            // ADR-0052: las subidas por el buzón web/APK son públicas por defecto. Sin esta línea entraban como
+            // public:false y no aparecían en la biblioteca hasta editarlas a mano (2026-11-27).
+            public: true,
             ...(item.artist ? { artist: item.artist } : {}),
             ...(item.album?.id ? { folder_id: item.album.id } : {}),
           };

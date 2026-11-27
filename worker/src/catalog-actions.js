@@ -299,7 +299,11 @@ export function addBuzonSongs(catalog, songs) {
       codec: typeof incoming?.codec === 'string' ? incoming.codec : 'opus',
       size_bytes: Number.isInteger(incoming?.size_bytes) ? incoming.size_bytes : null,
       added_at: new Date().toISOString(),
-      public: incoming?.public === true,
+      // Default público (fix 2026-11-27): el buzón es la ruta oficial de "subir para todos" (web/APK). Un
+      // cliente que NO envíe `public` sigue entrando como público; solo entra como no-público si lo pide
+      // explícitamente con `public:false`. Antes `public: incoming?.public === true` dejaba invisibles las
+      // subidas de clientes que no mandaban el campo.
+      public: incoming?.public !== false,
     };
     if (incoming?.cover_id) song.cover_id = incoming.cover_id;
     if (incoming?.source) song.source = incoming.source;
