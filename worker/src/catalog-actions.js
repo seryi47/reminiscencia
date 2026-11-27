@@ -262,13 +262,26 @@ export function addBuzonSongs(catalog, songs) {
     throw new ActionError(400, `buzon: demasiadas canciones en una sola llamada (${songs.length}); el máximo es ${BUZON_MAX_SONGS_PER_CALL}.`);
   }
   const next = cloneCatalog(catalog);
-  const existingBySha = new Map(next.songs.filter((s) => s.sha256).map((s) => [s.sha256, s.id]));
+  // Mapa sha256 → canción existente (la referencia dentro de next.songs para poder mutarla).
+  const bySha = new Map();
+  for (const s of next.songs) if (s.sha256) bySha.set(s.sha256, s);
   const added = [];
+  const republished = [];
   for (const incoming of songs) {
     const title = trimmed(incoming?.title);
     if (!title) throw new ActionError(400, 'buzon: una canción no tiene título.');
-    if (incoming?.sha256 && existingBySha.has(incoming.sha256)) {
-      throw new ActionError(409, `buzon: la canción ${title} ya existía (sha256 duplicado).`);
+    if (incoming?.sha256 && bySha.has(incoming.sha256)) {
+      const existing = bySha.get(incoming.sha256);
+      // ADR-0041 + fix 2026-11-27: si ya existía pero estaba unpublished (public:false), la REPUBLICAMOS en lugar
+      // de rechazar con 409. El usuario está intentando subirla claramente con intención de verla; no hay por qué
+      // obligarle a saber la diferencia entre unpublish y delete real.
+      if (existing.public === false) {
+        existing.public = true;
+        republished.push(existing.id);
+        continue;
+      }
+      // Si ya está publicada y es la misma sha256, el 409 sigue teniendo sentido: es un duplicado real innecesario.
+      throw new ActionError(409, `buzon: la canción ${title} ya estaba publicada (sha256 duplicado).`);
     }
     const folderId = incoming?.folder_id ?? null;
     if (folderId !== null && !next.folders.some((f) => f.id === folderId)) {
@@ -292,10 +305,10 @@ export function addBuzonSongs(catalog, songs) {
     if (incoming?.source) song.source = incoming.source;
     if (incoming?.license) song.license = incoming.license;
     next.songs.push(song);
-    if (song.sha256) existingBySha.set(song.sha256, song.id);
+    if (song.sha256) bySha.set(song.sha256, song);
     added.push({ id: song.id, title: song.title });
   }
-  const event = { kind: 'buzon_publish', added };
+  const event = { kind: 'buzon_publish', added, ...(republished.length ? { republished } : {}) };
   return { catalog: next, event };
 }
 

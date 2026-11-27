@@ -221,6 +221,13 @@ async function postWithIfMatch(path, {
       await sleep(retryAfterMs(response));
       continue;
     }
+    if (response.status === 409) {
+      // El Worker rechaza la canción por sha256 duplicado (ya está en el catálogo). No es un error del cliente:
+      // la canción ya está publicada, el upload tracker debe tratarlo como éxito "ya estaba".
+      let data = null;
+      try { data = await response.json(); } catch { data = null; }
+      throw Object.assign(new Error(typeof data?.error === 'string' && data.error ? data.error : 'La canción ya está en la biblioteca.'), { name: 'BuzonDuplicateError', status: 409 });
+    }
     if (response.status === 412) {
       if (conflicts >= maxConflictRetries) {
         throw Object.assign(new Error(CONFLICT_TEXT), { name: 'ConflictError', status: 412 });

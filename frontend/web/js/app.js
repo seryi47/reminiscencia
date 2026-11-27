@@ -1449,7 +1449,14 @@ function createUploads({ authFetch = null } = {}) {
             ...(item.artist ? { artist: item.artist } : {}),
             ...(item.album?.id ? { folder_id: item.album.id } : {}),
           };
-          await publishBuzon([payload]);
+          try {
+            await publishBuzon([payload]);
+          } catch (error) {
+            // 409 = sha256 duplicado: la canción ya está en la biblioteca, no es un error que el usuario deba ver.
+            // El tracker la detectará como "ya estaba" en el próximo poll.
+            if (error?.name === 'BuzonDuplicateError' || error?.status === 409) return;
+            throw error;
+          }
         }
       : null,
     fetchSongs: FEATURE_CATALOGO_R2
