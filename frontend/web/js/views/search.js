@@ -9,6 +9,9 @@ import { icon } from '../ui/icons.js';
 import { chips, collectionCard, contextCover, DOT, playButton, shelf, songCoverNode, trackTable } from './components.js';
 
 const TOP_SONGS = 4;
+/** Debounce de la entrada: colapsa múltiples pulsaciones en una sola actualización. 150 ms = respuesta percibida
+ *  instantánea pero sin disparar re-renders por cada tecla (ADR-0052 ampliación). */
+export const SEARCH_INPUT_DEBOUNCE_MS = 150;
 
 const SEARCH_FILTERS = Object.freeze([
   Object.freeze({ key: 'todo', label: 'Todo' }),
@@ -31,9 +34,15 @@ export function renderSearch(main, ctx) {
   });
   input.value = ctx.state.searchQuery;
   const clear = iconButton('close', 'Borrar la búsqueda', { class: 'search-clear', 'data-testid': 'search-clear', hidden: input.value === '' }, 20);
+  let debounceTimer = null;
   input.addEventListener('input', () => {
     clear.hidden = input.value === '';
-    ctx.setSearchQuery(input.value);
+    if (debounceTimer) clearTimeout(debounceTimer);
+    const value = input.value;
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      ctx.setSearchQuery(value);
+    }, SEARCH_INPUT_DEBOUNCE_MS);
   });
   clear.addEventListener('click', () => {
     input.value = '';

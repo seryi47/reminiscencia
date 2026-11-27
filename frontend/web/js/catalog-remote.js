@@ -141,6 +141,36 @@ export function writeStoredCatalog(catalog, storage = (() => { try { return glob
   }
 }
 
+// ---------- IndexedDB (ADR-0052 ampliación) ----------
+// Lee/escribe el catálogo prefiriendo IndexedDB sobre localStorage: más espacio (50 MB+) y no bloquea el hilo.
+// Fallback transparente a localStorage si el navegador no lo soporta. Compatibilidad: migra una vez lo que haya
+// en localStorage[BODY_STORAGE_KEY] a IndexedDB y después limpia localStorage.
+import {
+  readStoredCatalogAsync, writeStoredCatalogAsync, migrateFromLocalStorageOnce, isIndexedDbAvailable,
+} from './idb-catalog-store.js';
+
+let _migratedOnce = false;
+
+export async function readStoredCatalogPreferIdb() {
+  if (isIndexedDbAvailable()) {
+    if (!_migratedOnce) {
+      try { await migrateFromLocalStorageOnce(BODY_STORAGE_KEY); } catch { /* nada */ }
+      _migratedOnce = true;
+    }
+    const idb = await readStoredCatalogAsync();
+    if (idb) return idb;
+  }
+  return readStoredCatalog();
+}
+
+export async function writeStoredCatalogPreferIdb(catalog) {
+  if (isIndexedDbAvailable()) {
+    await writeStoredCatalogAsync(catalog);
+    return;
+  }
+  writeStoredCatalog(catalog);
+}
+
 /** Interpreta el 'Retry-After' (segundos entero o fecha) y lo convierte a ms. Máximo 15 s. */
 function retryAfterMs(response) {
   const raw = response?.headers?.get?.('Retry-After');

@@ -53,7 +53,7 @@ import { applyPendingEdits, createEditTracker, indicatorText as editsIndicatorTe
 import { bindCatalogWorker, dataUrlToBytes, fetchEditStatus, publishBuzon, sendCover, sendOrganize } from './edit-remote.js';
 import { api } from './api-config.js';
 import { createAuthClient, openAuthDialog } from './auth.js';
-import { fetchLatestCatalog, FEATURE_CATALOGO_R2, readStoredEtag, writeStoredEtag, readStoredCatalog, writeStoredCatalog, fetchHistorial, watchCatalog } from './catalog-remote.js';
+import { fetchLatestCatalog, FEATURE_CATALOGO_R2, readStoredEtag, writeStoredEtag, readStoredCatalog, writeStoredCatalog, readStoredCatalogPreferIdb, writeStoredCatalogPreferIdb, fetchHistorial, watchCatalog } from './catalog-remote.js';
 import { applyCoverIndex, fetchCoverIndex } from './cover-index.js';
 import {
   activeCount,
@@ -1663,10 +1663,10 @@ async function loadPublicCatalog() {
   // Camino nuevo (ADR-0052): el catálogo entero en un GET al Worker, con ETag para 304.
   if (FEATURE_CATALOGO_R2) {
     try {
-      // Cache-first (ADR-0052): si tenemos catálogo guardado en localStorage de la sesión anterior, lo cargamos ya
-      // en memoria para pintar la biblioteca al instante incluso con red lenta o nula. Luego revalidamos con 304.
+      // Cache-first (ADR-0052): si tenemos catálogo guardado (IndexedDB > localStorage), lo cargamos ya en memoria
+      // para pintar la biblioteca al instante incluso con red lenta o nula. Luego revalidamos con 304.
       if (!Array.isArray(state.publicSongs) || state.publicSongs.length === 0) {
-        const stored = readStoredCatalog();
+        const stored = await readStoredCatalogPreferIdb();
         if (stored) {
           state.publicSongs = stored.songs;
           state.publicFolders = stored.folders;
@@ -1702,8 +1702,8 @@ async function loadPublicCatalog() {
       state.catalogVersion = Number.isInteger(catalog?.version) ? catalog.version : 0;
       state.catalogEtag = typeof etag === 'string' ? etag : null;
       writeStoredEtag(state.catalogEtag);
-      // Guardamos también el cuerpo entero para servirlo cache-first en la próxima apertura (apertura instantánea).
-      writeStoredCatalog(catalog);
+      // Guardamos también el cuerpo entero (IndexedDB > localStorage) para servirlo cache-first en la próxima apertura.
+      writeStoredCatalogPreferIdb(catalog).catch(() => writeStoredCatalog(catalog));
       state.loadError = null;
       return;
     } catch (error) {
@@ -1867,9 +1867,9 @@ async function start() {
           state.catalogEtag = etag;
           writeStoredEtag(etag);
         }
-        // Mantener el storage del catálogo sincronizado con el long-poll para que el próximo arranque también parta
-        // de la versión más reciente conocida.
-        writeStoredCatalog(catalog);
+        // Mantener el storage del catálogo sincronizado con el long-poll (IndexedDB > localStorage) para que el
+        // próximo arranque también parta de la versión más reciente conocida.
+        writeStoredCatalogPreferIdb(catalog).catch(() => writeStoredCatalog(catalog));
         state.loadError = null;
         try { reconcilePublished(); } catch { /* UI se adapta sola en el siguiente ciclo */ }
         try { rebuildCatalog(); } catch { /* idem */ }

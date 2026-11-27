@@ -7,6 +7,18 @@ import {
   CACHE_MAX_DURATION_S,
 } from './youtube-cache.js';
 
+// Request coalescing (ADR-0052): si 2+ clientes piden /convert del mismo videoId en paralelo, hacemos UNA sola llamada
+// a yttowav y compartimos la respuesta. Scope = isolate; TTL corto (el fetch se completa en segundos y limpia solo).
+const inFlightConvert = new Map();
+
+/** Para tests: permite inspeccionar/limpiar el estado del coalescing sin exponer el Map. */
+export function _coalesceStateForTests() {
+  return { size: inFlightConvert.size };
+}
+export function _clearCoalesceStateForTests() {
+  inFlightConvert.clear();
+}
+
 const YOUTUBE_MARK_HEADER = 'X-Reminiscencia-Youtube';
 
 function markYoutubeResponse(response) {
@@ -56,7 +68,28 @@ export async function handleCachedConvert(request, env, nativeHandler, { fetchIm
       duration_s: meta.duration_s ?? null,
     });
   }
-  return markYoutubeResponse(await nativeHandler(request, { fetchImpl }));
+  // Request coalescing: si otro cliente ya está esperando la conversión de este videoId, nos colgamos de esa misma
+  // promise en vez de disparar un segundo fetch a yttowav. El primer client-side flow abre el job; el resto comparte.
+  const existing = inFlightConvert.get(videoId);
+  if (existing) {
+    try {
+      const cloned = await existing;
+      return markYoutubeResponse(cloned.clone());
+    } catch {
+      // si la promise raíz cascó, dejamos que el handler nativo se encargue abajo
+    }
+  }
+  const pending = (async () => markYoutubeResponse(await nativeHandler(request, { fetchImpl })))();
+  inFlightConvert.set(videoId, pending);
+  try {
+    const response = await pending;
+    return response.clone();
+  } finally {
+    // Limpiamos pasado un tick: otros clientes que aún estén en espera comparten; después se vuelve a pedir fresh.
+    setTimeout(() => {
+      if (inFlightConvert.get(videoId) === pending) inFlightConvert.delete(videoId);
+    }, 0);
+  }
 }
 
 /**

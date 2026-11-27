@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services.dart';
@@ -19,14 +21,35 @@ class SearchPage extends StatefulWidget {
   State<SearchPage> createState() => _SearchPageState();
 }
 
+/// Debounce de la entrada del buscador (ADR-0052 ampliación): 100 ms de pausa colapsan varias pulsaciones en una
+/// sola reconstrucción, sin notarse en la mano pero evitando re-renders por cada tecla.
+const Duration kSearchDebounce = Duration(milliseconds: 100);
+
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _controller = TextEditingController();
   String _query = '';
+  Timer? _debounce;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(kSearchDebounce, () {
+      if (!mounted) return;
+      setState(() => _query = value);
+    });
+  }
+
+  void _onClear() {
+    _debounce?.cancel();
+    _controller.clear();
+    if (!mounted) return;
+    setState(() => _query = '');
   }
 
   @override
@@ -65,11 +88,8 @@ class _SearchPageState extends State<SearchPage> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: _SearchField(
                   controller: _controller,
-                  onChanged: (value) => setState(() => _query = value),
-                  onClear: () {
-                    _controller.clear();
-                    setState(() => _query = '');
-                  },
+                  onChanged: _onChanged,
+                  onClear: _onClear,
                 ),
               ),
             ),

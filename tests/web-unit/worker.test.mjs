@@ -1818,3 +1818,120 @@ describe('optimización de espacio en R2 (ADR-0052)', () => {
     assert.ok(data.object_counts['catalog/'] === 1);
   });
 });
+
+// -------------------------------------------------------------
+// Búsqueda full-text server-side (ADR-0052 ampliación)
+// -------------------------------------------------------------
+import { searchCatalog, normalize } from '../../worker/src/search.js';
+
+describe('búsqueda full-text server-side (ADR-0052)', () => {
+  const catalog = {
+    version: 1,
+    folders: [
+      { id: 'F1', name: 'Fiestas' },
+      { id: 'F2', name: 'Rayden Álbum' },
+    ],
+    songs: [
+      { id: 'S1', title: 'Averno', artist: 'Rayden', tags: ['rap'] },
+      { id: 'S2', title: 'No hago rap', artist: 'Rayden', tags: [] },
+      { id: 'S3', title: 'Haciéndonos los muertos', artist: 'Rayden', tags: [] },
+      { id: 'S4', title: 'Despacito', artist: 'Luis Fonsi', tags: ['reggaeton'] },
+      { id: 'S5', title: 'Un Veneno', artist: 'C. Tangana', tags: [] },
+    ],
+  };
+  test('normalize quita acentos y minúsculas', () => {
+    assert.equal(normalize('Haciéndonos los MUERTOS'), 'haciendonos los muertos');
+    assert.equal(normalize('ÁÉÍÓÚ'), 'aeiou');
+  });
+  test('substring en medio del título cuenta como hit', () => {
+    const { songs } = searchCatalog(catalog, { query: 'veneno' });
+    assert.ok(songs.some((s) => s.id === 'S5'));
+  });
+  test('acentos de la query y del catálogo se igualan', () => {
+    const { songs } = searchCatalog(catalog, { query: 'haciendonos' });
+    assert.ok(songs.some((s) => s.id === 'S3'));
+  });
+  test('busca por artista y tags', () => {
+    const r1 = searchCatalog(catalog, { query: 'rayden' });
+    assert.ok(r1.songs.length >= 3);
+    const r2 = searchCatalog(catalog, { query: 'reggaeton' });
+    assert.ok(r2.songs.some((s) => s.id === 'S4'));
+  });
+  test('también busca folders', () => {
+    const { folders } = searchCatalog(catalog, { query: 'fiestas' });
+    assert.ok(folders.some((f) => f.id === 'F1'));
+  });
+  test('query vacía devuelve cero candidatos', () => {
+    const r = searchCatalog(catalog, { query: '   ' });
+    assert.equal(r.total_candidates, 0);
+  });
+  test('limit recorta los resultados', () => {
+    const r = searchCatalog(catalog, { query: 'rayden', limit: 2 });
+    assert.ok(r.songs.length <= 2);
+  });
+  test('/api/search endpoint responde 200 con hits', async () => {
+    const env = {
+      PUBLIC_BUCKET: fakeR2(),
+      ALLOWED_ORIGINS: SITE_ORIGIN,
+    };
+    await env.PUBLIC_BUCKET.put('catalog/catalog.json', JSON.stringify(catalog), {
+      httpMetadata: { contentType: 'application/json' },
+    });
+    const req = new Request(`${SITE_ORIGIN}/api/search?q=rayden&limit=5`);
+    const res = await handleRequest(req, env);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.ok(Array.isArray(data.songs));
+    assert.ok(data.songs.length >= 1);
+    assert.equal(res.headers.get('Cache-Control'), 'public, max-age=10');
+  });
+});
+
+// -------------------------------------------------------------
+// Request coalescing en YouTube convert (ADR-0052 ampliación)
+// -------------------------------------------------------------
+import {
+  handleCachedConvert, _coalesceStateForTests, _clearCoalesceStateForTests,
+} from '../../worker/src/youtube-cache-handlers.js';
+
+describe('request coalescing en YouTube convert (ADR-0052)', () => {
+  test('2 llamadas concurrentes con mismo videoId → 1 sola llamada al handler nativo', async () => {
+    _clearCoalesceStateForTests();
+    const env = { PUBLIC_BUCKET: fakeR2() };
+    let nativeCalls = 0;
+    const nativeHandler = async () => {
+      nativeCalls += 1;
+      await new Promise((r) => setTimeout(r, 20));
+      return new Response(JSON.stringify({ jobId: 'native-job-123' }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    const mkReq = () => new Request('https://example.com/api/youtube/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://youtu.be/dQw4w9WgXcQ' }),
+    });
+    const [a, b] = await Promise.all([
+      handleCachedConvert(mkReq(), env, nativeHandler),
+      handleCachedConvert(mkReq(), env, nativeHandler),
+    ]);
+    assert.equal(a.status, 200);
+    assert.equal(b.status, 200);
+    assert.equal(nativeCalls, 1);
+  });
+  test('tras completarse la primera, el inFlight se limpia', async () => {
+    _clearCoalesceStateForTests();
+    const env = { PUBLIC_BUCKET: fakeR2() };
+    const nativeHandler = async () => new Response(JSON.stringify({ jobId: 'ok' }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+    const req = new Request('https://example.com/api/youtube/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://youtu.be/dQw4w9WgXcQ' }),
+    });
+    await handleCachedConvert(req, env, nativeHandler);
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(_coalesceStateForTests().size, 0);
+  });
+});
