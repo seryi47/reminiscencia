@@ -952,6 +952,20 @@ export function createUploadTracker(deps = {}) {
     },
     /** ¿Hay archivos convirtiéndose o subiéndose? (perderlos al cerrar la página sí importa). */
     busy: () => entries.some((entry) => [S.QUEUED, S.CONVERTING, S.SENDING].includes(entry.item.state)),
+    /** Olvida entries cuyo songId asignado está en la lista (típicamente, tras eliminar la canción del catálogo).
+     *  Evita acumular trackers de subidas ya borradas (dejaba el icono "No se ha podido subir"). Devuelve cuántas. */
+    forgetBySongIds(songIds) {
+      const set = new Set(Array.isArray(songIds) ? songIds : [songIds]);
+      if (set.size === 0) return 0;
+      const before = entries.length;
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const item = entries[i].item;
+        if (item.songId && set.has(item.songId)) entries.splice(i, 1);
+      }
+      const removed = before - entries.length;
+      if (removed > 0) emit();
+      return removed;
+    },
     /** Comprueba songs.json ahora mismo (pruebas y vuelta a la pestaña). */
     checkNow: () => inBackground(check()),
     /**

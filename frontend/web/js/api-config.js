@@ -66,13 +66,25 @@ export function createApiClient({
   const workerUsable = () => workerBase !== '' && now() >= downUntil;
   const markDown = () => { downUntil = now() + RETRY_WORKER_AFTER_MS; };
 
+  // Guard de higiene (2026-11-27): este cliente SÓLO acepta rutas relativas (`/api/...`, `/audio/...`). Pasar una
+  // URL absoluta era un bug silencioso: el prefijo `${workerBase}` + URL absoluta producía abominaciones tipo
+  // `https://reminiscencia.cometia.eshttps://...r2.cloudflarestorage.com/...` que la CSP bloqueaba sin pista clara.
+  // Ahora reventamos ruidosamente con un stack trace útil.
+  function ensureRelative(path) {
+    if (typeof path === 'string' && /^https?:\/\//i.test(path)) {
+      throw new Error(`api-config: solo acepta rutas relativas (recibido: «${path.slice(0, 80)}»). Usa globalThis.fetch para URLs absolutas.`);
+    }
+  }
+
   async function viaWorker(path, init) {
+    ensureRelative(path);
     const response = await fetchImpl(`${workerBase}${path}`, init);
     if (!isWorkerResponse(response)) throw new Error('La respuesta no es del Worker.');
     return response;
   }
 
   async function apiFetch(path, init = {}) {
+    ensureRelative(path);
     if (workerUsable()) {
       try {
         return await viaWorker(path, init);
@@ -105,16 +117,17 @@ export function createApiClient({
           base: workerBase,
           worker: true,
           chunkBytes: WORKER_CHUNK_BYTES,
-          fetch: (path, init) => fetchImpl(`${workerBase}${path}`, init),
+          fetch: async (path, init) => { ensureRelative(path); return fetchImpl(`${workerBase}${path}`, init); },
         };
       }
       markDown();
     }
-    return { ...VERCEL, fetch: (path, init) => fetchImpl(path, init) };
+    return { ...VERCEL, fetch: async (path, init) => { ensureRelative(path); return fetchImpl(path, init); } };
   }
 
   /** Solo el Worker (rutas que Vercel no tiene, como GET /api/portadas): lanza si no está o no responde. */
   async function workerFetch(path, init = {}) {
+    ensureRelative(path);
     if (!workerUsable()) throw new Error('Sin Worker.');
     try {
       return await viaWorker(path, init);

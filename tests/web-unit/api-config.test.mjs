@@ -148,4 +148,16 @@ describe('con Worker', () => {
     await assert.rejects(api.workerFetch('/api/portadas'));
     assert.equal(api.usesWorker(), false);
   });
+
+  // Regresión 2026-11-27: al pasarle una URL absoluta (p.ej. presigned a r2.cloudflarestorage.com), el cliente
+  // antes concatenaba la base del Worker a la URL absoluta y producía URLs tipo `https://…cometia.eshttps://…`
+  // que la CSP bloqueaba con mensaje enrevesado. Ahora revienta pronto con un error útil.
+  test('rechaza rutas absolutas en apiFetch/uploadTarget/workerFetch', async () => {
+    const { fetchImpl } = recorder(() => fromWorker({ ok: true }));
+    const api = createApiClient({ base: BASE, fetchImpl });
+    await assert.rejects(api.fetch('https://291b.r2.cloudflarestorage.com/x'), /solo acepta rutas relativas/);
+    await assert.rejects(api.workerFetch('https://ejemplo.com/x'), /solo acepta rutas relativas/);
+    const target = await api.uploadTarget();
+    await assert.rejects(target.fetch('https://291b.r2.cloudflarestorage.com/x'), /solo acepta rutas relativas/);
+  });
 });

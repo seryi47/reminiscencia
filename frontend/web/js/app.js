@@ -783,6 +783,9 @@ async function deleteSong(song) {
   if (!ok) return false;
   edits.submit({ op: 'delete_song', song_id: song.id });
   if (player.getState().track?.id === song.id) player.load([]);
+  // Limpia el tracker de «Tus subidas» para esta canción (evita el icono "No se ha podido subir" huérfano)
+  // y el record de importación de YouTube (deja que el vídeo pueda re-descargarse).
+  try { uploads?.forgetBySongIds?.([song.id]); } catch { /* el tracker aún no existe */ }
   toast(`Se eliminará «${song.title}» de la biblioteca.`);
   return true;
 }
