@@ -332,3 +332,14 @@ Para evitar reconvertir el mismo vídeo de YouTube en yttowav cada vez que apare
 - Primera vez para un vídeo: idéntica (yttowav + espera).
 - **Segunda y posteriores (otro usuario / otra playlist que lo incluye): ~2 s en vez de 10-40 s**.
 - Cupo yttowav: 1 llamada por vídeo único, no por re-importación.
+
+## Cierre del día (2026-11-27)
+
+Tras el día grande (6 forks de implementación + 5 de aceleración + limpieza final), el estado es:
+
+- **Catálogo R2 v8**, 674 canciones, 206 KB (menos que el fichero local de 790 canciones sin filtrar).
+- **Ocupación total R2**: 943.6 MB (9.2 % del free tier de 10 GB). Audio 941 MB, snapshots 2.5 MB, el resto despreciable.
+- **APK en producción**: 1.4.43 (en el Desktop del usuario). Build 1.4.44 en marcha.
+- **Suites**: Worker 107+/+, web-unit 1295/1295, backend 867/867, Flutter 757/757.
+- **Deadcode pendiente**: el ramal legacy de `/api/subir` del Worker sigue ahí porque hay tests que validan su contrato. Retirarlo exige modificar también los tests. **Decisión intencionada** de no tocar hoy, documentada en el comentario de `worker/src/index.js` sobre `GITHUB_TOKEN`.
+- **Pendiente del usuario** (acciones manuales, opcionales, no bloqueantes): tags/releases huérfanos, lifecycle rules en el panel R2, borrar secreto `GITHUB_TOKEN` del Worker. Todo está en `~/Desktop/reminiscencia-limpieza-pendiente-2026-11-27.md` con comandos listos para copiar.

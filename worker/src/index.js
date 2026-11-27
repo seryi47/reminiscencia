@@ -55,6 +55,7 @@ import {
   handleCacheCheck, isCacheCheckRoute,
 } from './youtube-cache-handlers.js';
 import { extractPlaylistId, playlistCacheGet, playlistCachePut } from './youtube-cache.js';
+import { handleSearch, isSearchRoute } from './search.js';
 
 export const SERVICE = 'reminiscencia-api';
 export const API_HEADER = 'X-Reminiscencia-Api';
@@ -141,8 +142,13 @@ function finish(response, origin, expose = []) {
 
 // GITHUB_TOKEN: tras ADR-0052 solo se usa en el ramal legacy de `/api/subir` (clientes sin AUTH_PASSWORD) para
 // dispatchear `buzon.yml`, que ya está RETIRADO. Esto significa que ese ramal legacy no completa aunque el
-// Worker lo intente. Cuando no queden APK pre-1.4.25+49 instaladas, borrar el ramal del `if (dispatchEnabled)`
-// de abajo y el secreto `wrangler secret delete GITHUB_TOKEN`. Mientras tanto el secreto se mantiene.
+// Worker lo intente — ya está documentado como aceptable: una APK <1.4.25+49 instalada no podrá subir, pero la
+// escucha y navegación siguen funcionando.
+// Estado 2026-11-27: todos los usuarios activos (sergiorosmontero y sus dos móviles Samsung) están en APK
+// 1.4.43+. Ninguna llamada real pasa por el ramal legacy. El secreto `GITHUB_TOKEN` del Worker queda como
+// candidato a retirar MANUALMENTE con `wrangler secret delete GITHUB_TOKEN` cuando el usuario quiera; está en
+// el informe `~/Desktop/reminiscencia-limpieza-pendiente-2026-11-27.md`. El código del ramal se conserva porque
+// hay tests (`describe('/api/subir', ...)`) que validan el contrato legacy; retirarlo exige tocar esos tests.
 const token = (env) => (typeof env.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '');
 
 function saveCoverWith(env) {
@@ -546,6 +552,10 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
   // Informe de ocupación en R2 (ADR-0052): agrupa tamaño por prefijo para ver el uso del plan gratuito.
   if (path === '/api/catalogo/storage-report') {
     return finish(await handleStorageReport(request, env), origin);
+  }
+  // Búsqueda full-text server-side (ADR-0052): tokeniza q contra title/artist/tags/folder.name con scoring.
+  if (isSearchRoute(path)) {
+    return finish(await handleSearch(request, env), origin);
   }
   // Rutas del catálogo en R2 (ADR-0052): lectura pública + escritura con X-Auth.
   if (isCatalogRoute(path)) {
