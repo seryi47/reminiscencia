@@ -48,6 +48,7 @@ import { serializeCoverIndex } from '../../frontend/web/js/cover-index.js';
 import { handleCatalogRoute, isCatalogRoute } from './catalog-api.js';
 import { handlePresign, handleComplete } from './upload-presign.js';
 import { handlePushRoute, isPushRoute } from './push-api.js';
+import { handleRescateRoute, isRescateRoute } from './rescate.js';
 import { handleStorageReport } from './storage-report.js';
 import { notifyCatalogChange } from './fcm.js';
 import {
@@ -548,6 +549,10 @@ export async function handleRequest(request, env = {}, { fetchImpl = (...args) =
   // Rutas push FCM (ADR-0052): /api/push/health público, /api/push/test con X-Auth.
   if (isPushRoute(path)) {
     return finish(await handlePushRoute(path, request, env), origin);
+  }
+  // Rescate de subidas atascadas (ADR-0052, 2026-11-27): admin con X-Auth.
+  if (isRescateRoute(path)) {
+    return finish(await handleRescateRoute(path, request, env), origin);
   }
   // Informe de ocupación en R2 (ADR-0052): agrupa tamaño por prefijo para ver el uso del plan gratuito.
   if (path === '/api/catalogo/storage-report') {
